@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markus Stuhr</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050810;
+    color: #fff;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    cursor: none;
+  }
+  canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+  .content {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 10;
+    pointer-events: none;
+    user-select: none;
+  }
+  .name {
+    font-size: clamp(2rem, 6vw, 5rem);
+    font-weight: 200;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.9);
+    text-shadow: 0 0 60px rgba(100,180,255,0.35);
+  }
+  .tagline {
+    font-size: clamp(0.6rem, 1.4vw, 0.85rem);
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    color: rgba(100,180,255,0.55);
+    margin-top: 1.2rem;
+  }
+  .cursor {
+    position: fixed;
+    width: 10px;
+    height: 10px;
+    background: rgba(120,190,255,0.95);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 100;
+    transform: translate(-50%, -50%);
+    mix-blend-mode: screen;
+    transition: width 0.1s, height 0.1s;
+  }
+  .cursor-ring {
+    position: fixed;
+    width: 38px;
+    height: 38px;
+    border: 1px solid rgba(100,180,255,0.3);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 99;
+    transform: translate(-50%, -50%);
+  }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="content">
+  <div class="name">Markus Stuhr</div>
+  <div class="tagline">Digital Creativity</div>
+</div>
+
+<div class="cursor" id="cursor"></div>
+<div class="cursor-ring" id="cursorRing"></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const cursor = document.getElementById('cursor');
+const ring = document.getElementById('cursorRing');
+
+let W, H, particles = [];
+let mouse = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+let ringX = mouse.x, ringY = mouse.y;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); init(); });
+
+document.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+});
+
+class Particle {
+  constructor() { this.reset(); }
+  reset() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.baseX = this.x;
+    this.baseY = this.y;
+    this.size = Math.random() * 1.5 + 0.3;
+    this.vx = (Math.random() - 0.5) * 0.3;
+    this.vy = (Math.random() - 0.5) * 0.3;
+    this.alpha = Math.random() * 0.5 + 0.2;
+    this.hue = 200 + Math.random() * 50;
+  }
+  update() {
+    const dx = mouse.x - this.x;
+    const dy = mouse.y - this.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const force = Math.max(0, 130 - dist) / 130;
+    if (dist < 130) {
+      this.x -= (dx / dist) * force * 3.5;
+      this.y -= (dy / dist) * force * 3.5;
+    } else {
+      this.x += (this.baseX - this.x) * 0.04;
+      this.y += (this.baseY - this.y) * 0.04;
+    }
+    this.baseX += this.vx;
+    this.baseY += this.vy;
+    if (this.baseX < 0 || this.baseX > W) this.vx *= -1;
+    if (this.baseY < 0 || this.baseY > H) this.vy *= -1;
+  }
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${this.hue}, 80%, 70%, ${this.alpha})`;
+    ctx.fill();
+  }
+}
+
+function init() {
+  const count = Math.min(Math.floor((W * H) / 7000), 200);
+  particles = Array.from({ length: count }, () => new Particle());
+}
+init();
+
+function drawConnections() {
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 110) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = `rgba(100,180,255,${(1 - dist / 110) * 0.12})`;
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+    const dx = particles[i].x - mouse.x;
+    const dy = particles[i].y - mouse.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 180) {
+      ctx.beginPath();
+      ctx.moveTo(particles[i].x, particles[i].y);
+      ctx.lineTo(mouse.x, mouse.y);
+      ctx.strokeStyle = `rgba(120,200,255,${(1 - dist / 180) * 0.35})`;
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawMouseGlow() {
+  const g = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, 160);
+  g.addColorStop(0, 'rgba(60,140,255,0.07)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(mouse.x, mouse.y, 160, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function animate() {
+  ctx.fillStyle = 'rgba(5,8,16,0.18)';
+  ctx.fillRect(0, 0, W, H);
+
+  drawMouseGlow();
+  drawConnections();
+  particles.forEach(p => { p.update(); p.draw(); });
+
+  ringX += (mouse.x - ringX) * 0.12;
+  ringY += (mouse.y - ringY) * 0.12;
+  ring.style.left = ringX + 'px';
+  ring.style.top = ringY + 'px';
+
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
