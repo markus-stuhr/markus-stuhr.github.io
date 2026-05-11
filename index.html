@@ -106,6 +106,7 @@ let ringX = 0, ringY = 0;
 let tick = 0, hueBase = 210;
 let cursorSign = 1;
 let shockwaves = [];
+let alignBoost = 0;
 
 function resize() {
   W = canvas.width = window.innerWidth;
@@ -133,6 +134,7 @@ function triggerClick(x, y) {
   poles[2].sign = cursorSign;
   cursorEl.className = 'cursor ' + (cursorSign > 0 ? 'north' : 'south');
   shockwaves.push({ x, y, r: 5, alpha: 0.9, sign: cursorSign });
+  alignBoost = 1.0;
 }
 
 document.addEventListener('mousemove', e => moveCursor(e.clientX, e.clientY));
@@ -190,7 +192,7 @@ class Filing {
     while (diff < -Math.PI) diff += Math.PI * 2;
     if (diff >  Math.PI / 2) diff -= Math.PI;
     if (diff < -Math.PI / 2) diff += Math.PI;
-    this.angle += diff * 0.1;
+    this.angle += diff * (0.1 + alignBoost * 0.35);
 
     // Slow drift along field direction
     const str = Math.sqrt(fx * fx + fy * fy);
@@ -282,6 +284,7 @@ function drawShockwaves() {
 function animate() {
   tick++;
   hueBase = 210 + Math.sin(tick * 0.003) * 25;
+  alignBoost *= 0.93;
 
   // Near-full clear so field pattern is legible, tiny persistence for smoothness
   ctx.fillStyle = 'rgba(2,5,9,0.92)';
