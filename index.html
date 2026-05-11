@@ -67,18 +67,6 @@
     z-index: 99;
     transform: translate(-50%, -50%);
   }
-  .hint {
-    position: fixed;
-    bottom: 2rem; left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.6rem;
-    letter-spacing: 0.35em;
-    text-transform: uppercase;
-    color: rgba(100,180,255,0.25);
-    z-index: 10;
-    pointer-events: none;
-    animation: breathe 5s ease-in-out infinite;
-  }
 </style>
 </head>
 <body>
@@ -92,7 +80,6 @@
 
 <div class="cursor north" id="cursor"></div>
 <div class="cursor-ring" id="cursorRing"></div>
-<div class="hint">Klick — Polarität wechseln</div>
 
 <script>
 const canvas = document.getElementById('c');
