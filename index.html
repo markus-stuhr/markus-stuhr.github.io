@@ -122,18 +122,38 @@ const poles = [
   { x: -9999, y: -9999, sign: 1, str: 22000 },
 ];
 
-document.addEventListener('mousemove', e => {
-  mouse.x = e.clientX;
-  mouse.y = e.clientY;
-  cursorEl.style.left = e.clientX + 'px';
-  cursorEl.style.top = e.clientY + 'px';
-});
+function moveCursor(x, y) {
+  mouse.x = x; mouse.y = y;
+  cursorEl.style.left = x + 'px';
+  cursorEl.style.top  = y + 'px';
+}
 
-document.addEventListener('click', e => {
+function triggerClick(x, y) {
   cursorSign *= -1;
   poles[2].sign = cursorSign;
   cursorEl.className = 'cursor ' + (cursorSign > 0 ? 'north' : 'south');
-  shockwaves.push({ x: e.clientX, y: e.clientY, r: 5, alpha: 0.9 });
+  shockwaves.push({ x, y, r: 5, alpha: 0.9 });
+}
+
+document.addEventListener('mousemove', e => moveCursor(e.clientX, e.clientY));
+document.addEventListener('click',     e => triggerClick(e.clientX, e.clientY));
+
+// Touch support
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  moveCursor(t.clientX, t.clientY);
+  triggerClick(t.clientX, t.clientY);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  moveCursor(t.clientX, t.clientY);
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => {
+  // Keep pole at last position — feels more natural on mobile
 });
 
 function fieldAt(x, y) {
