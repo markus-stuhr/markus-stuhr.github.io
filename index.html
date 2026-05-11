@@ -128,8 +128,9 @@ document.addEventListener('click', e => {
     p.boost = 1.0;
   });
 
-  // Spawn burst sparks
-  for (let i = 0; i < 40; i++) {
+  // Spawn burst sparks (cap total particles to avoid accumulation)
+  const burstCount = Math.min(25, 500 - particles.length);
+  for (let i = 0; i < burstCount; i++) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 2 + Math.random() * 10;
     const sp = new Particle(true);
@@ -213,21 +214,18 @@ class Particle {
     const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
     const energy = Math.max(spd / 7, this.boost);
 
-    // Color shifts from cool blue → cyan → white-hot as energy rises
     const hue = (hueBase + this.hueOff - energy * 140 + 360) % 360;
     const sat = Math.min(100, 85 + energy * 15);
     const lgt = Math.min(95, 55 + energy * 40);
     const alpha = this.life * Math.min(1, 0.5 + energy * 0.5);
 
-    // Glow halo
-    const glowR = this.size * (4 + energy * 8);
-    const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, glowR);
-    g.addColorStop(0, `hsla(${hue},${sat}%,${lgt}%,${alpha * 0.55})`);
-    g.addColorStop(1, `hsla(${hue},${sat}%,${lgt}%,0)`);
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, glowR, 0, Math.PI * 2);
-    ctx.fillStyle = g;
-    ctx.fill();
+    // Cheap glow: one larger semi-transparent circle instead of radialGradient
+    if (energy > 0.15 || this.size > 1) {
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size * (3 + energy * 5), 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${hue},${sat}%,${lgt}%,${alpha * 0.18})`;
+      ctx.fill();
+    }
 
     // Core dot
     ctx.beginPath();
