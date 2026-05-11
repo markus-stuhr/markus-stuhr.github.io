@@ -132,7 +132,7 @@ function triggerClick(x, y) {
   cursorSign *= -1;
   poles[2].sign = cursorSign;
   cursorEl.className = 'cursor ' + (cursorSign > 0 ? 'north' : 'south');
-  shockwaves.push({ x, y, r: 5, alpha: 0.9 });
+  shockwaves.push({ x, y, r: 5, alpha: 0.9, sign: cursorSign });
 }
 
 document.addEventListener('mousemove', e => moveCursor(e.clientX, e.clientY));
@@ -269,7 +269,7 @@ function drawShockwaves() {
     s.r += (190 - s.r) * 0.1;
     s.alpha *= 0.87;
     if (s.alpha < 0.01) return false;
-    const hue = cursorSign > 0 ? hueBase : 22;
+    const hue = s.sign > 0 ? hueBase : 22;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
     ctx.strokeStyle = `hsla(${hue},100%,70%,${s.alpha})`;
