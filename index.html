@@ -15,11 +15,7 @@
     height: 100vh;
     cursor: none;
   }
-  canvas {
-    position: fixed;
-    top: 0; left: 0;
-    width: 100%; height: 100%;
-  }
+  canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; }
   .content {
     position: fixed;
     top: 50%; left: 50%;
@@ -52,25 +48,36 @@
   }
   .cursor {
     position: fixed;
-    width: 5px;
-    height: 5px;
-    background: #fff;
+    width: 8px; height: 8px;
     border-radius: 50%;
     pointer-events: none;
     z-index: 100;
     transform: translate(-50%, -50%);
     mix-blend-mode: screen;
-    box-shadow: 0 0 8px 3px rgba(140,200,255,0.9);
+    transition: background 0.3s, box-shadow 0.3s;
   }
+  .cursor.north { background: #5bc4ff; box-shadow: 0 0 12px 4px rgba(91,196,255,0.85); }
+  .cursor.south { background: #ff7b3d; box-shadow: 0 0 12px 4px rgba(255,123,61,0.85); }
   .cursor-ring {
     position: fixed;
-    width: 34px;
-    height: 34px;
-    border: 1px solid rgba(100,180,255,0.35);
+    width: 34px; height: 34px;
+    border: 1px solid rgba(100,180,255,0.3);
     border-radius: 50%;
     pointer-events: none;
     z-index: 99;
     transform: translate(-50%, -50%);
+  }
+  .hint {
+    position: fixed;
+    bottom: 2rem; left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.6rem;
+    letter-spacing: 0.35em;
+    text-transform: uppercase;
+    color: rgba(100,180,255,0.25);
+    z-index: 10;
+    pointer-events: none;
+    animation: breathe 5s ease-in-out infinite;
   }
 </style>
 </head>
@@ -83,8 +90,9 @@
   <div class="tagline">Digital Creativity</div>
 </div>
 
-<div class="cursor" id="cursor"></div>
+<div class="cursor north" id="cursor"></div>
 <div class="cursor-ring" id="cursorRing"></div>
+<div class="hint">Klick — Polarität wechseln</div>
 
 <script>
 const canvas = document.getElementById('c');
@@ -92,10 +100,12 @@ const ctx = canvas.getContext('2d');
 const cursorEl = document.getElementById('cursor');
 const ring = document.getElementById('cursorRing');
 
-let W, H, particles = [], shockwaves = [];
+let W, H, filings = [];
 let mouse = { x: -9999, y: -9999 };
 let ringX = 0, ringY = 0;
 let tick = 0, hueBase = 210;
+let cursorSign = 1;
+let shockwaves = [];
 
 function resize() {
   W = canvas.width = window.innerWidth;
@@ -105,6 +115,13 @@ function resize() {
 resize();
 window.addEventListener('resize', () => { resize(); init(); });
 
+// 2 orbiting poles + 1 cursor pole
+const poles = [
+  { x: 0, y: 0, sign:  1, str: 28000 },
+  { x: 0, y: 0, sign: -1, str: 28000 },
+  { x: -9999, y: -9999, sign: 1, str: 22000 },
+];
+
 document.addEventListener('mousemove', e => {
   mouse.x = e.clientX;
   mouse.y = e.clientY;
@@ -113,211 +130,130 @@ document.addEventListener('mousemove', e => {
 });
 
 document.addEventListener('click', e => {
-  // Expanding shockwave rings
-  shockwaves.push({ x: e.clientX, y: e.clientY, r: 5, alpha: 1.0 });
-  shockwaves.push({ x: e.clientX, y: e.clientY, r: 5, alpha: 0.6, delay: 6 });
-
-  // Blast existing particles outward
-  particles.forEach(p => {
-    const dx = p.x - e.clientX;
-    const dy = p.y - e.clientY;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    const force = Math.max(0, 280 - dist) / 280;
-    p.vx += (dx / dist) * force * 18;
-    p.vy += (dy / dist) * force * 18;
-    p.boost = 1.0;
-  });
-
-  // Spawn burst sparks (cap total particles to avoid accumulation)
-  const burstCount = Math.min(25, 500 - particles.length);
-  for (let i = 0; i < burstCount; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 2 + Math.random() * 10;
-    const sp = new Particle(true);
-    sp.x = e.clientX + (Math.random() - 0.5) * 10;
-    sp.y = e.clientY + (Math.random() - 0.5) * 10;
-    sp.vx = Math.cos(angle) * speed;
-    sp.vy = Math.sin(angle) * speed;
-    sp.size = 0.5 + Math.random() * 2;
-    sp.life = 0.8 + Math.random() * 0.2;
-    sp.decay = 0.012 + Math.random() * 0.015;
-    particles.push(sp);
-  }
+  cursorSign *= -1;
+  poles[2].sign = cursorSign;
+  cursorEl.className = 'cursor ' + (cursorSign > 0 ? 'north' : 'south');
+  shockwaves.push({ x: e.clientX, y: e.clientY, r: 5, alpha: 0.9 });
 });
 
-class Particle {
-  constructor(burst = false) {
-    this.burst = burst;
-    this.boost = 0;
-    if (!burst) this.spawn(true);
+function fieldAt(x, y) {
+  let fx = 0, fy = 0;
+  for (const p of poles) {
+    const dx = x - p.x, dy = y - p.y;
+    const d2 = dx * dx + dy * dy + 150;
+    const d = Math.sqrt(d2);
+    fx += (dx / d) * (p.str / d2) * p.sign;
+    fy += (dy / d) * (p.str / d2) * p.sign;
   }
+  return [fx, fy];
+}
 
-  spawn(initial = false) {
-    if (initial) {
-      this.x = Math.random() * W;
-      this.y = Math.random() * H;
-    } else {
-      const side = Math.floor(Math.random() * 4);
-      if (side === 0) { this.x = Math.random() * W; this.y = -8; }
-      else if (side === 1) { this.x = W + 8; this.y = Math.random() * H; }
-      else if (side === 2) { this.x = Math.random() * W; this.y = H + 8; }
-      else { this.x = -8; this.y = Math.random() * H; }
-    }
-    this.vx = (Math.random() - 0.5) * 0.6;
-    this.vy = (Math.random() - 0.5) * 0.6;
-    this.size = 0.4 + Math.random() * 1.8;
-    this.life = 0.6 + Math.random() * 0.4;
-    this.decay = 0.001 + Math.random() * 0.0015;
-    this.hueOff = (Math.random() - 0.5) * 50;
-    this.boost = 0;
+class Filing {
+  constructor() {
+    this.x = Math.random() * W;
+    this.y = Math.random() * H;
+    this.angle = Math.random() * Math.PI;
+    this.len = 5 + Math.random() * 9;
+    this.thick = 0.6 + Math.random() * 0.8;
+    this.speed = 0.03 + Math.random() * 0.1;
+    this.fx = 0; this.fy = 0;
   }
 
   update() {
-    const mx = mouse.x, my = mouse.y;
-    const dx = mx - this.x, dy = my - this.y;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const [fx, fy] = fieldAt(this.x, this.y);
+    this.fx = fx; this.fy = fy;
 
-    if (mx > -999) {
-      // Vortex: strong tangential spin + gentle pull toward cursor
-      const tangX = -dy / dist, tangY = dx / dist;
-      const vortex = Math.min(12000 / (dist * dist + 80), 5);
-      const pull = Math.min(800 / (dist * dist + 400), 0.3);
+    // Align to field — filings are symmetric so angle is π-periodic
+    const target = Math.atan2(fy, fx);
+    let diff = target - this.angle;
+    while (diff >  Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    if (diff >  Math.PI / 2) diff -= Math.PI;
+    if (diff < -Math.PI / 2) diff += Math.PI;
+    this.angle += diff * 0.1;
 
-      this.vx += tangX * vortex * 0.045 + (dx / dist) * pull * 0.025;
-      this.vy += tangY * vortex * 0.045 + (dy / dist) * pull * 0.025;
-    }
+    // Slow drift along field direction
+    const str = Math.sqrt(fx * fx + fy * fy);
+    const drift = Math.min(str * 0.25, 1.0) * this.speed;
+    this.x += Math.cos(this.angle) * drift;
+    this.y += Math.sin(this.angle) * drift;
 
-    const damp = this.burst ? 0.955 : 0.978;
-    this.vx *= damp;
-    this.vy *= damp;
-
-    const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    const cap = this.burst ? 14 : 7;
-    if (spd > cap) { this.vx = (this.vx / spd) * cap; this.vy = (this.vy / spd) * cap; }
-
-    this.x += this.vx;
-    this.y += this.vy;
-    this.life -= this.decay;
-    if (this.boost > 0) this.boost -= 0.03;
-
-    if (!this.burst) {
-      if (this.x < -25) this.x = W + 25;
-      else if (this.x > W + 25) this.x = -25;
-      if (this.y < -25) this.y = H + 25;
-      else if (this.y > H + 25) this.y = -25;
-      if (this.life <= 0) this.spawn();
-    }
+    const pad = this.len + 2;
+    if (this.x < -pad) this.x = W + pad;
+    else if (this.x > W + pad) this.x = -pad;
+    if (this.y < -pad) this.y = H + pad;
+    else if (this.y > H + pad) this.y = -pad;
   }
 
   draw() {
-    if (this.life <= 0) return;
-    const spd = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    const energy = Math.max(spd / 7, this.boost);
+    const str = Math.min(Math.sqrt(this.fx * this.fx + this.fy * this.fy) / 5, 1);
+    const alpha = 0.07 + str * 0.78;
+    const lgt = 22 + str * 58;
 
-    const hue = (hueBase + this.hueOff - energy * 140 + 360) % 360;
-    const sat = Math.min(100, 85 + energy * 15);
-    const lgt = Math.min(95, 55 + energy * 40);
-    const alpha = this.life * Math.min(1, 0.5 + energy * 0.5);
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.angle);
 
-    // Cheap glow: one larger semi-transparent circle instead of radialGradient
-    if (energy > 0.15 || this.size > 1) {
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, this.size * (3 + energy * 5), 0, Math.PI * 2);
-      ctx.fillStyle = `hsla(${hue},${sat}%,${lgt}%,${alpha * 0.18})`;
-      ctx.fill();
-    }
+    // Soft glow
+    ctx.fillStyle = `hsla(${hueBase},78%,${lgt}%,${alpha * 0.2})`;
+    ctx.fillRect(-this.len / 2, -this.thick * 3, this.len, this.thick * 6);
 
-    // Core dot
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-    ctx.fillStyle = `hsla(${hue},${sat}%,${Math.min(100, lgt + 20)}%,${alpha})`;
-    ctx.fill();
+    // Core rod
+    ctx.fillStyle = `hsla(${hueBase},92%,${Math.min(90, lgt + 28)}%,${alpha})`;
+    ctx.fillRect(-this.len / 2, -this.thick / 2, this.len, this.thick);
+
+    ctx.restore();
   }
 }
 
 function init() {
-  const n = Math.min(Math.floor((W * H) / 4800), 280);
-  particles = Array.from({ length: n }, () => new Particle());
+  const n = Math.min(Math.floor(W * H / 2200), 750);
+  filings = Array.from({ length: n }, () => new Filing());
 }
 init();
 
-function drawNebula() {
-  const t = tick * 0.00025;
-  const clouds = [
-    { ox: 0.22, oy: 0.45, f: 1.0, dh: 0 },
-    { ox: 0.55, oy: 0.55, f: 0.8, dh: 55 },
-    { ox: 0.78, oy: 0.38, f: 0.9, dh: 110 },
+function updatePoles() {
+  const t = tick * 0.0025;
+  const r = Math.min(W, H) * 0.2;
+  poles[0].x = W / 2 + Math.cos(t) * r;
+  poles[0].y = H / 2 + Math.sin(t) * r;
+  poles[1].x = W / 2 + Math.cos(t + Math.PI) * r;
+  poles[1].y = H / 2 + Math.sin(t + Math.PI) * r;
+  poles[2].x = mouse.x;
+  poles[2].y = mouse.y;
+}
+
+function drawPoleAuras() {
+  const defs = [
+    { pole: poles[0], hue: hueBase },
+    { pole: poles[1], hue: 22 },
+    { pole: poles[2], hue: cursorSign > 0 ? hueBase : 22 },
   ];
-  clouds.forEach(({ ox, oy, f, dh }, i) => {
-    const cx = W * ox + Math.sin(t + i * 2.3) * W * 0.08;
-    const cy = H * oy + Math.cos(t * 0.6 + i * 1.7) * H * 0.1;
-    const r = Math.min(W, H) * (0.28 + f * 0.14);
-    const hue = (hueBase + dh) % 360;
-    const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-    grd.addColorStop(0, `hsla(${hue},65%,18%,0.045)`);
-    grd.addColorStop(1, `hsla(${hue},65%,8%,0)`);
-    ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, W, H);
+  defs.forEach(({ pole, hue }) => {
+    if (pole.x < -9000) return;
+    const pulse = 0.5 + 0.5 * Math.sin(tick * 0.07);
+    const r = 38 + pulse * 14;
+    const g = ctx.createRadialGradient(pole.x, pole.y, 0, pole.x, pole.y, r);
+    g.addColorStop(0,   `hsla(${hue},100%,68%,0.4)`);
+    g.addColorStop(0.4, `hsla(${hue},90%,55%,0.12)`);
+    g.addColorStop(1,   `hsla(${hue},80%,40%,0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(pole.x, pole.y, r, 0, Math.PI * 2);
+    ctx.fill();
   });
-}
-
-function drawVortexAura() {
-  if (mouse.x < -900) return;
-  const pulse = 0.5 + 0.5 * Math.sin(tick * 0.04);
-  const r = 90 + pulse * 35;
-  const hue = hueBase % 360;
-  const grd = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, r);
-  grd.addColorStop(0, `hsla(${hue},100%,65%,0.07)`);
-  grd.addColorStop(0.45, `hsla(${(hue + 20) % 360},80%,50%,0.04)`);
-  grd.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = grd;
-  ctx.beginPath();
-  ctx.arc(mouse.x, mouse.y, r, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawConnections() {
-  // Filaments only among particles near the cursor
-  const close = particles.filter(p => {
-    const dx = p.x - mouse.x, dy = p.y - mouse.y;
-    return (dx * dx + dy * dy) < 220 * 220 && p.life > 0.1;
-  }).slice(0, 25);
-
-  for (let i = 0; i < close.length; i++) {
-    for (let j = i + 1; j < close.length; j++) {
-      const dx = close[i].x - close[j].x;
-      const dy = close[i].y - close[j].y;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d < 90) {
-        ctx.beginPath();
-        ctx.moveTo(close[i].x, close[i].y);
-        ctx.lineTo(close[j].x, close[j].y);
-        ctx.strokeStyle = `hsla(${hueBase},90%,70%,${(1 - d / 90) * 0.22})`;
-        ctx.lineWidth = 0.4;
-        ctx.stroke();
-      }
-    }
-  }
 }
 
 function drawShockwaves() {
   shockwaves = shockwaves.filter(s => {
-    if (s.delay) { s.delay--; return true; }
-    s.r += (220 - s.r) * 0.1;
+    s.r += (190 - s.r) * 0.1;
     s.alpha *= 0.87;
     if (s.alpha < 0.01) return false;
-
-    const hue = hueBase % 360;
+    const hue = cursorSign > 0 ? hueBase : 22;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-    ctx.strokeStyle = `hsla(${hue},100%,72%,${s.alpha})`;
+    ctx.strokeStyle = `hsla(${hue},100%,70%,${s.alpha})`;
     ctx.lineWidth = 1.5;
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, s.r * 0.55, 0, Math.PI * 2);
-    ctx.strokeStyle = `hsla(${(hue + 30) % 360},100%,85%,${s.alpha * 0.4})`;
-    ctx.lineWidth = 0.8;
     ctx.stroke();
     return true;
   });
@@ -325,23 +261,17 @@ function drawShockwaves() {
 
 function animate() {
   tick++;
-  hueBase = 210 + Math.sin(tick * 0.003) * 30;
+  hueBase = 210 + Math.sin(tick * 0.003) * 25;
 
-  // Motion trail — low alpha = long glowing trails
-  ctx.fillStyle = 'rgba(2,5,9,0.14)';
+  // Near-full clear so field pattern is legible, tiny persistence for smoothness
+  ctx.fillStyle = 'rgba(2,5,9,0.92)';
   ctx.fillRect(0, 0, W, H);
 
-  drawNebula();
-  drawVortexAura();
-  drawConnections();
-
-  // Remove dead burst sparks
-  particles = particles.filter(p => !p.burst || p.life > 0);
-  particles.forEach(p => { p.update(); p.draw(); });
-
+  updatePoles();
+  drawPoleAuras();
+  filings.forEach(f => { f.update(); f.draw(); });
   drawShockwaves();
 
-  // Lagging cursor ring
   ringX += (mouse.x - ringX) * 0.11;
   ringY += (mouse.y - ringY) * 0.11;
   ring.style.left = ringX + 'px';
