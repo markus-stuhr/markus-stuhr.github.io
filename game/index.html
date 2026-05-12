@@ -53,6 +53,7 @@ const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
 // ─── Dynamic dimensions ───────────────────────────────────────────
+const SCALE = 2;   // render at half res → each pixel = 2×2 screen pixels
 let GW, GH, GROUND;
 const PLANET  = {};
 const GRAVITY = 0.48;
@@ -62,12 +63,12 @@ let STARS   = [];
 let PEBBLES = [];
 
 function initSize() {
-  GW = window.innerWidth;
-  GH = window.innerHeight;
+  GW = Math.ceil(window.innerWidth  / SCALE);
+  GH = Math.ceil(window.innerHeight / SCALE);
   canvas.width  = GW;
   canvas.height = GH;
-  canvas.style.width  = GW + 'px';
-  canvas.style.height = GH + 'px';
+  canvas.style.width  = window.innerWidth  + 'px';
+  canvas.style.height = window.innerHeight + 'px';
 
   GROUND   = GH - Math.round(GH * 0.13);
   A.x      = GW / 2;
