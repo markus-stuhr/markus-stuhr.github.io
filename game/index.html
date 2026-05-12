@@ -86,7 +86,7 @@ function initSize() {
 
   PLANET.x = GW * 0.72;
   PLANET.y = GH * 0.17;
-  PLANET.r = Math.round(Math.min(GW, GH) * 0.065);
+  PLANET.r = Math.round(Math.min(GW, GH) * 0.033);
 
   STARS = Array.from({ length: Math.floor(GW * GH / 4000) + 40 }, () => ({
     x: Math.random() * GW,
@@ -126,23 +126,23 @@ let nextObs    = 90;
 
 function spawnObstacle() {
   if (Math.random() < 0.55) {
-    // Moon rock
-    const h = 18 + Math.random() * 28;
+    // Moon rock (half size)
+    const h = (18 + Math.random() * 28) * 0.5;
     const w = h * (0.7 + Math.random() * 0.6);
     obstacles.push({ type: 'rock', x: GW + 10, y: GROUND - h, w, h });
   } else {
-    // Crystal cluster
+    // Crystal cluster (half size)
     const count = 2 + Math.floor(Math.random() * 3);
     const shards = [];
-    let bx = 0;
+    let ox = 0;
     for (let i = 0; i < count; i++) {
-      const bw = 7 + Math.random() * 7;
-      const sh = 22 + Math.random() * 32;
-      shards.push({ bx, bw, sh, tx: bx + bw / 2 + (Math.random() - 0.5) * 5 });
-      bx += bw + 2 + Math.random() * 4;
+      const bw = (7 + Math.random() * 7) * 0.5;
+      const sh = (22 + Math.random() * 32) * 0.5;
+      shards.push({ bx: ox, bw, sh, tx: ox + bw / 2 + (Math.random() - 0.5) * 2.5 });
+      ox += bw + 1 + Math.random() * 2;
     }
     const maxH = Math.max(...shards.map(s => s.sh));
-    obstacles.push({ type: 'crystal', x: GW + 10, y: GROUND - maxH, w: bx, h: maxH, shards });
+    obstacles.push({ type: 'crystal', x: GW + 10, y: GROUND - maxH, w: ox, h: maxH, shards });
   }
 }
 
