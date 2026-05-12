@@ -48,13 +48,18 @@
 <div id="wrap"><canvas id="c"></canvas></div>
 
 <script>
+// Foreground canvas (full res) — astronaut + HUD
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-ctx.imageSmoothingEnabled = false;
+
+// Background canvas (low res, pixelated) — world
+const bg = document.createElement('canvas');
+const bx = bg.getContext('2d');
+bx.imageSmoothingEnabled = false;
 
 // ─── Dynamic dimensions ───────────────────────────────────────────
-const SCALE = 2;   // render at half res → each pixel = 2×2 screen pixels
-let GW, GH, GROUND;
+const SCALE = 2;   // world rendered at 1/SCALE → each world pixel = 2×2 screen pixels
+let GW, GH, GROUND, SW, SH;
 const PLANET  = {};
 const GRAVITY = 0.48;
 const JUMP_V  = -14;
@@ -63,16 +68,21 @@ let STARS   = [];
 let PEBBLES = [];
 
 function initSize() {
-  GW = Math.ceil(window.innerWidth  / SCALE);
-  GH = Math.ceil(window.innerHeight / SCALE);
-  canvas.width  = GW;
-  canvas.height = GH;
-  canvas.style.width  = window.innerWidth  + 'px';
-  canvas.style.height = window.innerHeight + 'px';
+  SW = window.innerWidth;
+  SH = window.innerHeight;
+  GW = Math.ceil(SW / SCALE);   // game/world resolution
+  GH = Math.ceil(SH / SCALE);
+
+  // Foreground canvas: full screen resolution
+  canvas.width  = SW; canvas.height = SH;
+  canvas.style.width = SW + 'px'; canvas.style.height = SH + 'px';
+
+  // Background (world) canvas: low resolution
+  bg.width = GW; bg.height = GH;
 
   GROUND   = GH - Math.round(GH * 0.13);
   A.x      = GW / 2;
-  if (A.y > GROUND || !A.y) A.y = GROUND;
+  if (!A.y || A.y > GROUND) A.y = GROUND;
 
   PLANET.x = GW * 0.72;
   PLANET.y = GH * 0.17;
@@ -153,10 +163,10 @@ document.addEventListener('keydown',   e => { if (e.code === 'Space' || e.code =
 canvas.addEventListener('click',       () => doJump());
 canvas.addEventListener('touchstart',  e => { e.preventDefault(); doJump(); }, { passive: false });
 
-// ─── Drawing helpers ──────────────────────────────────────────────
+// ─── Drawing helpers (world canvas bx) ───────────────────────────
 function fillRect(x, y, w, h, col) {
-  ctx.fillStyle = col;
-  ctx.fillRect(Math.round(x), Math.round(y), w, h);
+  bx.fillStyle = col;
+  bx.fillRect(Math.round(x), Math.round(y), w, h);
 }
 
 // ─── Draw astronaut ───────────────────────────────────────────────
@@ -272,140 +282,124 @@ function drawAstronaut(cx, fy, wf, jumping, dead) {
   ctx.restore();
 }
 
-// ─── Draw moon rock ───────────────────────────────────────────────
+// ─── Draw moon rock (world canvas) ───────────────────────────────
 function drawRock(obs) {
   const { x, y, w, h } = obs;
-  // Main body
-  ctx.fillStyle = '#4a4a5a';
-  ctx.beginPath();
-  ctx.moveTo(x + w * 0.08, y + h);
-  ctx.lineTo(x,             y + h * 0.55);
-  ctx.lineTo(x + w * 0.12, y + h * 0.18);
-  ctx.lineTo(x + w * 0.38, y);
-  ctx.lineTo(x + w * 0.65, y + h * 0.05);
-  ctx.lineTo(x + w,        y + h * 0.42);
-  ctx.lineTo(x + w * 0.92, y + h);
-  ctx.closePath();
-  ctx.fill();
-  // Light face
-  ctx.fillStyle = '#6a6a7a';
-  ctx.beginPath();
-  ctx.moveTo(x + w * 0.12, y + h * 0.18);
-  ctx.lineTo(x + w * 0.38, y);
-  ctx.lineTo(x + w * 0.55, y + h * 0.22);
-  ctx.lineTo(x + w * 0.28, y + h * 0.38);
-  ctx.closePath();
-  ctx.fill();
-  // Dark base
-  ctx.fillStyle = '#2a2a38';
-  ctx.fillRect(x + w * 0.08, y + h * 0.82, w * 0.84, h * 0.18);
+  bx.fillStyle = '#4a4a5a';
+  bx.beginPath();
+  bx.moveTo(x + w * 0.08, y + h);
+  bx.lineTo(x,             y + h * 0.55);
+  bx.lineTo(x + w * 0.12, y + h * 0.18);
+  bx.lineTo(x + w * 0.38, y);
+  bx.lineTo(x + w * 0.65, y + h * 0.05);
+  bx.lineTo(x + w,        y + h * 0.42);
+  bx.lineTo(x + w * 0.92, y + h);
+  bx.closePath();
+  bx.fill();
+  bx.fillStyle = '#6a6a7a';
+  bx.beginPath();
+  bx.moveTo(x + w * 0.12, y + h * 0.18);
+  bx.lineTo(x + w * 0.38, y);
+  bx.lineTo(x + w * 0.55, y + h * 0.22);
+  bx.lineTo(x + w * 0.28, y + h * 0.38);
+  bx.closePath();
+  bx.fill();
+  bx.fillStyle = '#2a2a38';
+  bx.fillRect(x + w * 0.08, y + h * 0.82, w * 0.84, h * 0.18);
 }
 
-// ─── Draw crystal ─────────────────────────────────────────────────
+// ─── Draw crystal (world canvas) ──────────────────────────────────
 function drawCrystal(obs) {
   const { x, y, w, h, shards } = obs;
   const COLS = ['#1a5599', '#2266bb', '#0e4488', '#3399cc'];
   shards.forEach((s, i) => {
-    // Shard body
-    ctx.fillStyle = COLS[i % COLS.length];
-    ctx.beginPath();
-    ctx.moveTo(x + s.bx,            GROUND);
-    ctx.lineTo(x + s.tx,            GROUND - s.sh);
-    ctx.lineTo(x + s.bx + s.bw,     GROUND);
-    ctx.closePath();
-    ctx.fill();
-    // Shine strip
-    ctx.fillStyle = 'rgba(150,220,255,0.28)';
-    ctx.beginPath();
-    ctx.moveTo(x + s.bx + s.bw * 0.4, GROUND);
-    ctx.lineTo(x + s.tx + 1,           GROUND - s.sh);
-    ctx.lineTo(x + s.tx + 3,           GROUND - s.sh);
-    ctx.lineTo(x + s.bx + s.bw * 0.6, GROUND);
-    ctx.closePath();
-    ctx.fill();
-    // Inner glow tip
-    ctx.fillStyle = 'rgba(100,200,255,0.5)';
-    ctx.fillRect(x + s.tx - 1, GROUND - s.sh, 3, 4);
+    bx.fillStyle = COLS[i % COLS.length];
+    bx.beginPath();
+    bx.moveTo(x + s.bx,        GROUND);
+    bx.lineTo(x + s.tx,        GROUND - s.sh);
+    bx.lineTo(x + s.bx + s.bw, GROUND);
+    bx.closePath();
+    bx.fill();
+    bx.fillStyle = 'rgba(150,220,255,0.28)';
+    bx.beginPath();
+    bx.moveTo(x + s.bx + s.bw * 0.4, GROUND);
+    bx.lineTo(x + s.tx + 1,           GROUND - s.sh);
+    bx.lineTo(x + s.tx + 3,           GROUND - s.sh);
+    bx.lineTo(x + s.bx + s.bw * 0.6, GROUND);
+    bx.closePath();
+    bx.fill();
+    bx.fillStyle = 'rgba(100,200,255,0.5)';
+    bx.fillRect(x + s.tx - 1, GROUND - s.sh, 3, 4);
   });
 }
 
-// ─── Draw background ──────────────────────────────────────────────
+// ─── Draw background (world canvas) ──────────────────────────────
 function drawBG() {
-  // Sky gradient
-  const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+  const sky = bx.createLinearGradient(0, 0, 0, GROUND);
   sky.addColorStop(0, '#010408');
   sky.addColorStop(1, '#040c18');
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, GW, GROUND);
+  bx.fillStyle = sky;
+  bx.fillRect(0, 0, GW, GROUND);
 
-  // Stars
   STARS.forEach(s => {
-    ctx.fillStyle = `rgba(210,235,255,${s.a})`;
-    ctx.fillRect(Math.round(s.x), Math.round(s.y), Math.ceil(s.r * 2), Math.ceil(s.r * 2));
+    bx.fillStyle = `rgba(210,235,255,${s.a})`;
+    bx.fillRect(Math.round(s.x), Math.round(s.y), Math.ceil(s.r * 2), Math.ceil(s.r * 2));
   });
 
-  // Background planet
-  ctx.fillStyle = '#181f2e';
-  ctx.beginPath();
-  ctx.arc(PLANET.x, PLANET.y, PLANET.r, 0, Math.PI * 2);
-  ctx.fill();
-  // Lighter crescent on planet
-  ctx.fillStyle = '#222d3e';
-  ctx.beginPath();
-  ctx.arc(PLANET.x - 8, PLANET.y - 6, PLANET.r * 0.72, 0, Math.PI * 2);
-  ctx.fill();
-  // Planet ring
-  ctx.save();
-  ctx.strokeStyle = 'rgba(90,150,220,0.22)';
-  ctx.lineWidth = 5;
-  ctx.beginPath();
-  ctx.ellipse(PLANET.x, PLANET.y, PLANET.r + 20, 7, -0.18, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.restore();
+  bx.fillStyle = '#181f2e';
+  bx.beginPath();
+  bx.arc(PLANET.x, PLANET.y, PLANET.r, 0, Math.PI * 2);
+  bx.fill();
+  bx.fillStyle = '#222d3e';
+  bx.beginPath();
+  bx.arc(PLANET.x - 8, PLANET.y - 6, PLANET.r * 0.72, 0, Math.PI * 2);
+  bx.fill();
+  bx.save();
+  bx.strokeStyle = 'rgba(90,150,220,0.22)';
+  bx.lineWidth = 5;
+  bx.beginPath();
+  bx.ellipse(PLANET.x, PLANET.y, PLANET.r + 20, 7, -0.18, 0, Math.PI * 2);
+  bx.stroke();
+  bx.restore();
 }
 
-// ─── Draw ground ──────────────────────────────────────────────────
+// ─── Draw ground (world canvas) ───────────────────────────────────
 function drawGround() {
-  const grd = ctx.createLinearGradient(0, GROUND, 0, GH);
+  const grd = bx.createLinearGradient(0, GROUND, 0, GH);
   grd.addColorStop(0,   '#383845');
   grd.addColorStop(0.2, '#26262f');
   grd.addColorStop(1,   '#111118');
-  ctx.fillStyle = grd;
-  ctx.fillRect(0, GROUND, GW, GH - GROUND);
-
-  // Top edge highlight
+  bx.fillStyle = grd;
+  bx.fillRect(0, GROUND, GW, GH - GROUND);
   fillRect(0, GROUND, GW, 2, '#55556a');
-
-  // Pebble texture (slow parallax)
   PEBBLES.forEach(p => {
     const gx = ((p.ox - scrollX) % (GW + 20) + GW + 20) % (GW + 20) - 10;
     fillRect(gx, p.oy, p.w, p.h, 'rgba(80,80,100,0.45)');
   });
 }
 
-// ─── Draw HUD ─────────────────────────────────────────────────────
+// ─── Draw HUD (foreground canvas, screen coords) ──────────────────
 function drawHUD() {
-  // Score top-right
   ctx.fillStyle = 'rgba(100,180,255,0.45)';
   ctx.font = '10px "Courier New"';
   ctx.textAlign = 'right';
-  ctx.fillText('HI ' + String(hiScore).padStart(5, '0'), GW - 16, 28);
+  ctx.fillText('HI ' + String(hiScore).padStart(5, '0'), SW - 16, 28);
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
   ctx.font = 'bold 13px "Courier New"';
-  ctx.fillText(String(score).padStart(5, '0'), GW - 16, 46);
+  ctx.fillText(String(score).padStart(5, '0'), SW - 16, 46);
   ctx.textAlign = 'left';
 
   if (state === 'idle') {
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
     ctx.font = 'bold 13px "Courier New"';
     ctx.textAlign = 'center';
-    ctx.fillText('MOONRUNNER', GW / 2, GH / 2 - 18);
+    ctx.fillText('MOONRUNNER', SW / 2, SH / 2 - 18);
     ctx.fillStyle = 'rgba(100,180,255,0.6)';
     ctx.font = '10px "Courier New"';
-    ctx.fillText('SPACE / TAP UM ZU STARTEN', GW / 2, GH / 2 + 2);
+    ctx.fillText('SPACE / TAP UM ZU STARTEN', SW / 2, SH / 2 + 2);
     ctx.fillStyle = 'rgba(100,180,255,0.35)';
     ctx.font = '9px "Courier New"';
-    ctx.fillText('DOPPELSPRUNG MÖGLICH', GW / 2, GH / 2 + 18);
+    ctx.fillText('DOPPELSPRUNG MÖGLICH', SW / 2, SH / 2 + 18);
     ctx.textAlign = 'left';
   }
 
@@ -413,10 +407,10 @@ function drawHUD() {
     ctx.fillStyle = 'rgba(255,80,80,0.85)';
     ctx.font = 'bold 12px "Courier New"';
     ctx.textAlign = 'center';
-    ctx.fillText('HOUSTON, WIR HABEN EIN PROBLEM.', GW / 2, GH / 2 - 14);
+    ctx.fillText('HOUSTON, WIR HABEN EIN PROBLEM.', SW / 2, SH / 2 - 14);
     ctx.fillStyle = 'rgba(100,180,255,0.6)';
     ctx.font = '9px "Courier New"';
-    ctx.fillText('SPACE / TAP — NOCHMAL', GW / 2, GH / 2 + 6);
+    ctx.fillText('SPACE / TAP — NOCHMAL', SW / 2, SH / 2 + 6);
     ctx.textAlign = 'left';
   }
 }
@@ -435,36 +429,22 @@ function hits(obs) {
 function loop() {
   tick++;
 
-  // Screen shake
-  let sx = 0, sy = 0;
-  if (shakes > 0) { sx = (Math.random() - 0.5) * 4; sy = (Math.random() - 0.5) * 3; shakes--; }
-  ctx.save();
-  ctx.translate(sx, sy);
-  ctx.clearRect(-4, -4, GW + 8, GH + 8);
-
-  drawBG();
-  drawGround();
-
+  // ── Update ──
   if (state === 'running') {
     frame++;
-    score    = Math.floor(frame / 6);
-    speed    = Math.min(4 + score * 0.004 + Math.floor(score / 150) * 0.4, 15);
+    score = Math.floor(frame / 6);
+    speed = Math.min(4 + score * 0.004 + Math.floor(score / 150) * 0.4, 15);
 
-    // Stars parallax
     STARS.forEach(s => {
       s.x -= s.spd * (speed / 5);
       if (s.x < 0) { s.x = GW; s.y = Math.random() * (GROUND - 20); }
     });
 
-    // Astronaut physics
     A.vy += GRAVITY;
     A.y  += A.vy;
     if (A.y >= GROUND) { A.y = GROUND; A.vy = 0; A.jumps = 0; }
-
-    // Walk animation
     if (A.y === GROUND) { A.walkT++; if (A.walkT > 3) { A.walkT = 0; A.walk++; } }
 
-    // Obstacles
     nextObs--;
     if (nextObs <= 0) {
       spawnObstacle();
@@ -474,41 +454,48 @@ function loop() {
     obstacles.forEach(o => { o.x -= speed; });
     obstacles = obstacles.filter(o => o.x + o.w > -10);
 
-    // Collision
     for (const o of obstacles) {
       if (hits(o)) {
-        state = 'dead';
-        shakes = 10;
-        if (score > hiScore) {
-          hiScore = score;
-          localStorage.setItem('ms_hi', hiScore);
-        }
+        state = 'dead'; shakes = 10;
+        if (score > hiScore) { hiScore = score; localStorage.setItem('ms_hi', hiScore); }
         break;
       }
     }
   }
 
-  // Draw obstacles
+  // ── Draw world to low-res bg canvas ──
+  bx.clearRect(0, 0, GW, GH);
+  drawBG();
+  drawGround();
   obstacles.forEach(o => o.type === 'rock' ? drawRock(o) : drawCrystal(o));
 
-  // Draw astronaut
-  drawAstronaut(A.x, A.y, A.walk, A.jumps > 0, state === 'dead');
+  // ── Blit world to foreground canvas (2x, pixelated) ──
+  let sx = 0, sy = 0;
+  if (shakes > 0) { sx = (Math.random()-0.5)*6; sy = (Math.random()-0.5)*4; shakes--; }
+  ctx.clearRect(0, 0, SW, SH);
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(bg, 0, 0, SW, SH);   // scale 2x, crisp pixels
 
-  // Edge fade — drawn on canvas so HUD sits above it
-  const fadeL = ctx.createLinearGradient(0, 0, GW * 0.18, 0);
+  // ── Edge fade (smooth, on fg canvas) ──
+  const fadeL = ctx.createLinearGradient(0, 0, SW * 0.15, 0);
   fadeL.addColorStop(0, 'rgba(2,5,9,1)'); fadeL.addColorStop(1, 'rgba(2,5,9,0)');
-  const fadeR = ctx.createLinearGradient(GW, 0, GW * 0.82, 0);
+  const fadeR = ctx.createLinearGradient(SW, 0, SW * 0.85, 0);
   fadeR.addColorStop(0, 'rgba(2,5,9,1)'); fadeR.addColorStop(1, 'rgba(2,5,9,0)');
-  const fadeT = ctx.createLinearGradient(0, 0, 0, GH * 0.18);
+  const fadeT = ctx.createLinearGradient(0, 0, 0, SH * 0.15);
   fadeT.addColorStop(0, 'rgba(2,5,9,1)'); fadeT.addColorStop(1, 'rgba(2,5,9,0)');
-  const fadeB = ctx.createLinearGradient(0, GH, 0, GH * 0.82);
+  const fadeB = ctx.createLinearGradient(0, SH, 0, SH * 0.85);
   fadeB.addColorStop(0, 'rgba(2,5,9,1)'); fadeB.addColorStop(1, 'rgba(2,5,9,0)');
-  [fadeL, fadeR, fadeT, fadeB].forEach(f => {
-    ctx.fillStyle = f; ctx.fillRect(0, 0, GW, GH);
-  });
+  [fadeL, fadeR, fadeT, fadeB].forEach(f => { ctx.fillStyle = f; ctx.fillRect(0, 0, SW, SH); });
 
-  drawHUD();
+  // ── Astronaut: full resolution, screen coordinates ──
+  drawAstronaut(A.x * SCALE, A.y * SCALE, A.walk, A.jumps > 0, state === 'dead');
+
   ctx.restore();
+
+  // ── HUD: always on top, no shake ──
+  drawHUD();
 
   requestAnimationFrame(loop);
 }
