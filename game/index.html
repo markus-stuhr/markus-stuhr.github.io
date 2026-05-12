@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Moonrunner — Markus Stuhr</title>
+
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -28,17 +29,6 @@
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     display: block;
-  }
-  /* Fade edges */
-  #wrap::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(to right,  #020509 0%, transparent 18%, transparent 82%, #020509 100%),
-      linear-gradient(to bottom, #020509 0%, transparent 18%, transparent 82%, #020509 100%);
-    pointer-events: none;
-    z-index: 2;
   }
   #back {
     position: fixed;
@@ -495,6 +485,19 @@ function loop() {
 
   // Draw astronaut
   drawAstronaut(A.x, A.y, A.walk, A.jumps > 0, state === 'dead');
+
+  // Edge fade — drawn on canvas so HUD sits above it
+  const fadeL = ctx.createLinearGradient(0, 0, GW * 0.18, 0);
+  fadeL.addColorStop(0, 'rgba(2,5,9,1)'); fadeL.addColorStop(1, 'rgba(2,5,9,0)');
+  const fadeR = ctx.createLinearGradient(GW, 0, GW * 0.82, 0);
+  fadeR.addColorStop(0, 'rgba(2,5,9,1)'); fadeR.addColorStop(1, 'rgba(2,5,9,0)');
+  const fadeT = ctx.createLinearGradient(0, 0, 0, GH * 0.18);
+  fadeT.addColorStop(0, 'rgba(2,5,9,1)'); fadeT.addColorStop(1, 'rgba(2,5,9,0)');
+  const fadeB = ctx.createLinearGradient(0, GH, 0, GH * 0.82);
+  fadeB.addColorStop(0, 'rgba(2,5,9,1)'); fadeB.addColorStop(1, 'rgba(2,5,9,0)');
+  [fadeL, fadeR, fadeT, fadeB].forEach(f => {
+    ctx.fillStyle = f; ctx.fillRect(0, 0, GW, GH);
+  });
 
   drawHUD();
   ctx.restore();
