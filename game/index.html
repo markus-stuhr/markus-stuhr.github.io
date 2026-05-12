@@ -64,8 +64,9 @@ const PLANET  = {};
 const GRAVITY = 0.48;
 const JUMP_V  = -9.1;
 
-let STARS   = [];
-let PEBBLES = [];
+let STARS      = [];
+let PEBBLES    = [];
+let speedMult  = 1.0;
 
 function initSize() {
   SW = window.innerWidth;
@@ -80,6 +81,7 @@ function initSize() {
   // Background (world) canvas: low resolution
   bg.width = GW; bg.height = GH;
 
+  speedMult = Math.max(0.6, Math.min(1.0, SW / 800));
   GROUND   = GH - Math.round(GH * 0.13);
   A.x      = GW / 2;
   if (!A.y || A.y > GROUND) A.y = GROUND;
@@ -426,7 +428,7 @@ function loop() {
   if (state === 'running') {
     frame++;
     score = Math.floor(frame / 6);
-    speed = Math.min(4 + score * 0.004 + Math.floor(score / 150) * 0.4, 15);
+    speed = Math.min((4 + score * 0.004 + Math.floor(score / 150) * 0.4) * speedMult, 15);
 
     STARS.forEach(s => {
       s.x -= s.spd * (speed / 5);
