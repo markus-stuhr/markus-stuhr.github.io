@@ -81,7 +81,7 @@ function initSize() {
   // Background (world) canvas: low resolution
   bg.width = GW; bg.height = GH;
 
-  speedMult = Math.max(0.6, Math.min(1.0, SW / 800));
+  speedMult = Math.max(0.4, Math.min(1.0, SW / 800));
   GROUND   = GH - Math.round(GH * 0.13);
   A.x      = GW / 2;
   if (!A.y || A.y > GROUND) A.y = GROUND;
