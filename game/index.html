@@ -52,25 +52,49 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
-const GW = 380, GH = 580;
-canvas.width = GW;
-canvas.height = GH;
+// ─── Dynamic dimensions ───────────────────────────────────────────
+let GW, GH, GROUND;
+const PLANET  = {};
+const GRAVITY = 0.48;
+const JUMP_V  = -14;
 
-function scaleCanvas() {
-  const s = Math.min(window.innerWidth / GW, window.innerHeight / GH);
-  canvas.style.width  = Math.floor(GW * s) + 'px';
-  canvas.style.height = Math.floor(GH * s) + 'px';
+let STARS   = [];
+let PEBBLES = [];
+
+function initSize() {
+  GW = window.innerWidth;
+  GH = window.innerHeight;
+  canvas.width  = GW;
+  canvas.height = GH;
+  canvas.style.width  = GW + 'px';
+  canvas.style.height = GH + 'px';
+
+  GROUND   = GH - Math.round(GH * 0.13);
+  A.x      = GW / 2;
+  if (A.y > GROUND || !A.y) A.y = GROUND;
+
+  PLANET.x = GW * 0.72;
+  PLANET.y = GH * 0.17;
+  PLANET.r = Math.round(Math.min(GW, GH) * 0.065);
+
+  STARS = Array.from({ length: Math.floor(GW * GH / 4000) + 40 }, () => ({
+    x: Math.random() * GW,
+    y: Math.random() * (GROUND - 20),
+    r: Math.random() < 0.15 ? 1.5 : 0.8,
+    spd: 0.15 + Math.random() * 0.5,
+    a: 0.4 + Math.random() * 0.6,
+  }));
+
+  PEBBLES = Array.from({ length: Math.floor(GW / 22) }, () => ({
+    ox: Math.random() * GW,
+    oy: GROUND + 4 + Math.random() * 12,
+    w: 2 + Math.random() * 5,
+    h: 2 + Math.random() * 3,
+  }));
 }
-scaleCanvas();
-window.addEventListener('resize', scaleCanvas);
-
-// ─── Constants ───────────────────────────────────────────────────
-const GROUND   = GH - 80;
-const GRAVITY  = 0.48;
-const JUMP_V   = -14;
 
 // ─── State ───────────────────────────────────────────────────────
-let state    = 'idle';   // idle | running | dead
+let state    = 'idle';
 let score    = 0;
 let hiScore  = parseInt(localStorage.getItem('ms_hi') || '0');
 let speed    = 4;
@@ -79,30 +103,10 @@ let tick     = 0;
 let shakes   = 0;
 
 // ─── Astronaut ───────────────────────────────────────────────────
-const A = {
-  x: GW / 2, y: GROUND,
-  vy: 0, jumps: 0,
-  walk: 0, walkT: 0,
-};
+const A = { x: 0, y: 0, vy: 0, jumps: 0, walk: 0, walkT: 0 };
 
-// ─── Stars (3 parallax layers) ───────────────────────────────────
-const STARS = Array.from({ length: 90 }, () => ({
-  x: Math.random() * GW,
-  y: Math.random() * (GROUND - 20),
-  r: Math.random() < 0.15 ? 1.5 : 0.8,
-  spd: 0.15 + Math.random() * 0.5,
-  a: 0.4 + Math.random() * 0.6,
-}));
-
-// Background planet (static)
-const PLANET = { x: GW * 0.72, y: GH * 0.18, r: 38 };
-
-// Ground pebbles for texture
-const PEBBLES = Array.from({ length: 30 }, () => ({
-  ox: Math.random() * GW,
-  oy: GROUND + 4 + Math.random() * 12,
-  w: 2 + Math.random() * 5, h: 2 + Math.random() * 3,
-}));
+initSize();
+window.addEventListener('resize', initSize);
 
 // ─── Obstacles ───────────────────────────────────────────────────
 let obstacles  = [];
