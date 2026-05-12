@@ -18,11 +18,27 @@
     user-select: none;
     overflow: hidden;
   }
+  #wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
   canvas {
     image-rendering: pixelated;
     image-rendering: crisp-edges;
-    border: 1px solid rgba(100,180,255,0.15);
-    box-shadow: 0 0 60px rgba(100,180,255,0.08);
+    display: block;
+  }
+  /* Fade edges */
+  #wrap::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(to right,  #020509 0%, transparent 18%, transparent 82%, #020509 100%),
+      linear-gradient(to bottom, #020509 0%, transparent 18%, transparent 82%, #020509 100%);
+    pointer-events: none;
+    z-index: 2;
   }
   #back {
     position: fixed;
@@ -39,7 +55,7 @@
 <body>
 
 <a href="/" id="back">← zurück</a>
-<canvas id="c"></canvas>
+<div id="wrap"><canvas id="c"></canvas></div>
 
 <script>
 const canvas = document.getElementById('c');
@@ -51,7 +67,7 @@ canvas.width = GW;
 canvas.height = GH;
 
 function scaleCanvas() {
-  const s = Math.min((window.innerWidth - 20) / GW, (window.innerHeight - 40) / GH);
+  const s = Math.min((window.innerWidth * 0.7) / GW, (window.innerHeight * 0.55) / GH, 1);
   canvas.style.width  = Math.floor(GW * s) + 'px';
   canvas.style.height = Math.floor(GH * s) + 'px';
 }
