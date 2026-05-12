@@ -101,6 +101,7 @@ let speed    = 4;
 let frame    = 0;
 let tick     = 0;
 let shakes   = 0;
+let scrollX  = 0;
 
 // ─── Astronaut ───────────────────────────────────────────────────
 const A = { x: 0, y: 0, vy: 0, jumps: 0, walk: 0, walkT: 0 };
@@ -143,7 +144,7 @@ function doJump() {
 
 function restart() {
   A.y = GROUND; A.vy = 0; A.jumps = 0; A.walk = 0;
-  obstacles = []; score = 0; speed = 4; frame = 0; nextObs = 90;
+  obstacles = []; score = 0; speed = 4; frame = 0; nextObs = 90; scrollX = 0;
   state = 'running';
 }
 
@@ -376,7 +377,7 @@ function drawGround() {
 
   // Pebble texture (slow parallax)
   PEBBLES.forEach(p => {
-    const gx = ((p.ox - frame * 0.4) % (GW + 20) + GW + 20) % (GW + 20) - 10;
+    const gx = ((p.ox - scrollX) % (GW + 20) + GW + 20) % (GW + 20) - 10;
     fillRect(gx, p.oy, p.w, p.h, 'rgba(80,80,100,0.45)');
   });
 }
@@ -468,6 +469,7 @@ function loop() {
       spawnObstacle();
       nextObs = Math.max(38, 75 + Math.random() * 55 - score * 0.04);
     }
+    scrollX += speed;
     obstacles.forEach(o => { o.x -= speed; });
     obstacles = obstacles.filter(o => o.x + o.w > -10);
 
