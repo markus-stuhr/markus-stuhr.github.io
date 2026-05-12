@@ -7,20 +7,18 @@
 
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
+  html, body {
+    width: 100%; height: 100%;
     background: #020509;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
+    overflow: hidden;
     font-family: 'Courier New', monospace;
     color: #fff;
     user-select: none;
-    overflow: hidden;
+    touch-action: none;
   }
   #wrap {
-    position: relative;
+    position: fixed;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -29,15 +27,17 @@
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     display: block;
+    max-width: 100%;
   }
   #back {
     position: fixed;
-    top: 1.5rem; left: 1.5rem;
+    top: 1.2rem; left: 1.2rem;
     font-size: 0.6rem;
     letter-spacing: 0.3em;
     text-transform: uppercase;
     color: rgba(100,180,255,0.3);
     text-decoration: none;
+    z-index: 10;
   }
   #back:hover { color: rgba(100,180,255,0.7); }
 </style>
@@ -57,7 +57,7 @@ canvas.width = GW;
 canvas.height = GH;
 
 function scaleCanvas() {
-  const s = Math.min((window.innerWidth * 0.7) / GW, (window.innerHeight * 0.55) / GH, 1);
+  const s = Math.min(window.innerWidth / GW, window.innerHeight / GH);
   canvas.style.width  = Math.floor(GW * s) + 'px';
   canvas.style.height = Math.floor(GH * s) + 'px';
 }
