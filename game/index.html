@@ -58,7 +58,7 @@ const bx = bg.getContext('2d');
 bx.imageSmoothingEnabled = false;
 
 // ─── Dynamic dimensions ───────────────────────────────────────────
-const SCALE = 2;   // world rendered at 1/SCALE → each world pixel = 2×2 screen pixels
+const SCALE = 3;   // world rendered at 1/SCALE → each world pixel = 3×3 screen pixels
 let GW, GH, GROUND, SW, SH;
 const PLANET  = {};
 const GRAVITY = 0.48;
@@ -169,117 +169,107 @@ function fillRect(x, y, w, h, col) {
   bx.fillRect(Math.round(x), Math.round(y), w, h);
 }
 
-// ─── Draw astronaut ───────────────────────────────────────────────
+// ─── Draw astronaut (world canvas bx) ────────────────────────────
 function drawAstronaut(cx, fy, wf, jumping, dead) {
-  ctx.save();
+  bx.save();
   if (dead) {
-    ctx.translate(cx, fy - 16);
-    ctx.rotate(0.55);
+    bx.translate(cx, fy - 16);
+    bx.rotate(0.55);
     cx = 0; fy = 16;
   }
 
   const lf = Math.floor(wf / 5) % 2;
 
   // Shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.beginPath();
-  ctx.ellipse(cx, fy + 1, 13, 3, 0, 0, Math.PI * 2);
-  ctx.fill();
+  bx.fillStyle = 'rgba(0,0,0,0.25)';
+  bx.beginPath();
+  bx.ellipse(cx, fy + 1, 13, 3, 0, 0, Math.PI * 2);
+  bx.fill();
 
   // ── Legs ──
-  ctx.fillStyle = '#8899bb';
+  bx.fillStyle = '#8899bb';
   if (jumping) {
-    // Tucked
-    ctx.fillRect(cx - 9, fy - 14, 7, 9);
-    ctx.fillRect(cx + 2,  fy - 14, 7, 9);
+    bx.fillRect(cx - 9, fy - 14, 7, 9);
+    bx.fillRect(cx + 2,  fy - 14, 7, 9);
   } else {
     if (lf === 0) {
-      ctx.fillRect(cx - 9, fy - 16, 7, 14);
-      ctx.fillRect(cx + 2,  fy - 12, 7, 10);
+      bx.fillRect(cx - 9, fy - 16, 7, 14);
+      bx.fillRect(cx + 2,  fy - 12, 7, 10);
     } else {
-      ctx.fillRect(cx - 9, fy - 12, 7, 10);
-      ctx.fillRect(cx + 2,  fy - 16, 7, 14);
+      bx.fillRect(cx - 9, fy - 12, 7, 10);
+      bx.fillRect(cx + 2,  fy - 16, 7, 14);
     }
   }
   // Boots
-  ctx.fillStyle = '#667788';
+  bx.fillStyle = '#667788';
   if (jumping) {
-    ctx.fillRect(cx - 10, fy - 8,  9, 4);
-    ctx.fillRect(cx + 1,  fy - 8,  9, 4);
+    bx.fillRect(cx - 10, fy - 8,  9, 4);
+    bx.fillRect(cx + 1,  fy - 8,  9, 4);
   } else {
-    ctx.fillRect(cx - 10, fy - 4,  9, 4);
-    ctx.fillRect(cx + 1,  fy - 4,  9, 4);
+    bx.fillRect(cx - 10, fy - 4,  9, 4);
+    bx.fillRect(cx + 1,  fy - 4,  9, 4);
   }
 
   // ── Body ──
-  ctx.fillStyle = '#deeeff';
-  ctx.fillRect(cx - 11, fy - 32, 22, 17);
+  bx.fillStyle = '#deeeff';
+  bx.fillRect(cx - 11, fy - 32, 22, 17);
+  bx.fillStyle = '#5588aa';
+  bx.fillRect(cx - 4, fy - 31, 3, 11);
+  bx.fillRect(cx + 1,  fy - 31, 3, 11);
+  bx.fillStyle = '#77aacc';
+  bx.fillRect(cx - 4, fy - 31, 3, 2);
+  bx.fillRect(cx + 1,  fy - 31, 3, 2);
 
-  // Chest panel detail
-  ctx.fillStyle = '#5588aa';
-  ctx.fillRect(cx - 4, fy - 31, 3, 11);
-  ctx.fillRect(cx + 1,  fy - 31, 3, 11);
-  ctx.fillStyle = '#77aacc';
-  ctx.fillRect(cx - 4, fy - 31, 3, 2);
-  ctx.fillRect(cx + 1,  fy - 31, 3, 2);
-
-  // Life support pack (back)
-  ctx.fillStyle = '#667788';
-  ctx.fillRect(cx + 11, fy - 31, 7, 13);
-  ctx.fillStyle = '#8899aa';
-  ctx.fillRect(cx + 12, fy - 29, 5, 8);
-  ctx.fillStyle = '#44cc88';  // status LED
-  ctx.fillRect(cx + 13, fy - 21, 2, 2);
+  // Life support pack
+  bx.fillStyle = '#667788';
+  bx.fillRect(cx + 11, fy - 31, 7, 13);
+  bx.fillStyle = '#8899aa';
+  bx.fillRect(cx + 12, fy - 29, 5, 8);
+  bx.fillStyle = '#44cc88';
+  bx.fillRect(cx + 13, fy - 21, 2, 2);
 
   // ── Arms ──
   const armOff = jumping ? -4 : (lf === 0 ? -2 : 3);
-  ctx.fillStyle = '#ccddf0';
-  ctx.fillRect(cx - 16, fy - 31, 6, 11);
-  ctx.fillRect(cx + 10, fy - 31 - armOff, 6, 11);
-  // Gloves
-  ctx.fillStyle = '#99aabb';
-  ctx.fillRect(cx - 16, fy - 20, 6, 4);
-  ctx.fillRect(cx + 10, fy - 20 - armOff, 6, 4);
+  bx.fillStyle = '#ccddf0';
+  bx.fillRect(cx - 16, fy - 31, 6, 11);
+  bx.fillRect(cx + 10, fy - 31 - armOff, 6, 11);
+  bx.fillStyle = '#99aabb';
+  bx.fillRect(cx - 16, fy - 20, 6, 4);
+  bx.fillRect(cx + 10, fy - 20 - armOff, 6, 4);
 
   // ── Helmet ──
-  ctx.fillStyle = '#eaf3ff';
-  ctx.beginPath();
-  ctx.arc(cx, fy - 41, 13, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Collar ring
-  ctx.fillStyle = '#ccdde8';
-  ctx.fillRect(cx - 11, fy - 31, 22, 4);
-
-  // Visor (dark, slightly angled)
-  ctx.fillStyle = '#0d2a45';
-  ctx.beginPath();
-  ctx.ellipse(cx + 1, fy - 41, 9, 7, 0.05, 0, Math.PI * 2);
-  ctx.fill();
-  // Visor tint overlay
-  ctx.fillStyle = 'rgba(30,100,180,0.25)';
-  ctx.beginPath();
-  ctx.ellipse(cx + 1, fy - 41, 9, 7, 0.05, 0, Math.PI * 2);
-  ctx.fill();
-  // Visor shine
-  ctx.fillStyle = 'rgba(160,230,255,0.55)';
-  ctx.fillRect(cx - 6, fy - 47, 5, 3);
-  ctx.fillRect(cx - 6, fy - 43, 2, 1);
+  bx.fillStyle = '#eaf3ff';
+  bx.beginPath();
+  bx.arc(cx, fy - 41, 13, 0, Math.PI * 2);
+  bx.fill();
+  bx.fillStyle = '#ccdde8';
+  bx.fillRect(cx - 11, fy - 31, 22, 4);
+  bx.fillStyle = '#0d2a45';
+  bx.beginPath();
+  bx.ellipse(cx + 1, fy - 41, 9, 7, 0.05, 0, Math.PI * 2);
+  bx.fill();
+  bx.fillStyle = 'rgba(30,100,180,0.25)';
+  bx.beginPath();
+  bx.ellipse(cx + 1, fy - 41, 9, 7, 0.05, 0, Math.PI * 2);
+  bx.fill();
+  bx.fillStyle = 'rgba(160,230,255,0.55)';
+  bx.fillRect(cx - 6, fy - 47, 5, 3);
+  bx.fillRect(cx - 6, fy - 43, 2, 1);
 
   // ── Antenna ──
-  ctx.fillStyle = '#99aabb';
-  ctx.fillRect(cx + 6, fy - 56, 2, 9);
+  bx.fillStyle = '#99aabb';
+  bx.fillRect(cx + 6, fy - 56, 2, 9);
   const blink = Math.floor(tick / 22) % 2;
-  ctx.fillStyle = blink ? '#ff4455' : '#882233';
-  ctx.fillRect(cx + 5, fy - 58, 4, 4);
+  bx.fillStyle = blink ? '#ff4455' : '#882233';
+  bx.fillRect(cx + 5, fy - 58, 4, 4);
   if (blink) {
-    ctx.fillStyle = 'rgba(255,60,70,0.4)';
-    ctx.beginPath();
-    ctx.arc(cx + 7, fy - 56, 5, 0, Math.PI * 2);
-    ctx.fill();
+    bx.fillStyle = 'rgba(255,60,70,0.4)';
+    bx.beginPath();
+    bx.arc(cx + 7, fy - 56, 5, 0, Math.PI * 2);
+    bx.fill();
   }
 
-  ctx.restore();
+  bx.restore();
 }
 
 // ─── Draw moon rock (world canvas) ───────────────────────────────
@@ -468,8 +458,9 @@ function loop() {
   drawBG();
   drawGround();
   obstacles.forEach(o => o.type === 'rock' ? drawRock(o) : drawCrystal(o));
+  drawAstronaut(A.x, A.y, A.walk, A.jumps > 0, state === 'dead');
 
-  // ── Blit world to foreground canvas (2x, pixelated) ──
+  // ── Blit world to foreground canvas (3x, pixelated) ──
   let sx = 0, sy = 0;
   if (shakes > 0) { sx = (Math.random()-0.5)*6; sy = (Math.random()-0.5)*4; shakes--; }
   ctx.clearRect(0, 0, SW, SH);
@@ -488,9 +479,6 @@ function loop() {
   const fadeB = ctx.createLinearGradient(0, SH, 0, SH * 0.85);
   fadeB.addColorStop(0, 'rgba(2,5,9,1)'); fadeB.addColorStop(1, 'rgba(2,5,9,0)');
   [fadeL, fadeR, fadeT, fadeB].forEach(f => { ctx.fillStyle = f; ctx.fillRect(0, 0, SW, SH); });
-
-  // ── Astronaut: full resolution, screen coordinates ──
-  drawAstronaut(A.x * SCALE, A.y * SCALE, A.walk, A.jumps > 0, state === 'dead');
 
   ctx.restore();
 
