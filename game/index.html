@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Moonrunner — Markus Stuhr</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #020509;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    color: #fff;
+    user-select: none;
+    overflow: hidden;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 1px solid rgba(100,180,255,0.15);
+    box-shadow: 0 0 60px rgba(100,180,255,0.08);
+  }
+  #back {
+    position: fixed;
+    top: 1.5rem; left: 1.5rem;
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(100,180,255,0.3);
+    text-decoration: none;
+  }
+  #back:hover { color: rgba(100,180,255,0.7); }
+</style>
+</head>
+<body>
+
+<a href="/" id="back">← zurück</a>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const GW = 800, GH = 300;
+canvas.width = GW;
+canvas.height = GH;
+
+function scaleCanvas() {
+  const s = Math.min((window.innerWidth - 20) / GW, (window.innerHeight - 40) / GH);
+  canvas.style.width  = Math.floor(GW * s) + 'px';
+  canvas.style.height = Math.floor(GH * s) + 'px';
+}
+scaleCanvas();
+window.addEventListener('resize', scaleCanvas);
+
+// ─── Constants ───────────────────────────────────────────────────
+const GROUND   = GH - 55;
+const GRAVITY  = 0.55;
+const JUMP_V   = -12.5;
+
+// ─── State ───────────────────────────────────────────────────────
+let state    = 'idle';   // idle | running | dead
+let score    = 0;
+let hiScore  = parseInt(localStorage.getItem('ms_hi') || '0');
+let speed    = 4;
+let frame    = 0;
+let tick     = 0;
+let shakes   = 0;
+
+// ─── Astronaut ───────────────────────────────────────────────────
+const A = {
+  x: 110, y: GROUND,
+  vy: 0, jumps: 0,
+  walk: 0, walkT: 0,
+};
+
+// ─── Stars (3 parallax layers) ───────────────────────────────────
+const STARS = Array.from({ length: 90 }, () => ({
+  x: Math.random() * GW,
+  y: Math.random() * (GROUND - 20),
+  r: Math.random() < 0.15 ? 1.5 : 0.8,
+  spd: 0.15 + Math.random() * 0.5,
+  a: 0.4 + Math.random() * 0.6,
+}));
+
+// Background planet (static)
+const PLANET = { x: GW * 0.78, y: GH * 0.28, r: 38 };
+
+// Ground pebbles for texture
+const PEBBLES = Array.from({ length: 30 }, () => ({
+  ox: Math.random() * GW,
+  oy: GROUND + 4 + Math.random() * 12,
+  w: 2 + Math.random() * 5, h: 2 + Math.random() * 3,
+}));
+
+// ─── Obstacles ───────────────────────────────────────────────────
+let obstacles  = [];
+let nextObs    = 90;
+
+function spawnObstacle() {
+  if (Math.random() < 0.55) {
+    // Moon rock
+    const h = 18 + Math.random() * 28;
+    const w = h * (0.7 + Math.random() * 0.6);
+    obstacles.push({ type: 'rock', x: GW + 10, y: GROUND - h, w, h });
+  } else {
+    // Crystal cluster
+    const count = 2 + Math.floor(Math.random() * 3);
+    const shards = [];
+    let bx = 0;
+    for (let i = 0; i < count; i++) {
+      const bw = 7 + Math.random() * 7;
+      const sh = 22 + Math.random() * 32;
+      shards.push({ bx, bw, sh, tx: bx + bw / 2 + (Math.random() - 0.5) * 5 });
+      bx += bw + 2 + Math.random() * 4;
+    }
+    const maxH = Math.max(...shards.map(s => s.sh));
+    obstacles.push({ type: 'crystal', x: GW + 10, y: GROUND - maxH, w: bx, h: maxH, shards });
+  }
+}
+
+// ─── Input ───────────────────────────────────────────────────────
+function doJump() {
+  if (state === 'idle')  { state = 'running'; return; }
+  if (state === 'dead')  { restart(); return; }
+  if (A.jumps < 2) { A.vy = JUMP_V * (A.jumps === 1 ? 0.82 : 1); A.jumps++; }
+}
+
+function restart() {
+  A.y = GROUND; A.vy = 0; A.jumps = 0; A.walk = 0;
+  obstacles = []; score = 0; speed = 4; frame = 0; nextObs = 90;
+  state = 'running';
+}
+
+document.addEventListener('keydown',   e => { if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); doJump(); }});
+canvas.addEventListener('click',       () => doJump());
+canvas.addEventListener('touchstart',  e => { e.preventDefault(); doJump(); }, { passive: false });
+
+// ─── Drawing helpers ──────────────────────────────────────────────
+function fillRect(x, y, w, h, col) {
+  ctx.fillStyle = col;
+  ctx.fillRect(Math.round(x), Math.round(y), w, h);
+}
+
+// ─── Draw astronaut ───────────────────────────────────────────────
+function drawAstronaut(cx, fy, wf, jumping, dead) {
+  ctx.save();
+  if (dead) {
+    ctx.translate(cx, fy - 16);
+    ctx.rotate(0.55);
+    cx = 0; fy = 16;
+  }
+
+  const lf = Math.floor(wf / 5) % 2;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(cx, fy + 1, 13, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ── Legs ──
+  ctx.fillStyle = '#8899bb';
+  if (jumping) {
+    // Tucked
+    ctx.fillRect(cx - 9, fy - 14, 7, 9);
+    ctx.fillRect(cx + 2,  fy - 14, 7, 9);
+  } else {
+    if (lf === 0) {
+      ctx.fillRect(cx - 9, fy - 16, 7, 14);
+      ctx.fillRect(cx + 2,  fy - 12, 7, 10);
+    } else {
+      ctx.fillRect(cx - 9, fy - 12, 7, 10);
+      ctx.fillRect(cx + 2,  fy - 16, 7, 14);
+    }
+  }
+  // Boots
+  ctx.fillStyle = '#667788';
+  if (jumping) {
+    ctx.fillRect(cx - 10, fy - 8,  9, 4);
+    ctx.fillRect(cx + 1,  fy - 8,  9, 4);
+  } else {
+    ctx.fillRect(cx - 10, fy - 4,  9, 4);
+    ctx.fillRect(cx + 1,  fy - 4,  9, 4);
+  }
+
+  // ── Body ──
+  ctx.fillStyle = '#deeeff';
+  ctx.fillRect(cx - 11, fy - 32, 22, 17);
+
+  // Chest panel detail
+  ctx.fillStyle = '#5588aa';
+  ctx.fillRect(cx - 4, fy - 31, 3, 11);
+  ctx.fillRect(cx + 1,  fy - 31, 3, 11);
+  ctx.fillStyle = '#77aacc';
+  ctx.fillRect(cx - 4, fy - 31, 3, 2);
+  ctx.fillRect(cx + 1,  fy - 31, 3, 2);
+
+  // Life support pack (back)
+  ctx.fillStyle = '#667788';
+  ctx.fillRect(cx + 11, fy - 31, 7, 13);
+  ctx.fillStyle = '#8899aa';
+  ctx.fillRect(cx + 12, fy - 29, 5, 8);
+  ctx.fillStyle = '#44cc88';  // status LED
+  ctx.fillRect(cx + 13, fy - 21, 2, 2);
+
+  // ── Arms ──
+  const armOff = jumping ? -4 : (lf === 0 ? -2 : 3);
+  ctx.fillStyle = '#ccddf0';
+  ctx.fillRect(cx - 16, fy - 31, 6, 11);
+  ctx.fillRect(cx + 10, fy - 31 - armOff, 6, 11);
+  // Gloves
+  ctx.fillStyle = '#99aabb';
+  ctx.fillRect(cx - 16, fy - 20, 6, 4);
+  ctx.fillRect(cx + 10, fy - 20 - armOff, 6, 4);
+
+  // ── Helmet ──
+  ctx.fillStyle = '#eaf3ff';
+  ctx.beginPath();
+  ctx.arc(cx, fy - 41, 13, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Collar ring
+  ctx.fillStyle = '#ccdde8';
+  ctx.fillRect(cx - 11, fy - 31, 22, 4);
+
+  // Visor (dark, slightly angled)
+  ctx.fillStyle = '#0d2a45';
+  ctx.beginPath();
+  ctx.ellipse(cx + 1, fy - 41, 9, 7, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  // Visor tint overlay
+  ctx.fillStyle = 'rgba(30,100,180,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(cx + 1, fy - 41, 9, 7, 0.05, 0, Math.PI * 2);
+  ctx.fill();
+  // Visor shine
+  ctx.fillStyle = 'rgba(160,230,255,0.55)';
+  ctx.fillRect(cx - 6, fy - 47, 5, 3);
+  ctx.fillRect(cx - 6, fy - 43, 2, 1);
+
+  // ── Antenna ──
+  ctx.fillStyle = '#99aabb';
+  ctx.fillRect(cx + 6, fy - 56, 2, 9);
+  const blink = Math.floor(tick / 22) % 2;
+  ctx.fillStyle = blink ? '#ff4455' : '#882233';
+  ctx.fillRect(cx + 5, fy - 58, 4, 4);
+  if (blink) {
+    ctx.fillStyle = 'rgba(255,60,70,0.4)';
+    ctx.beginPath();
+    ctx.arc(cx + 7, fy - 56, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// ─── Draw moon rock ───────────────────────────────────────────────
+function drawRock(obs) {
+  const { x, y, w, h } = obs;
+  // Main body
+  ctx.fillStyle = '#4a4a5a';
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.08, y + h);
+  ctx.lineTo(x,             y + h * 0.55);
+  ctx.lineTo(x + w * 0.12, y + h * 0.18);
+  ctx.lineTo(x + w * 0.38, y);
+  ctx.lineTo(x + w * 0.65, y + h * 0.05);
+  ctx.lineTo(x + w,        y + h * 0.42);
+  ctx.lineTo(x + w * 0.92, y + h);
+  ctx.closePath();
+  ctx.fill();
+  // Light face
+  ctx.fillStyle = '#6a6a7a';
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.12, y + h * 0.18);
+  ctx.lineTo(x + w * 0.38, y);
+  ctx.lineTo(x + w * 0.55, y + h * 0.22);
+  ctx.lineTo(x + w * 0.28, y + h * 0.38);
+  ctx.closePath();
+  ctx.fill();
+  // Dark base
+  ctx.fillStyle = '#2a2a38';
+  ctx.fillRect(x + w * 0.08, y + h * 0.82, w * 0.84, h * 0.18);
+}
+
+// ─── Draw crystal ─────────────────────────────────────────────────
+function drawCrystal(obs) {
+  const { x, y, w, h, shards } = obs;
+  const COLS = ['#1a5599', '#2266bb', '#0e4488', '#3399cc'];
+  shards.forEach((s, i) => {
+    // Shard body
+    ctx.fillStyle = COLS[i % COLS.length];
+    ctx.beginPath();
+    ctx.moveTo(x + s.bx,            GROUND);
+    ctx.lineTo(x + s.tx,            GROUND - s.sh);
+    ctx.lineTo(x + s.bx + s.bw,     GROUND);
+    ctx.closePath();
+    ctx.fill();
+    // Shine strip
+    ctx.fillStyle = 'rgba(150,220,255,0.28)';
+    ctx.beginPath();
+    ctx.moveTo(x + s.bx + s.bw * 0.4, GROUND);
+    ctx.lineTo(x + s.tx + 1,           GROUND - s.sh);
+    ctx.lineTo(x + s.tx + 3,           GROUND - s.sh);
+    ctx.lineTo(x + s.bx + s.bw * 0.6, GROUND);
+    ctx.closePath();
+    ctx.fill();
+    // Inner glow tip
+    ctx.fillStyle = 'rgba(100,200,255,0.5)';
+    ctx.fillRect(x + s.tx - 1, GROUND - s.sh, 3, 4);
+  });
+}
+
+// ─── Draw background ──────────────────────────────────────────────
+function drawBG() {
+  // Sky gradient
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+  sky.addColorStop(0, '#010408');
+  sky.addColorStop(1, '#040c18');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, GW, GROUND);
+
+  // Stars
+  STARS.forEach(s => {
+    ctx.fillStyle = `rgba(210,235,255,${s.a})`;
+    ctx.fillRect(Math.round(s.x), Math.round(s.y), Math.ceil(s.r * 2), Math.ceil(s.r * 2));
+  });
+
+  // Background planet
+  ctx.fillStyle = '#181f2e';
+  ctx.beginPath();
+  ctx.arc(PLANET.x, PLANET.y, PLANET.r, 0, Math.PI * 2);
+  ctx.fill();
+  // Lighter crescent on planet
+  ctx.fillStyle = '#222d3e';
+  ctx.beginPath();
+  ctx.arc(PLANET.x - 8, PLANET.y - 6, PLANET.r * 0.72, 0, Math.PI * 2);
+  ctx.fill();
+  // Planet ring
+  ctx.save();
+  ctx.strokeStyle = 'rgba(90,150,220,0.22)';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.ellipse(PLANET.x, PLANET.y, PLANET.r + 20, 7, -0.18, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ─── Draw ground ──────────────────────────────────────────────────
+function drawGround() {
+  const grd = ctx.createLinearGradient(0, GROUND, 0, GH);
+  grd.addColorStop(0,   '#383845');
+  grd.addColorStop(0.2, '#26262f');
+  grd.addColorStop(1,   '#111118');
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, GROUND, GW, GH - GROUND);
+
+  // Top edge highlight
+  fillRect(0, GROUND, GW, 2, '#55556a');
+
+  // Pebble texture (slow parallax)
+  PEBBLES.forEach(p => {
+    const gx = ((p.ox - frame * 0.4) % (GW + 20) + GW + 20) % (GW + 20) - 10;
+    fillRect(gx, p.oy, p.w, p.h, 'rgba(80,80,100,0.45)');
+  });
+}
+
+// ─── Draw HUD ─────────────────────────────────────────────────────
+function drawHUD() {
+  // Score top-right
+  ctx.fillStyle = 'rgba(100,180,255,0.55)';
+  ctx.font = 'bold 12px "Courier New"';
+  ctx.textAlign = 'right';
+  ctx.fillText('HI ' + String(hiScore).padStart(5, '0'), GW - 14, 22);
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.fillText(String(score).padStart(5, '0'), GW - 14, 38);
+  ctx.textAlign = 'left';
+
+  if (state === 'idle') {
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = 'bold 13px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText('MOONRUNNER', GW / 2, GH / 2 - 18);
+    ctx.fillStyle = 'rgba(100,180,255,0.6)';
+    ctx.font = '10px "Courier New"';
+    ctx.fillText('SPACE / TAP UM ZU STARTEN', GW / 2, GH / 2 + 2);
+    ctx.fillStyle = 'rgba(100,180,255,0.35)';
+    ctx.font = '9px "Courier New"';
+    ctx.fillText('DOPPELSPRUNG MÖGLICH', GW / 2, GH / 2 + 18);
+    ctx.textAlign = 'left';
+  }
+
+  if (state === 'dead') {
+    ctx.fillStyle = 'rgba(255,80,80,0.85)';
+    ctx.font = 'bold 12px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText('HOUSTON, WIR HABEN EIN PROBLEM.', GW / 2, GH / 2 - 14);
+    ctx.fillStyle = 'rgba(100,180,255,0.6)';
+    ctx.font = '9px "Courier New"';
+    ctx.fillText('SPACE / TAP — NOCHMAL', GW / 2, GH / 2 + 6);
+    ctx.textAlign = 'left';
+  }
+}
+
+// ─── Collision ────────────────────────────────────────────────────
+function hits(obs) {
+  const ax = A.x - 9,  ay = A.y - 30;
+  const aw = 18,       ah = 28;
+  return ax < obs.x + obs.w - 5 &&
+         ax + aw > obs.x + 5   &&
+         ay < obs.y + obs.h    &&
+         ay + ah > obs.y + 4;
+}
+
+// ─── Game loop ────────────────────────────────────────────────────
+function loop() {
+  tick++;
+
+  // Screen shake
+  let sx = 0, sy = 0;
+  if (shakes > 0) { sx = (Math.random() - 0.5) * 4; sy = (Math.random() - 0.5) * 3; shakes--; }
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.clearRect(-4, -4, GW + 8, GH + 8);
+
+  drawBG();
+  drawGround();
+
+  if (state === 'running') {
+    frame++;
+    score    = Math.floor(frame / 6);
+    speed    = Math.min(4 + score * 0.004 + Math.floor(score / 150) * 0.4, 15);
+
+    // Stars parallax
+    STARS.forEach(s => {
+      s.x -= s.spd * (speed / 5);
+      if (s.x < 0) { s.x = GW; s.y = Math.random() * (GROUND - 20); }
+    });
+
+    // Astronaut physics
+    A.vy += GRAVITY;
+    A.y  += A.vy;
+    if (A.y >= GROUND) { A.y = GROUND; A.vy = 0; A.jumps = 0; }
+
+    // Walk animation
+    if (A.y === GROUND) { A.walkT++; if (A.walkT > 3) { A.walkT = 0; A.walk++; } }
+
+    // Obstacles
+    nextObs--;
+    if (nextObs <= 0) {
+      spawnObstacle();
+      nextObs = Math.max(38, 75 + Math.random() * 55 - score * 0.04);
+    }
+    obstacles.forEach(o => { o.x -= speed; });
+    obstacles = obstacles.filter(o => o.x + o.w > -10);
+
+    // Collision
+    for (const o of obstacles) {
+      if (hits(o)) {
+        state = 'dead';
+        shakes = 10;
+        if (score > hiScore) {
+          hiScore = score;
+          localStorage.setItem('ms_hi', hiScore);
+        }
+        break;
+      }
+    }
+  }
+
+  // Draw obstacles
+  obstacles.forEach(o => o.type === 'rock' ? drawRock(o) : drawCrystal(o));
+
+  // Draw astronaut
+  drawAstronaut(A.x, A.y, A.walk, A.jumps > 0, state === 'dead');
+
+  drawHUD();
+  ctx.restore();
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
