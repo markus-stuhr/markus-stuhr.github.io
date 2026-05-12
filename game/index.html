@@ -52,7 +52,7 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 
-const GW = 800, GH = 300;
+const GW = 380, GH = 580;
 canvas.width = GW;
 canvas.height = GH;
 
@@ -65,9 +65,9 @@ scaleCanvas();
 window.addEventListener('resize', scaleCanvas);
 
 // ─── Constants ───────────────────────────────────────────────────
-const GROUND   = GH - 55;
-const GRAVITY  = 0.55;
-const JUMP_V   = -12.5;
+const GROUND   = GH - 80;
+const GRAVITY  = 0.48;
+const JUMP_V   = -14;
 
 // ─── State ───────────────────────────────────────────────────────
 let state    = 'idle';   // idle | running | dead
@@ -80,7 +80,7 @@ let shakes   = 0;
 
 // ─── Astronaut ───────────────────────────────────────────────────
 const A = {
-  x: 110, y: GROUND,
+  x: GW / 2, y: GROUND,
   vy: 0, jumps: 0,
   walk: 0, walkT: 0,
 };
@@ -95,7 +95,7 @@ const STARS = Array.from({ length: 90 }, () => ({
 }));
 
 // Background planet (static)
-const PLANET = { x: GW * 0.78, y: GH * 0.28, r: 38 };
+const PLANET = { x: GW * 0.72, y: GH * 0.18, r: 38 };
 
 // Ground pebbles for texture
 const PEBBLES = Array.from({ length: 30 }, () => ({
@@ -380,12 +380,13 @@ function drawGround() {
 // ─── Draw HUD ─────────────────────────────────────────────────────
 function drawHUD() {
   // Score top-right
-  ctx.fillStyle = 'rgba(100,180,255,0.55)';
-  ctx.font = 'bold 12px "Courier New"';
+  ctx.fillStyle = 'rgba(100,180,255,0.45)';
+  ctx.font = '10px "Courier New"';
   ctx.textAlign = 'right';
-  ctx.fillText('HI ' + String(hiScore).padStart(5, '0'), GW - 14, 22);
-  ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.fillText(String(score).padStart(5, '0'), GW - 14, 38);
+  ctx.fillText('HI ' + String(hiScore).padStart(5, '0'), GW - 16, 28);
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.font = 'bold 13px "Courier New"';
+  ctx.fillText(String(score).padStart(5, '0'), GW - 16, 46);
   ctx.textAlign = 'left';
 
   if (state === 'idle') {
