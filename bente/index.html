@@ -528,7 +528,8 @@
     @media (max-width: 640px) {
       nav { padding: 1.2rem 5%; }
       .nav-links {
-        display: none;
+        display: flex;
+        flex-direction: column;
         position: absolute;
         top: 100%;
         left: 0;
@@ -536,13 +537,22 @@
         background: var(--cream);
         border-top: 1px solid rgba(28,26,24,0.08);
         box-shadow: 0 8px 24px rgba(28,26,24,0.1);
-        padding: 1.6rem 5%;
-        flex-direction: column;
+        padding: 0 5%;
         gap: 1.4rem;
         z-index: 200;
+        max-height: 0;
+        overflow: hidden;
+        opacity: 0;
+        pointer-events: none;
+        transition: max-height 0.35s ease, opacity 0.25s ease, padding 0.35s ease;
       }
-      .nav-links.open { display: flex; }
-      .nav-links.open a { font-size: 0.85rem; letter-spacing: 0.14em; }
+      .nav-links.open {
+        max-height: 300px;
+        opacity: 1;
+        pointer-events: auto;
+        padding: 1.6rem 5%;
+      }
+      .nav-links a { font-size: 0.85rem; letter-spacing: 0.14em; }
       .nav-burger { display: flex; z-index: 201; }
       .nav-burger.active { background: var(--coral); }
       .nav-burger.active span { background: #fff; }
