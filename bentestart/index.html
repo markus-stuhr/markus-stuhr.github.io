@@ -156,29 +156,6 @@
     }
     .links a svg { width: 12px; height: 12px; opacity: 0.7; }
 
-    /* ── SLIDE DOTS ──────────────────────────────── */
-    .dots {
-      position: fixed;
-      right: 1.6rem;
-      top: 50%;
-      transform: translateY(-50%);
-      z-index: 2;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-    .dot {
-      width: 5px;
-      height: 5px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.3);
-      transition: background 0.4s, transform 0.4s;
-      cursor: pointer;
-    }
-    .dot.active {
-      background: rgba(255,255,255,0.9);
-      transform: scale(1.4);
-    }
 
     /* ── TOP BAR ─────────────────────────────────── */
     .topbar {
@@ -221,8 +198,7 @@
 
     /* ── MOBILE ──────────────────────────────────── */
     @media (max-width: 480px) {
-      .dots { display: none; }
-      .topbar { padding: 1.2rem 1.4rem; }
+.topbar { padding: 1.2rem 1.4rem; }
       .links { gap: 1.4rem; bottom: 1.8rem; }
     }
   </style>
@@ -246,8 +222,6 @@
 <div class="overlay"></div>
 
 
-<!-- SLIDE DOTS -->
-<div class="dots" id="dots"></div>
 
 <!-- MAIN CONTENT -->
 <main class="content">
@@ -279,25 +253,13 @@
 
 <script>
   const slides = document.querySelectorAll('.slide');
-  const dotsContainer = document.getElementById('dots');
   let current = 0;
   let timer;
 
-  // Build dots
-  slides.forEach((_, i) => {
-    const d = document.createElement('button');
-    d.className = 'dot' + (i === 0 ? ' active' : '');
-    d.setAttribute('aria-label', `Bild ${i + 1}`);
-    d.addEventListener('click', () => goTo(i));
-    dotsContainer.appendChild(d);
-  });
-
   function goTo(n) {
     slides[current].classList.remove('active');
-    dotsContainer.children[current].classList.remove('active');
     current = (n + slides.length) % slides.length;
     slides[current].classList.add('active');
-    dotsContainer.children[current].classList.add('active');
     clearInterval(timer);
     timer = setInterval(next, 6000);
   }
