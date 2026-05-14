@@ -98,6 +98,21 @@
       transition: background 0.2s;
     }
 
+    /* ── NAV OVERLAY ────────────────────────────── */
+    #nav-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 99;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    #nav-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
     /* ── HERO ────────────────────────────────────── */
     #home {
       min-height: 100vh;
@@ -581,6 +596,7 @@
     <span></span><span></span><span></span>
   </button>
 </nav>
+<div id="nav-overlay"></div>
 
 <!-- HERO -->
 <section id="home">
@@ -771,18 +787,21 @@
   });
 
   // Mobile menu
+  const overlay = document.getElementById('nav-overlay');
+  overlay.addEventListener('click', closeMenu);
+
   function toggleMenu() {
     const links = document.getElementById('navLinks');
     const burger = document.getElementById('burger');
-    links.classList.toggle('open');
-    burger.classList.toggle('active', links.classList.contains('open'));
-    burger.setAttribute('aria-label', links.classList.contains('open') ? 'Menü schließen' : 'Menü öffnen');
-    document.body.style.overflow = '';
+    const open = links.classList.toggle('open');
+    burger.classList.toggle('active', open);
+    overlay.classList.toggle('active', open);
+    burger.setAttribute('aria-label', open ? 'Menü schließen' : 'Menü öffnen');
   }
   function closeMenu() {
     document.getElementById('navLinks').classList.remove('open');
     document.getElementById('burger').classList.remove('active');
-    document.body.style.overflow = '';
+    overlay.classList.remove('active');
   }
 
   // Scroll reveal
