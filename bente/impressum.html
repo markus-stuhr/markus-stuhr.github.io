@@ -23,11 +23,14 @@
     html { scroll-behavior: smooth; }
 
     body {
-      background: var(--cream);
+      background: #111;
       color: var(--ink);
       font-family: 'Inter', sans-serif;
       font-weight: 300;
       line-height: 1.7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
 
     /* ── NAV ─────────────────────────────────────── */
@@ -69,9 +72,13 @@
 
     /* ── CONTENT ─────────────────────────────────── */
     main {
+      flex: 1;
+      background: var(--cream);
+      padding: 10rem 5% 7rem;
+    }
+    .main-inner {
       max-width: 680px;
       margin: 0 auto;
-      padding: 10rem 5% 7rem;
     }
 
     .page-label {
@@ -146,6 +153,7 @@
 </nav>
 
 <main>
+<div class="main-inner">
   <p class="page-label">Rechtliches</p>
   <h1>Impressum</h1>
   <div class="divider"></div>
@@ -172,6 +180,7 @@
       Die in dieser Website enthaltenen Bilder, Illustrationen und Texte sind urheberrechtlich geschützt. Das Copyright liegt bei Bente Sommer. Jede Verwertung darf nicht ohne ausdrückliche Genehmigung erfolgen.
     </p>
   </div>
+</div>
 </main>
 
 <footer>
