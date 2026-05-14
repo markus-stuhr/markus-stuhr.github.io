@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bente Sommer — Illustration</title>
+  <meta name="description" content="Bente Sommer — Freie Illustratorin. hello@bentesommer.de">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Inter:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      color: #fff;
+      background: #111;
+    }
+
+    /* ── SLIDESHOW ───────────────────────────────── */
+    .slides {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      opacity: 0;
+      transition: opacity 1.6s ease-in-out;
+      transform: scale(1.04);
+      animation: slowzoom 12s ease-in-out infinite alternate;
+    }
+    .slide.active { opacity: 1; }
+
+    /* Ken Burns */
+    @keyframes slowzoom {
+      from { transform: scale(1.04); }
+      to   { transform: scale(1.00); }
+    }
+
+    /* Placeholder backgrounds (replace with real images later) */
+    .slide-1 { background-image: linear-gradient(135deg, #2c1810 0%, #5a2d1a 30%, #8b4513 60%, #c4813d 100%); }
+    .slide-2 { background-image: linear-gradient(160deg, #0d1f2d 0%, #1a3a4a 40%, #2d6a6a 70%, #4a9e8a 100%); }
+    .slide-3 { background-image: linear-gradient(120deg, #1a0a2e 0%, #3d1a5c 40%, #7a3a8c 70%, #c46ab0 100%); }
+    .slide-4 { background-image: linear-gradient(150deg, #0a1a0a 0%, #1a3a1a 35%, #3a6a2a 65%, #6a9a4a 100%); }
+    .slide-5 { background-image: linear-gradient(140deg, #1a1000 0%, #3a2800 35%, #6a4a10 65%, #a07830 100%); }
+
+    /* Dark vignette + gradient overlay for readability */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background:
+        radial-gradient(ellipse at center, transparent 20%, rgba(0,0,0,0.45) 100%),
+        linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.0) 40%, rgba(0,0,0,0.55) 100%);
+    }
+
+    /* ── CONTENT ─────────────────────────────────── */
+    .content {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .tag {
+      font-size: 0.65rem;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 1.6rem;
+      opacity: 0;
+      animation: fadeup 1.2s 0.4s ease forwards;
+    }
+
+    .name {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 300;
+      font-size: clamp(3.8rem, 10vw, 8rem);
+      line-height: 1.0;
+      letter-spacing: 0.02em;
+      opacity: 0;
+      animation: fadeup 1.2s 0.65s ease forwards;
+    }
+    .name em {
+      display: block;
+      font-style: italic;
+      font-weight: 300;
+      color: rgba(255,255,255,0.88);
+    }
+
+    .divider {
+      width: 40px;
+      height: 1px;
+      background: rgba(255,255,255,0.35);
+      margin: 2rem auto;
+      opacity: 0;
+      animation: fadeup 1.0s 0.9s ease forwards;
+    }
+
+    .profession {
+      font-size: clamp(0.8rem, 1.8vw, 1rem);
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.7);
+      opacity: 0;
+      animation: fadeup 1.0s 1.05s ease forwards;
+    }
+
+    /* ── LINKS ───────────────────────────────────── */
+    .links {
+      position: fixed;
+      bottom: 2.4rem;
+      left: 0; right: 0;
+      z-index: 2;
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      opacity: 0;
+      animation: fadeup 1.0s 1.3s ease forwards;
+    }
+
+    .links a {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: rgba(255,255,255,0.65);
+      text-decoration: none;
+      font-size: 0.72rem;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(255,255,255,0.18);
+      padding-bottom: 2px;
+      transition: color 0.25s, border-color 0.25s;
+    }
+    .links a:hover {
+      color: #fff;
+      border-color: rgba(255,255,255,0.6);
+    }
+    .links a svg { width: 12px; height: 12px; opacity: 0.7; }
+
+    /* ── SLIDE DOTS ──────────────────────────────── */
+    .dots {
+      position: fixed;
+      right: 1.6rem;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.3);
+      transition: background 0.4s, transform 0.4s;
+      cursor: pointer;
+    }
+    .dot.active {
+      background: rgba(255,255,255,0.9);
+      transform: scale(1.4);
+    }
+
+    /* ── TOP BAR ─────────────────────────────────── */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.6rem 2.4rem;
+      opacity: 0;
+      animation: fadein 1.2s 1.5s ease forwards;
+    }
+    .topbar-logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1rem;
+      letter-spacing: 0.08em;
+      color: rgba(255,255,255,0.6);
+    }
+    .topbar-logo em { font-style: italic; }
+    .topbar-portfolio {
+      font-size: 0.65rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+      text-decoration: none;
+      transition: color 0.25s;
+    }
+    .topbar-portfolio:hover { color: rgba(255,255,255,0.85); }
+
+    /* ── ANIMATIONS ──────────────────────────────── */
+    @keyframes fadeup {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadein {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* ── MOBILE ──────────────────────────────────── */
+    @media (max-width: 480px) {
+      .dots { display: none; }
+      .topbar { padding: 1.2rem 1.4rem; }
+      .links { gap: 1.4rem; bottom: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- SLIDESHOW -->
+<div class="slides" id="slides">
+  <div class="slide slide-1 active"></div>
+  <div class="slide slide-2"></div>
+  <div class="slide slide-3"></div>
+  <div class="slide slide-4"></div>
+  <div class="slide slide-5"></div>
+</div>
+
+<div class="overlay"></div>
+
+<!-- TOP BAR -->
+<header class="topbar">
+  <span class="topbar-logo">Bente <em>Sommer</em></span>
+  <a href="/bente" class="topbar-portfolio">Portfolio →</a>
+</header>
+
+<!-- SLIDE DOTS -->
+<div class="dots" id="dots"></div>
+
+<!-- MAIN CONTENT -->
+<main class="content">
+  <p class="tag">Freie Illustratorin</p>
+  <h1 class="name">
+    Bente<em>Sommer</em>
+  </h1>
+  <div class="divider"></div>
+  <p class="profession">Illustration</p>
+</main>
+
+<!-- LINKS -->
+<footer class="links">
+  <a href="mailto:hello@bentesommer.de">
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2">
+      <rect x="1" y="2.5" width="10" height="7.5" rx="1"/>
+      <path d="M1 3.5l5 4 5-4"/>
+    </svg>
+    hello@bentesommer.de
+  </a>
+  <a href="https://www.instagram.com/bente_sommer/" target="_blank" rel="noopener">
+    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2">
+      <rect x="1" y="1" width="10" height="10" rx="2.5"/>
+      <circle cx="6" cy="6" r="2.4"/>
+      <circle cx="8.8" cy="3.2" r="0.5" fill="currentColor" stroke="none"/>
+    </svg>
+    @bente_sommer
+  </a>
+</footer>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const dotsContainer = document.getElementById('dots');
+  let current = 0;
+  let timer;
+
+  // Build dots
+  slides.forEach((_, i) => {
+    const d = document.createElement('button');
+    d.className = 'dot' + (i === 0 ? ' active' : '');
+    d.setAttribute('aria-label', `Bild ${i + 1}`);
+    d.addEventListener('click', () => goTo(i));
+    dotsContainer.appendChild(d);
+  });
+
+  function goTo(n) {
+    slides[current].classList.remove('active');
+    dotsContainer.children[current].classList.remove('active');
+    current = (n + slides.length) % slides.length;
+    slides[current].classList.add('active');
+    dotsContainer.children[current].classList.add('active');
+    clearInterval(timer);
+    timer = setInterval(next, 6000);
+  }
+
+  function next() { goTo(current + 1); }
+
+  timer = setInterval(next, 6000);
+
+  // Pause on hover
+  document.querySelector('.slides').addEventListener('mouseenter', () => clearInterval(timer));
+  document.querySelector('.slides').addEventListener('mouseleave', () => { timer = setInterval(next, 6000); });
+
+  // Swipe support
+  let touchX = null;
+  document.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; });
+  document.addEventListener('touchend', e => {
+    if (touchX === null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    if (Math.abs(dx) > 40) goTo(current + (dx < 0 ? 1 : -1));
+    touchX = null;
+  });
+</script>
+</body>
+</html>
