@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bente Sommer — Illustration</title>
+  <meta name="description" content="Bente Sommer — Illustratorin. Portfolio mit handgezeichneten Illustrationen und Projekten.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --cream:   #faf8f5;
+      --warm:    #f2ede6;
+      --ink:     #1c1a18;
+      --ink-mid: #4a4540;
+      --ink-lt:  #8a837a;
+      --coral:   #c8553d;
+      --coral-lt:#e8896d;
+      --sage:    #7a9e87;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    /* ── NAV ─────────────────────────────────────── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.4rem 5%;
+      background: rgba(250, 248, 245, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(28,26,24,0.06);
+      transition: box-shadow 0.3s;
+    }
+    nav.scrolled { box-shadow: 0 2px 20px rgba(28,26,24,0.06); }
+
+    .nav-logo {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.25rem;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      color: var(--ink);
+      text-decoration: none;
+    }
+    .nav-logo em { font-style: italic; color: var(--coral); }
+
+    .nav-links {
+      display: flex;
+      gap: 2.5rem;
+      list-style: none;
+    }
+    .nav-links a {
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-mid);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--coral); }
+
+    .nav-burger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      padding: 4px;
+    }
+    .nav-burger span {
+      display: block;
+      width: 24px;
+      height: 1.5px;
+      background: var(--ink);
+      transition: 0.3s;
+    }
+
+    /* ── HERO ────────────────────────────────────── */
+    #home {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      align-items: center;
+      padding: 6rem 5% 4rem;
+      gap: 4rem;
+    }
+
+    .hero-text { }
+    .hero-label {
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--coral);
+      margin-bottom: 1.2rem;
+    }
+    .hero-name {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(3.5rem, 7vw, 6.5rem);
+      font-weight: 300;
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+    }
+    .hero-name em {
+      font-style: italic;
+      color: var(--coral);
+    }
+    .hero-sub {
+      margin-top: 1.8rem;
+      font-size: 1rem;
+      color: var(--ink-mid);
+      max-width: 38ch;
+      line-height: 1.8;
+    }
+    .hero-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 2.4rem;
+      padding: 0.9rem 2rem;
+      background: var(--coral);
+      color: #fff;
+      text-decoration: none;
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: background 0.25s, transform 0.2s;
+    }
+    .hero-cta:hover { background: var(--coral-lt); transform: translateY(-2px); }
+    .hero-cta svg { width: 14px; height: 14px; }
+
+    .hero-visual {
+      position: relative;
+      height: min(70vh, 640px);
+    }
+    .hero-frame {
+      position: absolute;
+      inset: 0;
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    /* decorative layered frames */
+    .hero-frame::before {
+      content: '';
+      position: absolute;
+      inset: -12px -12px auto auto;
+      width: 180px;
+      height: 180px;
+      border: 1.5px solid var(--coral);
+      opacity: 0.4;
+      border-radius: 2px;
+      z-index: 2;
+    }
+    .hero-frame::after {
+      content: '';
+      position: absolute;
+      left: -16px;
+      bottom: -16px;
+      width: 120px;
+      height: 120px;
+      background: var(--warm);
+      border: 1.5px solid rgba(28,26,24,0.12);
+      z-index: 0;
+      border-radius: 2px;
+    }
+    .hero-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-placeholder {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #e8e0d5 0%, #d4c9bc 50%, #c5b8a8 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1rem;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-placeholder .ph-icon {
+      width: 64px;
+      height: 64px;
+      opacity: 0.35;
+    }
+    .hero-placeholder p {
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--ink-mid);
+      opacity: 0.6;
+    }
+
+    /* ── SECTION BASICS ──────────────────────────── */
+    section { padding: 7rem 5%; }
+    .section-label {
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--coral);
+      margin-bottom: 0.8rem;
+    }
+    .section-heading {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(2.2rem, 4vw, 3.5rem);
+      font-weight: 300;
+      line-height: 1.15;
+    }
+    .section-heading em { font-style: italic; }
+
+    /* ── PORTFOLIO ───────────────────────────────── */
+    #portfolio { background: var(--warm); }
+    .portfolio-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      margin-bottom: 3.5rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .portfolio-intro {
+      max-width: 44ch;
+      color: var(--ink-mid);
+      font-size: 0.95rem;
+      line-height: 1.8;
+      margin-top: 1rem;
+    }
+
+    .portfolio-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.2rem;
+    }
+
+    .portfolio-item {
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .portfolio-item:first-child {
+      grid-row: span 2;
+    }
+    .portfolio-item:nth-child(4) {
+      grid-column: span 2;
+    }
+
+    .portfolio-img {
+      width: 100%;
+      height: 100%;
+      min-height: 260px;
+      object-fit: cover;
+      display: block;
+      transition: transform 0.5s ease;
+    }
+    .portfolio-item:hover .portfolio-img { transform: scale(1.04); }
+
+    .portfolio-ph {
+      width: 100%;
+      min-height: 260px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 0.8rem;
+      transition: transform 0.5s ease;
+    }
+    .portfolio-item:first-child .portfolio-ph { min-height: 540px; }
+    .portfolio-item:nth-child(4) .portfolio-ph { min-height: 260px; }
+    .portfolio-item:hover .portfolio-ph { transform: scale(1.04); }
+
+    .ph-1 { background: linear-gradient(145deg, #d4c4b0, #b8a892); }
+    .ph-2 { background: linear-gradient(145deg, #c5d4c0, #a8c0a2); }
+    .ph-3 { background: linear-gradient(145deg, #d4b8a8, #c0968a); }
+    .ph-4 { background: linear-gradient(160deg, #b8c8d4, #8aacb8, #a0c0c8); }
+    .ph-5 { background: linear-gradient(145deg, #d4c8b0, #c0b498); }
+    .ph-6 { background: linear-gradient(145deg, #c8b4d4, #b0a0c0); }
+
+    .portfolio-ph .ph-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: rgba(28,26,24,0.45);
+    }
+
+    .portfolio-overlay {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(28,26,24,0.65) 0%, transparent 55%);
+      opacity: 0;
+      transition: opacity 0.35s;
+      display: flex;
+      align-items: flex-end;
+      padding: 1.4rem;
+    }
+    .portfolio-item:hover .portfolio-overlay { opacity: 1; }
+    .portfolio-overlay-text {
+      color: #fff;
+    }
+    .portfolio-overlay-text h3 {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: 1.3rem;
+      font-weight: 400;
+    }
+    .portfolio-overlay-text span {
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      opacity: 0.75;
+      text-transform: uppercase;
+    }
+
+    /* ── ABOUT ───────────────────────────────────── */
+    #about {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6rem;
+      align-items: center;
+    }
+
+    .about-visual {
+      position: relative;
+    }
+    .about-img-wrap {
+      position: relative;
+      aspect-ratio: 3/4;
+      max-width: 420px;
+    }
+    .about-img-wrap::before {
+      content: '';
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      right: -20px;
+      bottom: -20px;
+      border: 1.5px solid rgba(200, 85, 61, 0.25);
+      border-radius: 2px;
+    }
+    .about-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      position: relative;
+      z-index: 1;
+      border-radius: 2px;
+    }
+    .about-ph {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #d4c4b0 0%, #b8a892 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1rem;
+      position: relative;
+      z-index: 1;
+      border-radius: 2px;
+    }
+
+    .about-content { }
+    .about-body {
+      color: var(--ink-mid);
+      font-size: 0.98rem;
+      line-height: 1.9;
+      margin-top: 1.5rem;
+    }
+    .about-body p + p { margin-top: 1.2rem; }
+
+    .about-details {
+      margin-top: 2.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+    }
+    .about-detail {
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      font-size: 0.88rem;
+    }
+    .about-detail-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--ink-lt);
+      min-width: 90px;
+    }
+    .about-detail a {
+      color: var(--coral);
+      text-decoration: none;
+    }
+    .about-detail a:hover { text-decoration: underline; }
+
+    /* ── CONTACT ─────────────────────────────────── */
+    #contact {
+      background: var(--ink);
+      color: var(--cream);
+      text-align: center;
+    }
+    #contact .section-label { color: var(--coral-lt); }
+    #contact .section-heading { color: var(--cream); }
+    .contact-sub {
+      max-width: 48ch;
+      margin: 1.5rem auto 0;
+      color: rgba(250,248,245,0.6);
+      font-size: 0.98rem;
+      line-height: 1.8;
+    }
+
+    .contact-actions {
+      display: flex;
+      justify-content: center;
+      gap: 1.2rem;
+      margin-top: 3rem;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 1rem 2.4rem;
+      background: var(--coral);
+      color: #fff;
+      text-decoration: none;
+      font-size: 0.8rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: background 0.25s, transform 0.2s;
+    }
+    .btn-primary:hover { background: var(--coral-lt); transform: translateY(-2px); }
+    .btn-outline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 1rem 2.4rem;
+      border: 1px solid rgba(250,248,245,0.3);
+      color: rgba(250,248,245,0.85);
+      text-decoration: none;
+      font-size: 0.8rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      transition: border-color 0.25s, color 0.25s, transform 0.2s;
+    }
+    .btn-outline:hover {
+      border-color: var(--coral-lt);
+      color: var(--coral-lt);
+      transform: translateY(-2px);
+    }
+
+    .contact-divider {
+      width: 40px;
+      height: 1px;
+      background: rgba(250,248,245,0.15);
+      margin: 3.5rem auto;
+    }
+    .contact-email-display {
+      font-family: 'Cormorant Garamond', serif;
+      font-size: clamp(1.6rem, 3vw, 2.4rem);
+      font-weight: 300;
+      letter-spacing: 0.04em;
+    }
+    .contact-email-display a {
+      color: var(--cream);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(250,248,245,0.3);
+      padding-bottom: 2px;
+      transition: border-color 0.2s;
+    }
+    .contact-email-display a:hover { border-color: var(--coral-lt); }
+
+    /* ── FOOTER ──────────────────────────────────── */
+    footer {
+      background: #111;
+      color: rgba(250,248,245,0.35);
+      text-align: center;
+      padding: 2rem 5%;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    footer a {
+      color: rgba(250,248,245,0.35);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    footer a:hover { color: var(--coral-lt); }
+
+    /* ── SCROLL REVEAL ───────────────────────────── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(28px);
+      transition: opacity 0.7s ease, transform 0.7s ease;
+    }
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── MOBILE ──────────────────────────────────── */
+    @media (max-width: 900px) {
+      #home {
+        grid-template-columns: 1fr;
+        min-height: auto;
+        padding-top: 7rem;
+      }
+      .hero-visual {
+        height: min(55vw, 420px);
+        order: -1;
+      }
+
+      .portfolio-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+      .portfolio-item:first-child { grid-row: span 1; }
+      .portfolio-item:nth-child(4) { grid-column: span 1; }
+      .portfolio-item:first-child .portfolio-ph { min-height: 260px; }
+
+      #about {
+        grid-template-columns: 1fr;
+        gap: 3rem;
+      }
+      .about-img-wrap { max-width: 100%; aspect-ratio: 4/3; }
+    }
+
+    @media (max-width: 640px) {
+      nav { padding: 1.2rem 5%; }
+      .nav-links { display: none; }
+      .nav-links.open {
+        display: flex;
+        flex-direction: column;
+        position: fixed;
+        inset: 0;
+        background: var(--cream);
+        align-items: center;
+        justify-content: center;
+        gap: 2.5rem;
+        z-index: 99;
+      }
+      .nav-links.open a { font-size: 1.1rem; letter-spacing: 0.15em; }
+      .nav-burger { display: flex; position: relative; z-index: 101; }
+
+      .portfolio-grid { grid-template-columns: 1fr; }
+      .portfolio-item:nth-child(4) { grid-column: span 1; }
+
+      section { padding: 5rem 5%; }
+
+      footer { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav id="nav">
+  <a href="#home" class="nav-logo">Bente <em>Sommer</em></a>
+  <ul class="nav-links" id="navLinks">
+    <li><a href="#home" onclick="closeMenu()">Home</a></li>
+    <li><a href="#portfolio" onclick="closeMenu()">Arbeiten</a></li>
+    <li><a href="#about" onclick="closeMenu()">Über mich</a></li>
+    <li><a href="#contact" onclick="closeMenu()">Kontakt</a></li>
+  </ul>
+  <button class="nav-burger" id="burger" aria-label="Menü öffnen" onclick="toggleMenu()">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- HERO -->
+<section id="home">
+  <div class="hero-text">
+    <p class="hero-label">Illustration · Freie Künstlerin</p>
+    <h1 class="hero-name">Bente<br><em>Sommer</em></h1>
+    <p class="hero-sub">Handgezeichnete Illustrationen mit Seele — für Bücher, Magazine, Editorials und individuelle Projekte.</p>
+    <a href="#portfolio" class="hero-cta">
+      Arbeiten ansehen
+      <svg viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M1 7h12M7 1l6 6-6 6"/>
+      </svg>
+    </a>
+  </div>
+  <div class="hero-visual">
+    <div class="hero-frame">
+      <!-- Ersetze den Div-Block durch: <img src="dein-bild.jpg" alt="Bente Sommer Illustration" class="hero-img"> -->
+      <div class="hero-placeholder">
+        <svg class="ph-icon" viewBox="0 0 64 64" fill="none" stroke="#4a4540" stroke-width="1.5">
+          <rect x="8" y="8" width="48" height="48" rx="2"/>
+          <circle cx="22" cy="24" r="6"/>
+          <path d="M8 44l14-14 10 10 8-10 16 14"/>
+        </svg>
+        <p>Hauptbild einfügen</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PORTFOLIO -->
+<section id="portfolio">
+  <div class="portfolio-header reveal">
+    <div>
+      <p class="section-label">Portfolio</p>
+      <h2 class="section-heading">Ausgewählte<br><em>Arbeiten</em></h2>
+      <p class="portfolio-intro">Eine Auswahl meiner Illustrationen — von Buchprojekten über Editorials bis hin zu freien Arbeiten.</p>
+    </div>
+    <a href="https://www.instagram.com/bente_sommer/" target="_blank" rel="noopener" style="font-size:0.75rem;letter-spacing:0.12em;text-transform:uppercase;color:var(--coral);text-decoration:none;white-space:nowrap;">
+      → Instagram ansehen
+    </a>
+  </div>
+
+  <div class="portfolio-grid">
+    <!-- Item 1 (groß, spans 2 rows) -->
+    <div class="portfolio-item reveal" style="transition-delay:0.05s">
+      <!-- <img src="./img/work-1.jpg" alt="Projekt 1" class="portfolio-img"> -->
+      <div class="portfolio-ph ph-1">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="rgba(28,26,24,0.35)" stroke-width="1.2">
+          <rect x="3" y="3" width="26" height="26" rx="1"/>
+          <circle cx="11" cy="11" r="3"/>
+          <path d="M3 21l8-8 6 6 4-5 8 8"/>
+        </svg>
+        <span class="ph-label">Bild 1</span>
+      </div>
+      <div class="portfolio-overlay">
+        <div class="portfolio-overlay-text">
+          <h3>Projekt 1</h3>
+          <span>Illustration · 2024</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Item 2 -->
+    <div class="portfolio-item reveal" style="transition-delay:0.1s">
+      <div class="portfolio-ph ph-2">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="rgba(28,26,24,0.35)" stroke-width="1.2">
+          <rect x="3" y="3" width="26" height="26" rx="1"/>
+          <circle cx="11" cy="11" r="3"/>
+          <path d="M3 21l8-8 6 6 4-5 8 8"/>
+        </svg>
+        <span class="ph-label">Bild 2</span>
+      </div>
+      <div class="portfolio-overlay">
+        <div class="portfolio-overlay-text">
+          <h3>Projekt 2</h3>
+          <span>Illustration · 2024</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Item 3 -->
+    <div class="portfolio-item reveal" style="transition-delay:0.15s">
+      <div class="portfolio-ph ph-3">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="rgba(28,26,24,0.35)" stroke-width="1.2">
+          <rect x="3" y="3" width="26" height="26" rx="1"/>
+          <circle cx="11" cy="11" r="3"/>
+          <path d="M3 21l8-8 6 6 4-5 8 8"/>
+        </svg>
+        <span class="ph-label">Bild 3</span>
+      </div>
+      <div class="portfolio-overlay">
+        <div class="portfolio-overlay-text">
+          <h3>Projekt 3</h3>
+          <span>Illustration · 2023</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Item 4 (spans 2 cols) -->
+    <div class="portfolio-item reveal" style="transition-delay:0.2s">
+      <div class="portfolio-ph ph-4">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="rgba(28,26,24,0.35)" stroke-width="1.2">
+          <rect x="3" y="3" width="26" height="26" rx="1"/>
+          <circle cx="11" cy="11" r="3"/>
+          <path d="M3 21l8-8 6 6 4-5 8 8"/>
+        </svg>
+        <span class="ph-label">Bild 4</span>
+      </div>
+      <div class="portfolio-overlay">
+        <div class="portfolio-overlay-text">
+          <h3>Projekt 4</h3>
+          <span>Editorial · 2023</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Item 5 -->
+    <div class="portfolio-item reveal" style="transition-delay:0.25s">
+      <div class="portfolio-ph ph-5">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="rgba(28,26,24,0.35)" stroke-width="1.2">
+          <rect x="3" y="3" width="26" height="26" rx="1"/>
+          <circle cx="11" cy="11" r="3"/>
+          <path d="M3 21l8-8 6 6 4-5 8 8"/>
+        </svg>
+        <span class="ph-label">Bild 5</span>
+      </div>
+      <div class="portfolio-overlay">
+        <div class="portfolio-overlay-text">
+          <h3>Projekt 5</h3>
+          <span>Illustration · 2023</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Item 6 -->
+    <div class="portfolio-item reveal" style="transition-delay:0.3s">
+      <div class="portfolio-ph ph-6">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="rgba(28,26,24,0.35)" stroke-width="1.2">
+          <rect x="3" y="3" width="26" height="26" rx="1"/>
+          <circle cx="11" cy="11" r="3"/>
+          <path d="M3 21l8-8 6 6 4-5 8 8"/>
+        </svg>
+        <span class="ph-label">Bild 6</span>
+      </div>
+      <div class="portfolio-overlay">
+        <div class="portfolio-overlay-text">
+          <h3>Projekt 6</h3>
+          <span>Freie Arbeit · 2022</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section id="about">
+  <div class="about-visual reveal">
+    <div class="about-img-wrap">
+      <!-- <img src="./img/portrait.jpg" alt="Bente Sommer" class="about-img"> -->
+      <div class="about-ph">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="rgba(28,26,24,0.35)" stroke-width="1.2">
+          <circle cx="24" cy="18" r="8"/>
+          <path d="M6 42c0-10 8-16 18-16s18 6 18 16"/>
+        </svg>
+        <span style="font-size:0.65rem;letter-spacing:0.15em;text-transform:uppercase;color:rgba(28,26,24,0.4);">Portrait einfügen</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="about-content reveal" style="transition-delay:0.15s">
+    <p class="section-label">Über mich</p>
+    <h2 class="section-heading">Illustration<br><em>mit Haltung</em></h2>
+    <div class="about-body">
+      <p>Ich bin Bente Sommer — freie Illustratorin mit Leidenschaft für handgezeichnete Bilder, die Geschichten erzählen. Meine Arbeit entsteht an der Schnittstelle von Zeichnung, Farbe und Gefühl.</p>
+      <p>Von der ersten Skizze bis zum fertigen Bild begleite ich Projekte mit Sorgfalt und Neugier. Ob Buchillustration, Editorial oder freie Arbeit — jedes Projekt bekommt seine ganz eigene visuelle Sprache.</p>
+      <!-- Hier kannst Du Deinen persönlichen Über-mich-Text einfügen -->
+    </div>
+
+    <div class="about-details">
+      <div class="about-detail">
+        <span class="about-detail-label">Fach</span>
+        <span>Illustration</span>
+      </div>
+      <div class="about-detail">
+        <span class="about-detail-label">E-Mail</span>
+        <a href="mailto:hello@bentesommer.de">hello@bentesommer.de</a>
+      </div>
+      <div class="about-detail">
+        <span class="about-detail-label">Instagram</span>
+        <a href="https://www.instagram.com/bente_sommer/" target="_blank" rel="noopener">@bente_sommer</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACT -->
+<section id="contact">
+  <div class="reveal">
+    <p class="section-label">Kontakt</p>
+    <h2 class="section-heading">Du hast ein Projekt?<br><em>Lass uns reden.</em></h2>
+    <p class="contact-sub">Du hast ein interessantes Projekt und möchtest mit mir zusammenarbeiten? Ich freue mich auf Deine Nachricht.</p>
+  </div>
+
+  <div class="contact-actions reveal" style="transition-delay:0.15s">
+    <a href="mailto:hello@bentesommer.de" class="btn-primary">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="3" width="12" height="9" rx="1"/>
+        <path d="M1 4l6 5 6-5"/>
+      </svg>
+      Schreib mir
+    </a>
+    <a href="https://www.instagram.com/bente_sommer/" target="_blank" rel="noopener" class="btn-outline">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="1" y="1" width="12" height="12" rx="3"/>
+        <circle cx="7" cy="7" r="3"/>
+        <circle cx="10.5" cy="3.5" r="0.5" fill="currentColor"/>
+      </svg>
+      Instagram
+    </a>
+  </div>
+
+  <div class="contact-divider"></div>
+  <div class="contact-email-display reveal">
+    <a href="mailto:hello@bentesommer.de">hello@bentesommer.de</a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <span>© 2024 Bente Sommer — Alle Rechte vorbehalten.</span>
+  <span>
+    <a href="#home">Impressum</a>
+    &nbsp;·&nbsp;
+    <a href="https://www.instagram.com/bente_sommer/" target="_blank" rel="noopener">Instagram</a>
+  </span>
+</footer>
+
+<script>
+  // Nav scroll shadow
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    nav.classList.toggle('scrolled', window.scrollY > 20);
+  });
+
+  // Mobile menu
+  function toggleMenu() {
+    const links = document.getElementById('navLinks');
+    const burger = document.getElementById('burger');
+    links.classList.toggle('open');
+    burger.setAttribute('aria-label', links.classList.contains('open') ? 'Menü schließen' : 'Menü öffnen');
+    document.body.style.overflow = links.classList.contains('open') ? 'hidden' : '';
+  }
+  function closeMenu() {
+    document.getElementById('navLinks').classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  // Scroll reveal
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.12 });
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
