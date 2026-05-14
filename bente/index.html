@@ -545,20 +545,24 @@
 
     @media (max-width: 640px) {
       nav { padding: 1.2rem 5%; }
-      .nav-links { display: none; }
-      .nav-links.open {
-        display: flex;
-        flex-direction: column;
-        position: fixed;
-        inset: 0;
+      .nav-links {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 5%;
         background: var(--cream);
-        align-items: center;
-        justify-content: center;
-        gap: 2.5rem;
+        border: 1px solid rgba(28,26,24,0.1);
+        box-shadow: 0 8px 24px rgba(28,26,24,0.1);
+        padding: 1.2rem 2rem;
+        flex-direction: column;
+        gap: 1.4rem;
+        min-width: 160px;
         z-index: 200;
+        border-radius: 2px;
       }
-      .nav-links.open a { font-size: 1.1rem; letter-spacing: 0.15em; }
-      .nav-burger { display: flex; position: relative; z-index: 201; }
+      .nav-links.open { display: flex; }
+      .nav-links.open a { font-size: 0.85rem; letter-spacing: 0.14em; }
+      .nav-burger { display: flex; z-index: 201; }
 
       .portfolio-grid { grid-template-columns: 1fr; }
       .portfolio-item:nth-child(4) { grid-column: span 1; }
