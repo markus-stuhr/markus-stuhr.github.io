@@ -252,11 +252,12 @@
     .hero-doodle-3 { bottom: 15%; right: 5%; }
 
     /* ── SECTIONS ── */
-    section { padding: 6rem 2rem; }
+    section { padding: 6rem 0; }
 
     .section-inner {
       max-width: 1100px;
       margin: 0 auto;
+      padding: 0 2rem;
     }
 
     .section-label {
@@ -602,7 +603,7 @@
     .location-info {
       position: absolute;
       top: 2rem;
-      right: 2.5rem;
+      right: max(2rem, calc((100% - 1100px) / 2 + 2rem));
       width: 300px;
       z-index: 1;
       background: var(--ink);
@@ -728,7 +729,8 @@
       .hero-actions .btn { text-align: center; }
 
       /* Sections */
-      section { padding: 3.5rem 1.25rem; }
+      section { padding: 3.5rem 0; }
+      .section-inner { padding: 0 1.25rem; }
       .section-title { font-size: clamp(1.6rem, 7vw, 2.5rem); }
 
       /* About */
