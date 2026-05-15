@@ -884,7 +884,7 @@
     <div class="section-inner">
       <span class="section-label">Standort</span>
       <h2 class="section-title reveal">Wie ihr uns findet</h2>
-      <div class="location-grid reveal">
+      <div class="location-grid" id="location-grid">
         <div id="map"></div>
         <div class="location-info">
           <div>
@@ -1018,45 +1018,80 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WPaU=" crossorigin=""></script>
   <script>
     const LAT = 52.5090, LNG = 13.4468;
+    let mapInstance = null;
 
-    const map = L.map('map', {
-      center: [LAT, LNG],
-      zoom: 15,
-      zoomControl: true,
-      scrollWheelZoom: false
-    });
+    function initMap() {
+      if (mapInstance) return;
+      mapInstance = L.map('map', {
+        center: [LAT, LNG],
+        zoom: 15,
+        zoomControl: true,
+        scrollWheelZoom: false
+      });
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      maxZoom: 19
-    }).addTo(map);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        maxZoom: 19
+      }).addTo(mapInstance);
 
-    // Eigener Marker im Schuldesign
-    const markerHtml = `
-      <div style="
-        width: 40px; height: 40px;
-        background: #f7c948;
-        border: 3px solid #1a1818;
-        border-radius: 50% 50% 50% 0;
-        transform: rotate(-45deg);
-        box-shadow: 3px 3px 0 #1a1818;
-      "></div>
-    `;
-    const icon = L.divIcon({
-      html: markerHtml,
-      className: '',
-      iconSize: [40, 40],
-      iconAnchor: [20, 40],
-      popupAnchor: [0, -44]
-    });
+      const markerHtml = `
+        <div style="
+          width: 40px; height: 40px;
+          background: #f7c948;
+          border: 3px solid #1a1818;
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg);
+          box-shadow: 3px 3px 0 #1a1818;
+        "></div>
+      `;
+      const icon = L.divIcon({
+        html: markerHtml,
+        className: '',
+        iconSize: [40, 40],
+        iconAnchor: [20, 40],
+        popupAnchor: [0, -44]
+      });
 
-    L.marker([LAT, LNG], { icon })
-      .addTo(map)
-      .bindPopup(`
-        <strong style="font-family:sans-serif;font-size:0.9rem">Freie Kunstschule Berlin</strong><br>
-        <span style="font-family:sans-serif;font-size:0.82rem;color:#555">Wühlischstraße 10, 10245 Berlin</span>
-      `)
-      .openPopup();
+      L.marker([LAT, LNG], { icon })
+        .addTo(mapInstance)
+        .bindPopup(`
+          <strong style="font-family:sans-serif;font-size:0.9rem">Freie Kunstschule Berlin</strong><br>
+          <span style="font-family:sans-serif;font-size:0.82rem;color:#555">Wühlischstraße 10, 10245 Berlin</span>
+        `)
+        .openPopup();
+
+      // Sicherstellen dass die Tiles nach dem Einblenden korrekt laden
+      setTimeout(() => mapInstance.invalidateSize(), 100);
+    }
+
+    // Map erst initialisieren wenn der Container sichtbar ist
+    const mapObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          initMap();
+          mapObserver.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    mapObserver.observe(document.getElementById('map'));
+
+    // Fade-in für den Grid-Container
+    const gridEl = document.getElementById('location-grid');
+    gridEl.style.opacity = '0';
+    gridEl.style.transform = 'translateY(30px)';
+    gridEl.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+    const gridObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          gridEl.style.opacity = '1';
+          gridEl.style.transform = 'none';
+          setTimeout(() => mapInstance && mapInstance.invalidateSize(), 650);
+          gridObserver.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1 });
+    gridObserver.observe(gridEl);
   </script>
 
 </body>
