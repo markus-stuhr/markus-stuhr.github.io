@@ -38,15 +38,22 @@
       position: fixed;
       top: 0; left: 0; right: 0;
       height: 60px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 2rem;
       background: rgba(253, 252, 248, 0.92);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       z-index: 100;
       border-bottom: 2px solid var(--ink);
+    }
+
+    .nav-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
     }
 
     .nav-logo {
@@ -627,17 +634,19 @@
 
   <!-- NAV -->
   <nav>
-    <a class="nav-logo" href="#top">
-      <span class="dot"></span>
-      Freie Kunstschule
-    </a>
-    <ul class="nav-links" id="navLinks">
-      <li><a href="#about">Über uns</a></li>
-      <li><a href="#courses">Kurse</a></li>
-      <li><a href="#contact">Anmeldung</a></li>
-    </ul>
-    <div class="nav-burger" id="burger" aria-label="Menü öffnen" role="button" tabindex="0">
-      <span></span><span></span><span></span>
+    <div class="nav-inner">
+      <a class="nav-logo" href="#top">
+        <span class="dot"></span>
+        Freie Kunstschule
+      </a>
+      <ul class="nav-links" id="navLinks">
+        <li><a href="#about">Über uns</a></li>
+        <li><a href="#courses">Kurse</a></li>
+        <li><a href="#contact">Anmeldung</a></li>
+      </ul>
+      <div class="nav-burger" id="burger" aria-label="Menü öffnen" role="button" tabindex="0">
+        <span></span><span></span><span></span>
+      </div>
     </div>
   </nav>
 
