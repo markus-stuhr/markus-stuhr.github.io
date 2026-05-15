@@ -1079,17 +1079,17 @@
       // Custom Marker im Schuldesign
       const icon = L.divIcon({
         html: `<div style="
-          width: 36px; height: 36px;
+          width: 72px; height: 72px;
           background: #f7c948;
-          border: 3px solid #1a1818;
+          border: 5px solid #1a1818;
           border-radius: 50% 50% 50% 0;
           transform: rotate(-45deg);
-          box-shadow: 2px 2px 0 #1a1818;
+          box-shadow: 3px 3px 0 #1a1818;
         "></div>`,
         className: '',
-        iconSize: [36, 36],
-        iconAnchor: [18, 36],
-        popupAnchor: [0, -40]
+        iconSize: [72, 72],
+        iconAnchor: [36, 72],
+        popupAnchor: [0, -80]
       });
 
       L.marker([LAT, LNG], { icon }).addTo(mapInstance);
