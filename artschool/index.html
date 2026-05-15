@@ -740,13 +740,24 @@
       .about-grid, .contact-grid { grid-template-columns: 1fr; gap: 2rem; }
 
       /* Map */
-      .location { height: auto; display: flex; flex-direction: column; background: var(--yellow); padding-bottom: 2rem; }
+      .location { height: auto; display: flex; flex-direction: column; background: var(--cream); }
       #map { position: relative; inset: auto; height: 280px; flex-shrink: 0; }
       .location-info {
         position: relative; top: auto; right: auto; width: 100%; transform: none;
-        border-radius: 0; border: none; border-top: 2px solid rgba(255,255,255,0.1);
-        box-shadow: none; padding: 1.5rem;
+        background: var(--yellow); border-radius: 0; border: none;
+        border-top: 2px solid var(--ink); box-shadow: none; padding: 1.5rem;
+        color: var(--ink);
       }
+      .location-info .section-label { color: var(--ink); opacity: 0.6; }
+      .location-info h3 { color: var(--ink); }
+      .location-address { color: var(--ink) !important; }
+      .location-detail { color: var(--ink) !important; }
+      .location-map-btn {
+        border-color: rgba(0,0,0,0.3);
+        color: var(--ink);
+        background: rgba(0,0,0,0.07);
+      }
+      .location-map-btn:hover { background: var(--ink); color: var(--yellow); border-color: var(--ink); }
 
       /* Courses */
       .courses-grid { grid-template-columns: 1fr; }
