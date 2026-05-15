@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eigene Comics zeichnen — Freie Kunstschule Berlin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;0,9..144,900;1,9..144,400;1,9..144,700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #e8553d;
+      --accent-light: #fdecea;
+      --accent-dark: #b83a25;
+      --ink: #1a1818;
+      --ink-soft: #3d3b38;
+      --cream: #fdfcf8;
+      --warm: #f5f0e8;
+      --white: #ffffff;
+      --coral: #e8553d;
+      --yellow: #f7c948;
+    }
+
+    html { scroll-behavior: smooth; overflow-x: hidden; }
+    body { font-family: 'Nunito', sans-serif; background: var(--cream); color: var(--ink); overflow-x: hidden; -webkit-text-size-adjust: 100%; }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; height: 60px;
+      background: rgba(253,252,248,0.92); backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px); z-index: 100;
+      border-bottom: 2px solid var(--ink);
+    }
+    .nav-inner {
+      max-width: 1100px; margin: 0 auto; padding: 0 2rem;
+      height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      font-family: 'Fraunces', serif; font-weight: 900; font-size: 1.1rem;
+      color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.5rem;
+    }
+    .nav-logo .dot { width: 10px; height: 10px; background: var(--yellow); border-radius: 50%; border: 2px solid var(--ink); }
+    .nav-back {
+      font-size: 0.82rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+      color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.4rem;
+      transition: color 0.2s;
+    }
+    .nav-back:hover { color: var(--accent); }
+
+    .hero {
+      padding: 100px 2rem 4rem;
+      background: var(--accent-light);
+      border-bottom: 2.5px solid var(--ink);
+      position: relative; overflow: hidden;
+    }
+    .hero::after {
+      content: '';
+      position: absolute; bottom: -60px; right: -60px;
+      width: 260px; height: 260px;
+      background: var(--accent); border-radius: 50%; opacity: 0.2; z-index: 0;
+    }
+    .hero-inner { max-width: 1100px; margin: 0 auto; position: relative; z-index: 1; }
+    .hero-tag {
+      display: inline-block; background: var(--accent); color: var(--white);
+      font-size: 0.75rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 0.35rem 1rem; border: 2px solid var(--ink); border-radius: 100px; margin-bottom: 1.2rem;
+    }
+    .hero h1 {
+      font-family: 'Fraunces', serif; font-weight: 900;
+      font-size: clamp(2.5rem, 6vw, 5rem); line-height: 1.05;
+      letter-spacing: -0.02em; margin-bottom: 1rem;
+    }
+    .hero-sub {
+      font-family: 'Fraunces', serif; font-style: italic; font-weight: 400;
+      font-size: clamp(1rem, 2.5vw, 1.4rem); color: var(--ink-soft); margin-bottom: 2rem; max-width: 600px;
+    }
+    .hero-pills { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .pill {
+      background: var(--white); border: 2px solid var(--ink); border-radius: 100px;
+      padding: 0.45rem 1rem; font-size: 0.82rem; font-weight: 700;
+      display: flex; align-items: center; gap: 0.4rem;
+    }
+
+    .page-body { max-width: 1100px; margin: 0 auto; padding: 4rem 2rem; display: grid; grid-template-columns: 1fr 340px; gap: 4rem; align-items: start; }
+
+    .content-block { margin-bottom: 3rem; }
+    .content-label { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: var(--accent); margin-bottom: 0.75rem; }
+    .content-block h2 { font-family: 'Fraunces', serif; font-weight: 700; font-size: clamp(1.5rem, 3vw, 2rem); margin-bottom: 1rem; }
+    .content-block p { font-size: 1rem; color: var(--ink-soft); line-height: 1.8; margin-bottom: 1rem; }
+    .content-block ul { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
+    .content-block ul li { font-size: 0.95rem; color: var(--ink-soft); line-height: 1.6; display: flex; gap: 0.6rem; }
+    .content-block ul li::before { content: '→'; color: var(--accent-dark); font-weight: 800; flex-shrink: 0; }
+
+    .image-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1.5rem; }
+    .image-placeholder {
+      aspect-ratio: 4/3; background: var(--warm); border: 2px dashed #c8c0b4;
+      border-radius: 12px; display: flex; align-items: center; justify-content: center;
+      flex-direction: column; gap: 0.5rem; color: #a09890; font-size: 0.78rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .image-placeholder span { font-size: 1.8rem; }
+
+    .sidebar { display: flex; flex-direction: column; gap: 1.5rem; position: sticky; top: 80px; }
+    .sidebar-card { background: var(--white); border: 2.5px solid var(--ink); border-radius: 16px; overflow: hidden; }
+    .sidebar-card-header {
+      background: var(--accent); color: var(--white); padding: 1rem 1.25rem;
+      border-bottom: 2px solid var(--ink); font-family: 'Fraunces', serif; font-weight: 700; font-size: 1rem;
+    }
+    .sidebar-card-body { padding: 1.25rem; }
+    .instructor-avatar {
+      width: 64px; height: 64px; background: var(--warm); border: 2px solid var(--ink);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem; margin-bottom: 1rem;
+    }
+    .instructor-name { font-family: 'Fraunces', serif; font-weight: 700; font-size: 1.1rem; margin-bottom: 0.3rem; }
+    .instructor-bio { font-size: 0.88rem; color: var(--ink-soft); line-height: 1.65; }
+    .price-row { display: flex; justify-content: space-between; align-items: baseline; padding: 0.65rem 0; border-bottom: 1px solid #e8e4dc; }
+    .price-row:last-child { border-bottom: none; }
+    .price-label { font-size: 0.88rem; color: var(--ink-soft); }
+    .price-value { font-family: 'Fraunces', serif; font-weight: 700; font-size: 1rem; }
+    .btn-cta {
+      display: block; text-align: center; background: var(--ink); color: var(--cream);
+      font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
+      padding: 0.9rem 1.5rem; border-radius: 100px; border: 2.5px solid var(--ink);
+      text-decoration: none; transition: all 0.2s;
+    }
+    .btn-cta:hover { background: var(--accent); color: var(--white); border-color: var(--accent); transform: translateY(-2px); }
+
+    .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.55s ease, transform 0.55s ease; }
+    .reveal.visible { opacity: 1; transform: none; }
+
+    footer { background: var(--ink); color: rgba(253,252,248,0.4); border-top: 1px solid rgba(255,255,255,0.1); padding: 1.5rem 2rem; text-align: center; font-size: 0.82rem; }
+    footer a { color: rgba(253,252,248,0.5); text-decoration: none; }
+    footer a:hover { color: var(--cream); }
+
+    @media (max-width: 900px) {
+      .page-body { grid-template-columns: 1fr; gap: 2.5rem; }
+      .sidebar { position: static; }
+      .image-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 600px) {
+      .hero { padding: 90px 1.25rem 3rem; }
+      .page-body { padding: 2.5rem 1.25rem; }
+      .image-grid { grid-template-columns: 1fr 1fr; }
+      .hero-pills { gap: 0.5rem; }
+      .pill { font-size: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <a class="nav-logo" href="/artschool/">
+        <span class="dot"></span>
+        Freie Kunstschule
+      </a>
+      <a class="nav-back" href="/artschool/">← Alle Kurse</a>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="hero-inner">
+      <span class="hero-tag">Comic-Kurs</span>
+      <h1>Eigene Comics<br>zeichnen</h1>
+      <p class="hero-sub">Figuren erfinden, Geschichten erzählen, Panels gestalten — vom Storyboard zum fertigen Strip.</p>
+      <div class="hero-pills">
+        <span class="pill">💬 Alter: 9–14 Jahre</span>
+        <span class="pill">📅 Mittwoch, 15–17 Uhr</span>
+        <span class="pill">👥 Max. 8 Kinder</span>
+        <span class="pill">📍 Berlin-Mitte</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="page-body">
+
+    <main>
+
+      <div class="content-block reveal">
+        <p class="content-label">Über den Kurs</p>
+        <h2>Was erwartet dein Kind?</h2>
+        <p>
+          Im Comic-Kurs dreht sich alles ums Geschichtenerzählen mit Bild und Text. Kinder von 9 bis 14 Jahren lernen, wie aus einer Idee ein echter Comic wird — von der ersten Skizze bis zum fertigen, eingefärbten Strip.
+        </p>
+        <p>
+          Wir arbeiten an eigenen Figuren, entwickeln Szenen und lernen, wie Panels eine Geschichte in Gang bringen. Dabei spielt es keine Rolle, ob jemand "gut zeichnen kann" — wichtiger ist die Idee dahinter und der Mut, sie umzusetzen.
+        </p>
+        <p>
+          Jedes Kind verlässt den Kurs mit mindestens einer vollständigen Comic-Seite — und dem Handwerkszeug, um einfach weiterzumachen.
+        </p>
+      </div>
+
+      <div class="content-block reveal">
+        <p class="content-label">Kursinhalte</p>
+        <h2>Was wird gelernt?</h2>
+        <ul>
+          <li>Eigene Figuren und Charaktere entwickeln</li>
+          <li>Storyboards und Panel-Aufteilung</li>
+          <li>Sprechblasen, Onomatopoeia und Comic-Typografie</li>
+          <li>Gesichtsausdrücke und Körpersprache</li>
+          <li>Einfärben mit Markern und digitalen Tools</li>
+          <li>Erzählrhythmus und Dramaturgie im Comic</li>
+        </ul>
+      </div>
+
+      <div class="content-block reveal">
+        <p class="content-label">Beispielarbeiten</p>
+        <h2>Was entsteht im Kurs?</h2>
+        <p>Hier zeigen wir bald fertige Comic-Seiten aus dem Kurs. Platzhalter werden durch echte Arbeiten ersetzt.</p>
+        <div class="image-grid">
+          <div class="image-placeholder"><span>📄</span>Comic folgt</div>
+          <div class="image-placeholder"><span>📄</span>Comic folgt</div>
+          <div class="image-placeholder"><span>📄</span>Comic folgt</div>
+          <div class="image-placeholder"><span>📄</span>Comic folgt</div>
+          <div class="image-placeholder"><span>📄</span>Comic folgt</div>
+          <div class="image-placeholder"><span>📄</span>Comic folgt</div>
+        </div>
+      </div>
+
+    </main>
+
+    <aside class="sidebar">
+
+      <div class="sidebar-card reveal">
+        <div class="sidebar-card-header">Kursleitung</div>
+        <div class="sidebar-card-body">
+          <div class="instructor-avatar">🧑‍🎨</div>
+          <p class="instructor-name">[Name der Kursleitung]</p>
+          <p class="instructor-bio">
+            Comic-Zeichner:in und Illustrator:in mit Leidenschaft für Storytelling. Arbeitet selbst an eigenen Comicprojekten und bringt Kindern bei, ihre Gedanken in Bilder und Panels zu übersetzen.
+          </p>
+        </div>
+      </div>
+
+      <div class="sidebar-card reveal">
+        <div class="sidebar-card-header">Preise & Infos</div>
+        <div class="sidebar-card-body">
+          <div class="price-row">
+            <span class="price-label">Monatsbeitrag</span>
+            <span class="price-value">90 €</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">Einheiten/Monat</span>
+            <span class="price-value">4 × 2 Std.</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">Materialien</span>
+            <span class="price-value">inklusive</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">Schnupperstunde</span>
+            <span class="price-value">kostenlos</span>
+          </div>
+          <div class="price-row">
+            <span class="price-label">Nächster Start</span>
+            <span class="price-value">[Datum]</span>
+          </div>
+        </div>
+      </div>
+
+      <a href="/artschool/#contact" class="btn-cta reveal">Jetzt anmelden →</a>
+
+    </aside>
+
+  </div>
+
+  <footer>
+    <p>© 2026 Freie Kunstschule Berlin · <a href="/artschool/">Kursübersicht</a> · <a href="/">markusstuhr.de</a></p>
+  </footer>
+
+  <script>
+    const observer = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
+    }, { threshold: 0.1 });
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+  </script>
+
+</body>
+</html>
