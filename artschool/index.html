@@ -581,6 +581,20 @@
       z-index: 0;
     }
 
+    .location-headline {
+      position: absolute;
+      bottom: 2rem;
+      left: 2.5rem;
+      z-index: 1;
+      pointer-events: none;
+    }
+    .location-headline .section-label { color: var(--yellow); text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+    .location-headline .section-title {
+      color: var(--ink);
+      text-shadow: 2px 3px 0 rgba(255,255,255,0.6), 0 1px 8px rgba(255,255,255,0.5);
+      line-height: 1.0;
+    }
+
     .location-info {
       position: absolute;
       top: 2rem;
@@ -895,9 +909,12 @@
   <!-- STANDORT -->
   <section class="location" id="location">
     <div id="map"></div>
+    <div class="location-headline">
+      <span class="section-label">Standort</span>
+      <h2 class="section-title">Wo ihr<br>uns findet</h2>
+    </div>
     <div class="location-info">
       <div>
-        <span class="section-label">Standort</span>
         <h3>Freie Kunstschule<br>Berlin</h3>
             <p class="location-address">
               Simplonstraße 25<br>
