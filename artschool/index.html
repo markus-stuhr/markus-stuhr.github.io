@@ -1079,22 +1079,30 @@
       }).addTo(mapInstance);
 
       // Custom Marker im Schuldesign
+      const mobile = window.innerWidth < 768;
+      const pinSize = mobile ? 36 : 72;
+      const pinBorder = mobile ? 3 : 5;
+      const pinShadow = mobile ? 2 : 3;
+
       const icon = L.divIcon({
         html: `<div style="
-          width: 72px; height: 72px;
+          width: ${pinSize}px; height: ${pinSize}px;
           background: #f7c948;
-          border: 5px solid #1a1818;
+          border: ${pinBorder}px solid #1a1818;
           border-radius: 50% 50% 50% 0;
           transform: rotate(-45deg);
-          box-shadow: 3px 3px 0 #1a1818;
+          box-shadow: ${pinShadow}px ${pinShadow}px 0 #1a1818;
         "></div>`,
         className: '',
-        iconSize: [72, 72],
-        iconAnchor: [36, 72],
-        popupAnchor: [0, -80]
+        iconSize: [pinSize, pinSize],
+        iconAnchor: [pinSize / 2, pinSize],
       });
 
       L.marker([LAT, LNG], { icon }).addTo(mapInstance);
+
+      if (mobile) {
+        mapInstance.panBy([-60, 0], { animate: false });
+      }
     }
 
     // Lazy init wenn Sektion ins Viewport kommt
