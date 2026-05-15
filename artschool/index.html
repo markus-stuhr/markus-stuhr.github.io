@@ -7,6 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;0,9..144,900;1,9..144,400;1,9..144,700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -883,13 +884,7 @@
       <span class="section-label">Standort</span>
       <h2 class="section-title reveal">Wie ihr uns findet</h2>
       <div class="location-grid" id="location-grid">
-        <iframe
-          id="map"
-          src="https://www.openstreetmap.org/export/embed.html?bbox=13.4408%2C52.5060%2C13.4528%2C52.5120&layer=mapnik&marker=52.5090%2C13.4468"
-          title="Standort Freie Kunstschule Berlin"
-          loading="lazy"
-          allowfullscreen
-        ></iframe>
+        <div id="map"></div>
         <div class="location-info">
           <div>
             <span class="section-label">Adresse</span>
@@ -1019,17 +1014,63 @@
     }
   </script>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
-    // Fade-in für den Karten-Container
+    const LAT = 52.5090, LNG = 13.4468;
+    let mapInstance = null;
+
+    function initMap() {
+      if (mapInstance) return;
+      mapInstance = L.map('map', {
+        center: [LAT, LNG],
+        zoom: 15,
+        zoomControl: true,
+        scrollWheelZoom: false,
+        attributionControl: true
+      });
+
+      // CartoDB Light Tiles — minimal & clean
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 19
+      }).addTo(mapInstance);
+
+      // Custom Marker im Schuldesign
+      const icon = L.divIcon({
+        html: `<div style="
+          width: 36px; height: 36px;
+          background: #f7c948;
+          border: 3px solid #1a1818;
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg);
+          box-shadow: 2px 2px 0 #1a1818;
+        "></div>`,
+        className: '',
+        iconSize: [36, 36],
+        iconAnchor: [18, 36],
+        popupAnchor: [0, -40]
+      });
+
+      L.marker([LAT, LNG], { icon })
+        .addTo(mapInstance)
+        .bindPopup(`<strong style="font-family:sans-serif;font-size:0.85rem">Freie Kunstschule Berlin</strong><br><span style="font-family:sans-serif;font-size:0.78rem;color:#666">Wühlischstraße 10, 10245 Berlin</span>`)
+        .openPopup();
+    }
+
+    // Lazy init + Fade-in wenn Container ins Viewport kommt
     const gridEl = document.getElementById('location-grid');
     gridEl.style.opacity = '0';
     gridEl.style.transform = 'translateY(30px)';
     gridEl.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+
     new IntersectionObserver((entries, obs) => {
       entries.forEach(e => {
         if (e.isIntersecting) {
+          initMap();
           gridEl.style.opacity = '1';
           gridEl.style.transform = 'none';
+          setTimeout(() => mapInstance && mapInstance.invalidateSize(), 650);
           obs.unobserve(e.target);
         }
       });
