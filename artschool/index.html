@@ -589,6 +589,10 @@
       pointer-events: none;
     }
     .location-headline .section-label { color: var(--coral); }
+    #map .leaflet-bottom.leaflet-left {
+      left: max(2rem, calc((100% - 1100px) / 2 + 2rem));
+      bottom: 2rem;
+    }
     .location-headline .section-title {
       color: var(--ink);
       text-shadow: 2px 3px 0 rgba(255,255,255,0.6), 0 1px 8px rgba(255,255,255,0.5);
@@ -1056,10 +1060,11 @@
       mapInstance = L.map('map', {
         center: [LAT, LNG],
         zoom: 15,
-        zoomControl: true,
+        zoomControl: false,
         scrollWheelZoom: false,
         attributionControl: true
       });
+      L.control.zoom({ position: 'bottomleft' }).addTo(mapInstance);
 
       // CartoDB Light Tiles — minimal & clean
       L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
