@@ -801,14 +801,6 @@
       <a class="nav-logo" href="#top">
         <img src="/artschool/img/logo_2.png" alt="onomato Zeichenclub" />
       </a>
-      <ul class="nav-links" id="navLinks">
-        <li><a href="#about">Über uns</a></li>
-        <li><a href="#courses">Kurse</a></li>
-        <li><a href="#contact">Anmeldung</a></li>
-      </ul>
-      <div class="nav-burger" id="burger" aria-label="Menü öffnen" role="button" tabindex="0">
-        <span></span><span></span><span></span>
-      </div>
     </div>
   </nav>
 
@@ -1041,24 +1033,7 @@
   </footer>
 
   <script>
-    // Mobile Nav
-    const burger = document.getElementById('burger');
-    const navLinks = document.getElementById('navLinks');
-    burger.addEventListener('click', () => {
-      navLinks.classList.toggle('open');
-    });
-    navLinks.querySelectorAll('a').forEach(a => {
-      a.addEventListener('click', () => navLinks.classList.remove('open'));
-    });
-
-    // Scroll Reveal
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(e => {
-        if (e.isIntersecting) {
-          e.target.classList.add('visible');
-          observer.unobserve(e.target);
-        }
-      });
+    // Mobile Nav      });
     }, { threshold: 0.1 });
 
     document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
