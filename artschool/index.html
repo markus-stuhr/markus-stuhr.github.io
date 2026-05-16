@@ -152,6 +152,17 @@
       width: 100%;
       position: relative;
       z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .hero-logo {
+      width: min(520px, 80%);
+      height: auto;
+      display: block;
+      margin-bottom: 1.5rem;
     }
 
     .hero-badge {
@@ -198,7 +209,7 @@
       color: var(--ink-soft);
       line-height: 1.7;
       max-width: 520px;
-      margin-bottom: 2.5rem;
+      margin: 0 auto 2.5rem;
     }
 
     .hero-actions {
@@ -822,12 +833,7 @@
     </div>
 
     <div class="hero-inner">
-      <div class="hero-badge">✏️ onomato Zeichenclub · Berlin</div>
-      <h1 class="hero-title">
-        Zeichnen.<br>
-        <em>Comics.</em><br>
-        Phantasie.
-      </h1>
+      <img class="hero-logo" src="/artschool/img/logo_2.png" alt="onomato Zeichenclub" />
       <p class="hero-subtitle">Kurse für Kinder & Jugendliche</p>
       <p class="hero-desc">
         Bei uns lernen Kinder und Jugendliche, ihre Ideen sichtbar zu machen — mit Bleistift, Tusche und jeder Menge Fantasie. Keine Vorkenntnisse nötig, nur Lust am Machen.
