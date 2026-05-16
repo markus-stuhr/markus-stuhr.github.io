@@ -42,6 +42,12 @@
       background: #ffffff;
       z-index: 100;
       border-bottom: 2px solid var(--ink);
+      transform: translateY(-100%);
+      transition: transform 0.35s ease;
+    }
+
+    nav.nav--visible {
+      transform: translateY(0);
     }
 
     .nav-inner {
@@ -1033,6 +1039,14 @@
   </footer>
 
   <script>
+    // Nav show/hide after hero
+    const navEl = document.querySelector('nav');
+    const heroEl = document.querySelector('.hero');
+    const navObserver = new IntersectionObserver((entries) => {
+      navEl.classList.toggle('nav--visible', !entries[0].isIntersecting);
+    }, { threshold: 0 });
+    navObserver.observe(heroEl);
+
     // Scroll Reveal
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(e => {
