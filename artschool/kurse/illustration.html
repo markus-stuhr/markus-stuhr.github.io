@@ -37,10 +37,15 @@
       height: 100%; display: flex; align-items: center; justify-content: space-between;
     }
     .nav-logo {
-      font-family: 'Fraunces', serif; font-weight: 900; font-size: 1.1rem;
-      color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.5rem;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
     }
-    .nav-logo .dot { width: 10px; height: 10px; background: var(--yellow); border-radius: 50%; border: 2px solid var(--ink); }
+    .nav-logo img {
+      height: 42px;
+      width: auto;
+      display: block;
+    }
     .nav-back {
       font-size: 0.82rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
       color: var(--ink); text-decoration: none; display: flex; align-items: center; gap: 0.4rem;
@@ -153,8 +158,7 @@
   <nav>
     <div class="nav-inner">
       <a class="nav-logo" href="/artschool/">
-        <span class="dot"></span>
-        onomato
+        <img src="/artschool/img/logo.png" alt="onomato Zeichenclub" />
       </a>
       <a class="nav-back" href="/artschool/">← Alle Kurse</a>
     </div>
