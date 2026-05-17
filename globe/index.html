@@ -707,6 +707,8 @@ function stopAIS() {
   }
 }
 
+let reconnectTimer = null;
+
 function connectAIS() {
   if (!aisEnabled) return;
   setAisStatus('…', 'rgb(255,200,50)');
@@ -723,7 +725,13 @@ function connectAIS() {
   aisSocket.onmessage = evt => {
     try {
       const msg = JSON.parse(evt.data);
-      if (msg.MessageType !== 'PositionReport') return;
+      if (msg.MessageType !== 'PositionReport') {
+        // show unexpected server messages in status for debugging
+        if (msg.error || msg.Error || msg.message) {
+          setAisStatus(msg.error || msg.Error || msg.message, 'rgb(255,80,80)');
+        }
+        return;
+      }
       const m = msg.MetaData || msg.Metadata;
       const p = msg.Message && msg.Message.PositionReport;
       if (!m || !p) return;
@@ -741,15 +749,20 @@ function connectAIS() {
   aisSocket.onerror = () => { setAisStatus('Fehler', 'rgb(255,80,80)'); aisSocket = null; };
   aisSocket.onclose = () => {
     aisSocket = null;
-    if (aisEnabled) { setAisStatus('reconnect…', 'rgb(255,200,50)'); setTimeout(connectAIS, 3000); }
+    if (aisEnabled) { setAisStatus('reconnect…', 'rgb(255,200,50)'); setTimeout(connectAIS, 5000); }
   };
 }
 
 function reconnectAIS() {
-  if (aisSocket) { aisSocket.close(); aisSocket = null; }
-  shipData.clear();
-  updateShipLayer();
-  connectAIS();
+  // debounce: only reconnect 3s after the last map move
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    if (!aisEnabled) return;
+    if (aisSocket) { aisSocket.close(); aisSocket = null; }
+    shipData.clear();
+    updateShipLayer();
+    connectAIS();
+  }, 3000);
 }
 
 function updateShipLayer() {
