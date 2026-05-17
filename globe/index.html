@@ -410,6 +410,18 @@ function showMap(spot) {
     mapInstance.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     mapInstance.on('load', () => {
+      mapInstance.addSource('openseamap', {
+        type: 'raster',
+        tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>'
+      });
+      mapInstance.addLayer({
+        id: 'openseamap',
+        type: 'raster',
+        source: 'openseamap',
+        paint: { 'raster-opacity': 0.8 }
+      });
       addMapMarkers();
       mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1200 });
     });
