@@ -709,17 +709,21 @@ function connectAIS() {
     }));
   };
   aisSocket.onmessage = evt => {
-    const msg = JSON.parse(evt.data);
-    if (msg.MessageType !== 'PositionReport') return;
-    const { MetaData: m, Message: { PositionReport: p } } = msg;
-    shipData.set(m.MMSI, {
-      mmsi: m.MMSI,
-      name: (m.ShipName || '').trim() || `MMSI ${m.MMSI}`,
-      lat: m.latitude, lng: m.longitude,
-      heading: p.TrueHeading < 360 ? p.TrueHeading : (p.Cog || 0),
-      sog: p.Sog || 0, cog: p.Cog || 0
-    });
-    updateShipLayer();
+    try {
+      const msg = JSON.parse(evt.data);
+      if (msg.MessageType !== 'PositionReport') return;
+      const m = msg.MetaData || msg.Metadata;
+      const p = msg.Message && msg.Message.PositionReport;
+      if (!m || !p) return;
+      shipData.set(m.MMSI, {
+        mmsi: m.MMSI,
+        name: (m.ShipName || '').trim() || `MMSI ${m.MMSI}`,
+        lat: m.latitude, lng: m.longitude,
+        heading: p.TrueHeading < 360 ? p.TrueHeading : (p.Cog || 0),
+        sog: p.Sog || 0, cog: p.Cog || 0
+      });
+      updateShipLayer();
+    } catch {}
   };
   aisSocket.onerror = () => { aisSocket = null; };
   aisSocket.onclose = () => {
