@@ -179,6 +179,7 @@
     transition: color 0.15s;
   }
   #back-globe:hover { color: #fff; }
+  @media (max-width: 480px) { #back-globe .back-label { display: none; } }
 
   /* ── Home link (globe view) ──────────────── */
   #back-home {
@@ -412,7 +413,7 @@
 </div>
 
 <!-- Map back button -->
-<button id="back-globe">← Globus</button>
+<button id="back-globe">← <span class="back-label">Globus</span></button>
 
 <!-- Settings -->
 <button id="settings-btn" title="Layer">⚙</button>
