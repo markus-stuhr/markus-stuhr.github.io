@@ -410,12 +410,12 @@ function showMap(spot) {
     mapInstance.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     mapInstance.on('load', () => {
-      // Bathymetric depth shading (Esri Ocean Base, low opacity for dark overlay effect)
+      // Bathymetric depth shading (Esri GEBCO-based, semi-transparent over dark base)
       mapInstance.addSource('ocean-base', {
         type: 'raster',
         tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}'],
         tileSize: 256,
-        attribution: 'Esri, GEBCO, NOAA, National Geographic'
+        attribution: 'Esri, GEBCO, NOAA'
       });
       mapInstance.addLayer({
         id: 'ocean-base',
