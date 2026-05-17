@@ -401,8 +401,8 @@
     <label class="toggle"><input type="checkbox" id="toggle-openseamap" checked><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
-    <span class="setting-label disabled">AIS Schiffe <span class="setting-badge">bald</span></span>
-    <label class="toggle disabled"><input type="checkbox" id="toggle-ais" disabled><span class="toggle-track"></span></label>
+    <span class="setting-label">AIS Schiffe <span class="setting-badge">live</span></span>
+    <label class="toggle"><input type="checkbox" id="toggle-ais"><span class="toggle-track"></span></label>
   </div>
 </div>
 
@@ -514,6 +514,8 @@ document.getElementById('back-globe').addEventListener('click', () => {
   document.getElementById('settings-btn').style.display = 'none';
   document.getElementById('settings-panel').style.display = 'none';
   document.getElementById('back-home').style.display = '';
+  const aisToggle = document.getElementById('toggle-ais');
+  if (aisToggle.checked) { aisToggle.checked = false; stopAIS(); }
   globe.controls().autoRotate = true;
 });
 
@@ -542,6 +544,9 @@ document.getElementById('toggle-depthlabels').addEventListener('change', e => {
 });
 document.getElementById('toggle-openseamap').addEventListener('change', e => {
   applyLayerToggle('openseamap', ['openseamap'], e.target.checked);
+});
+document.getElementById('toggle-ais').addEventListener('change', e => {
+  e.target.checked ? startAIS() : stopAIS();
 });
 
 function showMap(spot) {
@@ -585,6 +590,7 @@ function showMap(spot) {
         source: 'openseamap',
         paint: { 'raster-opacity': 0.8 }
       });
+      initAISLayer();
       addMapMarkers();
       mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1200 });
     });
@@ -612,6 +618,117 @@ function addMapMarkers() {
       .setLngLat([spot.lng, spot.lat])
       .setPopup(pop)
       .addTo(mapInstance);
+  });
+}
+
+// ── AIS ship tracking ─────────────────────────────────────
+const AIS_KEY = '9af380baaf161383ab86ab16f17a397cb766b428';
+let aisSocket = null;
+const shipData = new Map();
+
+function initAISLayer() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+    <polygon points="12,2 19,20 12,16 5,20" fill="#4adfff" stroke="rgba(0,0,0,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
+  </svg>`;
+  const img = new Image(24, 24);
+  img.onload = () => {
+    mapInstance.addImage('ship-arrow', img);
+    mapInstance.addSource('ais-ships', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    mapInstance.addLayer({
+      id: 'ais-ships',
+      type: 'symbol',
+      source: 'ais-ships',
+      layout: {
+        'icon-image': 'ship-arrow',
+        'icon-size': 0.7,
+        'icon-rotate': ['get', 'heading'],
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+        'visibility': 'none'
+      }
+    });
+    mapInstance.on('click', 'ais-ships', e => {
+      const p = e.features[0].properties;
+      new maplibregl.Popup({ offset: 10, maxWidth: '240px' })
+        .setLngLat(e.lngLat)
+        .setHTML(`
+          <div class="popup-title">${p.name}</div>
+          <div class="popup-meta">
+            MMSI: ${p.mmsi}<br>
+            Geschwindigkeit: ${(+p.sog).toFixed(1)} kn<br>
+            Kurs: ${Math.round(+p.cog)}°
+          </div>
+        `)
+        .addTo(mapInstance);
+    });
+    mapInstance.on('mouseenter', 'ais-ships', () => { mapInstance.getCanvas().style.cursor = 'pointer'; });
+    mapInstance.on('mouseleave', 'ais-ships', () => { mapInstance.getCanvas().style.cursor = ''; });
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+function startAIS() {
+  if (!mapInstance.getSource('ais-ships')) return;
+  mapInstance.setLayoutProperty('ais-ships', 'visibility', 'visible');
+  connectAIS();
+  mapInstance.on('moveend', reconnectAIS);
+}
+
+function stopAIS() {
+  if (aisSocket) { aisSocket.close(); aisSocket = null; }
+  shipData.clear();
+  mapInstance.off('moveend', reconnectAIS);
+  try {
+    mapInstance.setLayoutProperty('ais-ships', 'visibility', 'none');
+    mapInstance.getSource('ais-ships').setData({ type: 'FeatureCollection', features: [] });
+  } catch {}
+}
+
+function connectAIS() {
+  const b = mapInstance.getBounds();
+  aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
+  aisSocket.onopen = () => {
+    aisSocket.send(JSON.stringify({
+      APIKey: AIS_KEY,
+      BoundingBoxes: [[[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]],
+      FilterMessageTypes: ['PositionReport']
+    }));
+  };
+  aisSocket.onmessage = evt => {
+    const msg = JSON.parse(evt.data);
+    if (msg.MessageType !== 'PositionReport') return;
+    const { MetaData: m, Message: { PositionReport: p } } = msg;
+    shipData.set(m.MMSI, {
+      mmsi: m.MMSI,
+      name: (m.ShipName || '').trim() || `MMSI ${m.MMSI}`,
+      lat: m.latitude, lng: m.longitude,
+      heading: p.TrueHeading < 360 ? p.TrueHeading : (p.Cog || 0),
+      sog: p.Sog || 0, cog: p.Cog || 0
+    });
+    updateShipLayer();
+  };
+  aisSocket.onerror = () => { aisSocket = null; };
+}
+
+function reconnectAIS() {
+  if (aisSocket) aisSocket.close();
+  shipData.clear();
+  connectAIS();
+}
+
+function updateShipLayer() {
+  const src = mapInstance.getSource('ais-ships');
+  if (!src) return;
+  src.setData({
+    type: 'FeatureCollection',
+    features: Array.from(shipData.values()).map(s => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [s.lng, s.lat] },
+      properties: { mmsi: s.mmsi, name: s.name, heading: s.heading, sog: s.sog, cog: s.cog }
+    }))
   });
 }
 </script>
