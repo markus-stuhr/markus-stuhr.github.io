@@ -732,6 +732,9 @@ function showMap(spot) {
       applyMapStyle(currentMapStyle);
       mapInstance.setPaintProperty('Ocean RGB', 'hillshade-exaggeration', 0);
       mapInstance.setPaintProperty('Terrain RGB', 'hillshade-exaggeration', 0);
+      ['Depth labels', 'Undersea labels', 'Undersea line labels'].forEach(id => {
+        try { mapInstance.setPaintProperty(id, 'text-opacity', 0.5); } catch {}
+      });
 
       // OSM vector tiles: buildings + city labels
       mapInstance.addSource('osm', {
