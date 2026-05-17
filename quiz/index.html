@@ -9,29 +9,28 @@
 
     body {
       font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #1a2e1a;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 16px;
       overflow-x: hidden;
+      background: #1a2e1a;
     }
 
-    /* floating background leaves */
-    body::before {
-      content: '🌿🍃🌱🍀🌾🌿🍃🌱🍀🌾🌿🍃';
+    /* ── BACKGROUND LAYERS ── */
+    .bg-layer {
       position: fixed;
-      top: 0; left: 0;
-      width: 100%;
-      font-size: 2rem;
-      letter-spacing: 2rem;
-      color: rgba(255,255,255,0.04);
-      word-break: break-all;
-      line-height: 4rem;
-      pointer-events: none;
+      inset: 0;
+      background-size: cover;
+      background-position: center;
+      filter: blur(6px) brightness(0.45);
+      transform: scale(1.08); /* hides blur edge artifacts */
+      transition: opacity 0.8s ease;
       z-index: 0;
     }
+    #bg-a { opacity: 1; }
+    #bg-b { opacity: 0; }
 
     #app {
       position: relative;
@@ -41,10 +40,11 @@
     }
 
     .card {
-      background: #fff;
+      background: rgba(255,255,255,0.93);
+      backdrop-filter: blur(2px);
       border-radius: 24px;
       padding: 36px 32px;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.5);
     }
 
     /* ── START SCREEN ── */
@@ -202,18 +202,19 @@
     .next-btn:hover { transform: translateY(-2px); }
     .next-btn:active { transform: translateY(0); }
 
-    /* ── SCORE BAR ── */
+    /* ── SCORE PILL ── */
     .score-pill {
       position: absolute;
       top: -48px;
       right: 0;
-      background: #fff;
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(4px);
       border-radius: 99px;
       padding: 8px 18px;
       font-size: 0.95rem;
       font-weight: 700;
       color: #1a5c1a;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
     }
 
     /* ── END SCREEN ── */
@@ -259,6 +260,11 @@
   </style>
 </head>
 <body>
+
+<!-- Background layers for crossfade -->
+<div class="bg-layer" id="bg-a"></div>
+<div class="bg-layer" id="bg-b"></div>
+
 <div id="app">
 
   <!-- START -->
@@ -295,9 +301,13 @@
 </div>
 
 <script>
+const UNSPLASH = 'https://images.unsplash.com/photo-';
+const PARAMS   = '?auto=format&fit=crop&w=1400&q=80';
+
 const questions = [
   {
     emoji: '🕷️',
+    bg: UNSPLASH + '1559827260-dc66d52bef19' + PARAMS, // spider web
     text: 'Wie viele Beine hat eine Spinne?',
     answers: ['6 Beine', '8 Beine', '10 Beine'],
     correct: 1,
@@ -305,6 +315,7 @@ const questions = [
   },
   {
     emoji: '🐨',
+    bg: UNSPLASH + '1459262838948-3e2de6c1ec80' + PARAMS, // koala
     text: 'Was fressen Koalas am liebsten?',
     answers: ['Bambus', 'Eukalyptusblätter', 'Bananen'],
     correct: 1,
@@ -312,13 +323,15 @@ const questions = [
   },
   {
     emoji: '🐸',
+    bg: UNSPLASH + '1551189014-fe516a0a2e63' + PARAMS, // frog
     text: 'Wie nennt man das Baby eines Frosches?',
     answers: ['Kaulquappe', 'Larve', 'Küken'],
     correct: 0,
     fact: 'Super! Aus einer Kaulquappe wird durch Verwandlung ein Frosch – das nennt man Metamorphose.'
   },
   {
-    emoji: '🌳',
+    emoji: '🦔',
+    bg: UNSPLASH + '1444212477490-ca407925329e' + PARAMS, // hedgehog
     text: 'Welches Tier schläft den ganzen Winter?',
     answers: ['Der Hase', 'Der Igel', 'Der Wolf'],
     correct: 1,
@@ -326,6 +339,7 @@ const questions = [
   },
   {
     emoji: '🐋',
+    bg: UNSPLASH + '1518020382113-a7e8fc38eac9' + PARAMS, // whale underwater
     text: 'Was ist das größte Tier der Welt?',
     answers: ['Elefant', 'Weißer Hai', 'Blauwal'],
     correct: 2,
@@ -333,13 +347,15 @@ const questions = [
   },
   {
     emoji: '🌈',
+    bg: UNSPLASH + '1507525428034-b723cf961d3e' + PARAMS, // rainbow over landscape
     text: 'Wie entsteht ein Regenbogen?',
     answers: ['Wenn Sonne auf Regentropfen trifft', 'Wenn zwei Wolken zusammenstoßen', 'Wenn es sehr heiß ist'],
     correct: 0,
     fact: 'Klasse! Sonnenlicht wird in Regentropfen gebrochen und in alle Farben aufgeteilt – das ergibt den Regenbogen.'
   },
   {
-    emoji: '🐘',
+    emoji: '🦇',
+    bg: UNSPLASH + '1474511320723-9a56873867b5' + PARAMS, // bat
     text: 'Womit "sehen" Fledermäuse in der Dunkelheit?',
     answers: ['Mit sehr großen Augen', 'Mit Ultraschall', 'Mit ihren langen Ohren'],
     correct: 1,
@@ -347,13 +363,15 @@ const questions = [
   },
   {
     emoji: '🌊',
+    bg: UNSPLASH + '1505118380757-91f5f5632de0' + PARAMS, // ocean waves
     text: 'Wie viel der Erdoberfläche ist von Wasser bedeckt?',
     answers: ['Etwa ein Drittel (33%)', 'Etwa die Hälfte (50%)', 'Etwa zwei Drittel (71%)'],
     correct: 2,
     fact: 'Wow, richtig! Fast 71% der Erde ist Wasser – deshalb sieht unsere Erde vom All aus blau aus.'
   },
   {
-    emoji: '🦁',
+    emoji: '🐆',
+    bg: UNSPLASH + '1546182990-dffeafbe841d' + PARAMS, // cheetah
     text: 'Welches Tier ist das schnellste Landtier der Welt?',
     answers: ['Löwe', 'Gepard', 'Straußenvogel'],
     correct: 1,
@@ -361,12 +379,40 @@ const questions = [
   },
   {
     emoji: '🌱',
+    bg: UNSPLASH + '1448375240586-882707db888b' + PARAMS, // sunlight through leaves
     text: 'Wofür brauchen Pflanzen Sonnenlicht?',
     answers: ['Zum Wachsen und um Zucker herzustellen', 'Damit sie warm bleiben', 'Damit ihre Blätter grün werden'],
     correct: 0,
     fact: 'Richtig! Pflanzen nutzen Sonnenlicht, Wasser und Luft um Zucker herzustellen – das nennt man Fotosynthese.'
   }
 ];
+
+// Preload all images silently
+questions.forEach(q => { const img = new Image(); img.src = q.bg; });
+
+// Background crossfade
+const bgA = document.getElementById('bg-a');
+const bgB = document.getElementById('bg-b');
+let activeBg = 'a';
+
+const START_BG = UNSPLASH + '1448375240586-882707db888b' + PARAMS; // forest start
+
+function setBg(url) {
+  if (activeBg === 'a') {
+    bgB.style.backgroundImage = `url(${url})`;
+    bgB.style.opacity = '1';
+    bgA.style.opacity = '0';
+    activeBg = 'b';
+  } else {
+    bgA.style.backgroundImage = `url(${url})`;
+    bgA.style.opacity = '1';
+    bgB.style.opacity = '0';
+    activeBg = 'a';
+  }
+}
+
+// Init background on start
+bgA.style.backgroundImage = `url(${START_BG})`;
 
 let currentQ = 0;
 let score = 0;
@@ -385,6 +431,8 @@ function startQuiz() {
 function showQuestion() {
   const q = questions[currentQ];
   answered = false;
+
+  setBg(q.bg);
 
   document.getElementById('progress-fill').style.width = (currentQ / questions.length * 100) + '%';
   document.getElementById('progress-label').textContent = (currentQ + 1) + ' / ' + questions.length;
@@ -435,9 +483,7 @@ function selectAnswer(index) {
   }
 
   document.getElementById('score-pill').textContent = '⭐ ' + score + ' Punkt' + (score !== 1 ? 'e' : '');
-
-  const nextBtn = document.getElementById('next-btn');
-  nextBtn.classList.add('show');
+  document.getElementById('next-btn').classList.add('show');
 }
 
 function nextQuestion() {
@@ -451,9 +497,7 @@ function nextQuestion() {
 
 function showEnd() {
   document.getElementById('quiz-screen').style.display = 'none';
-  const endScreen = document.getElementById('end-screen');
-  endScreen.style.display = 'block';
-
+  document.getElementById('end-screen').style.display = 'block';
   document.getElementById('end-score').innerHTML = score + '<span> / ' + questions.length + '</span>';
 
   let trophy, title, message;
@@ -481,6 +525,7 @@ function showEnd() {
 }
 
 function restartQuiz() {
+  setBg(START_BG);
   startQuiz();
 }
 </script>
