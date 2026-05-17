@@ -624,6 +624,9 @@ function addMapMarkers() {
 // ── AIS ship tracking ─────────────────────────────────────
 const AIS_KEY = '9af380baaf161383ab86ab16f17a397cb766b428';
 let aisSocket = null;
+let aisEnabled = false;
+let aisLayerReady = false;
+let aisPendingStart = false;
 const shipData = new Map();
 
 function initAISLayer() {
@@ -666,28 +669,36 @@ function initAISLayer() {
     });
     mapInstance.on('mouseenter', 'ais-ships', () => { mapInstance.getCanvas().style.cursor = 'pointer'; });
     mapInstance.on('mouseleave', 'ais-ships', () => { mapInstance.getCanvas().style.cursor = ''; });
+    aisLayerReady = true;
+    if (aisPendingStart) { aisPendingStart = false; startAIS(); }
   };
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
 
 function startAIS() {
-  if (!mapInstance.getSource('ais-ships')) return;
+  if (!aisLayerReady) { aisPendingStart = true; return; }
+  aisEnabled = true;
   mapInstance.setLayoutProperty('ais-ships', 'visibility', 'visible');
   connectAIS();
   mapInstance.on('moveend', reconnectAIS);
 }
 
 function stopAIS() {
+  aisEnabled = false;
+  aisPendingStart = false;
   if (aisSocket) { aisSocket.close(); aisSocket = null; }
   shipData.clear();
-  mapInstance.off('moveend', reconnectAIS);
-  try {
-    mapInstance.setLayoutProperty('ais-ships', 'visibility', 'none');
-    mapInstance.getSource('ais-ships').setData({ type: 'FeatureCollection', features: [] });
-  } catch {}
+  if (mapInstance) {
+    mapInstance.off('moveend', reconnectAIS);
+    try {
+      mapInstance.setLayoutProperty('ais-ships', 'visibility', 'none');
+      mapInstance.getSource('ais-ships').setData({ type: 'FeatureCollection', features: [] });
+    } catch {}
+  }
 }
 
 function connectAIS() {
+  if (!aisEnabled) return;
   const b = mapInstance.getBounds();
   aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
   aisSocket.onopen = () => {
@@ -711,16 +722,21 @@ function connectAIS() {
     updateShipLayer();
   };
   aisSocket.onerror = () => { aisSocket = null; };
+  aisSocket.onclose = () => {
+    aisSocket = null;
+    if (aisEnabled) setTimeout(connectAIS, 3000);
+  };
 }
 
 function reconnectAIS() {
-  if (aisSocket) aisSocket.close();
+  if (aisSocket) { aisSocket.close(); aisSocket = null; }
   shipData.clear();
+  updateShipLayer();
   connectAIS();
 }
 
 function updateShipLayer() {
-  const src = mapInstance.getSource('ais-ships');
+  const src = mapInstance && mapInstance.getSource('ais-ships');
   if (!src) return;
   src.setData({
     type: 'FeatureCollection',
