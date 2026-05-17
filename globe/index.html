@@ -791,9 +791,9 @@ function showMap(spot) {
         'source-layer': 'place',
         filter: ['all',
           ['in', ['get', 'class'], ['literal', ['town', 'village']]],
-          ['<=', ['get', 'rank'], ['step', ['zoom'], 3, 12, 8, 14, 99]]
+          ['<=', ['get', 'rank'], ['step', ['zoom'], 3, 10, 8, 12, 99]]
         ],
-        minzoom: 11,
+        minzoom: 9,
         layout: {
           'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
           'text-font': ['Noto Sans Regular', 'Roboto Regular'],
