@@ -629,6 +629,7 @@ let currentMapStyle = 'dark';
 
 const MAP_STYLES = {
   dark: {
+    headlineColor: 'rgba(255,255,255,0.9)',
     land: '#161c24',
     glacier: '#1e2a35',
     landShadows: 'none',
@@ -645,6 +646,7 @@ const MAP_STYLES = {
     contourColor: '#020304'
   },
   light: {
+    headlineColor: '#1a2030',
     land: '#faf3e0',
     glacier: '#f2ebd4',
     landShadows: 'none',
@@ -665,6 +667,7 @@ const MAP_STYLES = {
 function applyMapStyle(name) {
   if (!mapInstance) return;
   const s = MAP_STYLES[name];
+  document.querySelector('#header h1').style.color = s.headlineColor;
   mapInstance.setPaintProperty('Land', 'fill-color', s.land);
   mapInstance.setPaintProperty('Glacier', 'fill-color', s.glacier);
   ['Land shadow', 'Land shadow 1', 'Land shadow 2'].forEach(id => {
