@@ -671,7 +671,10 @@ function applyMapStyle(name) {
   });
   mapInstance.setPaintProperty('Island labels', 'text-color', s.islandLabelColor);
   mapInstance.setPaintProperty('Island labels', 'text-halo-width', s.islandLabelHalo);
-  try { mapInstance.setPaintProperty('ferry-routes', 'line-color', s.islandLabelColor); } catch {}
+  try {
+    mapInstance.setPaintProperty('ferry-routes', 'line-color', s.islandLabelColor);
+    mapInstance.setPaintProperty('ferry-routes', 'line-opacity', 0.2);
+  } catch {}
   if (s.contourColor !== undefined) {
     try {
       mapInstance.setPaintProperty('Contour', 'line-color', s.contourColor);
