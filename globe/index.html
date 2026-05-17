@@ -368,6 +368,20 @@
   }
   .toggle input:checked + .toggle-track::after { transform: translateX(16px); }
   .toggle.disabled { opacity: 0.3; pointer-events: none; }
+
+  /* ── Style dropdown ──────────────────────── */
+  #map-style-select {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 5px;
+    color: rgba(255,255,255,0.8);
+    font-family: inherit;
+    font-size: 0.8rem;
+    padding: 3px 8px;
+    cursor: pointer;
+    outline: none;
+  }
+  #map-style-select option { background: #0d1821; color: #fff; }
 </style>
 </head>
 <body>
@@ -403,7 +417,15 @@
 <button id="settings-btn" title="Layer">⚙</button>
 
 <div id="settings-panel">
-  <h3>Layer</h3>
+  <h3>Stil</h3>
+  <div class="setting-row">
+    <span class="setting-label">Kartenstil</span>
+    <select id="map-style-select">
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+    </select>
+  </div>
+  <h3 style="margin-top:12px">Layer</h3>
   <div class="setting-row">
     <span class="setting-label">Tiefenlinien</span>
     <label class="toggle"><input type="checkbox" id="toggle-contours" checked><span class="toggle-track"></span></label>
@@ -591,6 +613,43 @@ settingsBtn.addEventListener('click', e => {
 document.addEventListener('click', () => { settingsPanel.style.display = 'none'; });
 settingsPanel.addEventListener('click', e => e.stopPropagation());
 
+// ── Map style profiles ────────────────────────────────────
+let currentMapStyle = 'dark';
+
+const MAP_STYLES = {
+  dark: {
+    land: '#161c24',
+    glacier: '#1e2a35',
+    landShadows: 'none',
+    islandLabelColor: '#0099cc',
+    islandLabelHalo: 0
+  },
+  light: {
+    land: '#ede0c4',
+    glacier: '#ddd5c0',
+    landShadows: 'visible',
+    islandLabelColor: '#005f88',
+    islandLabelHalo: 0
+  }
+};
+
+function applyMapStyle(name) {
+  if (!mapInstance) return;
+  const s = MAP_STYLES[name];
+  mapInstance.setPaintProperty('Land', 'fill-color', s.land);
+  mapInstance.setPaintProperty('Glacier', 'fill-color', s.glacier);
+  ['Land shadow', 'Land shadow 1', 'Land shadow 2'].forEach(id => {
+    try { mapInstance.setLayoutProperty(id, 'visibility', s.landShadows); } catch {}
+  });
+  mapInstance.setPaintProperty('Island labels', 'text-color', s.islandLabelColor);
+  mapInstance.setPaintProperty('Island labels', 'text-halo-width', s.islandLabelHalo);
+}
+
+document.getElementById('map-style-select').addEventListener('change', e => {
+  currentMapStyle = e.target.value;
+  applyMapStyle(currentMapStyle);
+});
+
 function applyLayerToggle(id, layers, visibility) {
   if (!mapInstance) return;
   layers.forEach(l => {
@@ -630,18 +689,9 @@ function showMap(spot) {
     mapInstance.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     mapInstance.on('load', () => {
-      // Dark land + no hillshading to match globe aesthetic
-      mapInstance.setPaintProperty('Land', 'fill-color', '#161c24');
-      mapInstance.setPaintProperty('Glacier', 'fill-color', '#1e2a35');
-      ['Land shadow', 'Land shadow 1', 'Land shadow 2'].forEach(id => {
-        mapInstance.setLayoutProperty(id, 'visibility', 'none');
-      });
+      applyMapStyle(currentMapStyle);
       mapInstance.setPaintProperty('Ocean RGB', 'hillshade-exaggeration', 0);
       mapInstance.setPaintProperty('Terrain RGB', 'hillshade-exaggeration', 0);
-
-      // Island labels: bright blue, dark halo
-      mapInstance.setPaintProperty('Island labels', 'text-color', '#0099cc');
-      mapInstance.setPaintProperty('Island labels', 'text-halo-width', 0);
 
       // Nautical marks: buoys, lights, anchorages (OpenSeaMap)
       mapInstance.addSource('openseamap', {
