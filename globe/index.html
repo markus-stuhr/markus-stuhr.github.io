@@ -246,8 +246,9 @@
     cursor: pointer;
     transition: border-color 0.2s, background 0.2s;
     transform: translate(-50%, -50%);
+    pointer-events: none;
   }
-  .globe-hit:hover {
+  .globe-hit.hovered {
     border-color: rgba(74, 159, 255, 0.65);
     background: rgba(74, 159, 255, 0.12);
   }
@@ -468,6 +469,7 @@ const SPOTS = [
 
 // ── Globe.gl setup ────────────────────────────────────────
 const globeEl = document.getElementById('globe-view');
+const hitElements = new Map();
 
 const globe = Globe({ animateIn: true })(globeEl)
   .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
@@ -482,7 +484,7 @@ const globe = Globe({ animateIn: true })(globeEl)
   .pointRadius(0.45)
   .pointResolution(12)
   .onPointClick(onSpotClick)
-  .onPointHover(d => { globeEl.style.cursor = d ? 'pointer' : 'grab'; })
+  .onPointHover(() => {})
   .htmlElementsData(SPOTS)
   .htmlLat(d => d.lat)
   .htmlLng(d => d.lng)
@@ -490,17 +492,44 @@ const globe = Globe({ animateIn: true })(globeEl)
   .htmlElement(d => {
     const el = document.createElement('div');
     el.className = 'globe-hit';
-    el.addEventListener('click', ev => {
-      ev.stopPropagation();
-      onSpotClick(d, ev, { x: ev.clientX, y: ev.clientY });
-    });
-    el.addEventListener('touchend', ev => {
-      ev.stopPropagation();
-      const t = ev.changedTouches[0];
-      onSpotClick(d, ev, { x: t.clientX, y: t.clientY });
-    });
+    hitElements.set(d.name, el);
     return el;
   });
+
+// Proximity-based hover + click via mousemove/click on the globe container
+globeEl.addEventListener('mousemove', ev => {
+  let nearAny = false;
+  SPOTS.forEach(spot => {
+    const sc = globe.getScreenCoords(spot.lat, spot.lng, 0.013);
+    const el = hitElements.get(spot.name);
+    if (!el || !sc) return;
+    const near = Math.hypot(ev.clientX - sc.x, ev.clientY - sc.y) < 34;
+    el.classList.toggle('hovered', near);
+    if (near) nearAny = true;
+  });
+  globeEl.style.cursor = nearAny ? 'pointer' : 'grab';
+});
+
+globeEl.addEventListener('click', ev => {
+  SPOTS.forEach(spot => {
+    const sc = globe.getScreenCoords(spot.lat, spot.lng, 0.013);
+    if (!sc) return;
+    if (Math.hypot(ev.clientX - sc.x, ev.clientY - sc.y) < 34) {
+      onSpotClick(spot, ev, { x: ev.clientX, y: ev.clientY });
+    }
+  });
+});
+
+globeEl.addEventListener('touchend', ev => {
+  const t = ev.changedTouches[0];
+  SPOTS.forEach(spot => {
+    const sc = globe.getScreenCoords(spot.lat, spot.lng, 0.013);
+    if (!sc) return;
+    if (Math.hypot(t.clientX - sc.x, t.clientY - sc.y) < 44) {
+      onSpotClick(spot, ev, { x: t.clientX, y: t.clientY });
+    }
+  });
+});
 
 // Gentle auto-rotation
 globe.controls().autoRotate = true;
