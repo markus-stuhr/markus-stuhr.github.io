@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sailing Log – Markus Stuhr</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/globe.gl@2.41.5/dist/globe.gl.min.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #020509;
+    color: #fff;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Views ─────────────────────────────── */
+  #globe-view, #map-view {
+    position: fixed;
+    inset: 0;
+    transition: opacity 0.6s ease;
+  }
+
+  #globe-view { z-index: 1; }
+
+  #map-view {
+    z-index: 2;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #map-view.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  #map { width: 100%; height: 100%; }
+
+  /* ── Header ─────────────────────────────── */
+  #header {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  #header h1 {
+    font-size: clamp(1rem, 3vw, 1.6rem);
+    font-weight: 200;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    text-shadow: 0 0 30px rgba(0,0,0,0.9);
+  }
+
+  #header p {
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    color: rgba(255,255,255,0.45);
+    margin-top: 4px;
+  }
+
+  /* ── Hint (globe view) ───────────────────── */
+  #hint {
+    position: fixed;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.3);
+    text-transform: uppercase;
+    transition: opacity 0.4s;
+    pointer-events: none;
+  }
+
+  /* ── Spot popup (globe) ──────────────────── */
+  #spot-popup {
+    position: fixed;
+    z-index: 30;
+    background: rgba(5, 15, 30, 0.92);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(100, 160, 255, 0.25);
+    border-radius: 10px;
+    padding: 16px 20px 14px;
+    min-width: 200px;
+    max-width: 260px;
+    pointer-events: all;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.2s, transform 0.2s;
+    box-shadow: 0 6px 32px rgba(0,0,0,0.7);
+  }
+
+  #spot-popup.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  #popup-region {
+    font-size: 0.68rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.4);
+    margin-bottom: 4px;
+  }
+
+  #popup-name {
+    font-size: 1rem;
+    font-weight: 400;
+    color: #8ab4f8;
+    margin-bottom: 6px;
+  }
+
+  #popup-meta {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+
+  #popup-close {
+    position: absolute;
+    top: 8px; right: 12px;
+    background: none; border: none;
+    color: rgba(255,255,255,0.35);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 2px 4px;
+    line-height: 1;
+  }
+  #popup-close:hover { color: #fff; }
+
+  #zoom-btn {
+    width: 100%;
+    background: rgba(74, 159, 255, 0.15);
+    border: 1px solid rgba(74, 159, 255, 0.4);
+    border-radius: 6px;
+    color: #8ab4f8;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    font-family: inherit;
+  }
+  #zoom-btn:hover {
+    background: rgba(74, 159, 255, 0.28);
+    border-color: rgba(74, 159, 255, 0.7);
+    color: #fff;
+  }
+
+  /* ── Back button (map view) ──────────────── */
+  #back-globe {
+    position: fixed;
+    top: 24px;
+    left: 24px;
+    z-index: 25;
+    background: rgba(5, 15, 30, 0.8);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 6px;
+    color: rgba(255,255,255,0.7);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-family: inherit;
+    display: none;
+    transition: color 0.15s;
+  }
+  #back-globe:hover { color: #fff; }
+
+  /* ── Home link (globe view) ──────────────── */
+  #back-home {
+    position: fixed;
+    top: 24px;
+    left: 24px;
+    z-index: 20;
+    color: rgba(255,255,255,0.35);
+    font-size: 0.78rem;
+    letter-spacing: 0.1em;
+    text-decoration: none;
+    text-transform: uppercase;
+    transition: color 0.2s;
+  }
+  #back-home:hover { color: #fff; }
+
+  /* ── MapLibre overrides ──────────────────── */
+  .maplibregl-popup-content {
+    background: rgba(5, 15, 30, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(100, 160, 255, 0.25);
+    border-radius: 8px;
+    padding: 14px 18px;
+    color: #fff;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+    min-width: 180px;
+  }
+  .maplibregl-popup-close-button {
+    color: rgba(255,255,255,0.5);
+    font-size: 1.1rem;
+    padding: 4px 8px;
+  }
+  .popup-title {
+    font-size: 0.95rem;
+    font-weight: 400;
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+    color: #8ab4f8;
+  }
+  .popup-meta {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.6;
+  }
+  .maplibregl-ctrl-group {
+    background: rgba(5, 15, 30, 0.8) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+  }
+  .maplibregl-ctrl button { color: #fff !important; }
+  .maplibregl-ctrl-attrib {
+    background: rgba(0,0,0,0.5) !important;
+    color: rgba(255,255,255,0.35) !important;
+    font-size: 10px;
+  }
+  .maplibregl-ctrl-attrib a { color: rgba(255,255,255,0.35) !important; }
+
+  /* ── Sail marker dot ─────────────────────── */
+  .sail-marker {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #4a9fff;
+    border: 2px solid rgba(255,255,255,0.8);
+    box-shadow: 0 0 10px rgba(74,159,255,0.6), 0 0 20px rgba(74,159,255,0.3);
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .sail-marker:hover { transform: scale(1.4); }
+</style>
+</head>
+<body>
+
+<a href="/" id="back-home">← Home</a>
+
+<div id="header">
+  <h1>Sailing Log</h1>
+  <p>Orte, wo ich gesegelt bin</p>
+</div>
+
+<div id="hint">Klick auf einen Marker · Ziehen zum Drehen</div>
+
+<!-- Globe.gl container -->
+<div id="globe-view"></div>
+
+<!-- MapLibre detail map -->
+<div id="map-view">
+  <div id="map"></div>
+</div>
+
+<!-- Globe spot popup -->
+<div id="spot-popup">
+  <button id="popup-close">×</button>
+  <div id="popup-region"></div>
+  <div id="popup-name"></div>
+  <div id="popup-meta"></div>
+  <button id="zoom-btn">Zur Karte →</button>
+</div>
+
+<!-- Map back button -->
+<button id="back-globe">← Globus</button>
+
+<script>
+const SPOTS = [
+  {
+    name: "Whitsundays",
+    region: "Australien",
+    lat: -20.3, lng: 148.9,
+    zoom: 9,
+    years: "2019",
+    notes: "Great Barrier Reef, Whitehaven Beach"
+  },
+  {
+    name: "Grenadinen",
+    region: "Karibik",
+    lat: 12.6, lng: -61.4,
+    zoom: 8,
+    years: "2018",
+    notes: "St. Vincent bis Grenada"
+  },
+  {
+    name: "Kroatische Inseln",
+    region: "Mittelmeer",
+    lat: 43.6, lng: 16.4,
+    zoom: 8,
+    years: "2015, 2017",
+    notes: "Dalmatinische Küste, Split bis Dubrovnik"
+  },
+  {
+    name: "Balearen",
+    region: "Mittelmeer",
+    lat: 39.6, lng: 2.9,
+    zoom: 8,
+    years: "2016",
+    notes: "Mallorca, Menorca, Ibiza"
+  },
+  {
+    name: "Türkische Ägäis",
+    region: "Mittelmeer",
+    lat: 37.1, lng: 27.2,
+    zoom: 8,
+    years: "2014",
+    notes: "Bodrum bis Fethiye, Blaue Reise"
+  }
+];
+
+// ── Globe.gl setup ────────────────────────────────────────
+const globeEl = document.getElementById('globe-view');
+
+const globe = Globe({ animateIn: true })(globeEl)
+  .globeImageUrl('https://unpkg.com/three-globe/example/img/earth-night.jpg')
+  .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
+  .atmosphereColor('#4a7aff')
+  .atmosphereAltitude(0.18)
+  .pointsData(SPOTS)
+  .pointLat(d => d.lat)
+  .pointLng(d => d.lng)
+  .pointColor(() => '#4a9fff')
+  .pointAltitude(0.012)
+  .pointRadius(0.45)
+  .pointResolution(12)
+  .onPointClick(onSpotClick)
+  .onPointHover(d => { globeEl.style.cursor = d ? 'pointer' : 'grab'; });
+
+// Gentle auto-rotation
+globe.controls().autoRotate = true;
+globe.controls().autoRotateSpeed = 0.5;
+globe.controls().enableDamping = true;
+
+// ── Popup logic ──────────────────────────────────────────
+const popup    = document.getElementById('spot-popup');
+const closeBtn = document.getElementById('popup-close');
+const zoomBtn  = document.getElementById('zoom-btn');
+let activeSpot = null;
+
+function onSpotClick(spot, _ev, coords) {
+  if (!spot) return;
+  activeSpot = spot;
+
+  document.getElementById('popup-region').textContent = spot.region;
+  document.getElementById('popup-name').textContent   = spot.name;
+  document.getElementById('popup-meta').innerHTML =
+    `${spot.years}<br><span style="opacity:0.7">${spot.notes}</span>`;
+
+  // Position popup near click, staying within viewport
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const px = Math.min(Math.max(coords.x + 16, 10), vw - 280);
+  const py = Math.min(Math.max(coords.y - 60, 10), vh - 200);
+  popup.style.left = px + 'px';
+  popup.style.top  = py + 'px';
+  popup.classList.add('visible');
+}
+
+closeBtn.addEventListener('click', () => popup.classList.remove('visible'));
+
+// ── View switching ────────────────────────────────────────
+let mapInstance = null;
+
+zoomBtn.addEventListener('click', () => {
+  if (!activeSpot) return;
+  popup.classList.remove('visible');
+  showMap(activeSpot);
+});
+
+document.getElementById('back-globe').addEventListener('click', () => {
+  document.getElementById('map-view').classList.remove('visible');
+  document.getElementById('back-globe').style.display = 'none';
+  document.getElementById('back-home').style.display = '';
+  document.getElementById('hint').style.opacity = '1';
+  globe.controls().autoRotate = true;
+});
+
+function showMap(spot) {
+  document.getElementById('map-view').classList.add('visible');
+  document.getElementById('back-globe').style.display = '';
+  document.getElementById('back-home').style.display = 'none';
+  document.getElementById('hint').style.opacity = '0';
+  globe.controls().autoRotate = false;
+
+  if (!mapInstance) {
+    mapInstance = new maplibregl.Map({
+      container: 'map',
+      style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+      center: [spot.lng, spot.lat],
+      zoom: spot.zoom,
+      attributionControl: true
+    });
+
+    mapInstance.addControl(new maplibregl.NavigationControl(), 'bottom-right');
+
+    mapInstance.on('load', () => {
+      addMapMarkers();
+      mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1200 });
+    });
+  } else {
+    mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1000 });
+  }
+}
+
+function addMapMarkers() {
+  SPOTS.forEach(spot => {
+    const el = document.createElement('div');
+    el.className = 'sail-marker';
+
+    const pop = new maplibregl.Popup({ offset: 14, closeButton: true, maxWidth: '260px' })
+      .setHTML(`
+        <div class="popup-title">${spot.name}</div>
+        <div class="popup-meta">
+          <span style="opacity:0.65">${spot.region}</span><br>
+          ${spot.years}<br>
+          ${spot.notes}
+        </div>
+      `);
+
+    new maplibregl.Marker({ element: el })
+      .setLngLat([spot.lng, spot.lat])
+      .setPopup(pop)
+      .addTo(mapInstance);
+  });
+}
+</script>
+</body>
+</html>
