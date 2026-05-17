@@ -642,10 +642,10 @@ const MAP_STYLES = {
     islandLabelHalo: 0,
     buildingColor: '#ddd3be',
     buildingOutline: '#c4baa6',
-    cityColor: '#b8864a',
+    cityColor: '#d4a870',
     cityHalo: 'rgba(250,243,224,0.85)',
     cityHaloWidth: 1.5,
-    townColor: '#a07840',
+    townColor: '#c09050',
     townHalo: 'rgba(250,243,224,0.85)',
     townHaloWidth: 1.2,
     contourColor: 'hsl(36, 39%, 49%)'
@@ -787,7 +787,7 @@ function showMap(spot) {
         minzoom: 4,
         layout: {
           'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
-          'text-font': ['Noto Sans Bold', 'Roboto Bold'],
+          'text-font': ['Noto Sans Regular', 'Roboto Regular'],
           'text-size': ['interpolate', ['linear'], ['zoom'], 4, 11, 8, 14, 12, 18],
           'text-anchor': 'center',
           'text-max-width': 8
