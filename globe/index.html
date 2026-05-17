@@ -758,32 +758,17 @@ function showMap(spot) {
           'line-width': 0.5
         }
       });
-      mapInstance.addLayer({
-        id: 'place-towns',
-        type: 'symbol',
-        source: 'osm',
-        'source-layer': 'place',
-        filter: ['in', ['get', 'class'], ['literal', ['town', 'village']]],
-        minzoom: 9,
-        layout: {
-          'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
-          'text-font': ['Noto Sans Regular', 'Roboto Regular'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 9, 10, 13, 13],
-          'text-anchor': 'center',
-          'text-max-width': 8
-        },
-        paint: {
-          'text-color': s.townColor,
-          'text-halo-color': s.townHalo,
-          'text-halo-width': s.townHaloWidth
-        }
-      });
+      // Cities: rank-based zoom filter — only top cities at low zoom
+      // rank 1-2 = capitals/megacities, 3-5 = large cities, 6+ = smaller
       mapInstance.addLayer({
         id: 'place-cities',
         type: 'symbol',
         source: 'osm',
         'source-layer': 'place',
-        filter: ['in', ['get', 'class'], ['literal', ['city']]],
+        filter: ['all',
+          ['==', ['get', 'class'], 'city'],
+          ['<=', ['get', 'rank'], ['step', ['zoom'], 2, 5, 4, 7, 7, 9, 12]]
+        ],
         minzoom: 4,
         layout: {
           'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
@@ -796,6 +781,30 @@ function showMap(spot) {
           'text-color': s.cityColor,
           'text-halo-color': s.cityHalo,
           'text-halo-width': s.cityHaloWidth
+        }
+      });
+      // Towns: only from zoom 11, villages from zoom 13
+      mapInstance.addLayer({
+        id: 'place-towns',
+        type: 'symbol',
+        source: 'osm',
+        'source-layer': 'place',
+        filter: ['all',
+          ['in', ['get', 'class'], ['literal', ['town', 'village']]],
+          ['<=', ['get', 'rank'], ['step', ['zoom'], 3, 12, 8, 14, 99]]
+        ],
+        minzoom: 11,
+        layout: {
+          'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+          'text-font': ['Noto Sans Regular', 'Roboto Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 11, 10, 14, 12],
+          'text-anchor': 'center',
+          'text-max-width': 8
+        },
+        paint: {
+          'text-color': s.townColor,
+          'text-halo-color': s.townHalo,
+          'text-halo-width': s.townHaloWidth
         }
       });
 
