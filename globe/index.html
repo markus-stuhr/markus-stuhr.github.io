@@ -410,6 +410,21 @@ function showMap(spot) {
     mapInstance.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     mapInstance.on('load', () => {
+      // Bathymetric depth shading (Esri Ocean Base, low opacity for dark overlay effect)
+      mapInstance.addSource('ocean-base', {
+        type: 'raster',
+        tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}'],
+        tileSize: 256,
+        attribution: 'Esri, GEBCO, NOAA, National Geographic'
+      });
+      mapInstance.addLayer({
+        id: 'ocean-base',
+        type: 'raster',
+        source: 'ocean-base',
+        paint: { 'raster-opacity': 0.38 }
+      });
+
+      // Nautical marks: buoys, lights, anchorages (OpenSeaMap)
       mapInstance.addSource('openseamap', {
         type: 'raster',
         tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
