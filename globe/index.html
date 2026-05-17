@@ -642,8 +642,7 @@ function showMap(spot) {
 
       // Island labels: bright blue, dark halo
       mapInstance.setPaintProperty('Island labels', 'text-color', '#4adfff');
-      mapInstance.setPaintProperty('Island labels', 'text-halo-color', 'rgba(0, 10, 20, 0.7)');
-      mapInstance.setPaintProperty('Island labels', 'text-halo-width', 1.5);
+      mapInstance.setPaintProperty('Island labels', 'text-halo-width', 0);
 
       // Nautical marks: buoys, lights, anchorages (OpenSeaMap)
       mapInstance.addSource('openseamap', {
