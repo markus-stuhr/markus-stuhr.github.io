@@ -410,6 +410,15 @@ function showMap(spot) {
     mapInstance.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
     mapInstance.on('load', () => {
+      // Dark land + no hillshading to match globe aesthetic
+      mapInstance.setPaintProperty('Land', 'fill-color', '#161c24');
+      mapInstance.setPaintProperty('Glacier', 'fill-color', '#1e2a35');
+      ['Land shadow', 'Land shadow 1', 'Land shadow 2'].forEach(id => {
+        mapInstance.setLayoutProperty(id, 'visibility', 'none');
+      });
+      mapInstance.setPaintProperty('Ocean RGB', 'hillshade-exaggeration', 0);
+      mapInstance.setPaintProperty('Terrain RGB', 'hillshade-exaggeration', 0);
+
       // Nautical marks: buoys, lights, anchorages (OpenSeaMap)
       mapInstance.addSource('openseamap', {
         type: 'raster',
