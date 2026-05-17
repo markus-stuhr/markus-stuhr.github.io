@@ -622,14 +622,30 @@ const MAP_STYLES = {
     glacier: '#1e2a35',
     landShadows: 'none',
     islandLabelColor: '#0099cc',
-    islandLabelHalo: 0
+    islandLabelHalo: 0,
+    buildingColor: '#1e2a35',
+    buildingOutline: '#263040',
+    cityColor: '#7ab8d4',
+    cityHalo: 'rgba(5,15,30,0.8)',
+    cityHaloWidth: 1.5,
+    townColor: '#5a9ab8',
+    townHalo: 'rgba(5,15,30,0.8)',
+    townHaloWidth: 1.2
   },
   light: {
     land: '#faf3e0',
     glacier: '#f2ebd4',
     landShadows: 'none',
     islandLabelColor: '#005f88',
-    islandLabelHalo: 0
+    islandLabelHalo: 0,
+    buildingColor: '#ddd3be',
+    buildingOutline: '#c4baa6',
+    cityColor: '#223344',
+    cityHalo: 'rgba(250,243,224,0.85)',
+    cityHaloWidth: 1.5,
+    townColor: '#334455',
+    townHalo: 'rgba(250,243,224,0.85)',
+    townHaloWidth: 1.2
   }
 };
 
@@ -643,6 +659,16 @@ function applyMapStyle(name) {
   });
   mapInstance.setPaintProperty('Island labels', 'text-color', s.islandLabelColor);
   mapInstance.setPaintProperty('Island labels', 'text-halo-width', s.islandLabelHalo);
+  try {
+    mapInstance.setPaintProperty('buildings', 'fill-color', s.buildingColor);
+    mapInstance.setPaintProperty('buildings-outline', 'line-color', s.buildingOutline);
+    mapInstance.setPaintProperty('place-cities', 'text-color', s.cityColor);
+    mapInstance.setPaintProperty('place-cities', 'text-halo-color', s.cityHalo);
+    mapInstance.setPaintProperty('place-cities', 'text-halo-width', s.cityHaloWidth);
+    mapInstance.setPaintProperty('place-towns', 'text-color', s.townColor);
+    mapInstance.setPaintProperty('place-towns', 'text-halo-color', s.townHalo);
+    mapInstance.setPaintProperty('place-towns', 'text-halo-width', s.townHaloWidth);
+  } catch {}
 }
 
 document.getElementById('map-style-select').addEventListener('change', e => {
@@ -706,6 +732,77 @@ function showMap(spot) {
         source: 'openseamap',
         paint: { 'raster-opacity': 0.8 }
       });
+      // OSM vector tiles: buildings + city labels
+      mapInstance.addSource('osm', {
+        type: 'vector',
+        url: 'https://api.maptiler.com/tiles/v3/tiles.json?key=lT9jK8r0OXrZinP9JSOT'
+      });
+
+      const s = MAP_STYLES[currentMapStyle];
+
+      mapInstance.addLayer({
+        id: 'buildings',
+        type: 'fill',
+        source: 'osm',
+        'source-layer': 'building',
+        minzoom: 14,
+        paint: {
+          'fill-color': s.buildingColor,
+          'fill-opacity': 0.9
+        }
+      });
+      mapInstance.addLayer({
+        id: 'buildings-outline',
+        type: 'line',
+        source: 'osm',
+        'source-layer': 'building',
+        minzoom: 14,
+        paint: {
+          'line-color': s.buildingOutline,
+          'line-width': 0.5
+        }
+      });
+      mapInstance.addLayer({
+        id: 'place-towns',
+        type: 'symbol',
+        source: 'osm',
+        'source-layer': 'place',
+        filter: ['in', ['get', 'class'], ['literal', ['town', 'village']]],
+        minzoom: 9,
+        layout: {
+          'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+          'text-font': ['Noto Sans Regular', 'Roboto Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 9, 10, 13, 13],
+          'text-anchor': 'center',
+          'text-max-width': 8
+        },
+        paint: {
+          'text-color': s.townColor,
+          'text-halo-color': s.townHalo,
+          'text-halo-width': s.townHaloWidth
+        }
+      });
+      mapInstance.addLayer({
+        id: 'place-cities',
+        type: 'symbol',
+        source: 'osm',
+        'source-layer': 'place',
+        filter: ['in', ['get', 'class'], ['literal', ['city']]],
+        minzoom: 4,
+        layout: {
+          'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+          'text-font': ['Noto Sans Bold', 'Roboto Bold'],
+          'text-size': ['interpolate', ['linear'], ['zoom'], 4, 11, 8, 14, 12, 18],
+          'text-anchor': 'center',
+          'text-max-width': 8
+        },
+        paint: {
+          'text-color': s.cityColor,
+          'text-halo-color': s.cityHalo,
+          'text-halo-width': s.cityHaloWidth
+        }
+      });
+
       initAISLayer();
       addMapMarkers();
       mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1200 });
