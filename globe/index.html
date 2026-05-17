@@ -720,19 +720,6 @@ function showMap(spot) {
       mapInstance.setPaintProperty('Ocean RGB', 'hillshade-exaggeration', 0);
       mapInstance.setPaintProperty('Terrain RGB', 'hillshade-exaggeration', 0);
 
-      // Nautical marks: buoys, lights, anchorages (OpenSeaMap)
-      mapInstance.addSource('openseamap', {
-        type: 'raster',
-        tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>'
-      });
-      mapInstance.addLayer({
-        id: 'openseamap',
-        type: 'raster',
-        source: 'openseamap',
-        paint: { 'raster-opacity': 0.8 }
-      });
       // OSM vector tiles: buildings + city labels
       mapInstance.addSource('osm', {
         type: 'vector',
@@ -802,6 +789,20 @@ function showMap(spot) {
           'text-halo-color': s.cityHalo,
           'text-halo-width': s.cityHaloWidth
         }
+      });
+
+      // Nautical marks on top of buildings (OpenSeaMap)
+      mapInstance.addSource('openseamap', {
+        type: 'raster',
+        tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>'
+      });
+      mapInstance.addLayer({
+        id: 'openseamap',
+        type: 'raster',
+        source: 'openseamap',
+        paint: { 'raster-opacity': 0.8 }
       });
 
       initAISLayer();
