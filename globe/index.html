@@ -401,7 +401,7 @@
     <label class="toggle"><input type="checkbox" id="toggle-openseamap" checked><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
-    <span class="setting-label">AIS Schiffe <span class="setting-badge">live</span></span>
+    <span class="setting-label">AIS Schiffe <span id="ais-status" class="setting-badge">live</span></span>
     <label class="toggle"><input type="checkbox" id="toggle-ais"><span class="toggle-track"></span></label>
   </div>
 </div>
@@ -629,6 +629,15 @@ let aisLayerReady = false;
 let aisPendingStart = false;
 const shipData = new Map();
 
+function setAisStatus(text, color) {
+  const el = document.getElementById('ais-status');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = color || '';
+  el.style.borderColor = color ? color.replace(')', ', 0.4)').replace('rgb', 'rgba') : '';
+  el.style.background = color ? color.replace(')', ', 0.1)').replace('rgb', 'rgba') : '';
+}
+
 function initAISLayer() {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
     <polygon points="12,2 19,20 12,16 5,20" fill="#4adfff" stroke="rgba(0,0,0,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
@@ -676,7 +685,7 @@ function initAISLayer() {
 }
 
 function startAIS() {
-  if (!aisLayerReady) { aisPendingStart = true; return; }
+  if (!aisLayerReady) { aisPendingStart = true; setAisStatus('…', 'rgb(255,200,50)'); return; }
   aisEnabled = true;
   mapInstance.setLayoutProperty('ais-ships', 'visibility', 'visible');
   connectAIS();
@@ -686,6 +695,7 @@ function startAIS() {
 function stopAIS() {
   aisEnabled = false;
   aisPendingStart = false;
+  setAisStatus('live', '');
   if (aisSocket) { aisSocket.close(); aisSocket = null; }
   shipData.clear();
   if (mapInstance) {
@@ -699,9 +709,11 @@ function stopAIS() {
 
 function connectAIS() {
   if (!aisEnabled) return;
+  setAisStatus('…', 'rgb(255,200,50)');
   const b = mapInstance.getBounds();
   aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
   aisSocket.onopen = () => {
+    setAisStatus('verbunden', 'rgb(50,200,100)');
     aisSocket.send(JSON.stringify({
       APIKey: AIS_KEY,
       BoundingBoxes: [[[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]],
@@ -722,13 +734,14 @@ function connectAIS() {
         heading: p.TrueHeading < 360 ? p.TrueHeading : (p.Cog || 0),
         sog: p.Sog || 0, cog: p.Cog || 0
       });
+      setAisStatus(`${shipData.size} Schiffe`, 'rgb(74,223,255)');
       updateShipLayer();
     } catch {}
   };
-  aisSocket.onerror = () => { aisSocket = null; };
+  aisSocket.onerror = () => { setAisStatus('Fehler', 'rgb(255,80,80)'); aisSocket = null; };
   aisSocket.onclose = () => {
     aisSocket = null;
-    if (aisEnabled) setTimeout(connectAIS, 3000);
+    if (aisEnabled) { setAisStatus('reconnect…', 'rgb(255,200,50)'); setTimeout(connectAIS, 3000); }
   };
 }
 
