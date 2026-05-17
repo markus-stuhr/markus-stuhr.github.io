@@ -648,7 +648,7 @@ const MAP_STYLES = {
     townColor: '#334455',
     townHalo: 'rgba(250,243,224,0.85)',
     townHaloWidth: 1.2,
-    contourColor: null
+    contourColor: 'hsl(36, 39%, 49%)'
   }
 };
 
@@ -662,7 +662,7 @@ function applyMapStyle(name) {
   });
   mapInstance.setPaintProperty('Island labels', 'text-color', s.islandLabelColor);
   mapInstance.setPaintProperty('Island labels', 'text-halo-width', s.islandLabelHalo);
-  if (s.contourColor) {
+  if (s.contourColor !== undefined) {
     try {
       mapInstance.setPaintProperty('Contour', 'line-color', s.contourColor);
       mapInstance.setPaintProperty('Contour index', 'line-color', s.contourColor);
