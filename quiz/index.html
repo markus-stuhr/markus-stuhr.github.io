@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tier & Natur Quiz 🌿</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #1a2e1a;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      overflow-x: hidden;
+    }
+
+    /* floating background leaves */
+    body::before {
+      content: '🌿🍃🌱🍀🌾🌿🍃🌱🍀🌾🌿🍃';
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%;
+      font-size: 2rem;
+      letter-spacing: 2rem;
+      color: rgba(255,255,255,0.04);
+      word-break: break-all;
+      line-height: 4rem;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    #app {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 640px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 24px;
+      padding: 36px 32px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    }
+
+    /* ── START SCREEN ── */
+    #start-screen { text-align: center; }
+    #start-screen .emoji { font-size: 5rem; margin-bottom: 16px; }
+    #start-screen h1 {
+      font-size: 2rem;
+      color: #1a5c1a;
+      margin-bottom: 8px;
+      line-height: 1.2;
+    }
+    #start-screen p {
+      color: #555;
+      font-size: 1.05rem;
+      margin-bottom: 32px;
+    }
+
+    /* ── QUIZ SCREEN ── */
+    #quiz-screen { display: none; }
+
+    .progress-wrap {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .progress-bar {
+      flex: 1;
+      height: 12px;
+      background: #e8f5e8;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #4caf50, #8bc34a);
+      border-radius: 99px;
+      transition: width 0.4s ease;
+    }
+    .progress-label {
+      font-size: 0.85rem;
+      color: #888;
+      white-space: nowrap;
+    }
+
+    .question-emoji {
+      font-size: 3.5rem;
+      text-align: center;
+      margin-bottom: 16px;
+    }
+    .question-text {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #1a3a1a;
+      text-align: center;
+      margin-bottom: 28px;
+      line-height: 1.4;
+    }
+
+    .answers {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .answer-btn {
+      border: 3px solid #d0e8d0;
+      border-radius: 16px;
+      padding: 16px 20px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #1a3a1a;
+      background: #f4fbf4;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .answer-btn:hover:not(:disabled) {
+      border-color: #4caf50;
+      background: #e8f5e8;
+      transform: translateY(-2px);
+    }
+    .answer-btn:active:not(:disabled) { transform: translateY(0); }
+
+    .answer-btn .letter {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #d0e8d0;
+      color: #1a5c1a;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .answer-btn.correct {
+      border-color: #4caf50;
+      background: #c8f0c8;
+      animation: pop 0.3s ease;
+    }
+    .answer-btn.correct .letter { background: #4caf50; color: #fff; }
+
+    .answer-btn.wrong {
+      border-color: #e53935;
+      background: #fde8e8;
+    }
+    .answer-btn.wrong .letter { background: #e53935; color: #fff; }
+
+    .answer-btn:disabled { cursor: default; }
+
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.04); }
+      100% { transform: scale(1); }
+    }
+
+    .feedback {
+      margin-top: 20px;
+      padding: 14px 18px;
+      border-radius: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-align: center;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    .feedback.show { opacity: 1; }
+    .feedback.correct-fb { background: #e8f5e8; color: #2e7d32; }
+    .feedback.wrong-fb   { background: #fde8e8; color: #c62828; }
+
+    .next-btn {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      padding: 16px;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #4caf50, #388e3c);
+      color: #fff;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s, transform 0.1s;
+      box-shadow: 0 4px 16px rgba(76,175,80,0.35);
+    }
+    .next-btn.show { opacity: 1; pointer-events: all; }
+    .next-btn:hover { transform: translateY(-2px); }
+    .next-btn:active { transform: translateY(0); }
+
+    /* ── SCORE BAR ── */
+    .score-pill {
+      position: absolute;
+      top: -48px;
+      right: 0;
+      background: #fff;
+      border-radius: 99px;
+      padding: 8px 18px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #1a5c1a;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    }
+
+    /* ── END SCREEN ── */
+    #end-screen { display: none; text-align: center; }
+    #end-screen .trophy { font-size: 5rem; margin-bottom: 12px; }
+    #end-screen h2 { font-size: 1.8rem; color: #1a5c1a; margin-bottom: 8px; }
+    #end-screen .score-display {
+      font-size: 3.5rem;
+      font-weight: 900;
+      color: #4caf50;
+      margin: 16px 0 8px;
+    }
+    #end-screen .score-display span { color: #aaa; font-size: 2rem; font-weight: 400; }
+    #end-screen .message {
+      font-size: 1.05rem;
+      color: #555;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+
+    .btn-primary {
+      display: inline-block;
+      padding: 16px 36px;
+      border: none;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #4caf50, #388e3c);
+      color: #fff;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 16px rgba(76,175,80,0.35);
+      transition: transform 0.1s;
+    }
+    .btn-primary:hover { transform: translateY(-2px); }
+    .btn-primary:active { transform: translateY(0); }
+
+    @media (max-width: 480px) {
+      .card { padding: 24px 20px; }
+      #start-screen h1 { font-size: 1.6rem; }
+      .question-text { font-size: 1.1rem; }
+      .answer-btn { font-size: 0.95rem; padding: 14px 16px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <!-- START -->
+  <div class="card" id="start-screen">
+    <div class="emoji">🦁🌿🐸</div>
+    <h1>Tier &amp; Natur Quiz</h1>
+    <p>10 Fragen rund um Tiere und die Natur.<br>Wie viele schaffst du?</p>
+    <button class="btn-primary" onclick="startQuiz()">Los geht's! 🚀</button>
+  </div>
+
+  <!-- QUIZ -->
+  <div class="card" id="quiz-screen" style="position:relative">
+    <div class="score-pill" id="score-pill">⭐ 0 Punkte</div>
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-label" id="progress-label">1 / 10</div>
+    </div>
+    <div class="question-emoji" id="q-emoji"></div>
+    <div class="question-text" id="q-text"></div>
+    <div class="answers" id="answers"></div>
+    <div class="feedback" id="feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">Weiter →</button>
+  </div>
+
+  <!-- END -->
+  <div class="card" id="end-screen">
+    <div class="trophy" id="trophy"></div>
+    <h2 id="end-title"></h2>
+    <div class="score-display" id="end-score"></div>
+    <div class="message" id="end-message"></div>
+    <button class="btn-primary" onclick="restartQuiz()">Nochmal spielen 🔄</button>
+  </div>
+
+</div>
+
+<script>
+const questions = [
+  {
+    emoji: '🕷️',
+    text: 'Wie viele Beine hat eine Spinne?',
+    answers: ['6 Beine', '8 Beine', '10 Beine'],
+    correct: 1,
+    fact: 'Richtig! Spinnen haben 8 Beine – deshalb gehören sie zu den Spinnentieren.'
+  },
+  {
+    emoji: '🐨',
+    text: 'Was fressen Koalas am liebsten?',
+    answers: ['Bambus', 'Eukalyptusblätter', 'Bananen'],
+    correct: 1,
+    fact: 'Genau! Koalas fressen fast nur Eukalyptusblätter – die sind sogar giftig für die meisten anderen Tiere.'
+  },
+  {
+    emoji: '🐸',
+    text: 'Wie nennt man das Baby eines Frosches?',
+    answers: ['Kaulquappe', 'Larve', 'Küken'],
+    correct: 0,
+    fact: 'Super! Aus einer Kaulquappe wird durch Verwandlung ein Frosch – das nennt man Metamorphose.'
+  },
+  {
+    emoji: '🌳',
+    text: 'Welches Tier schläft den ganzen Winter?',
+    answers: ['Der Hase', 'Der Igel', 'Der Wolf'],
+    correct: 1,
+    fact: 'Toll! Der Igel hält Winterschlaf – er schläft von Oktober bis April und frisst vorher ganz viel.'
+  },
+  {
+    emoji: '🐋',
+    text: 'Was ist das größte Tier der Welt?',
+    answers: ['Elefant', 'Weißer Hai', 'Blauwal'],
+    correct: 2,
+    fact: 'Richtig! Der Blauwal ist das größte Tier, das je auf der Erde gelebt hat – er wird bis zu 30 Meter lang!'
+  },
+  {
+    emoji: '🌈',
+    text: 'Wie entsteht ein Regenbogen?',
+    answers: ['Wenn Sonne auf Regentropfen trifft', 'Wenn zwei Wolken zusammenstoßen', 'Wenn es sehr heiß ist'],
+    correct: 0,
+    fact: 'Klasse! Sonnenlicht wird in Regentropfen gebrochen und in alle Farben aufgeteilt – das ergibt den Regenbogen.'
+  },
+  {
+    emoji: '🐘',
+    text: 'Womit "sehen" Fledermäuse in der Dunkelheit?',
+    answers: ['Mit sehr großen Augen', 'Mit Ultraschall', 'Mit ihren langen Ohren'],
+    correct: 1,
+    fact: 'Genau! Fledermäuse senden Ultraschallrufe aus und hören das Echo – das nennt man Echolot.'
+  },
+  {
+    emoji: '🌊',
+    text: 'Wie viel der Erdoberfläche ist von Wasser bedeckt?',
+    answers: ['Etwa ein Drittel (33%)', 'Etwa die Hälfte (50%)', 'Etwa zwei Drittel (71%)'],
+    correct: 2,
+    fact: 'Wow, richtig! Fast 71% der Erde ist Wasser – deshalb sieht unsere Erde vom All aus blau aus.'
+  },
+  {
+    emoji: '🦁',
+    text: 'Welches Tier ist das schnellste Landtier der Welt?',
+    answers: ['Löwe', 'Gepard', 'Straußenvogel'],
+    correct: 1,
+    fact: 'Super! Ein Gepard kann bis zu 120 km/h schnell rennen – aber nur für kurze Sprints.'
+  },
+  {
+    emoji: '🌱',
+    text: 'Wofür brauchen Pflanzen Sonnenlicht?',
+    answers: ['Zum Wachsen und um Zucker herzustellen', 'Damit sie warm bleiben', 'Damit ihre Blätter grün werden'],
+    correct: 0,
+    fact: 'Richtig! Pflanzen nutzen Sonnenlicht, Wasser und Luft um Zucker herzustellen – das nennt man Fotosynthese.'
+  }
+];
+
+let currentQ = 0;
+let score = 0;
+let answered = false;
+
+function startQuiz() {
+  currentQ = 0;
+  score = 0;
+  answered = false;
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('end-screen').style.display = 'none';
+  document.getElementById('quiz-screen').style.display = 'block';
+  showQuestion();
+}
+
+function showQuestion() {
+  const q = questions[currentQ];
+  answered = false;
+
+  document.getElementById('progress-fill').style.width = (currentQ / questions.length * 100) + '%';
+  document.getElementById('progress-label').textContent = (currentQ + 1) + ' / ' + questions.length;
+  document.getElementById('score-pill').textContent = '⭐ ' + score + ' Punkt' + (score !== 1 ? 'e' : '');
+  document.getElementById('q-emoji').textContent = q.emoji;
+  document.getElementById('q-text').textContent = q.text;
+
+  const fb = document.getElementById('feedback');
+  fb.className = 'feedback';
+  fb.textContent = '';
+
+  const nextBtn = document.getElementById('next-btn');
+  nextBtn.className = 'next-btn';
+  nextBtn.textContent = currentQ < questions.length - 1 ? 'Weiter →' : 'Ergebnis sehen 🏆';
+
+  const answersEl = document.getElementById('answers');
+  answersEl.innerHTML = '';
+  const letters = ['A', 'B', 'C'];
+  q.answers.forEach((ans, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'answer-btn';
+    btn.innerHTML = `<span class="letter">${letters[i]}</span>${ans}`;
+    btn.onclick = () => selectAnswer(i);
+    answersEl.appendChild(btn);
+  });
+}
+
+function selectAnswer(index) {
+  if (answered) return;
+  answered = true;
+
+  const q = questions[currentQ];
+  const buttons = document.querySelectorAll('.answer-btn');
+  const fb = document.getElementById('feedback');
+
+  buttons.forEach(btn => btn.disabled = true);
+
+  if (index === q.correct) {
+    score++;
+    buttons[index].classList.add('correct');
+    fb.textContent = '✅ ' + q.fact;
+    fb.className = 'feedback correct-fb show';
+  } else {
+    buttons[index].classList.add('wrong');
+    buttons[q.correct].classList.add('correct');
+    fb.textContent = '❌ Leider falsch. ' + q.fact;
+    fb.className = 'feedback wrong-fb show';
+  }
+
+  document.getElementById('score-pill').textContent = '⭐ ' + score + ' Punkt' + (score !== 1 ? 'e' : '');
+
+  const nextBtn = document.getElementById('next-btn');
+  nextBtn.classList.add('show');
+}
+
+function nextQuestion() {
+  currentQ++;
+  if (currentQ >= questions.length) {
+    showEnd();
+  } else {
+    showQuestion();
+  }
+}
+
+function showEnd() {
+  document.getElementById('quiz-screen').style.display = 'none';
+  const endScreen = document.getElementById('end-screen');
+  endScreen.style.display = 'block';
+
+  document.getElementById('end-score').innerHTML = score + '<span> / ' + questions.length + '</span>';
+
+  let trophy, title, message;
+  if (score === 10) {
+    trophy = '🏆';
+    title = 'Perfekt! Du bist ein Naturprofi!';
+    message = 'Unglaublich – alle 10 Fragen richtig! Du weißt wirklich super viel über Tiere und Natur. 🌟';
+  } else if (score >= 7) {
+    trophy = '🥇';
+    title = 'Super gemacht!';
+    message = 'Wow, das war richtig stark! Du kennst dich toll mit der Natur aus. 🦁🌿';
+  } else if (score >= 4) {
+    trophy = '🥈';
+    title = 'Gut gespielt!';
+    message = 'Nicht schlecht! Du hast schon viel gelernt – und beim nächsten Mal weißt du noch mehr. 🐸';
+  } else {
+    trophy = '🌱';
+    title = 'Weiter so!';
+    message = 'Jedes Quiz macht schlauer! Probier es nochmal und du wirst besser. 🌈';
+  }
+
+  document.getElementById('trophy').textContent = trophy;
+  document.getElementById('end-title').textContent = title;
+  document.getElementById('end-message').textContent = message;
+}
+
+function restartQuiz() {
+  startQuiz();
+}
+</script>
+</body>
+</html>
