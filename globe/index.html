@@ -750,6 +750,13 @@ function showMap(spot) {
       ['Depth labels', 'Undersea labels', 'Undersea line labels'].forEach(id => {
         try { mapInstance.setPaintProperty(id, 'text-opacity', 0.5); } catch {}
       });
+      try {
+        mapInstance.setPaintProperty('Depth contour', 'line-color', [
+          'interpolate', ['linear', 2], ['zoom'],
+          8, ['case', ['>', ['get', 'depth'], -4000], 'hsl(212,56%,25%)', 'hsl(208,48%,71%)'],
+          12, ['case', ['>', ['get', 'depth'], -4000], 'hsl(209,93%,12%)', 'hsl(210,14%,97%)']
+        ]);
+      } catch {}
 
       // OSM vector tiles: buildings + city labels
       mapInstance.addSource('osm', {
