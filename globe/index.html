@@ -631,7 +631,8 @@ const MAP_STYLES = {
     cityHaloWidth: 1.5,
     townColor: '#5a9ab8',
     townHalo: 'rgba(5,15,30,0.8)',
-    townHaloWidth: 1.2
+    townHaloWidth: 1.2,
+    contourColor: '#090d12'
   },
   light: {
     land: '#faf3e0',
@@ -646,7 +647,8 @@ const MAP_STYLES = {
     cityHaloWidth: 1.5,
     townColor: '#334455',
     townHalo: 'rgba(250,243,224,0.85)',
-    townHaloWidth: 1.2
+    townHaloWidth: 1.2,
+    contourColor: null
   }
 };
 
@@ -660,6 +662,12 @@ function applyMapStyle(name) {
   });
   mapInstance.setPaintProperty('Island labels', 'text-color', s.islandLabelColor);
   mapInstance.setPaintProperty('Island labels', 'text-halo-width', s.islandLabelHalo);
+  if (s.contourColor) {
+    try {
+      mapInstance.setPaintProperty('Contour', 'line-color', s.contourColor);
+      mapInstance.setPaintProperty('Contour index', 'line-color', s.contourColor);
+    } catch {}
+  }
   try {
     mapInstance.setPaintProperty('buildings', 'fill-color', s.buildingColor);
     mapInstance.setPaintProperty('buildings-outline', 'line-color', s.buildingOutline);
