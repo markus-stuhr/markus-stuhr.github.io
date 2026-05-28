@@ -1091,19 +1091,39 @@ function loadRaceTracks(race) {
   fetch(race.geojson)
     .then(r => r.json())
     .then(data => {
-      if (mapInstance.getSource('race-tracks')) {
-        mapInstance.getSource('race-tracks').setData(data);
-      } else {
-        mapInstance.addSource('race-tracks', { type: 'geojson', data });
+      if (!mapInstance.getSource('race-tracks')) {
+        mapInstance.addSource('race-tracks', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        // Sailed portion — solid full-color line
         mapInstance.addLayer({
-          id: 'race-tracks',
+          id: 'race-tracks-past',
           type: 'line',
           source: 'race-tracks',
+          filter: ['==', ['get', 'segment'], 'past'],
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
             'line-color': ['get', 'color'],
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 15, 2.5],
-            'line-opacity': 0.85
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 15, 3],
+            'line-opacity': 0.9
+          }
+        });
+        // Remaining course — dashed, 20 % alpha
+        mapInstance.addLayer({
+          id: 'race-tracks-future',
+          type: 'line',
+          source: 'race-tracks',
+          filter: ['==', ['get', 'segment'], 'future'],
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'butt',
+            'line-dasharray': [2.5, 2.5]
+          },
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 15, 2],
+            'line-opacity': 0.2
           }
         });
         document.getElementById('row-racetracks').style.display = '';
@@ -1180,7 +1200,7 @@ function addCourseMarks(marks) {
 }
 
 document.getElementById('toggle-racetracks').addEventListener('change', e => {
-  applyLayerToggle('racetracks', ['race-tracks', 'boat-positions', 'boat-labels'], e.target.checked);
+  applyLayerToggle('racetracks', ['race-tracks-past', 'race-tracks-future', 'boat-positions', 'boat-labels'], e.target.checked);
 });
 document.getElementById('toggle-coursemarks').addEventListener('change', e => {
   applyLayerToggle('coursemarks', ['course-marks-glow', 'course-marks', 'course-mark-labels'], e.target.checked);
@@ -1375,6 +1395,7 @@ let raceSpeed     = 1;
 let raceRafId     = null;
 let raceLastWall  = null;
 let scrubbing     = false;
+let raceTrackLos  = null;  // cached lo-indices per boat for split-track optimisation
 
 function formatRaceTime(ms) {
   const s  = Math.floor(ms / 1000);
@@ -1434,6 +1455,67 @@ function updateBoatPositions() {
   });
 }
 
+// Split each boat track at the current race time:
+// coords[0..lo] → solid past line; coords[lo..end] → dashed future line.
+// Only rebuilds GeoJSON when the segment index changes (every 5 race-seconds).
+function updateRaceTracks() {
+  const src = mapInstance && mapInstance.getSource('race-tracks');
+  if (!src || !raceGeoJSON) return;
+
+  const newLos = raceGeoJSON.features.map(f => {
+    const times = f.properties.times;
+    if (!Array.isArray(times) || !times.length) return 0;
+    if (raceCurrentMs <= times[0]) return 0;
+    const last = times.length - 1;
+    if (raceCurrentMs >= times[last]) return last;
+    let lo = 0, hi = last;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (times[mid] <= raceCurrentMs) lo = mid; else hi = mid; }
+    return lo;
+  });
+
+  // Skip rebuild if no segment boundary moved
+  if (raceTrackLos && newLos.every((lo, i) => lo === raceTrackLos[i])) return;
+  raceTrackLos = newLos;
+
+  const features = [];
+  raceGeoJSON.features.forEach((f, fi) => {
+    const times  = f.properties.times;
+    const coords = f.geometry.coordinates;
+    const color  = f.properties.color;
+    if (!Array.isArray(times) || !times.length) return;
+
+    const lo = raceTrackLos[fi];
+
+    // Exact interpolated split point
+    let split;
+    if (lo >= times.length - 1) {
+      split = coords[coords.length - 1];
+    } else {
+      const frac = Math.max(0, Math.min(1, (raceCurrentMs - times[lo]) / (times[lo + 1] - times[lo])));
+      const a = coords[lo], b = coords[lo + 1];
+      split = [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
+    }
+
+    // Past segment (solid)
+    const past = [...coords.slice(0, lo + 1), split];
+    if (past.length >= 2) features.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: past },
+      properties: { color, segment: 'past' }
+    });
+
+    // Future segment (dashed)
+    const future = [split, ...coords.slice(lo + 1)];
+    if (future.length >= 2) features.push({
+      type: 'Feature',
+      geometry: { type: 'LineString', coordinates: future },
+      properties: { color, segment: 'future' }
+    });
+  });
+
+  src.setData({ type: 'FeatureCollection', features });
+}
+
 function updateTimelineUI() {
   const pct = ((raceCurrentMs - raceStartMs) / (raceEndMs - raceStartMs) * 100).toFixed(3) + '%';
   document.getElementById('tl-fill').style.width = pct;
@@ -1454,6 +1536,7 @@ function raceAnimStep(wallMs) {
   raceLastWall = wallMs;
   updateTimelineUI();
   updateBoatPositions();
+  updateRaceTracks();
   if (racePlaying) raceRafId = requestAnimationFrame(raceAnimStep);
 }
 
@@ -1524,6 +1607,7 @@ function initRaceTimeline(geojson) {
     document.getElementById('tl-duration').textContent = formatRaceTime(raceEndMs - raceStartMs);
     updateTimelineUI();
     updateBoatPositions();
+    updateRaceTracks();
   }
 
   // Boat hull shape: pointed bow at top, rounded stern at bottom (white → tinted via SDF)
@@ -1549,6 +1633,7 @@ function hideRaceTimeline() {
   if (raceRafId) { cancelAnimationFrame(raceRafId); raceRafId = null; }
   raceLastWall = null;
   raceGeoJSON  = null;
+  raceTrackLos = null;
   document.getElementById('tl-play').textContent = '▶';
   document.getElementById('race-timeline').classList.remove('visible');
   document.getElementById('map').classList.remove('has-timeline');
@@ -1591,7 +1676,7 @@ function scrubTo(clientX) {
   raceCurrentMs = raceStartMs + frac * (raceEndMs - raceStartMs);
   raceLastWall  = null; // prevent time-jump when releasing
   updateTimelineUI();
-  if (!racePlaying) updateBoatPositions();
+  if (!racePlaying) { updateBoatPositions(); updateRaceTracks(); }
 }
 
 tlTrack.addEventListener('mousedown', e => {
