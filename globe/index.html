@@ -1398,7 +1398,8 @@ let raceRafId     = null;
 let raceLastWall  = null;
 let scrubbing     = false;
 let raceTrackLos  = null;  // cached lo-indices per boat for split-track optimisation
-let followedBoatIdx = null; // index into raceGeoJSON.features, null = free camera
+let followedBoatIdx  = null; // index into raceGeoJSON.features, null = free camera
+let followAnimating  = false; // true during the initial zoom-to-fit animation
 
 function formatRaceTime(ms) {
   const s  = Math.floor(ms / 1000);
@@ -1559,8 +1560,8 @@ function updateRaceTracks() {
 
 function updateFollow() {
   if (followedBoatIdx === null || !raceGeoJSON || !mapInstance) return;
-  // Don't cancel an ongoing zoom animation (e.g. NavigationControl button press)
-  if (mapInstance.isZooming()) return;
+  // Don't cancel the initial zoom-to-fit or NavigationControl zoom animations
+  if (followAnimating || mapInstance.isZooming()) return;
   const f = raceGeoJSON.features[followedBoatIdx];
   if (!f) return;
   const r = interpDisplay(f, raceCurrentMs);
@@ -1675,25 +1676,46 @@ function initRaceTimeline(geojson) {
         }
       });
 
-      // Follow-boat: click to lock, user gesture to release
+      // Follow-boat: click to lock on a boat; animate to a zoom that fits all boats.
       mapInstance.on('click', 'boat-positions', e => {
         if (!raceGeoJSON || !e.features.length) return;
         const color = e.features[0].properties.color;
-        const idx = raceGeoJSON.features.findIndex(f => f.properties.color === color);
-        if (idx >= 0) { followedBoatIdx = idx; updateFollow(); }
+        const idx   = raceGeoJSON.features.findIndex(f => f.properties.color === color);
+        if (idx < 0) return;
+        followedBoatIdx = idx;
+
+        const r = interpDisplay(raceGeoJSON.features[idx], raceCurrentMs);
+        if (!r) return;
+
+        // Compute a zoom that shows all boats comfortably
+        const positions = raceGeoJSON.features
+          .map(f => interpDisplay(f, raceCurrentMs))
+          .filter(Boolean).map(x => x.pos);
+        let targetZoom = mapInstance.getZoom();
+        if (positions.length > 1) {
+          const bounds = positions.reduce(
+            (b, p) => b.extend(p),
+            new maplibregl.LngLatBounds(positions[0], positions[0])
+          );
+          const cam = mapInstance.cameraForBounds(bounds, { padding: 80 });
+          if (cam) targetZoom = cam.zoom;
+        }
+
+        // Animate once to the boat (with fit zoom); updateFollow takes over after
+        followAnimating = true;
+        mapInstance.once('moveend', () => { followAnimating = false; });
+        mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, duration: 700 });
       });
+
       mapInstance.on('mouseenter', 'boat-positions', () => {
         mapInstance.getCanvas().style.cursor = 'pointer';
       });
       mapInstance.on('mouseleave', 'boat-positions', () => {
         mapInstance.getCanvas().style.cursor = '';
       });
-      // Release follow on user pan/touch — but NOT when a NavigationControl
-      // button (zoom +/-) was clicked (those should zoom while follow continues).
-      mapInstance.on('movestart', e => {
-        if (!e.originalEvent) return;
-        const tgt = e.originalEvent.target;
-        if (tgt instanceof Element && tgt.closest('.maplibregl-ctrl-group')) return;
+      // Release follow when the user pans/drags — dragstart is always user-initiated
+      // and does NOT fire for zoom-button easeTo or scroll-wheel zoom.
+      mapInstance.on('dragstart', () => {
         followedBoatIdx = null;
       });
     }
@@ -1732,8 +1754,9 @@ function hideRaceTimeline() {
   if (raceRafId) { cancelAnimationFrame(raceRafId); raceRafId = null; }
   raceLastWall = null;
   raceGeoJSON  = null;
-  raceTrackLos = null;
+  raceTrackLos    = null;
   followedBoatIdx = null;
+  followAnimating = false;
   const emptyFC = { type: 'FeatureCollection', features: [] };
   try { mapInstance.getSource('race-tracks-full').setData(emptyFC); } catch {}
   try { mapInstance.getSource('race-tracks').setData(emptyFC); } catch {}
