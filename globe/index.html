@@ -1261,13 +1261,7 @@ function addCourseMarks(marks) {
 }
 
 document.getElementById('toggle-racetracks').addEventListener('change', e => {
-  applyLayerToggle('racetracks', ['race-tracks-full', 'race-tracks-past'], e.target.checked);
-  if (isSafari) {
-    const vis = e.target.checked ? '' : 'hidden';
-    raceBoatEls.forEach(({ wrap }) => { wrap.style.visibility = vis; });
-  } else {
-    applyLayerToggle('racetracks-boats', ['boat-positions', 'boat-labels'], e.target.checked);
-  }
+  applyLayerToggle('racetracks', ['race-tracks-full', 'race-tracks-past', 'boat-positions', 'boat-labels'], e.target.checked);
 });
 document.getElementById('toggle-coursemarks').addEventListener('change', e => {
   applyLayerToggle('coursemarks', ['course-marks-glow', 'course-marks', 'course-mark-labels'], e.target.checked);
@@ -1469,33 +1463,35 @@ let scrubbing     = false;
 let raceTrackLos  = null;  // cached lo-indices per boat for split-track optimisation
 let followedBoatIdx  = null; // index into raceGeoJSON.features, null = free camera
 let followAnimating  = false; // true during the initial zoom-to-fit animation
-let raceBoatEls      = [];   // custom DOM boat overlays {wrap, svgEl, idx}
-let _boatMoveHandler = null; // stored so we can remove it on hide
 
 // ── 3D Terrain ────────────────────────────────────────────
 let is3D = false;
 
 function enable3D() {
   if (!mapInstance) return;
-  if (!mapInstance.getSource('terrain-dem')) {
-    mapInstance.addSource('terrain-dem', {
-      type: 'raster-dem',
-      url: 'https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=lT9jK8r0OXrZinP9JSOT',
-      tileSize: 256
-    });
+  // Terrain causes GPU elevation-lookup lag for symbol/line layers in Safari —
+  // use pitch-only 3D on Safari; full terrain on all other browsers.
+  if (!isSafari) {
+    if (!mapInstance.getSource('terrain-dem')) {
+      mapInstance.addSource('terrain-dem', {
+        type: 'raster-dem',
+        url: 'https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=lT9jK8r0OXrZinP9JSOT',
+        tileSize: 256
+      });
+    }
+    if (!mapInstance.getLayer('sky')) {
+      mapInstance.addLayer({
+        id: 'sky', type: 'sky',
+        paint: {
+          'sky-type': 'atmosphere',
+          'sky-atmosphere-sun': [0, 90],
+          'sky-atmosphere-sun-intensity': 12,
+          'sky-opacity': 0.85
+        }
+      });
+    }
+    mapInstance.setTerrain({ source: 'terrain-dem', exaggeration: 1.5 });
   }
-  if (!mapInstance.getLayer('sky')) {
-    mapInstance.addLayer({
-      id: 'sky', type: 'sky',
-      paint: {
-        'sky-type': 'atmosphere',
-        'sky-atmosphere-sun': [0, 90],
-        'sky-atmosphere-sun-intensity': 12,
-        'sky-opacity': 0.85
-      }
-    });
-  }
-  mapInstance.setTerrain({ source: 'terrain-dem', exaggeration: 1.5 });
   _animatePitch(60);
   const btn = document.getElementById('btn-3d');
   btn.textContent = '2D';
@@ -1505,7 +1501,7 @@ function enable3D() {
 
 function disable3D() {
   if (!mapInstance) return;
-  mapInstance.setTerrain(null);
+  if (!isSafari) mapInstance.setTerrain(null);
   _animatePitch(0);
   const btn = document.getElementById('btn-3d');
   btn.textContent = '3D';
@@ -1563,19 +1559,6 @@ function calcSpeedKnots(f, t) {
   const rb = interpPosAndBearing(times, coords, tb);
   if (!ra || !rb) return null;
   return haversineNm(ra.pos, rb.pos) / ((tb - ta) / 3600000);
-}
-
-// Screen-space rotation angle (CW from screen-up) for a boat at `pos` heading `bearing`.
-// Projects a point slightly ahead onto the screen so 3D perspective distortion is
-// automatically accounted for — used by the Safari DOM-marker path.
-function screenBearing(pos, bearing) {
-  const d = 0.0003; // ~33 m ahead, small enough to be local, large enough to be stable
-  const rad = bearing * Math.PI / 180;
-  const ahead = [pos[0] + d * Math.sin(rad), pos[1] + d * Math.cos(rad)];
-  const ptA = mapInstance.project(pos);
-  const ptB = mapInstance.project(ahead);
-  // atan2(dx, -dy): clockwise from screen-up, matching CSS rotate()
-  return Math.atan2(ptB.x - ptA.x, ptA.y - ptB.y) * 180 / Math.PI;
 }
 
 // Compass bearing (degrees CW from North) between two [lng,lat] points
@@ -1658,44 +1641,26 @@ function interpDisplay(f, t) {
 }
 
 function updateBoatPositions() {
-  if (!raceGeoJSON) return;
-  if (isSafari) {
-    // ── Safari: DOM markers positioned via map.project() ──────────────────
-    raceBoatEls.forEach(({ wrap, svgEl, speedEl, idx }) => {
-      const f = raceGeoJSON.features[idx];
+  const src = mapInstance && mapInstance.getSource('boat-positions');
+  if (!src || !raceGeoJSON) return;
+  src.setData({
+    type: 'FeatureCollection',
+    features: raceGeoJSON.features.map(f => {
       const r = interpDisplay(f, raceCurrentMs);
-      if (!r) { wrap.style.visibility = 'hidden'; return; }
-      wrap.style.visibility = '';
-      const pt = mapInstance.project(r.pos);
-      wrap.style.transform = `translate(${Math.round(pt.x)}px,${Math.round(pt.y)}px)`;
-      // screenBearing accounts for 3D perspective distortion
-      svgEl.style.transform = `translate(-8px,-14px) rotate(${screenBearing(r.pos, r.bearing)}deg)`;
+      if (!r) return null;
       const spd = calcSpeedKnots(f, raceCurrentMs);
-      speedEl.textContent = spd !== null ? spd.toFixed(1) + ' kn' : '';
-    });
-  } else {
-    // ── Chrome/other: GeoJSON symbol layer ────────────────────────────────
-    const src = mapInstance && mapInstance.getSource('boat-positions');
-    if (!src) return;
-    src.setData({
-      type: 'FeatureCollection',
-      features: raceGeoJSON.features.map(f => {
-        const r = interpDisplay(f, raceCurrentMs);
-        if (!r) return null;
-        const spd = calcSpeedKnots(f, raceCurrentMs);
-        return {
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: r.pos },
-          properties: {
-            color: f.properties.color,
-            name: f.properties.name || f.properties.boat || '',
-            speed: spd !== null ? spd.toFixed(1) + ' kn' : '',
-            bearing: r.bearing
-          }
-        };
-      }).filter(Boolean)
-    });
-  }
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: r.pos },
+        properties: {
+          color: f.properties.color,
+          name: f.properties.name || f.properties.boat || '',
+          speed: spd !== null ? spd.toFixed(1) + ' kn' : '',
+          bearing: r.bearing
+        }
+      };
+    }).filter(Boolean)
+  });
 }
 
 // Split each boat track at the current race time:
@@ -1787,7 +1752,6 @@ function raceAnimStep(wallMs) {
   if (racePlaying) raceRafId = requestAnimationFrame(raceAnimStep);
 }
 
-// ── Chrome/non-Safari: SDF symbol layers ──────────────────────────────────
 function setupBoatLayers() {
   if (!mapInstance.getSource('boat-positions')) {
     mapInstance.addSource('boat-positions', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
@@ -1846,93 +1810,6 @@ function setupBoatLayers() {
   updateRaceTracks();
 }
 
-// ── Safari: custom DOM boat overlays ──────────────────────────────────────
-function createBoatElements() {
-  // Remove any elements from a previous race load
-  raceBoatEls.forEach(b => b.wrap.remove());
-  raceBoatEls = [];
-
-  // Append directly to the canvas container — bypasses terrain GPU pipeline entirely
-  const container = mapInstance.getCanvasContainer();
-
-  raceGeoJSON.features.forEach((f, idx) => {
-    const color = f.properties.color;
-    const name  = f.properties.name || f.properties.boat || '';
-
-    const wrap = document.createElement('div');
-    wrap.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;will-change:transform;';
-
-    const svgNS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(svgNS, 'svg');
-    svg.setAttribute('width', '16');
-    svg.setAttribute('height', '28');
-    svg.setAttribute('viewBox', '0 0 16 28');
-    // transform-origin = center of icon (8,14); translate(-8,-14) centers it on the projected point
-    svg.style.cssText = 'display:block;cursor:pointer;pointer-events:auto;transform-origin:8px 14px;';
-
-    const path = document.createElementNS(svgNS, 'path');
-    path.setAttribute('d', 'M8,1 C11.5,6 13,13 12,20 C10.5,25.5 5.5,25.5 4,20 C3,13 4.5,6 8,1 Z');
-    path.setAttribute('fill', color);
-    svg.appendChild(path);
-
-    const labelEl = document.createElement('div');
-    labelEl.textContent = name;
-    // top:16px = 2px gap below the 14px half-height of the icon
-    labelEl.style.cssText = `position:absolute;top:16px;left:0;transform:translateX(-50%);` +
-      `white-space:nowrap;font-size:11px;color:${color};` +
-      `font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;pointer-events:none;`;
-
-    const speedEl = document.createElement('div');
-    speedEl.style.cssText = `position:absolute;top:30px;left:0;transform:translateX(-50%);` +
-      `white-space:nowrap;font-size:10px;color:${color};opacity:0.7;` +
-      `font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;pointer-events:none;`;
-
-    wrap.appendChild(svg);
-    wrap.appendChild(labelEl);
-    wrap.appendChild(speedEl);
-    container.appendChild(wrap);
-
-    svg.addEventListener('click', () => {
-      if (!raceGeoJSON) return;
-      followedBoatIdx = idx;
-      const r = interpDisplay(raceGeoJSON.features[idx], raceCurrentMs);
-      if (!r) return;
-      const positions = raceGeoJSON.features.map(g => interpDisplay(g, raceCurrentMs)).filter(Boolean).map(x => x.pos);
-      let targetZoom = mapInstance.getZoom();
-      if (positions.length > 1) {
-        const bounds = positions.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(positions[0], positions[0]));
-        const cam = mapInstance.cameraForBounds(bounds, { padding: 80 });
-        if (cam) targetZoom = cam.zoom - 2;
-      }
-      followAnimating = true;
-      mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, duration: 700 });
-      setTimeout(() => { followAnimating = false; }, 750);
-    });
-    svg.addEventListener('mouseenter', () => { mapInstance.getCanvas().style.cursor = 'pointer'; });
-    svg.addEventListener('mouseleave', () => { mapInstance.getCanvas().style.cursor = ''; });
-
-    raceBoatEls.push({ wrap, svgEl: svg, speedEl, idx });
-  });
-
-  // Release follow on drag
-  mapInstance.on('dragstart', () => { followedBoatIdx = null; });
-  // Refresh positions on any map movement when race is paused
-  if (_boatMoveHandler) mapInstance.off('move', _boatMoveHandler);
-  _boatMoveHandler = () => { if (!racePlaying) updateBoatPositions(); };
-  mapInstance.on('move', _boatMoveHandler);
-
-  // Show bar + adjust nav controls and settings button
-  document.getElementById('race-timeline').classList.add('visible');
-  document.getElementById('map').classList.add('has-timeline');
-  document.getElementById('settings-btn').style.bottom   = '80px';
-  document.getElementById('settings-panel').style.bottom = '124px';
-  document.getElementById('btn-3d').style.bottom         = '205px';
-  document.getElementById('tl-duration').textContent = formatRaceTime(raceEndMs - raceStartMs);
-  updateTimelineUI();
-  updateBoatPositions();
-  updateRaceTracks();
-}
-
 function initRaceTimeline(geojson) {
   raceGeoJSON = geojson;
 
@@ -1970,20 +1847,15 @@ function initRaceTimeline(geojson) {
     });
   }
 
-  if (isSafari) {
-    // DOM overlays: bypass terrain GPU pipeline to avoid Safari 3D lag
-    createBoatElements();
-  } else {
-    // SDF symbol layers: correct terrain draping in Chrome/Firefox
-    const BOAT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="28" viewBox="0 0 16 28">
-      <path d="M8,1 C11.5,6 13,13 12,20 C10.5,25.5 5.5,25.5 4,20 C3,13 4.5,6 8,1 Z" fill="white"/>
-    </svg>`;
-    if (mapInstance.hasImage('boat-icon')) { setupBoatLayers(); }
-    else {
-      const img = new Image(16, 28);
-      img.onload = () => { mapInstance.addImage('boat-icon', img, { sdf: true }); setupBoatLayers(); };
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BOAT_SVG);
-    }
+  // SDF symbol layers for boats (all browsers — terrain disabled in Safari so no GPU lag)
+  const BOAT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="28" viewBox="0 0 16 28">
+    <path d="M8,1 C11.5,6 13,13 12,20 C10.5,25.5 5.5,25.5 4,20 C3,13 4.5,6 8,1 Z" fill="white"/>
+  </svg>`;
+  if (mapInstance.hasImage('boat-icon')) { setupBoatLayers(); }
+  else {
+    const img = new Image(16, 28);
+    img.onload = () => { mapInstance.addImage('boat-icon', img, { sdf: true }); setupBoatLayers(); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BOAT_SVG);
   }
 }
 
@@ -1995,9 +1867,6 @@ function hideRaceTimeline() {
   raceTrackLos    = null;
   followedBoatIdx = null;
   followAnimating = false;
-  raceBoatEls.forEach(b => b.wrap.remove());
-  raceBoatEls = [];
-  if (_boatMoveHandler) { mapInstance.off('move', _boatMoveHandler); _boatMoveHandler = null; }
   const emptyFC = { type: 'FeatureCollection', features: [] };
   try { mapInstance.getSource('race-tracks-full').setData(emptyFC); } catch {}
   try { mapInstance.getSource('race-tracks').setData(emptyFC); } catch {}
