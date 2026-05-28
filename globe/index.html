@@ -592,7 +592,7 @@
   </div>
   <div class="setting-row">
     <span class="setting-label">Fährverbindungen</span>
-    <label class="toggle"><input type="checkbox" id="toggle-ferry" checked><span class="toggle-track"></span></label>
+    <label class="toggle"><input type="checkbox" id="toggle-ferry"><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row" id="row-racetracks" style="display:none">
     <span class="setting-label">Renntracks</span>
@@ -892,6 +892,27 @@ function applyMapStyle(name) {
       mapInstance.setPaintProperty('Contour index', 'line-color', s.contourColor);
     } catch {}
   }
+  // Depth isobands — increase contrast so depth zones are clearly distinct.
+  // The finest MapTiler isoband is 0m→-50m, so both sides of the 25m contour
+  // line share the same fill; we just make each 50m band visibly different.
+  const depthFills = name === 'dark' ? [
+    ['0m to -50m',     'hsl(200,42%,30%)'],
+    ['-50m to -100m',  'hsl(207,38%,22%)'],
+    ['-100m to -200m', 'hsl(210,36%,17%)'],
+    ['-200m to -250m', 'hsl(212,34%,13%)'],
+    ['-250m to -500m', 'hsl(213,32%,10%)'],
+    ['-500m to -750m', 'hsl(214,30%,8%)' ],
+  ] : [
+    ['0m to -50m',     'hsl(191,72%,84%)'],
+    ['-50m to -100m',  'hsl(199,65%,73%)'],
+    ['-100m to -200m', 'hsl(204,60%,63%)'],
+    ['-200m to -250m', 'hsl(208,57%,55%)'],
+    ['-250m to -500m', 'hsl(211,55%,47%)'],
+    ['-500m to -750m', 'hsl(213,53%,40%)'],
+  ];
+  depthFills.forEach(([id, color]) => {
+    try { mapInstance.setPaintProperty(id, 'fill-color', color); } catch {}
+  });
   try {
     mapInstance.setPaintProperty('buildings', 'fill-color', s.buildingColor);
     mapInstance.setPaintProperty('buildings-outline', 'line-color', s.buildingOutline);
@@ -1064,6 +1085,8 @@ function showMap(spot) {
           'line-dasharray': [2, 3]
         }
       });
+
+      applyLayerToggle('ferry', ['ferry-routes'], document.getElementById('toggle-ferry').checked);
 
       // Nautical marks on top of buildings (OpenSeaMap)
       mapInstance.addSource('openseamap', {
@@ -1440,6 +1463,23 @@ function interpPosAndBearing(times, coords, t) {
   };
 }
 
+// Chaikin corner-cutting — each pass doubles the points; produces a
+// parallel times array so the split-track binary search stays correct.
+function chaikinSmooth(coords, times, iterations) {
+  let c = coords.slice(), t = times.slice();
+  for (let iter = 0; iter < iterations; iter++) {
+    const nc = [c[0]], nt = [t[0]];
+    for (let i = 0; i < c.length - 1; i++) {
+      const a = c[i], b = c[i+1], ta = t[i], tb = t[i+1];
+      nc.push([a[0]*0.75+b[0]*0.25, a[1]*0.75+b[1]*0.25]); nt.push(ta*0.75+tb*0.25);
+      nc.push([a[0]*0.25+b[0]*0.75, a[1]*0.25+b[1]*0.75]); nt.push(ta*0.25+tb*0.75);
+    }
+    nc.push(c[c.length-1]); nt.push(t[t.length-1]);
+    c = nc; t = nt;
+  }
+  return { coords: c, times: t };
+}
+
 function updateBoatPositions() {
   const src = mapInstance && mapInstance.getSource('boat-positions');
   if (!src || !raceGeoJSON) return;
@@ -1465,7 +1505,7 @@ function updateRaceTracks() {
   if (!src || !raceGeoJSON) return;
 
   const newLos = raceGeoJSON.features.map(f => {
-    const times = f.properties.times;
+    const times = f._dTimes || f.properties.times;
     if (!Array.isArray(times) || !times.length) return 0;
     if (raceCurrentMs <= times[0]) return 0;
     const last = times.length - 1;
@@ -1481,8 +1521,8 @@ function updateRaceTracks() {
 
   const features = [];
   raceGeoJSON.features.forEach((f, fi) => {
-    const times  = f.properties.times;
-    const coords = f.geometry.coordinates;
+    const times  = f._dTimes  || f.properties.times;
+    const coords = f._dCoords || f.geometry.coordinates;
     const color  = f.properties.color;
     if (!Array.isArray(times) || !times.length) return;
 
@@ -1566,6 +1606,14 @@ function initRaceTimeline(geojson) {
     }
   });
   raceCurrentMs = raceStartMs;
+
+  // Pre-compute Chaikin-smoothed display coords (2 passes → 4× denser ≈ 1.25 s resolution)
+  // Only used for track line rendering; boat positions keep original interpolation.
+  geojson.features.forEach(f => {
+    const smooth = chaikinSmooth(f.geometry.coordinates, f.properties.times, 2);
+    f._dCoords = smooth.coords;
+    f._dTimes  = smooth.times;
+  });
 
   function setupBoatLayers() {
     if (!mapInstance.getSource('boat-positions')) {
