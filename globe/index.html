@@ -1397,6 +1397,7 @@ let raceRafId     = null;
 let raceLastWall  = null;
 let scrubbing     = false;
 let raceTrackLos  = null;  // cached lo-indices per boat for split-track optimisation
+let followedBoatIdx = null; // index into raceGeoJSON.features, null = free camera
 
 function formatRaceTime(ms) {
   const s  = Math.floor(ms / 1000);
@@ -1517,6 +1518,15 @@ function updateRaceTracks() {
   src.setData({ type: 'FeatureCollection', features });
 }
 
+function updateFollow() {
+  if (followedBoatIdx === null || !raceGeoJSON || !mapInstance) return;
+  const f = raceGeoJSON.features[followedBoatIdx];
+  if (!f) return;
+  const r = interpPosAndBearing(f.properties.times, f.geometry.coordinates, raceCurrentMs);
+  if (!r) return;
+  mapInstance.easeTo({ center: r.pos, bearing: r.bearing, duration: 80, easing: x => x });
+}
+
 function updateTimelineUI() {
   const pct = ((raceCurrentMs - raceStartMs) / (raceEndMs - raceStartMs) * 100).toFixed(3) + '%';
   document.getElementById('tl-fill').style.width = pct;
@@ -1538,6 +1548,7 @@ function raceAnimStep(wallMs) {
   updateTimelineUI();
   updateBoatPositions();
   updateRaceTracks();
+  updateFollow();
   if (racePlaying) raceRafId = requestAnimationFrame(raceAnimStep);
 }
 
@@ -1600,6 +1611,24 @@ function initRaceTimeline(geojson) {
           'text-halo-width': 1.2
         }
       });
+
+      // Follow-boat: click to lock, user gesture to release
+      mapInstance.on('click', 'boat-positions', e => {
+        if (!raceGeoJSON || !e.features.length) return;
+        const color = e.features[0].properties.color;
+        const idx = raceGeoJSON.features.findIndex(f => f.properties.color === color);
+        if (idx >= 0) { followedBoatIdx = idx; updateFollow(); }
+      });
+      mapInstance.on('mouseenter', 'boat-positions', () => {
+        mapInstance.getCanvas().style.cursor = 'pointer';
+      });
+      mapInstance.on('mouseleave', 'boat-positions', () => {
+        mapInstance.getCanvas().style.cursor = '';
+      });
+      // Release follow only on genuine user interaction (originalEvent is set for pointer/touch/wheel)
+      mapInstance.on('movestart', e => {
+        if (e.originalEvent) followedBoatIdx = null;
+      });
     }
 
     // Show bar + adjust nav controls and settings button
@@ -1637,6 +1666,7 @@ function hideRaceTimeline() {
   raceLastWall = null;
   raceGeoJSON  = null;
   raceTrackLos = null;
+  followedBoatIdx = null;
   document.getElementById('tl-play').textContent = '▶';
   document.getElementById('race-timeline').classList.remove('visible');
   document.getElementById('map').classList.remove('has-timeline');
@@ -1681,7 +1711,7 @@ function scrubTo(clientX) {
   raceCurrentMs = raceStartMs + frac * (raceEndMs - raceStartMs);
   raceLastWall  = null; // prevent time-jump when releasing
   updateTimelineUI();
-  if (!racePlaying) { updateBoatPositions(); updateRaceTracks(); }
+  if (!racePlaying) { updateBoatPositions(); updateRaceTracks(); updateFollow(); }
 }
 
 tlTrack.addEventListener('mousedown', e => {
