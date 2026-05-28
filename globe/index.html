@@ -598,6 +598,10 @@
     <span class="setting-label">Renntracks</span>
     <label class="toggle"><input type="checkbox" id="toggle-racetracks" checked><span class="toggle-track"></span></label>
   </div>
+  <div class="setting-row" id="row-coursemarks" style="display:none">
+    <span class="setting-label">Kursbaken</span>
+    <label class="toggle"><input type="checkbox" id="toggle-coursemarks" checked><span class="toggle-track"></span></label>
+  </div>
   <div class="setting-row">
     <span class="setting-label">AIS Schiffe <span id="ais-status" class="setting-badge">live</span></span>
     <label class="toggle"><input type="checkbox" id="toggle-ais"><span class="toggle-track"></span></label>
@@ -675,7 +679,16 @@ const RACES = [
     date: "März 2026",
     boats: 3,
     geojson: 'race1.geojson',
-    type: 'race'
+    type: 'race',
+    marks: [
+      { name: "WB", lat: 18.4933,              lng: -64.5225              },
+      { name: "Ba", lat: 18.4285,              lng: -64.4544              },
+      { name: "GD", lat: 18.48167113165485,    lng: -64.45623204856257    },
+      { name: "Ge", lat: 18.493179409525393,   lng: -64.45721020544745    },
+      { name: "CI", lat: 18.49490428693168,    lng: -64.46363563888845    },
+      { name: "TR", lat: 18.49,                lng: -64.4945              },
+      { name: "WD", lat: 18.48303452621442,    lng: -64.47256675886582    }
+    ]
   }
 ];
 
@@ -1095,10 +1108,79 @@ function loadRaceTracks(race) {
       }
       initRaceTimeline(data);
     });
+  if (race.marks && race.marks.length) addCourseMarks(race.marks);
+}
+
+function addCourseMarks(marks) {
+  const data = {
+    type: 'FeatureCollection',
+    features: marks.map(m => ({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [m.lng, m.lat] },
+      properties: { name: m.name }
+    }))
+  };
+
+  if (mapInstance.getSource('course-marks')) {
+    mapInstance.getSource('course-marks').setData(data);
+    return;
+  }
+
+  mapInstance.addSource('course-marks', { type: 'geojson', data });
+
+  // Outer glow ring
+  mapInstance.addLayer({
+    id: 'course-marks-glow',
+    type: 'circle',
+    source: 'course-marks',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 7, 15, 13],
+      'circle-color': 'rgba(255,180,0,0.18)',
+      'circle-stroke-width': 0
+    }
+  });
+  // Main buoy dot
+  mapInstance.addLayer({
+    id: 'course-marks',
+    type: 'circle',
+    source: 'course-marks',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 4, 15, 7],
+      'circle-color': '#f5a623',
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': 'rgba(255,255,255,0.85)'
+    }
+  });
+  // Name label above
+  mapInstance.addLayer({
+    id: 'course-mark-labels',
+    type: 'symbol',
+    source: 'course-marks',
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-size': 11,
+      'text-anchor': 'bottom',
+      'text-offset': [0, -0.75],
+      'text-font': ['Noto Sans Regular', 'Roboto Regular'],
+      'text-allow-overlap': true,
+      'text-ignore-placement': true
+    },
+    paint: {
+      'text-color': '#f5a623',
+      'text-halo-color': 'rgba(5,15,30,0.9)',
+      'text-halo-width': 1.2
+    }
+  });
+
+  document.getElementById('row-coursemarks').style.display = '';
+  document.getElementById('toggle-coursemarks').checked = true;
 }
 
 document.getElementById('toggle-racetracks').addEventListener('change', e => {
   applyLayerToggle('racetracks', ['race-tracks', 'boat-positions', 'boat-labels'], e.target.checked);
+});
+document.getElementById('toggle-coursemarks').addEventListener('change', e => {
+  applyLayerToggle('coursemarks', ['course-marks-glow', 'course-marks', 'course-mark-labels'], e.target.checked);
 });
 
 function addMapMarkers() {
