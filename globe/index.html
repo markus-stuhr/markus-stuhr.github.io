@@ -397,6 +397,142 @@
     outline: none;
   }
   #map-style-select option { background: #0d1821; color: #fff; }
+
+  /* ── Race Timeline ─────────────────────────── */
+  #race-timeline {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    z-index: 30;
+    background: rgba(5, 15, 30, 0.93);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid rgba(255,255,255,0.07);
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    box-shadow: 0 -6px 28px rgba(0,0,0,0.45);
+  }
+  #race-timeline.visible { display: flex; }
+
+  /* push nav controls up when timeline is visible */
+  #map.has-timeline .maplibregl-ctrl-bottom-right { bottom: 60px; }
+
+  #tl-play {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    background: rgba(74,159,255,0.14);
+    border: 1px solid rgba(74,159,255,0.38);
+    border-radius: 50%;
+    color: #8ab4f8;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, border-color 0.15s;
+    font-family: inherit;
+  }
+  #tl-play:hover {
+    background: rgba(74,159,255,0.28);
+    border-color: rgba(74,159,255,0.65);
+  }
+
+  #tl-time {
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    color: rgba(255,255,255,0.75);
+    letter-spacing: 0.04em;
+    min-width: 54px;
+    flex-shrink: 0;
+  }
+
+  #tl-track {
+    flex: 1;
+    position: relative;
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    cursor: pointer;
+    margin: 0 4px;
+  }
+  /* enlarged hitbox so it's easy to grab */
+  #tl-track::before {
+    content: '';
+    position: absolute;
+    inset: -12px 0;
+  }
+
+  #tl-fill {
+    position: absolute;
+    left: 0; top: 0;
+    height: 100%;
+    background: rgba(74,159,255,0.65);
+    border-radius: 2px;
+    width: 0%;
+    pointer-events: none;
+  }
+
+  #tl-thumb {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    transform: translate(-50%, -50%);
+    width: 14px;
+    height: 14px;
+    background: #8ab4f8;
+    border: 2px solid rgba(255,255,255,0.82);
+    border-radius: 50%;
+    pointer-events: none;
+    transition: width 0.1s, height 0.1s;
+  }
+  #race-timeline.scrubbing #tl-thumb {
+    width: 18px;
+    height: 18px;
+  }
+
+  #tl-duration {
+    font-size: 0.72rem;
+    color: rgba(255,255,255,0.28);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    margin-right: 2px;
+  }
+
+  #tl-speeds {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .tl-speed {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 4px;
+    color: rgba(255,255,255,0.38);
+    font-size: 0.7rem;
+    padding: 3px 8px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .tl-speed.active {
+    background: rgba(74,159,255,0.2);
+    border-color: rgba(74,159,255,0.45);
+    color: #8ab4f8;
+  }
+  .tl-speed:hover:not(.active) {
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.65);
+  }
+
+  @media (max-width: 480px) {
+    #tl-duration { display: none; }
+    #tl-speeds .tl-speed { padding: 3px 5px; font-size: 0.65rem; }
+    #tl-time { min-width: 46px; font-size: 0.72rem; }
+  }
 </style>
 </head>
 <body>
@@ -464,6 +600,23 @@
   <div class="setting-row">
     <span class="setting-label">AIS Schiffe <span id="ais-status" class="setting-badge">live</span></span>
     <label class="toggle"><input type="checkbox" id="toggle-ais"><span class="toggle-track"></span></label>
+  </div>
+</div>
+
+<!-- Race Timeline Player -->
+<div id="race-timeline">
+  <button id="tl-play">▶</button>
+  <div id="tl-time">0:00:00</div>
+  <div id="tl-track">
+    <div id="tl-fill"></div>
+    <div id="tl-thumb"></div>
+  </div>
+  <div id="tl-duration"></div>
+  <div id="tl-speeds">
+    <button class="tl-speed active" data-speed="1">1×</button>
+    <button class="tl-speed" data-speed="2">2×</button>
+    <button class="tl-speed" data-speed="4">4×</button>
+    <button class="tl-speed" data-speed="8">8×</button>
   </div>
 </div>
 
@@ -647,6 +800,7 @@ document.getElementById('back-globe').addEventListener('click', () => {
   document.getElementById('settings-btn').style.display = 'none';
   document.getElementById('settings-panel').style.display = 'none';
   document.getElementById('back-home').style.display = '';
+  hideRaceTimeline();
   const aisToggle = document.getElementById('toggle-ais');
   if (aisToggle.checked) { aisToggle.checked = false; stopAIS(); }
   globe.controls().autoRotate = true;
@@ -939,11 +1093,12 @@ function loadRaceTracks(race) {
         document.getElementById('row-racetracks').style.display = '';
         document.getElementById('toggle-racetracks').checked = true;
       }
+      initRaceTimeline(data);
     });
 }
 
 document.getElementById('toggle-racetracks').addEventListener('change', e => {
-  applyLayerToggle('racetracks', ['race-tracks'], e.target.checked);
+  applyLayerToggle('racetracks', ['race-tracks', 'boat-positions', 'boat-labels'], e.target.checked);
 });
 
 function addMapMarkers() {
@@ -1124,6 +1279,229 @@ function updateShipLayer() {
     }))
   });
 }
+
+// ── Race Timeline ─────────────────────────────────────────
+let raceGeoJSON   = null;
+let raceStartMs   = 0;
+let raceEndMs     = 0;
+let raceCurrentMs = 0;
+let racePlaying   = false;
+let raceSpeed     = 1;
+let raceRafId     = null;
+let raceLastWall  = null;
+let scrubbing     = false;
+
+function formatRaceTime(ms) {
+  const s  = Math.floor(ms / 1000);
+  const h  = Math.floor(s / 3600);
+  const m  = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+}
+
+// Binary-search interpolation of GPS coordinates at time t
+function interpPos(times, coords, t) {
+  if (!times || !times.length) return null;
+  if (t <= times[0]) return coords[0];
+  const last = times.length - 1;
+  if (t >= times[last]) return coords[last];
+  let lo = 0, hi = last;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= t) lo = mid; else hi = mid;
+  }
+  const frac = (t - times[lo]) / (times[hi] - times[lo]);
+  const a = coords[lo], b = coords[hi];
+  return [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
+}
+
+function updateBoatPositions() {
+  const src = mapInstance && mapInstance.getSource('boat-positions');
+  if (!src || !raceGeoJSON) return;
+  src.setData({
+    type: 'FeatureCollection',
+    features: raceGeoJSON.features.map(f => {
+      const pos = interpPos(f.properties.times, f.geometry.coordinates, raceCurrentMs);
+      if (!pos) return null;
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: pos },
+        properties: { color: f.properties.color, name: f.properties.name }
+      };
+    }).filter(Boolean)
+  });
+}
+
+function updateTimelineUI() {
+  const pct = ((raceCurrentMs - raceStartMs) / (raceEndMs - raceStartMs) * 100).toFixed(3) + '%';
+  document.getElementById('tl-fill').style.width = pct;
+  document.getElementById('tl-thumb').style.left = pct;
+  document.getElementById('tl-time').textContent  = formatRaceTime(raceCurrentMs - raceStartMs);
+}
+
+function raceAnimStep(wallMs) {
+  if (!racePlaying) return;
+  if (raceLastWall !== null && !scrubbing) {
+    raceCurrentMs += (wallMs - raceLastWall) * raceSpeed;
+    if (raceCurrentMs >= raceEndMs) {
+      raceCurrentMs = raceEndMs;
+      racePlaying   = false;
+      document.getElementById('tl-play').textContent = '▶';
+    }
+  }
+  raceLastWall = wallMs;
+  updateTimelineUI();
+  updateBoatPositions();
+  if (racePlaying) raceRafId = requestAnimationFrame(raceAnimStep);
+}
+
+function initRaceTimeline(geojson) {
+  raceGeoJSON = geojson;
+
+  // Derive time bounds from all boat tracks
+  raceStartMs = Infinity;
+  raceEndMs   = -Infinity;
+  geojson.features.forEach(f => {
+    const t = f.properties.times;
+    if (t && t.length) {
+      if (t[0]          < raceStartMs) raceStartMs = t[0];
+      if (t[t.length-1] > raceEndMs)   raceEndMs   = t[t.length-1];
+    }
+  });
+  raceCurrentMs = raceStartMs;
+
+  // Add boat-positions source + circle layer + name labels (once)
+  if (!mapInstance.getSource('boat-positions')) {
+    mapInstance.addSource('boat-positions', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] }
+    });
+    mapInstance.addLayer({
+      id: 'boat-positions',
+      type: 'circle',
+      source: 'boat-positions',
+      paint: {
+        'circle-radius': 7,
+        'circle-color': ['get', 'color'],
+        'circle-stroke-width': 2,
+        'circle-stroke-color': 'rgba(255,255,255,0.82)'
+      }
+    });
+    mapInstance.addLayer({
+      id: 'boat-labels',
+      type: 'symbol',
+      source: 'boat-positions',
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 11,
+        'text-anchor': 'bottom',
+        'text-offset': [0, -0.9],
+        'text-font': ['Noto Sans Regular', 'Roboto Regular'],
+        'text-allow-overlap': true
+      },
+      paint: {
+        'text-color': ['get', 'color'],
+        'text-halo-color': 'rgba(5,15,30,0.9)',
+        'text-halo-width': 1.2
+      }
+    });
+  }
+
+  // Show bar + adjust nav controls
+  document.getElementById('race-timeline').classList.add('visible');
+  document.getElementById('map').classList.add('has-timeline');
+  document.getElementById('tl-duration').textContent = formatRaceTime(raceEndMs - raceStartMs);
+
+  updateTimelineUI();
+  updateBoatPositions();
+}
+
+function hideRaceTimeline() {
+  racePlaying = false;
+  if (raceRafId) { cancelAnimationFrame(raceRafId); raceRafId = null; }
+  raceLastWall = null;
+  raceGeoJSON  = null;
+  document.getElementById('tl-play').textContent = '▶';
+  document.getElementById('race-timeline').classList.remove('visible');
+  document.getElementById('map').classList.remove('has-timeline');
+  // Reset speed UI
+  raceSpeed = 1;
+  document.querySelectorAll('.tl-speed').forEach(b => b.classList.toggle('active', b.dataset.speed === '1'));
+}
+
+// ── Play / Pause ──────────────────────────────────────────
+document.getElementById('tl-play').addEventListener('click', () => {
+  if (!raceGeoJSON) return;
+  racePlaying = !racePlaying;
+  document.getElementById('tl-play').textContent = racePlaying ? '⏸' : '▶';
+  if (racePlaying) {
+    if (raceCurrentMs >= raceEndMs) raceCurrentMs = raceStartMs;
+    raceLastWall = null;
+    raceRafId = requestAnimationFrame(raceAnimStep);
+  } else {
+    if (raceRafId) { cancelAnimationFrame(raceRafId); raceRafId = null; }
+    raceLastWall = null;
+  }
+});
+
+// ── Speed buttons ─────────────────────────────────────────
+document.querySelectorAll('.tl-speed').forEach(btn => {
+  btn.addEventListener('click', () => {
+    raceSpeed = parseFloat(btn.dataset.speed);
+    document.querySelectorAll('.tl-speed').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// ── Scrubber ──────────────────────────────────────────────
+const tlTrack = document.getElementById('tl-track');
+const tlBar   = document.getElementById('race-timeline');
+
+function scrubTo(clientX) {
+  const rect = tlTrack.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  raceCurrentMs = raceStartMs + frac * (raceEndMs - raceStartMs);
+  raceLastWall  = null; // prevent time-jump when releasing
+  updateTimelineUI();
+  if (!racePlaying) updateBoatPositions();
+}
+
+tlTrack.addEventListener('mousedown', e => {
+  if (!raceGeoJSON) return;
+  scrubbing = true;
+  tlBar.classList.add('scrubbing');
+  scrubTo(e.clientX);
+  e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+  if (!scrubbing) return;
+  scrubTo(e.clientX);
+});
+document.addEventListener('mouseup', () => {
+  if (!scrubbing) return;
+  scrubbing = false;
+  raceLastWall = null;
+  tlBar.classList.remove('scrubbing');
+  updateBoatPositions();
+});
+
+tlTrack.addEventListener('touchstart', e => {
+  if (!raceGeoJSON) return;
+  scrubbing = true;
+  tlBar.classList.add('scrubbing');
+  scrubTo(e.touches[0].clientX);
+}, { passive: true });
+document.addEventListener('touchmove', e => {
+  if (!scrubbing) return;
+  scrubTo(e.touches[0].clientX);
+}, { passive: true });
+document.addEventListener('touchend', () => {
+  if (!scrubbing) return;
+  scrubbing = false;
+  raceLastWall = null;
+  tlBar.classList.remove('scrubbing');
+  updateBoatPositions();
+});
 </script>
 </body>
 </html>
