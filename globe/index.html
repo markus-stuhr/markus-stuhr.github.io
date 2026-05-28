@@ -1459,13 +1459,42 @@ function chaikinSmooth(coords, times, iterations) {
   return { coords: c, times: t };
 }
 
+// Per-point bearings from a window of neighbours — smooths out noise
+// in direction while still responding to real course changes.
+function computeSmoothedBearings(coords, win) {
+  const n = coords.length;
+  const b = new Array(n);
+  for (let i = 0; i < n; i++) {
+    b[i] = calcBearing(coords[Math.max(0, i - win)], coords[Math.min(n - 1, i + win)]);
+  }
+  return b;
+}
+
+// Smooth interpolation using pre-computed display arrays (_dCoords/_dTimes/_dBearings).
+// Bearing is interpolated with wraparound so rotation never snaps through 0°/360°.
+function interpDisplay(f, t) {
+  const times = f._dTimes, coords = f._dCoords, bearings = f._dBearings;
+  if (!times || !times.length) return null;
+  if (t <= times[0]) return { pos: coords[0], bearing: bearings[0] };
+  const last = times.length - 1;
+  if (t >= times[last]) return { pos: coords[last], bearing: bearings[last] };
+  let lo = 0, hi = last;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (times[mid] <= t) lo = mid; else hi = mid; }
+  const frac = (t - times[lo]) / (times[hi] - times[lo]);
+  const a = coords[lo], b = coords[hi];
+  const pos = [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
+  const bA = bearings[lo], bB = bearings[hi];
+  const bearing = (bA + (((bB - bA) + 540) % 360 - 180) * frac + 360) % 360;
+  return { pos, bearing };
+}
+
 function updateBoatPositions() {
   const src = mapInstance && mapInstance.getSource('boat-positions');
   if (!src || !raceGeoJSON) return;
   src.setData({
     type: 'FeatureCollection',
     features: raceGeoJSON.features.map(f => {
-      const r = interpPosAndBearing(f.properties.times, f.geometry.coordinates, raceCurrentMs);
+      const r = interpDisplay(f, raceCurrentMs);
       if (!r) return null;
       return {
         type: 'Feature',
@@ -1543,7 +1572,7 @@ function updateFollow() {
   if (mapInstance.isZooming()) return;
   const f = raceGeoJSON.features[followedBoatIdx];
   if (!f) return;
-  const r = interpPosAndBearing(f.properties.times, f.geometry.coordinates, raceCurrentMs);
+  const r = interpDisplay(f, raceCurrentMs);
   if (!r) return;
   mapInstance.easeTo({ center: r.pos, bearing: r.bearing, duration: 80, easing: x => x });
 }
@@ -1588,12 +1617,13 @@ function initRaceTimeline(geojson) {
   });
   raceCurrentMs = raceStartMs;
 
-  // Pre-compute Chaikin-smoothed display coords (2 passes → 4× denser ≈ 1.25 s resolution)
-  // Only used for track line rendering; boat positions keep original interpolation.
+  // Pre-compute Chaikin-smoothed display data (3 passes → 8× denser ≈ 0.6 s resolution).
+  // _dBearings: window-averaged directions so rotation is silky-smooth with no snapping.
   geojson.features.forEach(f => {
-    const smooth = chaikinSmooth(f.geometry.coordinates, f.properties.times, 2);
-    f._dCoords = smooth.coords;
-    f._dTimes  = smooth.times;
+    const smooth   = chaikinSmooth(f.geometry.coordinates, f.properties.times, 3);
+    f._dCoords     = smooth.coords;
+    f._dTimes      = smooth.times;
+    f._dBearings   = computeSmoothedBearings(smooth.coords, 4); // 4-point window ≈ 2.5 s
   });
 
   function setupBoatLayers() {
