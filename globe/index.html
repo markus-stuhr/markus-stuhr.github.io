@@ -1535,6 +1535,28 @@ function formatRaceTime(ms) {
   return `${h}:${String(m).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
 }
 
+// Haversine distance in nautical miles between two [lng,lat] points
+function haversineNm(a, b) {
+  const R = 3440.065; // Earth radius in nm
+  const φ1 = a[1] * Math.PI / 180, φ2 = b[1] * Math.PI / 180;
+  const Δφ = (b[1] - a[1]) * Math.PI / 180, Δλ = (b[0] - a[0]) * Math.PI / 180;
+  const s = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+// Speed in knots at time t, using a ±30 s smoothing window
+function calcSpeedKnots(f, t) {
+  const times = f._dTimes, coords = f._dCoords;
+  if (!times || times.length < 2) return null;
+  const ta = Math.max(times[0], t - 30000);
+  const tb = Math.min(times[times.length - 1], t + 30000);
+  if (tb - ta < 5000) return null;
+  const ra = interpPosAndBearing(times, coords, ta);
+  const rb = interpPosAndBearing(times, coords, tb);
+  if (!ra || !rb) return null;
+  return haversineNm(ra.pos, rb.pos) / ((tb - ta) / 3600000);
+}
+
 // Compass bearing (degrees CW from North) between two [lng,lat] points
 function calcBearing(from, to) {
   const φ1 = from[1] * Math.PI / 180;
@@ -1617,7 +1639,7 @@ function interpDisplay(f, t) {
 function updateBoatPositions() {
   if (!raceGeoJSON) return;
   const mapBearing = mapInstance.getBearing();
-  raceBoatEls.forEach(({ wrap, svgEl, idx }) => {
+  raceBoatEls.forEach(({ wrap, svgEl, speedEl, idx }) => {
     const f = raceGeoJSON.features[idx];
     const r = interpDisplay(f, raceCurrentMs);
     if (!r) { wrap.style.visibility = 'hidden'; return; }
@@ -1626,6 +1648,9 @@ function updateBoatPositions() {
     // Translate wrap to screen position; SVG centers itself and rotates
     wrap.style.transform = `translate(${Math.round(pt.x)}px,${Math.round(pt.y)}px)`;
     svgEl.style.transform = `translate(-8px,-14px) rotate(${r.bearing - mapBearing}deg)`;
+    // Speed label
+    const spd = calcSpeedKnots(f, raceCurrentMs);
+    speedEl.textContent = spd !== null ? spd.toFixed(1) + ' kn' : '';
   });
 }
 
@@ -1753,8 +1778,14 @@ function createBoatElements() {
       `white-space:nowrap;font-size:11px;color:${color};` +
       `font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;pointer-events:none;`;
 
+    const speedEl = document.createElement('div');
+    speedEl.style.cssText = `position:absolute;top:30px;left:0;transform:translateX(-50%);` +
+      `white-space:nowrap;font-size:10px;color:${color};opacity:0.7;` +
+      `font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;pointer-events:none;`;
+
     wrap.appendChild(svg);
     wrap.appendChild(labelEl);
+    wrap.appendChild(speedEl);
     container.appendChild(wrap);
 
     svg.addEventListener('click', () => {
@@ -1776,7 +1807,7 @@ function createBoatElements() {
     svg.addEventListener('mouseenter', () => { mapInstance.getCanvas().style.cursor = 'pointer'; });
     svg.addEventListener('mouseleave', () => { mapInstance.getCanvas().style.cursor = ''; });
 
-    raceBoatEls.push({ wrap, svgEl: svg, idx });
+    raceBoatEls.push({ wrap, svgEl: svg, speedEl, idx });
   });
 
   // Release follow on drag
