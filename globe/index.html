@@ -574,17 +574,17 @@
     <span class="setting-label">Kartenstil</span>
     <select id="map-style-select">
       <option value="dark">Dark</option>
-      <option value="light">Light</option>
+      <option value="light" selected>Light</option>
     </select>
   </div>
   <h3 style="margin-top:12px">Layer</h3>
   <div class="setting-row">
     <span class="setting-label">Tiefenlinien</span>
-    <label class="toggle"><input type="checkbox" id="toggle-contours" checked><span class="toggle-track"></span></label>
+    <label class="toggle"><input type="checkbox" id="toggle-contours"><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
     <span class="setting-label">Tiefenangaben</span>
-    <label class="toggle"><input type="checkbox" id="toggle-depthlabels" checked><span class="toggle-track"></span></label>
+    <label class="toggle"><input type="checkbox" id="toggle-depthlabels"><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
     <span class="setting-label">Seezeichen</span>
@@ -831,7 +831,7 @@ document.addEventListener('click', () => { settingsPanel.style.display = 'none';
 settingsPanel.addEventListener('click', e => e.stopPropagation());
 
 // ── Map style profiles ────────────────────────────────────
-let currentMapStyle = 'dark';
+let currentMapStyle = 'light';
 
 const MAP_STYLES = {
   dark: {
@@ -956,6 +956,9 @@ function showMap(spot) {
       ['Depth labels', 'Undersea labels', 'Undersea line labels'].forEach(id => {
         try { mapInstance.setPaintProperty(id, 'text-opacity', 0.5); } catch {}
       });
+      // Apply default toggle states
+      applyLayerToggle('contours',    ['Depth contour'], document.getElementById('toggle-contours').checked);
+      applyLayerToggle('depthlabels', ['Depth labels', 'Undersea line labels', 'Undersea labels'], document.getElementById('toggle-depthlabels').checked);
       try {
         mapInstance.setPaintProperty('Depth contour', 'line-color', [
           'interpolate', ['linear', 2], ['zoom'],
