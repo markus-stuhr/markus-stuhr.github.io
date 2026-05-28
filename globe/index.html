@@ -306,7 +306,7 @@
 
   #btn-3d {
     position: fixed;
-    bottom: 112px;
+    bottom: 145px;
     right: 10px;
     z-index: 20;
     width: 29px;
@@ -1484,7 +1484,7 @@ function enable3D() {
     });
   }
   mapInstance.setTerrain({ source: 'terrain-dem', exaggeration: 1.5 });
-  mapInstance.easeTo({ pitch: 60, duration: 900 });
+  _animatePitch(60);
   const btn = document.getElementById('btn-3d');
   btn.textContent = '2D';
   btn.classList.add('is3d');
@@ -1494,11 +1494,27 @@ function enable3D() {
 function disable3D() {
   if (!mapInstance) return;
   mapInstance.setTerrain(null);
-  mapInstance.easeTo({ pitch: 0, duration: 900 });
+  _animatePitch(0);
   const btn = document.getElementById('btn-3d');
   btn.textContent = '3D';
   btn.classList.remove('is3d');
   is3D = false;
+}
+
+// Animate to a target pitch. In follow mode we combine pitch + boat
+// position into one easeTo (and pause follow during that animation so
+// updateFollow doesn't cancel it frame-by-frame).
+function _animatePitch(targetPitch) {
+  if (followedBoatIdx !== null && raceGeoJSON) {
+    const r = interpDisplay(raceGeoJSON.features[followedBoatIdx], raceCurrentMs);
+    if (r) {
+      followAnimating = true;
+      mapInstance.once('moveend', () => { followAnimating = false; });
+      mapInstance.easeTo({ center: r.pos, bearing: r.bearing, pitch: targetPitch, duration: 900 });
+      return;
+    }
+  }
+  mapInstance.easeTo({ pitch: targetPitch, duration: 900 });
 }
 
 document.getElementById('btn-3d').addEventListener('click', () => {
@@ -1829,7 +1845,7 @@ function initRaceTimeline(geojson) {
     document.getElementById('map').classList.add('has-timeline');
     document.getElementById('settings-btn').style.bottom   = '80px';
     document.getElementById('settings-panel').style.bottom = '124px';
-    document.getElementById('btn-3d').style.bottom         = '172px';
+    document.getElementById('btn-3d').style.bottom         = '205px';
     document.getElementById('tl-duration').textContent = formatRaceTime(raceEndMs - raceStartMs);
     updateTimelineUI();
     updateBoatPositions();
