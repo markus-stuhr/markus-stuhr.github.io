@@ -1083,10 +1083,26 @@ function showMap(spot) {
 
       initAISLayer();
       if (spot.type === 'race' && spot.geojson) loadRaceTracks(spot);
-      mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1200 });
+      flyToSpot(spot, 1200);
     });
   } else {
-    mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1000 });
+    flyToSpot(spot, 1000);
+  }
+}
+
+// Fly to a spot — uses fitBounds on marks for race spots so the full
+// course is always visible regardless of screen size.
+function flyToSpot(spot, duration) {
+  if (spot.type === 'race' && spot.marks && spot.marks.length > 1) {
+    const pts = spot.marks.map(m => [m.lng, m.lat]);
+    pts.push([spot.lng, spot.lat]);
+    const bounds = pts.reduce(
+      (b, p) => b.extend(p),
+      new maplibregl.LngLatBounds(pts[0], pts[0])
+    );
+    mapInstance.fitBounds(bounds, { padding: 60, duration, maxZoom: 14 });
+  } else {
+    mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration });
   }
 }
 
@@ -1698,7 +1714,7 @@ function initRaceTimeline(geojson) {
             new maplibregl.LngLatBounds(positions[0], positions[0])
           );
           const cam = mapInstance.cameraForBounds(bounds, { padding: 80 });
-          if (cam) targetZoom = cam.zoom;
+          if (cam) targetZoom = cam.zoom - 2; // back off 2 levels so all boats have breathing room
         }
 
         // Animate once to the boat (with fit zoom); updateFollow takes over after
