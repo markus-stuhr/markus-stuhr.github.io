@@ -1539,6 +1539,8 @@ function updateRaceTracks() {
 
 function updateFollow() {
   if (followedBoatIdx === null || !raceGeoJSON || !mapInstance) return;
+  // Don't cancel an ongoing zoom animation (e.g. NavigationControl button press)
+  if (mapInstance.isZooming()) return;
   const f = raceGeoJSON.features[followedBoatIdx];
   if (!f) return;
   const r = interpPosAndBearing(f.properties.times, f.geometry.coordinates, raceCurrentMs);
@@ -1652,9 +1654,13 @@ function initRaceTimeline(geojson) {
       mapInstance.on('mouseleave', 'boat-positions', () => {
         mapInstance.getCanvas().style.cursor = '';
       });
-      // Release follow only on genuine user interaction (originalEvent is set for pointer/touch/wheel)
+      // Release follow on user pan/touch — but NOT when a NavigationControl
+      // button (zoom +/-) was clicked (those should zoom while follow continues).
       mapInstance.on('movestart', e => {
-        if (e.originalEvent) followedBoatIdx = null;
+        if (!e.originalEvent) return;
+        const tgt = e.originalEvent.target;
+        if (tgt instanceof Element && tgt.closest('.maplibregl-ctrl-group')) return;
+        followedBoatIdx = null;
       });
     }
 
