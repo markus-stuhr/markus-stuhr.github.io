@@ -1262,8 +1262,12 @@ function addCourseMarks(marks) {
 
 document.getElementById('toggle-racetracks').addEventListener('change', e => {
   applyLayerToggle('racetracks', ['race-tracks-full', 'race-tracks-past'], e.target.checked);
-  const vis = e.target.checked ? '' : 'hidden';
-  raceBoatEls.forEach(({ wrap }) => { wrap.style.visibility = vis; });
+  if (isSafari) {
+    const vis = e.target.checked ? '' : 'hidden';
+    raceBoatEls.forEach(({ wrap }) => { wrap.style.visibility = vis; });
+  } else {
+    applyLayerToggle('racetracks-boats', ['boat-positions', 'boat-labels'], e.target.checked);
+  }
 });
 document.getElementById('toggle-coursemarks').addEventListener('change', e => {
   applyLayerToggle('coursemarks', ['course-marks-glow', 'course-marks', 'course-mark-labels'], e.target.checked);
@@ -1449,6 +1453,10 @@ function updateShipLayer() {
 }
 
 // ── Race Timeline ─────────────────────────────────────────
+// Use DOM markers in Safari (avoids terrain-draping GPU lag in 3D);
+// use symbol layers in all other browsers where terrain draping works correctly.
+const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+
 let raceGeoJSON   = null;
 let raceStartMs   = 0;
 let raceEndMs     = 0;
@@ -1557,6 +1565,19 @@ function calcSpeedKnots(f, t) {
   return haversineNm(ra.pos, rb.pos) / ((tb - ta) / 3600000);
 }
 
+// Screen-space rotation angle (CW from screen-up) for a boat at `pos` heading `bearing`.
+// Projects a point slightly ahead onto the screen so 3D perspective distortion is
+// automatically accounted for — used by the Safari DOM-marker path.
+function screenBearing(pos, bearing) {
+  const d = 0.0003; // ~33 m ahead, small enough to be local, large enough to be stable
+  const rad = bearing * Math.PI / 180;
+  const ahead = [pos[0] + d * Math.sin(rad), pos[1] + d * Math.cos(rad)];
+  const ptA = mapInstance.project(pos);
+  const ptB = mapInstance.project(ahead);
+  // atan2(dx, -dy): clockwise from screen-up, matching CSS rotate()
+  return Math.atan2(ptB.x - ptA.x, ptA.y - ptB.y) * 180 / Math.PI;
+}
+
 // Compass bearing (degrees CW from North) between two [lng,lat] points
 function calcBearing(from, to) {
   const φ1 = from[1] * Math.PI / 180;
@@ -1638,20 +1659,43 @@ function interpDisplay(f, t) {
 
 function updateBoatPositions() {
   if (!raceGeoJSON) return;
-  const mapBearing = mapInstance.getBearing();
-  raceBoatEls.forEach(({ wrap, svgEl, speedEl, idx }) => {
-    const f = raceGeoJSON.features[idx];
-    const r = interpDisplay(f, raceCurrentMs);
-    if (!r) { wrap.style.visibility = 'hidden'; return; }
-    wrap.style.visibility = '';
-    const pt = mapInstance.project(r.pos);
-    // Translate wrap to screen position; SVG centers itself and rotates
-    wrap.style.transform = `translate(${Math.round(pt.x)}px,${Math.round(pt.y)}px)`;
-    svgEl.style.transform = `translate(-8px,-14px) rotate(${r.bearing - mapBearing}deg)`;
-    // Speed label
-    const spd = calcSpeedKnots(f, raceCurrentMs);
-    speedEl.textContent = spd !== null ? spd.toFixed(1) + ' kn' : '';
-  });
+  if (isSafari) {
+    // ── Safari: DOM markers positioned via map.project() ──────────────────
+    raceBoatEls.forEach(({ wrap, svgEl, speedEl, idx }) => {
+      const f = raceGeoJSON.features[idx];
+      const r = interpDisplay(f, raceCurrentMs);
+      if (!r) { wrap.style.visibility = 'hidden'; return; }
+      wrap.style.visibility = '';
+      const pt = mapInstance.project(r.pos);
+      wrap.style.transform = `translate(${Math.round(pt.x)}px,${Math.round(pt.y)}px)`;
+      // screenBearing accounts for 3D perspective distortion
+      svgEl.style.transform = `translate(-8px,-14px) rotate(${screenBearing(r.pos, r.bearing)}deg)`;
+      const spd = calcSpeedKnots(f, raceCurrentMs);
+      speedEl.textContent = spd !== null ? spd.toFixed(1) + ' kn' : '';
+    });
+  } else {
+    // ── Chrome/other: GeoJSON symbol layer ────────────────────────────────
+    const src = mapInstance && mapInstance.getSource('boat-positions');
+    if (!src) return;
+    src.setData({
+      type: 'FeatureCollection',
+      features: raceGeoJSON.features.map(f => {
+        const r = interpDisplay(f, raceCurrentMs);
+        if (!r) return null;
+        const spd = calcSpeedKnots(f, raceCurrentMs);
+        return {
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: r.pos },
+          properties: {
+            color: f.properties.color,
+            name: f.properties.name || f.properties.boat || '',
+            speed: spd !== null ? spd.toFixed(1) + ' kn' : '',
+            bearing: r.bearing
+          }
+        };
+      }).filter(Boolean)
+    });
+  }
 }
 
 // Split each boat track at the current race time:
@@ -1743,6 +1787,66 @@ function raceAnimStep(wallMs) {
   if (racePlaying) raceRafId = requestAnimationFrame(raceAnimStep);
 }
 
+// ── Chrome/non-Safari: SDF symbol layers ──────────────────────────────────
+function setupBoatLayers() {
+  if (!mapInstance.getSource('boat-positions')) {
+    mapInstance.addSource('boat-positions', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    mapInstance.addLayer({
+      id: 'boat-positions', type: 'symbol', source: 'boat-positions',
+      layout: {
+        'icon-image': 'boat-icon',
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.7, 14, 1.1, 17, 1.8],
+        'icon-rotate': ['get', 'bearing'],
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true, 'icon-ignore-placement': true
+      },
+      paint: { 'icon-color': ['get', 'color'] }
+    });
+    mapInstance.addLayer({
+      id: 'boat-labels', type: 'symbol', source: 'boat-positions',
+      layout: {
+        'text-field': ['format', ['get', 'name'], {}, '\n', {}, ['get', 'speed'], {'font-scale': 0.85}],
+        'text-size': 11, 'text-anchor': 'top', 'text-offset': [0, 1.3],
+        'text-font': ['Noto Sans Regular', 'Roboto Regular'],
+        'text-allow-overlap': true, 'text-ignore-placement': true
+      },
+      paint: { 'text-color': ['get', 'color'] }
+    });
+    mapInstance.on('click', 'boat-positions', e => {
+      if (!raceGeoJSON || !e.features.length) return;
+      const color = e.features[0].properties.color;
+      const idx = raceGeoJSON.features.findIndex(f => f.properties.color === color);
+      if (idx < 0) return;
+      followedBoatIdx = idx;
+      const r = interpDisplay(raceGeoJSON.features[idx], raceCurrentMs);
+      if (!r) return;
+      const positions = raceGeoJSON.features.map(f => interpDisplay(f, raceCurrentMs)).filter(Boolean).map(x => x.pos);
+      let targetZoom = mapInstance.getZoom();
+      if (positions.length > 1) {
+        const bounds = positions.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(positions[0], positions[0]));
+        const cam = mapInstance.cameraForBounds(bounds, { padding: 80 });
+        if (cam) targetZoom = cam.zoom - 2;
+      }
+      followAnimating = true;
+      mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, duration: 700 });
+      setTimeout(() => { followAnimating = false; }, 750);
+    });
+    mapInstance.on('mouseenter', 'boat-positions', () => { mapInstance.getCanvas().style.cursor = 'pointer'; });
+    mapInstance.on('mouseleave', 'boat-positions', () => { mapInstance.getCanvas().style.cursor = ''; });
+    mapInstance.on('dragstart', () => { followedBoatIdx = null; });
+  }
+  document.getElementById('race-timeline').classList.add('visible');
+  document.getElementById('map').classList.add('has-timeline');
+  document.getElementById('settings-btn').style.bottom   = '80px';
+  document.getElementById('settings-panel').style.bottom = '124px';
+  document.getElementById('btn-3d').style.bottom         = '205px';
+  document.getElementById('tl-duration').textContent = formatRaceTime(raceEndMs - raceStartMs);
+  updateTimelineUI();
+  updateBoatPositions();
+  updateRaceTracks();
+}
+
+// ── Safari: custom DOM boat overlays ──────────────────────────────────────
 function createBoatElements() {
   // Remove any elements from a previous race load
   raceBoatEls.forEach(b => b.wrap.remove());
@@ -1866,8 +1970,21 @@ function initRaceTimeline(geojson) {
     });
   }
 
-  // Create DOM boat overlays (bypass terrain GPU pipeline — no Safari lag in 3D)
-  createBoatElements();
+  if (isSafari) {
+    // DOM overlays: bypass terrain GPU pipeline to avoid Safari 3D lag
+    createBoatElements();
+  } else {
+    // SDF symbol layers: correct terrain draping in Chrome/Firefox
+    const BOAT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="28" viewBox="0 0 16 28">
+      <path d="M8,1 C11.5,6 13,13 12,20 C10.5,25.5 5.5,25.5 4,20 C3,13 4.5,6 8,1 Z" fill="white"/>
+    </svg>`;
+    if (mapInstance.hasImage('boat-icon')) { setupBoatLayers(); }
+    else {
+      const img = new Image(16, 28);
+      img.onload = () => { mapInstance.addImage('boat-icon', img, { sdf: true }); setupBoatLayers(); };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BOAT_SVG);
+    }
+  }
 }
 
 function hideRaceTimeline() {
@@ -1884,6 +2001,7 @@ function hideRaceTimeline() {
   const emptyFC = { type: 'FeatureCollection', features: [] };
   try { mapInstance.getSource('race-tracks-full').setData(emptyFC); } catch {}
   try { mapInstance.getSource('race-tracks').setData(emptyFC); } catch {}
+  try { mapInstance.getSource('boat-positions').setData(emptyFC); } catch {} // Chrome path
   document.getElementById('tl-play').textContent = '▶';
   document.getElementById('race-timeline').classList.remove('visible');
   document.getElementById('map').classList.remove('has-timeline');
