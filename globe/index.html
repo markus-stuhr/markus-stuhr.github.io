@@ -1121,13 +1121,15 @@ function showMap(spot) {
 // course is always visible regardless of screen size.
 function flyToSpot(spot, duration) {
   if (spot.type === 'race' && spot.marks && spot.marks.length > 1) {
+    // Jump instantly to a rough marks-based view; loadRaceTracks will
+    // fire a smooth fitBounds (marks + boat starts) once GeoJSON arrives.
     const pts = spot.marks.map(m => [m.lng, m.lat]);
     pts.push([spot.lng, spot.lat]);
     const bounds = pts.reduce(
       (b, p) => b.extend(p),
       new maplibregl.LngLatBounds(pts[0], pts[0])
     );
-    mapInstance.fitBounds(bounds, { padding: 60, duration, maxZoom: 14 });
+    mapInstance.fitBounds(bounds, { padding: 60, duration: 0, maxZoom: 14 });
   } else {
     mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration });
   }
@@ -1175,6 +1177,20 @@ function loadRaceTracks(race) {
         document.getElementById('toggle-racetracks').checked = true;
       }
       initRaceTimeline(data);
+
+      // Fit the initial view to marks + boat start positions (screen-size-responsive)
+      const pts = [];
+      if (race.marks) race.marks.forEach(m => pts.push([m.lng, m.lat]));
+      data.features.forEach(f => {
+        if (f.geometry.coordinates.length) pts.push(f.geometry.coordinates[0]);
+      });
+      if (pts.length > 1) {
+        const bounds = pts.reduce(
+          (b, p) => b.extend(p),
+          new maplibregl.LngLatBounds(pts[0], pts[0])
+        );
+        mapInstance.fitBounds(bounds, { padding: 80, duration: 900, maxZoom: 14 });
+      }
     });
   if (race.marks && race.marks.length) addCourseMarks(race.marks);
 }
