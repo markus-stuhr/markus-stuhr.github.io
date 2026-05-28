@@ -1601,9 +1601,11 @@ function initRaceTimeline(geojson) {
       });
     }
 
-    // Show bar + adjust nav controls
+    // Show bar + adjust nav controls and settings button
     document.getElementById('race-timeline').classList.add('visible');
     document.getElementById('map').classList.add('has-timeline');
+    document.getElementById('settings-btn').style.bottom   = '80px';
+    document.getElementById('settings-panel').style.bottom = '124px';
     document.getElementById('tl-duration').textContent = formatRaceTime(raceEndMs - raceStartMs);
     updateTimelineUI();
     updateBoatPositions();
@@ -1637,6 +1639,8 @@ function hideRaceTimeline() {
   document.getElementById('tl-play').textContent = '▶';
   document.getElementById('race-timeline').classList.remove('visible');
   document.getElementById('map').classList.remove('has-timeline');
+  document.getElementById('settings-btn').style.bottom   = '';
+  document.getElementById('settings-panel').style.bottom = '';
   // Reset speed UI
   raceSpeed = 1;
   document.querySelectorAll('.tl-speed').forEach(b => b.classList.toggle('active', b.dataset.speed === '1'));
