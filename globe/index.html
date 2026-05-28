@@ -892,27 +892,6 @@ function applyMapStyle(name) {
       mapInstance.setPaintProperty('Contour index', 'line-color', s.contourColor);
     } catch {}
   }
-  // Depth isobands — increase contrast so depth zones are clearly distinct.
-  // The finest MapTiler isoband is 0m→-50m, so both sides of the 25m contour
-  // line share the same fill; we just make each 50m band visibly different.
-  const depthFills = name === 'dark' ? [
-    ['0m to -50m',     'hsl(200,42%,30%)'],
-    ['-50m to -100m',  'hsl(207,38%,22%)'],
-    ['-100m to -200m', 'hsl(210,36%,17%)'],
-    ['-200m to -250m', 'hsl(212,34%,13%)'],
-    ['-250m to -500m', 'hsl(213,32%,10%)'],
-    ['-500m to -750m', 'hsl(214,30%,8%)' ],
-  ] : [
-    ['0m to -50m',     'hsl(191,72%,84%)'],
-    ['-50m to -100m',  'hsl(199,65%,73%)'],
-    ['-100m to -200m', 'hsl(204,60%,63%)'],
-    ['-200m to -250m', 'hsl(208,57%,55%)'],
-    ['-250m to -500m', 'hsl(211,55%,47%)'],
-    ['-500m to -750m', 'hsl(213,53%,40%)'],
-  ];
-  depthFills.forEach(([id, color]) => {
-    try { mapInstance.setPaintProperty(id, 'fill-color', color); } catch {}
-  });
   try {
     mapInstance.setPaintProperty('buildings', 'fill-color', s.buildingColor);
     mapInstance.setPaintProperty('buildings-outline', 'line-color', s.buildingOutline);
