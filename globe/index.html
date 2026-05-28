@@ -259,6 +259,14 @@
     border-color: rgba(74, 159, 255, 0.65);
     background: rgba(74, 159, 255, 0.12);
   }
+  .globe-hit.race {
+    border-color: rgba(255, 107, 53, 0.35);
+    background: rgba(255, 107, 53, 0.06);
+  }
+  .globe-hit.race.hovered {
+    border-color: rgba(255, 107, 53, 0.75);
+    background: rgba(255, 107, 53, 0.15);
+  }
 
   /* ── Sail marker dot ─────────────────────── */
   .sail-marker {
@@ -449,6 +457,10 @@
     <span class="setting-label">Fährverbindungen</span>
     <label class="toggle"><input type="checkbox" id="toggle-ferry" checked><span class="toggle-track"></span></label>
   </div>
+  <div class="setting-row" id="row-racetracks" style="display:none">
+    <span class="setting-label">Renntracks</span>
+    <label class="toggle"><input type="checkbox" id="toggle-racetracks" checked><span class="toggle-track"></span></label>
+  </div>
   <div class="setting-row">
     <span class="setting-label">AIS Schiffe <span id="ais-status" class="setting-badge">live</span></span>
     <label class="toggle"><input type="checkbox" id="toggle-ais"><span class="toggle-track"></span></label>
@@ -499,6 +511,25 @@ const SPOTS = [
   }
 ];
 
+const RACES = [
+  {
+    name: "North Sound Maxi Regatta",
+    race: "Performance Race 1",
+    region: "Karibik — BVI",
+    lat: 18.49, lng: -64.45,
+    zoom: 13,
+    date: "März 2026",
+    boats: 3,
+    geojson: 'race1.geojson',
+    type: 'race'
+  }
+];
+
+const ALL_MARKERS = [
+  ...SPOTS.map(s => ({ ...s, type: 'spot' })),
+  ...RACES
+];
+
 // ── Globe.gl setup ────────────────────────────────────────
 const globeEl = document.getElementById('globe-view');
 const hitElements = new Map();
@@ -508,22 +539,22 @@ const globe = Globe({ animateIn: true })(globeEl)
   .backgroundImageUrl('https://unpkg.com/three-globe/example/img/night-sky.png')
   .atmosphereColor('#4a7aff')
   .atmosphereAltitude(0.18)
-  .pointsData(SPOTS)
+  .pointsData(ALL_MARKERS)
   .pointLat(d => d.lat)
   .pointLng(d => d.lng)
-  .pointColor(() => '#4a9fff')
+  .pointColor(d => d.type === 'race' ? '#ff6b35' : '#4a9fff')
   .pointAltitude(0.012)
   .pointRadius(0.45)
   .pointResolution(12)
   .onPointClick(onSpotClick)
   .onPointHover(() => {})
-  .htmlElementsData(SPOTS)
+  .htmlElementsData(ALL_MARKERS)
   .htmlLat(d => d.lat)
   .htmlLng(d => d.lng)
   .htmlAltitude(0.013)
   .htmlElement(d => {
     const el = document.createElement('div');
-    el.className = 'globe-hit';
+    el.className = d.type === 'race' ? 'globe-hit race' : 'globe-hit';
     hitElements.set(d.name, el);
     return el;
   });
@@ -531,9 +562,9 @@ const globe = Globe({ animateIn: true })(globeEl)
 // Proximity-based hover + click via mousemove/click on the globe container
 globeEl.addEventListener('mousemove', ev => {
   let nearAny = false;
-  SPOTS.forEach(spot => {
-    const sc = globe.getScreenCoords(spot.lat, spot.lng, 0.013);
-    const el = hitElements.get(spot.name);
+  ALL_MARKERS.forEach(m => {
+    const sc = globe.getScreenCoords(m.lat, m.lng, 0.013);
+    const el = hitElements.get(m.name);
     if (!el || !sc) return;
     const near = Math.hypot(ev.clientX - sc.x, ev.clientY - sc.y) < 34;
     el.classList.toggle('hovered', near);
@@ -543,22 +574,22 @@ globeEl.addEventListener('mousemove', ev => {
 });
 
 globeEl.addEventListener('click', ev => {
-  SPOTS.forEach(spot => {
-    const sc = globe.getScreenCoords(spot.lat, spot.lng, 0.013);
+  ALL_MARKERS.forEach(m => {
+    const sc = globe.getScreenCoords(m.lat, m.lng, 0.013);
     if (!sc) return;
     if (Math.hypot(ev.clientX - sc.x, ev.clientY - sc.y) < 34) {
-      onSpotClick(spot, ev, { x: ev.clientX, y: ev.clientY });
+      onSpotClick(m, ev, { x: ev.clientX, y: ev.clientY });
     }
   });
 });
 
 globeEl.addEventListener('touchend', ev => {
   const t = ev.changedTouches[0];
-  SPOTS.forEach(spot => {
-    const sc = globe.getScreenCoords(spot.lat, spot.lng, 0.013);
+  ALL_MARKERS.forEach(m => {
+    const sc = globe.getScreenCoords(m.lat, m.lng, 0.013);
     if (!sc) return;
     if (Math.hypot(t.clientX - sc.x, t.clientY - sc.y) < 44) {
-      onSpotClick(spot, ev, { x: t.clientX, y: t.clientY });
+      onSpotClick(m, ev, { x: t.clientX, y: t.clientY });
     }
   });
 });
@@ -580,10 +611,17 @@ function onSpotClick(spot, _ev, coords) {
 
   document.getElementById('popup-region').textContent = spot.region;
   document.getElementById('popup-name').textContent   = spot.name;
-  document.getElementById('popup-meta').innerHTML =
-    `${spot.years}<br><span style="opacity:0.7">${spot.notes}</span>`;
 
-  // Position popup near click, staying within viewport
+  if (spot.type === 'race') {
+    document.getElementById('popup-meta').innerHTML =
+      `<span style="color:#ff6b35;font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase">Rennen</span><br>` +
+      `${spot.race}<br>` +
+      `<span style="opacity:0.7">${spot.date} · ${spot.boats} Boote</span>`;
+  } else {
+    document.getElementById('popup-meta').innerHTML =
+      `${spot.years}<br><span style="opacity:0.7">${spot.notes}</span>`;
+  }
+
   const vw = window.innerWidth, vh = window.innerHeight;
   const px = Math.min(Math.max(coords.x + 16, 10), vw - 280);
   const py = Math.min(Math.max(coords.y - 60, 10), vh - 200);
@@ -871,12 +909,42 @@ function showMap(spot) {
 
       initAISLayer();
       addMapMarkers();
+      if (spot.type === 'race' && spot.geojson) loadRaceTracks(spot);
       mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1200 });
     });
   } else {
     mapInstance.flyTo({ center: [spot.lng, spot.lat], zoom: spot.zoom, duration: 1000 });
   }
 }
+
+function loadRaceTracks(race) {
+  fetch(race.geojson)
+    .then(r => r.json())
+    .then(data => {
+      if (mapInstance.getSource('race-tracks')) {
+        mapInstance.getSource('race-tracks').setData(data);
+      } else {
+        mapInstance.addSource('race-tracks', { type: 'geojson', data });
+        mapInstance.addLayer({
+          id: 'race-tracks',
+          type: 'line',
+          source: 'race-tracks',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 15, 2.5],
+            'line-opacity': 0.85
+          }
+        });
+        document.getElementById('row-racetracks').style.display = '';
+        document.getElementById('toggle-racetracks').checked = true;
+      }
+    });
+}
+
+document.getElementById('toggle-racetracks').addEventListener('change', e => {
+  applyLayerToggle('racetracks', ['race-tracks'], e.target.checked);
+});
 
 function addMapMarkers() {
   SPOTS.forEach(spot => {
