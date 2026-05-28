@@ -1117,13 +1117,13 @@ function loadRaceTracks(race) {
           filter: ['==', ['get', 'segment'], 'future'],
           layout: {
             'line-join': 'round',
-            'line-cap': 'butt',
-            'line-dasharray': [2.5, 2.5]
+            'line-cap': 'butt'
           },
           paint: {
             'line-color': ['get', 'color'],
             'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 15, 2],
-            'line-opacity': 0.2
+            'line-opacity': 0.2,
+            'line-dasharray': [3, 3]
           }
         });
         document.getElementById('row-racetracks').style.display = '';
