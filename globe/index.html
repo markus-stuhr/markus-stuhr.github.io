@@ -1523,8 +1523,10 @@ function _animatePitch(targetPitch) {
     const r = interpDisplay(raceGeoJSON.features[followedBoatIdx], raceCurrentMs);
     if (r) {
       followAnimating = true;
-      mapInstance.once('moveend', () => { followAnimating = false; });
+      // setTimeout instead of once('moveend'): easeTo cancels the previous updateFollow
+      // easeTo synchronously, which emits moveend before our listener would be meaningful.
       mapInstance.easeTo({ center: r.pos, bearing: r.bearing, pitch: targetPitch, duration: 900 });
+      setTimeout(() => { followAnimating = false; }, 950);
       return;
     }
   }
@@ -1813,8 +1815,8 @@ function initRaceTimeline(geojson) {
         if (cam) targetZoom = cam.zoom - 2;
       }
       followAnimating = true;
-      mapInstance.once('moveend', () => { followAnimating = false; });
       mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, duration: 700 });
+      setTimeout(() => { followAnimating = false; }, 750);
     });
     svg.addEventListener('mouseenter', () => { mapInstance.getCanvas().style.cursor = 'pointer'; });
     svg.addEventListener('mouseleave', () => { mapInstance.getCanvas().style.cursor = ''; });
