@@ -327,6 +327,16 @@
   #btn-3d:hover { background: #fff; }
   #btn-3d.is3d  { background: #2e7eff; color: #fff; box-shadow: 0 0 0 2px rgba(46,126,255,0.5); }
 
+  .boat-marker { position: relative; width: 16px; height: 28px; }
+  .boat-marker svg { display: block; cursor: pointer; pointer-events: auto;
+    filter: drop-shadow(0 0 2.5px rgba(0,0,0,0.65)); }
+  .boat-marker-label {
+    position: absolute; top: 31px; left: 50%; transform: translateX(-50%);
+    white-space: nowrap; font-size: 11px; pointer-events: none;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    text-shadow: 0 0 3px rgba(5,15,30,0.95), 0 0 3px rgba(5,15,30,0.95);
+  }
+
   #settings-panel {
     position: fixed;
     bottom: 68px;
@@ -1261,7 +1271,9 @@ function addCourseMarks(marks) {
 }
 
 document.getElementById('toggle-racetracks').addEventListener('change', e => {
-  applyLayerToggle('racetracks', ['race-tracks-full', 'race-tracks-past', 'boat-positions', 'boat-labels'], e.target.checked);
+  applyLayerToggle('racetracks', ['race-tracks-full', 'race-tracks-past'], e.target.checked);
+  const vis = e.target.checked ? '' : 'none';
+  raceMarkers.forEach(m => { m.getElement().style.display = vis; });
 });
 document.getElementById('toggle-coursemarks').addEventListener('change', e => {
   applyLayerToggle('coursemarks', ['course-marks-glow', 'course-marks', 'course-mark-labels'], e.target.checked);
@@ -1459,6 +1471,8 @@ let scrubbing     = false;
 let raceTrackLos  = null;  // cached lo-indices per boat for split-track optimisation
 let followedBoatIdx  = null; // index into raceGeoJSON.features, null = free camera
 let followAnimating  = false; // true during the initial zoom-to-fit animation
+let raceMarkers      = [];    // maplibregl.Marker instances for boat icons
+let dragHandlerAdded = false; // ensure dragstart handler is only registered once
 
 // ── 3D Terrain ────────────────────────────────────────────
 let is3D = false;
@@ -1609,19 +1623,14 @@ function interpDisplay(f, t) {
 }
 
 function updateBoatPositions() {
-  const src = mapInstance && mapInstance.getSource('boat-positions');
-  if (!src || !raceGeoJSON) return;
-  src.setData({
-    type: 'FeatureCollection',
-    features: raceGeoJSON.features.map(f => {
-      const r = interpDisplay(f, raceCurrentMs);
-      if (!r) return null;
-      return {
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: r.pos },
-        properties: { color: f.properties.color, name: f.properties.name, bearing: r.bearing }
-      };
-    }).filter(Boolean)
+  if (!raceGeoJSON) return;
+  raceGeoJSON.features.forEach((f, i) => {
+    const m = raceMarkers[i];
+    if (!m) return;
+    const r = interpDisplay(f, raceCurrentMs);
+    if (!r) return;
+    m.setLngLat(r.pos);
+    m.setRotation(r.bearing);
   });
 }
 
@@ -1751,123 +1760,95 @@ function initRaceTimeline(geojson) {
     });
   }
 
-  function setupBoatLayers() {
-    if (!mapInstance.getSource('boat-positions')) {
-      mapInstance.addSource('boat-positions', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      });
-      // Boat hull icon — SDF so it can be tinted per boat color
-      mapInstance.addLayer({
-        id: 'boat-positions',
-        type: 'symbol',
-        source: 'boat-positions',
-        layout: {
-          'icon-image': 'boat-icon',
-          'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.7, 14, 1.1, 17, 1.8],
-          'icon-rotate': ['get', 'bearing'],
-          'icon-rotation-alignment': 'map',
-          'icon-allow-overlap': true,
-          'icon-ignore-placement': true
-        },
-        paint: {
-          'icon-color': ['get', 'color'],
-          'icon-halo-color': 'rgba(0,0,0,0.55)',
-          'icon-halo-width': 1.5
-        }
-      });
-      mapInstance.addLayer({
-        id: 'boat-labels',
-        type: 'symbol',
-        source: 'boat-positions',
-        layout: {
-          'text-field': ['get', 'name'],
-          'text-size': 11,
-          'text-anchor': 'top',
-          'text-offset': [0, 1.3],
-          'text-font': ['Noto Sans Regular', 'Roboto Regular'],
-          'text-allow-overlap': true,
-          'text-ignore-placement': true
-        },
-        paint: {
-          'text-color': ['get', 'color'],
-          'text-halo-color': 'rgba(5,15,30,0.9)',
-          'text-halo-width': 1.2
-        }
-      });
+  // ── HTML Markers (bypass terrain-draping pipeline → no Safari lag in 3D) ──
+  // Remove any markers from a previous race load
+  raceMarkers.forEach(m => m.remove());
+  raceMarkers.length = 0;
 
-      // Follow-boat: click to lock on a boat; animate to a zoom that fits all boats.
-      mapInstance.on('click', 'boat-positions', e => {
-        if (!raceGeoJSON || !e.features.length) return;
-        const color = e.features[0].properties.color;
-        const idx   = raceGeoJSON.features.findIndex(f => f.properties.color === color);
-        if (idx < 0) return;
-        followedBoatIdx = idx;
+  geojson.features.forEach((f, idx) => {
+    const color = f.properties.color;
+    const name  = f.properties.name || f.properties.boat || '';
 
-        const r = interpDisplay(raceGeoJSON.features[idx], raceCurrentMs);
-        if (!r) return;
+    // Wrapper — only the SVG catches pointer events
+    const wrap = document.createElement('div');
+    wrap.className = 'boat-marker';
+    wrap.style.pointerEvents = 'none';
 
-        // Compute a zoom that shows all boats comfortably
-        const positions = raceGeoJSON.features
-          .map(f => interpDisplay(f, raceCurrentMs))
-          .filter(Boolean).map(x => x.pos);
-        let targetZoom = mapInstance.getZoom();
-        if (positions.length > 1) {
-          const bounds = positions.reduce(
-            (b, p) => b.extend(p),
-            new maplibregl.LngLatBounds(positions[0], positions[0])
-          );
-          const cam = mapInstance.cameraForBounds(bounds, { padding: 80 });
-          if (cam) targetZoom = cam.zoom - 2; // back off 2 levels so all boats have breathing room
-        }
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('width', '16'); svg.setAttribute('height', '28');
+    svg.setAttribute('viewBox', '0 0 16 28');
+    const path = document.createElementNS(svgNS, 'path');
+    path.setAttribute('d', 'M8,1 C11.5,6 13,13 12,20 C10.5,25.5 5.5,25.5 4,20 C3,13 4.5,6 8,1 Z');
+    path.setAttribute('fill', color);
+    const ellipse = document.createElementNS(svgNS, 'ellipse');
+    ellipse.setAttribute('cx', '8'); ellipse.setAttribute('cy', '14');
+    ellipse.setAttribute('rx', '2.5'); ellipse.setAttribute('ry', '1.8');
+    ellipse.setAttribute('fill', 'black'); ellipse.setAttribute('opacity', '0.25');
+    svg.appendChild(path); svg.appendChild(ellipse);
 
-        // Animate once to the boat (with fit zoom); updateFollow takes over after
-        followAnimating = true;
-        mapInstance.once('moveend', () => { followAnimating = false; });
-        mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, duration: 700 });
-      });
+    const label = document.createElement('div');
+    label.className = 'boat-marker-label';
+    label.textContent = name;
+    label.style.color = color;
 
-      mapInstance.on('mouseenter', 'boat-positions', () => {
-        mapInstance.getCanvas().style.cursor = 'pointer';
-      });
-      mapInstance.on('mouseleave', 'boat-positions', () => {
-        mapInstance.getCanvas().style.cursor = '';
-      });
-      // Release follow when the user pans/drags — dragstart is always user-initiated
-      // and does NOT fire for zoom-button easeTo or scroll-wheel zoom.
-      mapInstance.on('dragstart', () => {
-        followedBoatIdx = null;
-      });
-    }
+    wrap.appendChild(svg);
+    wrap.appendChild(label);
 
-    // Show bar + adjust nav controls and settings button
-    document.getElementById('race-timeline').classList.add('visible');
-    document.getElementById('map').classList.add('has-timeline');
-    document.getElementById('settings-btn').style.bottom   = '80px';
-    document.getElementById('settings-panel').style.bottom = '124px';
-    document.getElementById('btn-3d').style.bottom         = '205px';
-    document.getElementById('tl-duration').textContent = formatRaceTime(raceEndMs - raceStartMs);
-    updateTimelineUI();
-    updateBoatPositions();
-    updateRaceTracks();
+    // Click → follow mode with zoom-to-fit
+    svg.addEventListener('click', () => {
+      if (!raceGeoJSON) return;
+      followedBoatIdx = idx;
+      const r = interpDisplay(raceGeoJSON.features[idx], raceCurrentMs);
+      if (!r) return;
+      const positions = raceGeoJSON.features
+        .map(g => interpDisplay(g, raceCurrentMs)).filter(Boolean).map(x => x.pos);
+      let targetZoom = mapInstance.getZoom();
+      if (positions.length > 1) {
+        const bounds = positions.reduce(
+          (b, p) => b.extend(p),
+          new maplibregl.LngLatBounds(positions[0], positions[0])
+        );
+        const cam = mapInstance.cameraForBounds(bounds, { padding: 80 });
+        if (cam) targetZoom = cam.zoom - 2;
+      }
+      followAnimating = true;
+      mapInstance.once('moveend', () => { followAnimating = false; });
+      mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, duration: 700 });
+    });
+    svg.addEventListener('mouseenter', () => { mapInstance.getCanvas().style.cursor = 'pointer'; });
+    svg.addEventListener('mouseleave', () => { mapInstance.getCanvas().style.cursor = ''; });
+
+    const initR = interpDisplay(f, raceCurrentMs);
+    const marker = new maplibregl.Marker({
+      element: wrap,
+      rotationAlignment: 'map',
+      pitchAlignment: 'viewport',
+      anchor: 'center'
+    })
+    .setLngLat(initR ? initR.pos : f.geometry.coordinates[0])
+    .setRotation(initR ? initR.bearing : 0)
+    .addTo(mapInstance);
+
+    raceMarkers.push(marker);
+  });
+
+  // Release follow on drag — register only once
+  if (!dragHandlerAdded) {
+    mapInstance.on('dragstart', () => { followedBoatIdx = null; });
+    dragHandlerAdded = true;
   }
 
-  // Boat hull shape: pointed bow at top, rounded stern at bottom (white → tinted via SDF)
-  const BOAT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="28" viewBox="0 0 16 28">
-    <path d="M8,1 C11.5,6 13,13 12,20 C10.5,25.5 5.5,25.5 4,20 C3,13 4.5,6 8,1 Z" fill="white"/>
-    <ellipse cx="8" cy="14" rx="2.5" ry="1.8" fill="black" opacity="0.25"/>
-  </svg>`;
-
-  if (mapInstance.hasImage('boat-icon')) {
-    setupBoatLayers();
-  } else {
-    const img = new Image(16, 28);
-    img.onload = () => {
-      mapInstance.addImage('boat-icon', img, { sdf: true });
-      setupBoatLayers();
-    };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(BOAT_SVG);
-  }
+  // Show bar + adjust nav controls and settings button
+  document.getElementById('race-timeline').classList.add('visible');
+  document.getElementById('map').classList.add('has-timeline');
+  document.getElementById('settings-btn').style.bottom   = '80px';
+  document.getElementById('settings-panel').style.bottom = '124px';
+  document.getElementById('btn-3d').style.bottom         = '205px';
+  document.getElementById('tl-duration').textContent = formatRaceTime(raceEndMs - raceStartMs);
+  updateTimelineUI();
+  updateBoatPositions();
+  updateRaceTracks();
 }
 
 function hideRaceTimeline() {
@@ -1878,6 +1859,8 @@ function hideRaceTimeline() {
   raceTrackLos    = null;
   followedBoatIdx = null;
   followAnimating = false;
+  raceMarkers.forEach(m => m.remove());
+  raceMarkers.length = 0;
   const emptyFC = { type: 'FeatureCollection', features: [] };
   try { mapInstance.getSource('race-tracks-full').setData(emptyFC); } catch {}
   try { mapInstance.getSource('race-tracks').setData(emptyFC); } catch {}
