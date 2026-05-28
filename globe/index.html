@@ -1095,38 +1095,37 @@ function loadRaceTracks(race) {
     .then(r => r.json())
     .then(data => {
       if (!mapInstance.getSource('race-tracks')) {
-        mapInstance.addSource('race-tracks', {
+        // Static dashed layer — full route, never changes once set
+        mapInstance.addSource('race-tracks-full', {
           type: 'geojson',
           data: { type: 'FeatureCollection', features: [] }
         });
-        // Sailed portion — solid full-color line
         mapInstance.addLayer({
-          id: 'race-tracks-past',
+          id: 'race-tracks-full',
           type: 'line',
-          source: 'race-tracks',
-          filter: ['==', ['get', 'segment'], 'past'],
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: {
-            'line-color': ['get', 'color'],
-            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 15, 3],
-            'line-opacity': 0.9
-          }
-        });
-        // Remaining course — dashed, 20 % alpha
-        mapInstance.addLayer({
-          id: 'race-tracks-future',
-          type: 'line',
-          source: 'race-tracks',
-          filter: ['==', ['get', 'segment'], 'future'],
-          layout: {
-            'line-join': 'round',
-            'line-cap': 'butt'
-          },
+          source: 'race-tracks-full',
+          layout: { 'line-join': 'round', 'line-cap': 'butt' },
           paint: {
             'line-color': ['get', 'color'],
             'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1, 15, 2],
             'line-opacity': 0.2,
             'line-dasharray': [3, 3]
+          }
+        });
+        // Growing solid past track — drawn on top of the dashed layer
+        mapInstance.addSource('race-tracks', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+        mapInstance.addLayer({
+          id: 'race-tracks-past',
+          type: 'line',
+          source: 'race-tracks',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': ['interpolate', ['linear'], ['zoom'], 10, 1.5, 15, 3],
+            'line-opacity': 0.9
           }
         });
         document.getElementById('row-racetracks').style.display = '';
@@ -1203,7 +1202,7 @@ function addCourseMarks(marks) {
 }
 
 document.getElementById('toggle-racetracks').addEventListener('change', e => {
-  applyLayerToggle('racetracks', ['race-tracks-past', 'race-tracks-future', 'boat-positions', 'boat-labels'], e.target.checked);
+  applyLayerToggle('racetracks', ['race-tracks-full', 'race-tracks-past', 'boat-positions', 'boat-labels'], e.target.checked);
 });
 document.getElementById('toggle-coursemarks').addEventListener('change', e => {
   applyLayerToggle('coursemarks', ['course-marks-glow', 'course-marks', 'course-mark-labels'], e.target.checked);
@@ -1546,20 +1545,12 @@ function updateRaceTracks() {
       split = [a[0] + (b[0] - a[0]) * frac, a[1] + (b[1] - a[1]) * frac];
     }
 
-    // Past segment (solid)
+    // Past segment (solid) — grows over the static dashed full-track layer
     const past = [...coords.slice(0, lo + 1), split];
     if (past.length >= 2) features.push({
       type: 'Feature',
       geometry: { type: 'LineString', coordinates: past },
-      properties: { color, segment: 'past' }
-    });
-
-    // Future segment (dashed)
-    const future = [split, ...coords.slice(lo + 1)];
-    if (future.length >= 2) features.push({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: future },
-      properties: { color, segment: 'future' }
+      properties: { color }
     });
   });
 
@@ -1625,6 +1616,19 @@ function initRaceTimeline(geojson) {
     f._dTimes      = smooth.times;
     f._dBearings   = computeSmoothedBearings(smooth.coords, 4); // 4-point window ≈ 2.5 s
   });
+
+  // Populate the static dashed layer with the full smoothed route once.
+  const fullSrc = mapInstance && mapInstance.getSource('race-tracks-full');
+  if (fullSrc) {
+    fullSrc.setData({
+      type: 'FeatureCollection',
+      features: geojson.features.map(f => ({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: f._dCoords },
+        properties: { color: f.properties.color }
+      }))
+    });
+  }
 
   function setupBoatLayers() {
     if (!mapInstance.getSource('boat-positions')) {
@@ -1730,6 +1734,9 @@ function hideRaceTimeline() {
   raceGeoJSON  = null;
   raceTrackLos = null;
   followedBoatIdx = null;
+  const emptyFC = { type: 'FeatureCollection', features: [] };
+  try { mapInstance.getSource('race-tracks-full').setData(emptyFC); } catch {}
+  try { mapInstance.getSource('race-tracks').setData(emptyFC); } catch {}
   document.getElementById('tl-play').textContent = '▶';
   document.getElementById('race-timeline').classList.remove('visible');
   document.getElementById('map').classList.remove('has-timeline');
