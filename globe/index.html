@@ -1726,7 +1726,8 @@ function setupBoatLayers() {
         'icon-size': ['interpolate', ['linear'], ['zoom'], 10, 0.7, 14, 1.1, 17, 1.8],
         'icon-rotate': ['get', 'bearing'],
         'icon-rotation-alignment': 'map',
-        'icon-allow-overlap': true, 'icon-ignore-placement': true
+        'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'icon-pitch-alignment': 'viewport'
       },
       paint: { 'icon-color': ['get', 'color'] }
     });
