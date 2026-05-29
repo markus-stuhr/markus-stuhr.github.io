@@ -1769,9 +1769,9 @@ function setupBoatLayers() {
     });
     mapInstance.on('click', 'boat-positions', e => {
       if (!raceGeoJSON || !e.features.length) return;
-      // MapLibre returns features top-first (highest z = index 0).
-      // Red is sorted last in source = rendered on top = e.features[0].
-      const color = e.features[0].properties.color;
+      // Always prefer the red boat when multiple boats are at the click point.
+      const hit = e.features.find(f => f.properties.color === '#e74c3c') || e.features[0];
+      const color = hit.properties.color;
       const idx = raceGeoJSON.features.findIndex(f => f.properties.color === color);
       if (idx < 0) return;
       followedBoatIdx = idx;
