@@ -1769,8 +1769,10 @@ function setupBoatLayers() {
     });
     mapInstance.on('click', 'boat-positions', e => {
       if (!raceGeoJSON || !e.features.length) return;
-      // Always prefer the red boat when multiple boats are at the click point.
-      const hit = e.features.find(f => f.properties.color === '#e74c3c') || e.features[0];
+      // Single boat clicked → use it; multiple overlapping → prefer red.
+      const hit = e.features.length > 1
+        ? (e.features.find(f => f.properties.color === '#e74c3c') || e.features[0])
+        : e.features[0];
       const color = hit.properties.color;
       const idx = raceGeoJSON.features.findIndex(f => f.properties.color === color);
       if (idx < 0) return;
