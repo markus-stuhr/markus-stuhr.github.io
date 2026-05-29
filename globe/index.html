@@ -1630,10 +1630,14 @@ function interpDisplay(f, t) {
 function updateBoatPositions() {
   const src = mapInstance && mapInstance.getSource('boat-positions');
   if (!src || !raceGeoJSON) return;
+  // MapLibre renders setData() with ~1 rAF frame delay.
+  // At high speeds this causes visible lag, so we look one frame ahead:
+  // 1 frame ≈ 16 ms wall time × raceSpeed = race-time offset to compensate.
+  const tDisplay = Math.min(raceCurrentMs + raceSpeed * 16, raceEndMs);
   src.setData({
     type: 'FeatureCollection',
     features: raceGeoJSON.features.map(f => {
-      const r = interpDisplay(f, raceCurrentMs);
+      const r = interpDisplay(f, tDisplay);
       if (!r) return null;
       const spd = calcSpeedKnots(f, raceCurrentMs);
       return {
