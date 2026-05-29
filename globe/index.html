@@ -662,9 +662,9 @@
   </div>
   <div id="tl-duration"></div>
   <div id="tl-speeds">
-    <button class="tl-speed active" data-speed="1">1×</button>
+    <button class="tl-speed" data-speed="1">1×</button>
     <button class="tl-speed" data-speed="8">8×</button>
-    <button class="tl-speed" data-speed="16">16×</button>
+    <button class="tl-speed active" data-speed="16">16×</button>
   </div>
 </div>
 
@@ -1443,7 +1443,7 @@ let raceStartMs   = 0;
 let raceEndMs     = 0;
 let raceCurrentMs = 0;
 let racePlaying   = false;
-let raceSpeed     = 1;
+let raceSpeed     = 16;
 let raceRafId     = null;
 let raceLastWall  = null;
 let scrubbing     = false;
@@ -1874,8 +1874,8 @@ function hideRaceTimeline() {
   document.getElementById('settings-panel').style.bottom = '';
   document.getElementById('btn-3d').style.bottom         = '';
   // Reset speed UI
-  raceSpeed = 1;
-  document.querySelectorAll('.tl-speed').forEach(b => b.classList.toggle('active', b.dataset.speed === '1'));
+  raceSpeed = 16;
+  document.querySelectorAll('.tl-speed').forEach(b => b.classList.toggle('active', b.dataset.speed === '16'));
 }
 
 // ── Play / Pause ──────────────────────────────────────────
