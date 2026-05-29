@@ -864,6 +864,7 @@ document.getElementById('back-globe').addEventListener('click', () => {
   document.getElementById('settings-btn').style.display = 'none';
   document.getElementById('btn-3d').style.display = 'none';
   document.getElementById('settings-panel').style.display = 'none';
+  document.querySelector('#header h1').textContent = 'Sailing Map';
   if (is3D) disable3D();
   document.getElementById('back-home').style.display = '';
   hideRaceTimeline();
@@ -1077,6 +1078,7 @@ function showMap(spot) {
   document.getElementById('settings-btn').style.display = 'flex';
   document.getElementById('btn-3d').style.display = 'flex';
   document.getElementById('back-home').style.display = 'none';
+  document.querySelector('#header h1').textContent = spot.type === 'race' ? spot.name : 'Sailing Map';
   globe.controls().autoRotate = false;
 
   if (!mapInstance) {
@@ -1237,9 +1239,7 @@ function addCourseMarks(marks) {
       'text-ignore-placement': true
     },
     paint: {
-      'text-color': '#f5a623',
-      'text-halo-color': 'rgba(5,15,30,0.9)',
-      'text-halo-width': 1.2
+      'text-color': '#f5a623'
     }
   });
 
