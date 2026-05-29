@@ -632,7 +632,7 @@
   </div>
   <div class="setting-row">
     <span class="setting-label">Seezeichen</span>
-    <label class="toggle"><input type="checkbox" id="toggle-openseamap" checked><span class="toggle-track"></span></label>
+    <label class="toggle"><input type="checkbox" id="toggle-openseamap"><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
     <span class="setting-label">Fährverbindungen</span>
@@ -1780,8 +1780,9 @@ function setupBoatLayers() {
       if (positions.length > 1) {
         const bounds = positions.reduce((b, p) => b.extend(p), new maplibregl.LngLatBounds(positions[0], positions[0]));
         const cam = mapInstance.cameraForBounds(bounds, { padding: 80 });
-        if (cam) targetZoom = cam.zoom - 2;
+        if (cam) targetZoom = cam.zoom - 3;
       }
+      if (!is3D) enable3D();
       followAnimating = true;
       mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, duration: 700 });
       setTimeout(() => { followAnimating = false; }, 750);
