@@ -602,52 +602,52 @@
   <div id="popup-region"></div>
   <div id="popup-name"></div>
   <div id="popup-meta"></div>
-  <button id="zoom-btn">Zur Karte →</button>
+  <button id="zoom-btn">Open Map →</button>
 </div>
 
 <!-- Map back button -->
-<button id="back-globe">← <span class="back-label">Globus</span></button>
+<button id="back-globe">← <span class="back-label">Globe</span></button>
 
 <!-- Settings -->
 <button id="settings-btn" title="Layer">⚙</button>
 <button id="btn-3d" title="3D-Gelände">3D</button>
 
 <div id="settings-panel">
-  <h3>Stil</h3>
+  <h3>Style</h3>
   <div class="setting-row">
-    <span class="setting-label">Kartenstil</span>
+    <span class="setting-label">Map style</span>
     <select id="map-style-select">
       <option value="dark">Dark</option>
       <option value="light" selected>Light</option>
     </select>
   </div>
-  <h3 style="margin-top:12px">Layer</h3>
+  <h3 style="margin-top:12px">Layers</h3>
   <div class="setting-row">
-    <span class="setting-label">Tiefenlinien</span>
+    <span class="setting-label">Depth contours</span>
     <label class="toggle"><input type="checkbox" id="toggle-contours"><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
-    <span class="setting-label">Tiefenangaben</span>
+    <span class="setting-label">Depth labels</span>
     <label class="toggle"><input type="checkbox" id="toggle-depthlabels"><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
-    <span class="setting-label">Seezeichen</span>
+    <span class="setting-label">Nav marks</span>
     <label class="toggle"><input type="checkbox" id="toggle-openseamap"><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
-    <span class="setting-label">Fährverbindungen</span>
+    <span class="setting-label">Ferry routes</span>
     <label class="toggle"><input type="checkbox" id="toggle-ferry"><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row" id="row-racetracks" style="display:none">
-    <span class="setting-label">Renntracks</span>
+    <span class="setting-label">Race tracks</span>
     <label class="toggle"><input type="checkbox" id="toggle-racetracks" checked><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row" id="row-coursemarks" style="display:none">
-    <span class="setting-label">Kursbaken</span>
+    <span class="setting-label">Course marks</span>
     <label class="toggle"><input type="checkbox" id="toggle-coursemarks" checked><span class="toggle-track"></span></label>
   </div>
   <div class="setting-row">
-    <span class="setting-label">AIS Schiffe <span id="ais-status" class="setting-badge">live</span></span>
+    <span class="setting-label">AIS ships <span id="ais-status" class="setting-badge">live</span></span>
     <label class="toggle"><input type="checkbox" id="toggle-ais"><span class="toggle-track"></span></label>
   </div>
 </div>
@@ -678,7 +678,7 @@ if ('serviceWorker' in navigator) {
 const SPOTS = [
   {
     name: "Whitsundays",
-    region: "Australien",
+    region: "Australia",
     lat: -20.3, lng: 148.9,
     zoom: 9,
     years: "2019",
@@ -686,23 +686,23 @@ const SPOTS = [
   },
   {
     name: "Grenadinen",
-    region: "Karibik",
+    region: "Caribbean",
     lat: 12.6, lng: -61.4,
     zoom: 8,
     years: "2018",
-    notes: "St. Vincent bis Grenada"
+    notes: "St. Vincent to Grenada"
   },
   {
     name: "Kroatische Inseln",
-    region: "Mittelmeer",
+    region: "Mediterranean",
     lat: 43.6, lng: 16.4,
     zoom: 8,
     years: "2015, 2017",
-    notes: "Dalmatinische Küste, Split bis Dubrovnik"
+    notes: "Dalmatian Coast, Split to Dubrovnik"
   },
   {
     name: "Balearen",
-    region: "Mittelmeer",
+    region: "Mediterranean",
     lat: 39.6, lng: 2.9,
     zoom: 8,
     years: "2016",
@@ -710,11 +710,11 @@ const SPOTS = [
   },
   {
     name: "Türkische Ägäis",
-    region: "Mittelmeer",
+    region: "Mediterranean",
     lat: 37.1, lng: 27.2,
     zoom: 8,
     years: "2014",
-    notes: "Bodrum bis Fethiye, Blaue Reise"
+    notes: "Bodrum to Fethiye, Blue Cruise"
   }
 ];
 
@@ -722,10 +722,10 @@ const RACES = [
   {
     name: "North Sound Maxi Regatta",
     race: "Performance Race 1",
-    region: "Karibik — BVI",
+    region: "Caribbean — BVI",
     lat: 18.49, lng: -64.45,
     zoom: 13,
-    date: "März 2026",
+    date: "March 2026",
     boats: 3,
     geojson: 'race1.geojson',
     type: 'race',
@@ -831,9 +831,9 @@ function onSpotClick(spot, _ev, coords) {
 
   if (spot.type === 'race') {
     document.getElementById('popup-meta').innerHTML =
-      `<span style="color:#ff6b35;font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase">Rennen</span><br>` +
+      `<span style="color:#ff6b35;font-size:0.7rem;letter-spacing:0.1em;text-transform:uppercase">Race</span><br>` +
       `${spot.race}<br>` +
-      `<span style="opacity:0.7">${spot.date} · ${spot.boats} Boote</span>`;
+      `<span style="opacity:0.7">${spot.date} · ${spot.boats} boats</span>`;
   } else {
     document.getElementById('popup-meta').innerHTML =
       `${spot.years}<br><span style="opacity:0.7">${spot.notes}</span>`;
@@ -1330,8 +1330,8 @@ function initAISLayer() {
           <div class="popup-title">${p.name}</div>
           <div class="popup-meta">
             MMSI: ${p.mmsi}<br>
-            Geschwindigkeit: ${(+p.sog).toFixed(1)} kn<br>
-            Kurs: ${Math.round(+p.cog)}°
+            Speed: ${(+p.sog).toFixed(1)} kn<br>
+            Course: ${Math.round(+p.cog)}°
           </div>
         `)
         .addTo(mapInstance);
@@ -1375,7 +1375,7 @@ function connectAIS() {
   const b = mapInstance.getBounds();
   aisSocket = new WebSocket('wss://stream.aisstream.io/v0/stream');
   aisSocket.onopen = () => {
-    setAisStatus('verbunden', 'rgb(50,200,100)');
+    setAisStatus('connected', 'rgb(50,200,100)');
     aisSocket.send(JSON.stringify({
       APIKey: AIS_KEY,
       BoundingBoxes: [[[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]]],
@@ -1402,14 +1402,14 @@ function connectAIS() {
         heading: p.TrueHeading < 360 ? p.TrueHeading : (p.Cog || 0),
         sog: p.Sog || 0, cog: p.Cog || 0
       });
-      setAisStatus(`${shipData.size} Schiffe`, 'rgb(74,223,255)');
+      setAisStatus(`${shipData.size} ships`, 'rgb(74,223,255)');
       updateShipLayer();
     } catch {}
   };
-  aisSocket.onerror = () => { setAisStatus('Fehler', 'rgb(255,80,80)'); aisSocket = null; };
+  aisSocket.onerror = () => { setAisStatus('error', 'rgb(255,80,80)'); aisSocket = null; };
   aisSocket.onclose = () => {
     aisSocket = null;
-    if (aisEnabled) { setAisStatus('reconnect…', 'rgb(255,200,50)'); setTimeout(connectAIS, 5000); }
+    if (aisEnabled) { setAisStatus('reconnecting…', 'rgb(255,200,50)'); setTimeout(connectAIS, 5000); }
   };
 }
 
