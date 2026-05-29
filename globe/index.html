@@ -963,7 +963,7 @@ document.getElementById('toggle-contours').addEventListener('change', e => {
   applyLayerToggle('contours', ['Depth contour'], e.target.checked);
 });
 document.getElementById('toggle-depthlabels').addEventListener('change', e => {
-  applyLayerToggle('depthlabels', ['Depth labels', 'Undersea line labels', 'Undersea labels'], e.target.checked);
+  applyLayerToggle('depthlabels', ['Depth labels', 'Undersea line labels', 'Undersea labels', 'Contour labels', 'Glacier contour labels'], e.target.checked);
 });
 document.getElementById('toggle-openseamap').addEventListener('change', e => {
   applyLayerToggle('openseamap', ['openseamap'], e.target.checked);
@@ -985,7 +985,7 @@ function onMapLoaded(spot) {
       try { mapInstance.setPaintProperty(id, 'text-opacity', 0.5); } catch {}
     });
     applyLayerToggle('contours',    ['Depth contour'], document.getElementById('toggle-contours').checked);
-    applyLayerToggle('depthlabels', ['Depth labels', 'Undersea line labels', 'Undersea labels'], document.getElementById('toggle-depthlabels').checked);
+    applyLayerToggle('depthlabels', ['Depth labels', 'Undersea line labels', 'Undersea labels', 'Contour labels', 'Glacier contour labels'], document.getElementById('toggle-depthlabels').checked);
     try {
       mapInstance.setPaintProperty('Depth contour', 'line-color', [
         'interpolate', ['linear', 2], ['zoom'],
