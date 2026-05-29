@@ -40,6 +40,25 @@
   }
 
   #map { width: 100%; height: 100%; touch-action: none; }
+
+  #map-fallback-notice {
+    display: none;
+    position: absolute;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    background: rgba(5,15,30,0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,180,0,0.35);
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    color: rgba(255,200,80,0.9);
+    pointer-events: none;
+    white-space: nowrap;
+  }
   .maplibregl-marker { touch-action: none; }
 
   /* ── Header ─────────────────────────────── */
@@ -574,6 +593,7 @@
 <!-- MapLibre detail map -->
 <div id="map-view">
   <div id="map"></div>
+  <div id="map-fallback-notice">Tiefenkarte nicht verfügbar — vereinfachte Basiskarte</div>
 </div>
 
 <!-- Globe spot popup -->
@@ -858,6 +878,11 @@ document.addEventListener('click', () => { settingsPanel.style.display = 'none';
 settingsPanel.addEventListener('click', e => e.stopPropagation());
 
 // ── Map style profiles ────────────────────────────────────
+const MAPTILER_KEY   = 'lT9jK8r0OXrZinP9JSOT';
+const MAPTILER_STYLE = `https://api.maptiler.com/maps/ocean/style.json?key=${MAPTILER_KEY}`;
+const FALLBACK_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+let usePremiumMap = true; // set to false when MapTiler quota/auth fails
+
 let currentMapStyle = 'light';
 
 const MAP_STYLES = {
@@ -898,7 +923,7 @@ const MAP_STYLES = {
 };
 
 function applyMapStyle(name) {
-  if (!mapInstance) return;
+  if (!mapInstance || !usePremiumMap) return;
   const s = MAP_STYLES[name];
   document.querySelector('#header h1').style.color = s.headlineColor;
   mapInstance.setPaintProperty('Land', 'fill-color', s.land);
@@ -958,6 +983,89 @@ document.getElementById('toggle-ais').addEventListener('change', e => {
   e.target.checked ? startAIS() : stopAIS();
 });
 
+function onMapLoaded(spot) {
+  if (usePremiumMap) {
+    // ── MapTiler ocean style: full setup ────────────────────────────────
+    applyMapStyle(currentMapStyle);
+    mapInstance.setPaintProperty('Ocean RGB', 'hillshade-exaggeration', 0);
+    mapInstance.setPaintProperty('Terrain RGB', 'hillshade-exaggeration', 0);
+    ['Depth labels', 'Undersea labels', 'Undersea line labels'].forEach(id => {
+      try { mapInstance.setPaintProperty(id, 'text-opacity', 0.5); } catch {}
+    });
+    applyLayerToggle('contours',    ['Depth contour'], document.getElementById('toggle-contours').checked);
+    applyLayerToggle('depthlabels', ['Depth labels', 'Undersea line labels', 'Undersea labels'], document.getElementById('toggle-depthlabels').checked);
+    try {
+      mapInstance.setPaintProperty('Depth contour', 'line-color', [
+        'interpolate', ['linear', 2], ['zoom'],
+        8,  ['case', ['>', ['get', 'depth'], -4000], 'hsl(212,56%,25%)', 'hsl(208,48%,71%)'],
+        12, ['case', ['>', ['get', 'depth'], -4000], 'hsl(209,93%,12%)', 'hsl(210,14%,97%)']
+      ]);
+    } catch {}
+
+    mapInstance.addSource('osm', {
+      type: 'vector',
+      url: `https://api.maptiler.com/tiles/v3/tiles.json?key=${MAPTILER_KEY}`
+    });
+    const s = MAP_STYLES[currentMapStyle];
+    mapInstance.addLayer({ id: 'buildings', type: 'fill', source: 'osm',
+      'source-layer': 'building', minzoom: 14,
+      paint: { 'fill-color': s.buildingColor, 'fill-opacity': 0.9 } });
+    mapInstance.addLayer({ id: 'buildings-outline', type: 'line', source: 'osm',
+      'source-layer': 'building', minzoom: 14,
+      paint: { 'line-color': s.buildingOutline, 'line-width': 0.5 } });
+    mapInstance.addLayer({ id: 'place-cities', type: 'symbol', source: 'osm',
+      'source-layer': 'place', minzoom: 4,
+      filter: ['all', ['==', ['get', 'class'], 'city'],
+        ['<=', ['get', 'rank'], ['step', ['zoom'], 2, 5, 4, 7, 7, 9, 12]]],
+      layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+        'text-font': ['Noto Sans Regular', 'Roboto Regular'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 4, 11, 8, 14, 12, 18],
+        'text-anchor': 'center', 'text-max-width': 8 },
+      paint: { 'text-color': s.cityColor, 'text-halo-color': s.cityHalo, 'text-halo-width': s.cityHaloWidth } });
+    mapInstance.addLayer({ id: 'place-towns', type: 'symbol', source: 'osm',
+      'source-layer': 'place', minzoom: 9,
+      filter: ['all', ['in', ['get', 'class'], ['literal', ['town', 'village']]],
+        ['<=', ['get', 'rank'], ['step', ['zoom'], 3, 10, 8, 12, 99]]],
+      layout: { 'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
+        'text-font': ['Noto Sans Regular', 'Roboto Regular'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 11, 10, 14, 12],
+        'text-anchor': 'center', 'text-max-width': 8 },
+      paint: { 'text-color': s.townColor, 'text-halo-color': s.townHalo, 'text-halo-width': s.townHaloWidth } });
+    mapInstance.addLayer({ id: 'ferry-routes', type: 'line', source: 'osm',
+      'source-layer': 'transportation', minzoom: 5,
+      filter: ['==', ['get', 'class'], 'ferry'],
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': s.islandLabelColor,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 10, 2],
+        'line-opacity': 0.15, 'line-dasharray': [2, 3] } });
+    applyLayerToggle('ferry', ['ferry-routes'], document.getElementById('toggle-ferry').checked);
+
+  } else {
+    // ── Fallback style: disable MapTiler-only controls ───────────────────
+    document.getElementById('map-fallback-notice').style.display = 'block';
+    ['toggle-contours', 'toggle-depthlabels', 'toggle-ferry'].forEach(id => {
+      const el = document.getElementById(id);
+      el.checked = false; el.disabled = true;
+      el.closest('.setting-row').querySelector('.setting-label').classList.add('disabled');
+      el.closest('.toggle').classList.add('disabled');
+    });
+    document.getElementById('map-style-select').disabled = true;
+  }
+
+  // ── Always: OpenSeaMap + AIS + race tracks ───────────────────────────
+  mapInstance.addSource('openseamap', {
+    type: 'raster',
+    tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
+    tileSize: 256,
+    attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>'
+  });
+  mapInstance.addLayer({ id: 'openseamap', type: 'raster', source: 'openseamap',
+    paint: { 'raster-opacity': 0.8 } });
+  initAISLayer();
+  if (spot.type === 'race' && spot.geojson) loadRaceTracks(spot);
+  flyToSpot(spot, 1200);
+}
+
 function showMap(spot) {
   document.getElementById('map-view').classList.add('visible');
   document.getElementById('back-globe').style.display = 'block';
@@ -969,149 +1077,23 @@ function showMap(spot) {
   if (!mapInstance) {
     mapInstance = new maplibregl.Map({
       container: 'map',
-      style: 'https://api.maptiler.com/maps/ocean/style.json?key=lT9jK8r0OXrZinP9JSOT',
+      style: MAPTILER_STYLE,
       center: [spot.lng, spot.lat],
       zoom: spot.zoom,
       attributionControl: true
     });
-
     mapInstance.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 
-    mapInstance.on('load', () => {
-      applyMapStyle(currentMapStyle);
-      mapInstance.setPaintProperty('Ocean RGB', 'hillshade-exaggeration', 0);
-      mapInstance.setPaintProperty('Terrain RGB', 'hillshade-exaggeration', 0);
-      ['Depth labels', 'Undersea labels', 'Undersea line labels'].forEach(id => {
-        try { mapInstance.setPaintProperty(id, 'text-opacity', 0.5); } catch {}
-      });
-      // Apply default toggle states
-      applyLayerToggle('contours',    ['Depth contour'], document.getElementById('toggle-contours').checked);
-      applyLayerToggle('depthlabels', ['Depth labels', 'Undersea line labels', 'Undersea labels'], document.getElementById('toggle-depthlabels').checked);
-      try {
-        mapInstance.setPaintProperty('Depth contour', 'line-color', [
-          'interpolate', ['linear', 2], ['zoom'],
-          8, ['case', ['>', ['get', 'depth'], -4000], 'hsl(212,56%,25%)', 'hsl(208,48%,71%)'],
-          12, ['case', ['>', ['get', 'depth'], -4000], 'hsl(209,93%,12%)', 'hsl(210,14%,97%)']
-        ]);
-      } catch {}
-
-      // OSM vector tiles: buildings + city labels
-      mapInstance.addSource('osm', {
-        type: 'vector',
-        url: 'https://api.maptiler.com/tiles/v3/tiles.json?key=lT9jK8r0OXrZinP9JSOT'
-      });
-
-      const s = MAP_STYLES[currentMapStyle];
-
-      mapInstance.addLayer({
-        id: 'buildings',
-        type: 'fill',
-        source: 'osm',
-        'source-layer': 'building',
-        minzoom: 14,
-        paint: {
-          'fill-color': s.buildingColor,
-          'fill-opacity': 0.9
-        }
-      });
-      mapInstance.addLayer({
-        id: 'buildings-outline',
-        type: 'line',
-        source: 'osm',
-        'source-layer': 'building',
-        minzoom: 14,
-        paint: {
-          'line-color': s.buildingOutline,
-          'line-width': 0.5
-        }
-      });
-      // Cities: rank-based zoom filter — only top cities at low zoom
-      // rank 1-2 = capitals/megacities, 3-5 = large cities, 6+ = smaller
-      mapInstance.addLayer({
-        id: 'place-cities',
-        type: 'symbol',
-        source: 'osm',
-        'source-layer': 'place',
-        filter: ['all',
-          ['==', ['get', 'class'], 'city'],
-          ['<=', ['get', 'rank'], ['step', ['zoom'], 2, 5, 4, 7, 7, 9, 12]]
-        ],
-        minzoom: 4,
-        layout: {
-          'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
-          'text-font': ['Noto Sans Regular', 'Roboto Regular'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 4, 11, 8, 14, 12, 18],
-          'text-anchor': 'center',
-          'text-max-width': 8
-        },
-        paint: {
-          'text-color': s.cityColor,
-          'text-halo-color': s.cityHalo,
-          'text-halo-width': s.cityHaloWidth
-        }
-      });
-      // Towns: only from zoom 11, villages from zoom 13
-      mapInstance.addLayer({
-        id: 'place-towns',
-        type: 'symbol',
-        source: 'osm',
-        'source-layer': 'place',
-        filter: ['all',
-          ['in', ['get', 'class'], ['literal', ['town', 'village']]],
-          ['<=', ['get', 'rank'], ['step', ['zoom'], 3, 10, 8, 12, 99]]
-        ],
-        minzoom: 9,
-        layout: {
-          'text-field': ['coalesce', ['get', 'name:en'], ['get', 'name']],
-          'text-font': ['Noto Sans Regular', 'Roboto Regular'],
-          'text-size': ['interpolate', ['linear'], ['zoom'], 11, 10, 14, 12],
-          'text-anchor': 'center',
-          'text-max-width': 8
-        },
-        paint: {
-          'text-color': s.townColor,
-          'text-halo-color': s.townHalo,
-          'text-halo-width': s.townHaloWidth
-        }
-      });
-
-      // Ferry routes
-      mapInstance.addLayer({
-        id: 'ferry-routes',
-        type: 'line',
-        source: 'osm',
-        'source-layer': 'transportation',
-        filter: ['==', ['get', 'class'], 'ferry'],
-        minzoom: 5,
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': s.islandLabelColor,
-          'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 10, 2],
-          'line-opacity': 0.15,
-          'line-dasharray': [2, 3]
-        }
-      });
-
-      applyLayerToggle('ferry', ['ferry-routes'], document.getElementById('toggle-ferry').checked);
-
-      // Nautical marks on top of buildings (OpenSeaMap)
-      mapInstance.addSource('openseamap', {
-        type: 'raster',
-        tiles: ['https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png'],
-        tileSize: 256,
-        attribution: '© <a href="https://www.openseamap.org">OpenSeaMap</a>'
-      });
-      mapInstance.addLayer({
-        id: 'openseamap',
-        type: 'raster',
-        source: 'openseamap',
-        paint: { 'raster-opacity': 0.8 }
-      });
-
-      initAISLayer();
-      if (spot.type === 'race' && spot.geojson) loadRaceTracks(spot);
-      flyToSpot(spot, 1200);
+    // If MapTiler quota/auth fails (403), silently switch to free fallback style
+    mapInstance.on('error', e => {
+      if (usePremiumMap && !mapInstance.isStyleLoaded() && e.error?.status >= 400) {
+        usePremiumMap = false;
+        mapInstance.once('style.load', () => onMapLoaded(spot));
+        mapInstance.setStyle(FALLBACK_STYLE);
+      }
     });
+
+    mapInstance.on('load', () => onMapLoaded(spot));
   } else {
     flyToSpot(spot, 1000);
   }
@@ -1475,7 +1457,7 @@ function enable3D() {
     if (!mapInstance.getSource('terrain-dem')) {
       mapInstance.addSource('terrain-dem', {
         type: 'raster-dem',
-        url: 'https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=lT9jK8r0OXrZinP9JSOT',
+        url: `https://api.maptiler.com/tiles/terrain-rgb-v2/tiles.json?key=${MAPTILER_KEY}`,
         tileSize: 256
       });
     }
