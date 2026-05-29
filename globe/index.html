@@ -1454,7 +1454,7 @@ let followAnimating  = false; // true during the initial zoom-to-fit animation
 // ── 3D Terrain ────────────────────────────────────────────
 let is3D = false;
 
-function enable3D() {
+function enable3D(animate = true) {
   if (!mapInstance) return;
   // Terrain causes GPU elevation-lookup lag for symbol/line layers in Safari —
   // use pitch-only 3D on Safari; full terrain on all other browsers.
@@ -1479,11 +1479,11 @@ function enable3D() {
     }
     mapInstance.setTerrain({ source: 'terrain-dem', exaggeration: 1.5 });
   }
-  _animatePitch(60);
   const btn = document.getElementById('btn-3d');
   btn.textContent = '2D';
   btn.classList.add('is3d');
   is3D = true;
+  if (animate) _animatePitch(60);
 }
 
 function disable3D() {
@@ -1782,10 +1782,12 @@ function setupBoatLayers() {
         const cam = mapInstance.cameraForBounds(bounds, { padding: 80 });
         if (cam) targetZoom = cam.zoom - 3;
       }
-      if (!is3D) enable3D();
+      // Switch to 3D if not already — skip the separate pitch animation and
+      // fold pitch:60 into the single easeTo below to avoid two conflicting calls.
+      if (!is3D) enable3D(false);
       followAnimating = true;
-      mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, duration: 700 });
-      setTimeout(() => { followAnimating = false; }, 750);
+      mapInstance.easeTo({ center: r.pos, bearing: r.bearing, zoom: targetZoom, pitch: 60, duration: 900 });
+      setTimeout(() => { followAnimating = false; }, 950);
     });
     mapInstance.on('mouseenter', 'boat-positions', () => { mapInstance.getCanvas().style.cursor = 'pointer'; });
     mapInstance.on('mouseleave', 'boat-positions', () => { mapInstance.getCanvas().style.cursor = ''; });
