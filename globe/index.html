@@ -864,7 +864,9 @@ document.getElementById('back-globe').addEventListener('click', () => {
   document.getElementById('settings-btn').style.display = 'none';
   document.getElementById('btn-3d').style.display = 'none';
   document.getElementById('settings-panel').style.display = 'none';
-  document.querySelector('#header h1').textContent = 'Sailing Map';
+  const h1 = document.querySelector('#header h1');
+  h1.textContent = 'Sailing Map';
+  h1.style.textShadow = '';
   if (is3D) disable3D();
   document.getElementById('back-home').style.display = '';
   hideRaceTimeline();
@@ -1079,7 +1081,9 @@ function showMap(spot) {
   document.getElementById('settings-btn').style.display = 'flex';
   document.getElementById('btn-3d').style.display = 'flex';
   document.getElementById('back-home').style.display = 'none';
-  document.querySelector('#header h1').textContent = spot.type === 'race' ? spot.name : 'Sailing Map';
+  const h1 = document.querySelector('#header h1');
+  h1.textContent = spot.type === 'race' ? spot.name : 'Sailing Map';
+  h1.style.textShadow = 'none';
   globe.controls().autoRotate = false;
 
   if (!mapInstance) {
