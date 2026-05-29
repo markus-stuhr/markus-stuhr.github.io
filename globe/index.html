@@ -1651,6 +1651,8 @@ function updateBoatPositions() {
         }
       };
     }).filter(Boolean)
+    // Red boat last → rendered on top → highest click priority
+    .sort((a, b) => (a.properties.color === '#e74c3c' ? 1 : b.properties.color === '#e74c3c' ? -1 : 0))
   });
 }
 
