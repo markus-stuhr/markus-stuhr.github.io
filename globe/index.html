@@ -670,6 +670,12 @@
 </div>
 
 <script>
+// Register Service Worker for tile caching (reduces MapTiler API requests)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/globe/sw.js')
+    .catch(() => {}); // fail silently — map works without SW
+}
+
 const SPOTS = [
   {
     name: "Whitsundays",
