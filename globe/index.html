@@ -1759,9 +1759,9 @@ function setupBoatLayers() {
     });
     mapInstance.on('click', 'boat-positions', e => {
       if (!raceGeoJSON || !e.features.length) return;
-      // MapLibre returns features in source order (first = lowest z).
-      // Take the last one — it's highest z (sorted last = rendered on top).
-      const color = e.features[e.features.length - 1].properties.color;
+      // MapLibre returns features top-first (highest z = index 0).
+      // Red is sorted last in source = rendered on top = e.features[0].
+      const color = e.features[0].properties.color;
       const idx = raceGeoJSON.features.findIndex(f => f.properties.color === color);
       if (idx < 0) return;
       followedBoatIdx = idx;
