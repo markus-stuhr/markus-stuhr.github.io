@@ -1067,6 +1067,7 @@ function onMapLoaded(spot) {
   });
   mapInstance.addLayer({ id: 'openseamap', type: 'raster', source: 'openseamap',
     paint: { 'raster-opacity': 0.8 } });
+  applyLayerToggle('openseamap', ['openseamap'], document.getElementById('toggle-openseamap').checked);
   initAISLayer();
   if (spot.type === 'race' && spot.geojson) loadRaceTracks(spot);
   flyToSpot(spot, 1200);
