@@ -202,20 +202,6 @@
   #back-globe:hover { color: #fff; }
   @media (max-width: 480px) { #back-globe .back-label { display: none; } }
 
-  /* ── Home link (globe view) ──────────────── */
-  #back-home {
-    position: fixed;
-    top: 24px;
-    left: 24px;
-    z-index: 20;
-    color: rgba(255,255,255,0.35);
-    font-size: 0.78rem;
-    letter-spacing: 0.1em;
-    text-decoration: none;
-    text-transform: uppercase;
-    transition: color 0.2s;
-  }
-  #back-home:hover { color: #fff; }
 
   /* ── MapLibre overrides ──────────────────── */
   .maplibregl-popup-content {
@@ -580,7 +566,6 @@
 </head>
 <body>
 
-<a href="/" id="back-home">← Home</a>
 
 <div id="header">
   <h1>Sailing Map</h1>
@@ -868,7 +853,6 @@ document.getElementById('back-globe').addEventListener('click', () => {
   h1.textContent = 'Sailing Map';
   h1.style.textShadow = '';
   if (is3D) disable3D();
-  document.getElementById('back-home').style.display = '';
   hideRaceTimeline();
   const aisToggle = document.getElementById('toggle-ais');
   if (aisToggle.checked) { aisToggle.checked = false; stopAIS(); }
@@ -1080,7 +1064,6 @@ function showMap(spot) {
   document.getElementById('back-globe').style.display = 'block';
   document.getElementById('settings-btn').style.display = 'flex';
   document.getElementById('btn-3d').style.display = 'flex';
-  document.getElementById('back-home').style.display = 'none';
   const h1 = document.querySelector('#header h1');
   h1.textContent = spot.type === 'race' ? spot.name : 'Sailing Map';
   h1.style.textShadow = 'none';
