@@ -203,6 +203,8 @@ const oceanMat = new THREE.MeshPhongMaterial({
   specular: 0x4488cc,
   shininess: 80,
   side: THREE.FrontSide,
+  transparent: true,   // let the submerged hull/keel show through faintly
+  opacity: 0.86,
 });
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
@@ -559,8 +561,8 @@ function updateBoat(dt) {
 
   // Keys move the rudder; it self-centres when released.
   let rudderTarget = 0;
-  if (left)  rudderTarget += boat.maxRudder;  // rudder to port -> bow swings to port
-  if (right) rudderTarget -= boat.maxRudder;
+  if (left)  rudderTarget -= boat.maxRudder;
+  if (right) rudderTarget += boat.maxRudder;
   boat.rudder += (rudderTarget - boat.rudder) * (1 - Math.pow(0.02, dt)); // eases like a tiller
 
   // The rudder only bites when the boat has way on. Bow turns with the helm,
