@@ -320,6 +320,15 @@ for (const side of [-1, 1]) {
 }
 boatGroup.add(wakeGroup);
 
+// --- Rudder at the stern (turns with the helm) ---
+const rudderPivot = new THREE.Group();
+rudderPivot.position.set(0, 0.05, 1.75); // stern is toward +z
+boatGroup.add(rudderPivot);
+const rudderGeo = new THREE.BoxGeometry(0.06, 0.7, 0.9);
+rudderGeo.translate(0, -0.3, 0.35); // blade hangs below the waterline, trailing aft
+const rudder = new THREE.Mesh(rudderGeo, new THREE.MeshPhongMaterial({ color: 0x8a6a3a }));
+rudderPivot.add(rudder);
+
 boatGroup.position.set(0, 0.3, 0);
 // Apply heading (Y) before pitch (X) and roll (Z) so wave tilt stays in the hull frame
 boatGroup.rotation.order = 'YXZ';
@@ -418,7 +427,8 @@ const boat = {
   heading: 0,      // radians, 0 = facing -Z
   speed: 0,        // current forward speed (world units/s)
   maxSpeed: 12,    // hull speed at ideal point of sail & full wind
-  turnRate: 1.4,   // radians/s
+  rudder: 0,       // current rudder deflection (radians, + = turn to port)
+  maxRudder: 0.6,  // ~35°
 };
 
 const keys = {};
@@ -466,8 +476,17 @@ function updateBoat(dt) {
   const left = keys['ArrowLeft'] || keys['KeyA'];
   const right = keys['ArrowRight'] || keys['KeyD'];
 
-  if (left)  boat.heading += boat.turnRate * dt;
-  if (right) boat.heading -= boat.turnRate * dt;
+  // Keys move the rudder; it self-centres when released.
+  let rudderTarget = 0;
+  if (left)  rudderTarget += boat.maxRudder;  // rudder to port -> bow swings to port
+  if (right) rudderTarget -= boat.maxRudder;
+  boat.rudder += (rudderTarget - boat.rudder) * (1 - Math.pow(0.02, dt)); // eases like a tiller
+
+  // The rudder only bites when the boat has way on. Bow turns with the helm,
+  // scaled by speed (a little authority even when nearly stopped).
+  const speedNorm = Math.min(Math.abs(boat.speed) / boat.maxSpeed, 1);
+  const steerage = 0.35 + 0.65 * speedNorm;
+  boat.heading += boat.rudder * 1.3 * steerage * dt;
   boat.heading = normAngle(boat.heading);
 
   // True wind angle = angle between bow and the direction the wind comes from
@@ -618,6 +637,9 @@ function updateVisuals(dt) {
   // Pennant streams downwind: at TWA 0 it trails aft, swinging to leeward with the wind.
   pennantPivot.rotation.y += (-twaDeg * DEG - pennantPivot.rotation.y) * (1 - Math.pow(0.05, dt));
 
+  // Rudder swings with the helm (mirrors the deflection at the stern).
+  rudderPivot.rotation.y = -boat.rudder;
+
   // Bow wake fades in with speed.
   const sp = Math.abs(boat.speed) / boat.maxSpeed;
   wakeMat.opacity = Math.min(0.5, sp * 0.6);
@@ -626,7 +648,6 @@ function updateVisuals(dt) {
 // --- Camera (chase) ---
 const CAM_BACK = 16;
 const CAM_HEIGHT = 7;
-const camTarget = new THREE.Vector3();
 
 // --- Resize ---
 window.addEventListener('resize', () => {
@@ -677,15 +698,13 @@ function animate() {
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B); // heel toward the lower side
   }
 
-  // Chase camera: sit behind the boat relative to its heading, smoothly follow
-  const desired = new THREE.Vector3(
+  // Chase camera locked directly astern: snaps with the boat's heading.
+  camera.position.set(
     boatGroup.position.x - Math.sin(boat.heading) * CAM_BACK,
-    CAM_HEIGHT,
+    boatGroup.position.y + CAM_HEIGHT,
     boatGroup.position.z + Math.cos(boat.heading) * CAM_BACK
   );
-  camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
-  camTarget.lerp(boatGroup.position, 1 - Math.pow(0.001, dt));
-  camera.lookAt(camTarget.x, camTarget.y + 1.5, camTarget.z);
+  camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5, boatGroup.position.z);
 
   renderer.render(scene, camera);
 }
