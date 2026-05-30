@@ -756,16 +756,21 @@ function updateVisuals(dt) {
   sailPivot.rotation.y = sailAngle;
 
   // Belly the sail along its foot when powered up; flutter the leech when luffing.
+  // The draft bows to LEEWARD, so its sign flips with the tack.
+  const lee = twaDeg >= 0 ? -1 : 1; // local -x is to leeward when wind is on starboard
+  const headY = 4.6, footY = 0.5;
   for (let i = 0; i < sailPos.count; i++) {
     const u = (i % 7) / 6;          // 0 at mast, 1 at clew (plane was 6 segments wide)
     const bx = sailBase[i * 3];
     const by = sailBase[i * 3 + 1];
     const bz = sailBase[i * 3 + 2];
+    const vNorm = (by - footY) / (headY - footY); // 0 at foot, 1 at head
+    const vTaper = 1 - 0.55 * vNorm;               // draft eases off toward the head
     let bulge;
     if (luffing) {
       bulge = Math.sin(t * 18 + by * 2 + bz) * 0.18 * u; // ripple, strongest at the leech
     } else {
-      bulge = Math.sin(u * Math.PI) * 0.45 * currentEff; // smooth curve, fullest mid-foot
+      bulge = Math.sin(u * Math.PI) * 0.45 * currentEff * vTaper * lee; // fullest mid-foot, to leeward
     }
     sailPos.setX(i, bx + bulge);
   }
