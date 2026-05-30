@@ -321,6 +321,8 @@ for (const side of [-1, 1]) {
 boatGroup.add(wakeGroup);
 
 boatGroup.position.set(0, 0.3, 0);
+// Apply heading (Y) before pitch (X) and roll (Z) so wave tilt stays in the hull frame
+boatGroup.rotation.order = 'YXZ';
 scene.add(boatGroup);
 
 // --- Horizon stars ---
@@ -655,12 +657,25 @@ function animate() {
   updateRace(dt);
   updateHUD();
 
-  // Gently bob the boat (pitch/roll only, heading kept by updateBoat)
-  boatGroup.position.y = 0.3
-    + Math.sin(t * 0.9) * 0.18
-    + Math.sin(t * 0.6) * 0.1;
-  boatGroup.rotation.z = Math.sin(t * 0.7) * 0.04;
-  boatGroup.rotation.x = Math.sin(t * 0.5) * 0.025;
+  // Sit the boat on the actual wave surface: sample the wave at the hull
+  // centre (float height) and fore/aft + port/stbd (pitch & roll).
+  {
+    const bx = boatGroup.position.x, bz = boatGroup.position.z;
+    const h = boat.heading;
+    const fwdX = Math.sin(h), fwdZ = -Math.cos(h); // bow direction
+    const rgtX = Math.cos(h), rgtZ = Math.sin(h);  // starboard direction
+    const L = 1.6, B = 0.55;                        // half length / half beam
+
+    const hC = waveHeight(bx, bz, t);
+    const hF = waveHeight(bx + fwdX * L, bz + fwdZ * L, t);
+    const hA = waveHeight(bx - fwdX * L, bz - fwdZ * L, t);
+    const hR = waveHeight(bx + rgtX * B, bz + rgtZ * B, t);
+    const hL = waveHeight(bx - rgtX * B, bz - rgtZ * B, t);
+
+    boatGroup.position.y = hC + 0.15;               // float with the hull bottom wetted
+    boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L); // bow up when the sea ahead is higher
+    boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B); // heel toward the lower side
+  }
 
   // Chase camera: sit behind the boat relative to its heading, smoothly follow
   const desired = new THREE.Vector3(
