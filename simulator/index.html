@@ -345,11 +345,28 @@ const sailMat = new THREE.MeshPhongMaterial({
 const sail = new THREE.Mesh(sailGeo, sailMat);
 sailPivot.add(sail);
 
+// Boom: a real spar from the gooseneck at the mast aft to the clew. The sail's
+// foot sits along it, and it swings out with the sailPivot when trimmed.
+const BOOM_Y = 0.5, BOOM_LEN = 2.45;
+const boomGeo = new THREE.CylinderGeometry(0.055, 0.055, BOOM_LEN, 10);
+boomGeo.rotateX(Math.PI / 2);            // lay the spar along z
+boomGeo.translate(0, BOOM_Y, BOOM_LEN / 2); // gooseneck at the mast (z≈0) -> clew aft
+const boom = new THREE.Mesh(boomGeo, new THREE.MeshPhongMaterial({ color: 0xcccccc }));
+sailPivot.add(boom);
+// Gooseneck fitting where the boom meets the mast
+const gooseneck = new THREE.Mesh(
+  new THREE.SphereGeometry(0.09, 8, 8),
+  new THREE.MeshPhongMaterial({ color: 0x888888 })
+);
+gooseneck.position.set(0, BOOM_Y, 0.02);
+sailPivot.add(gooseneck);
+
 // Shape the flat plane into a triangular sail in the y-z plane.
 // We map the unit plane's (x,y) corners to sail (z,y): tack, head, clew.
-const TACK = new THREE.Vector3(0, 0.4, 0);
+// Tack and clew sit on the boom so the foot runs right along the spar.
+const TACK = new THREE.Vector3(0, BOOM_Y, 0);
 const HEAD = new THREE.Vector3(0, 4.6, 0);
-const CLEW = new THREE.Vector3(0, 0.5, 2.3); // clew aft toward the stern (+z)
+const CLEW = new THREE.Vector3(0, BOOM_Y, BOOM_LEN); // clew at the boom end, aft (+z)
 const sailPos = sailGeo.attributes.position;
 const sailBase = new Float32Array(sailPos.count * 3);
 for (let i = 0; i < sailPos.count; i++) {
@@ -819,7 +836,7 @@ function animate() {
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B); // heel toward the lower side
 
     // Wind disc: follows the boat, stays flat, marker points to the true wind source
-    windRing.position.set(bx, hC + 0.08, bz);
+    windRing.position.set(bx, hC + 0.45, bz);
     windRing.rotation.y = -wind.from; // marker (local -z) aligns with the wind-from world bearing
   }
 
