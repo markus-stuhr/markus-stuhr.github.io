@@ -973,7 +973,7 @@ function animate() {
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle; // wave roll + wind heel
 
     // Wind disc: follows the boat, stays flat, marker points to the true wind source
-    windRing.position.set(bx, hC + 0.45, bz);
+    windRing.position.set(bx, hC + 1.1, bz);
     windRing.rotation.y = -wind.from; // marker (local -z) aligns with the wind-from world bearing
   }
 
