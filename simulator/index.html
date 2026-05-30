@@ -22,7 +22,7 @@
   </style>
 </head>
 <body>
-<div id="info">SAILING SIMULATOR — coming soon</div>
+<div id="info">↑ / W vorwärts &nbsp;·&nbsp; ↓ / S rückwärts &nbsp;·&nbsp; ← → / A D steuern</div>
 <script type="importmap">
 {
   "imports": {
@@ -150,10 +150,52 @@ starGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(star
 const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true });
 scene.add(new THREE.Points(starGeo, starMat));
 
-// --- Camera orbit ---
-let camAngle = 0;
-const CAM_RADIUS = 22;
-const CAM_HEIGHT = 8;
+// --- Boat state & input ---
+const boat = {
+  heading: 0,      // radians, 0 = facing -Z
+  speed: 0,        // current forward speed
+  maxSpeed: 12,
+  accel: 6,        // units/s^2 while pressing forward
+  drag: 1.2,       // passive slowdown per second
+  turnRate: 1.4,   // radians/s
+};
+
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  // Prevent page scroll on arrow keys / space
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+function updateBoat(dt) {
+  const fwd = keys['ArrowUp'] || keys['KeyW'];
+  const back = keys['ArrowDown'] || keys['KeyS'];
+  const left = keys['ArrowLeft'] || keys['KeyA'];
+  const right = keys['ArrowRight'] || keys['KeyD'];
+
+  // Steering (only meaningful when moving, but allow slow turn-in-place too)
+  if (left)  boat.heading += boat.turnRate * dt;
+  if (right) boat.heading -= boat.turnRate * dt;
+
+  // Throttle
+  if (fwd)  boat.speed += boat.accel * dt;
+  if (back) boat.speed -= boat.accel * dt;
+
+  // Passive drag toward 0
+  boat.speed -= boat.speed * boat.drag * dt;
+  boat.speed = Math.max(-boat.maxSpeed * 0.4, Math.min(boat.maxSpeed, boat.speed));
+
+  // Move along heading (0 = -Z)
+  boatGroup.position.x += Math.sin(boat.heading) * boat.speed * dt;
+  boatGroup.position.z -= Math.cos(boat.heading) * boat.speed * dt;
+  boatGroup.rotation.y = boat.heading;
+}
+
+// --- Camera (chase) ---
+const CAM_BACK = 16;
+const CAM_HEIGHT = 7;
+const camTarget = new THREE.Vector3();
 
 // --- Resize ---
 window.addEventListener('resize', () => {
@@ -164,26 +206,32 @@ window.addEventListener('resize', () => {
 
 // --- Animate ---
 const clock = new THREE.Clock();
+let t = 0;
 
 function animate() {
   requestAnimationFrame(animate);
-  const t = clock.getElapsedTime();
+  const dt = Math.min(clock.getDelta(), 0.05);
+  t += dt;
 
   animateWaves(t);
+  updateBoat(dt);
 
-  // Gently bob the boat
+  // Gently bob the boat (pitch/roll only, heading kept by updateBoat)
   boatGroup.position.y = 0.3
     + Math.sin(t * 0.9) * 0.18
     + Math.sin(t * 0.6) * 0.1;
   boatGroup.rotation.z = Math.sin(t * 0.7) * 0.04;
   boatGroup.rotation.x = Math.sin(t * 0.5) * 0.025;
 
-  // Slow camera orbit
-  camAngle += 0.0015;
-  camera.position.x = Math.sin(camAngle) * CAM_RADIUS;
-  camera.position.z = Math.cos(camAngle) * CAM_RADIUS;
-  camera.position.y = CAM_HEIGHT + Math.sin(t * 0.3) * 0.5;
-  camera.lookAt(0, 1, 0);
+  // Chase camera: sit behind the boat relative to its heading, smoothly follow
+  const desired = new THREE.Vector3(
+    boatGroup.position.x - Math.sin(boat.heading) * CAM_BACK,
+    CAM_HEIGHT,
+    boatGroup.position.z + Math.cos(boat.heading) * CAM_BACK
+  );
+  camera.position.lerp(desired, 1 - Math.pow(0.001, dt));
+  camTarget.lerp(boatGroup.position, 1 - Math.pow(0.001, dt));
+  camera.lookAt(camTarget.x, camTarget.y + 1.5, camTarget.z);
 
   renderer.render(scene, camera);
 }
