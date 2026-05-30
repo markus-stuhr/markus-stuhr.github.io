@@ -639,7 +639,10 @@
 
 <!-- Race Timeline Player -->
 <div id="race-timeline">
-  <button id="tl-play">▶</button>
+  <button id="tl-play">
+    <svg class="icon-play" viewBox="0 0 10 12" width="10" height="12" style="display:block"><polygon points="1,0 10,6 1,12" fill="currentColor"/></svg>
+    <svg class="icon-pause" viewBox="0 0 10 12" width="10" height="12" style="display:none"><rect x="0" y="0" width="3.5" height="12" rx="1" fill="currentColor"/><rect x="6.5" y="0" width="3.5" height="12" rx="1" fill="currentColor"/></svg>
+  </button>
   <div id="tl-time">0:00:00</div>
   <div id="tl-track">
     <div id="tl-fill"></div>
@@ -1506,6 +1509,11 @@ document.getElementById('btn-3d').addEventListener('click', () => {
   is3D ? disable3D() : enable3D();
 });
 
+function setPlayIcon(playing) {
+  document.querySelector('#tl-play .icon-play').style.display  = playing ? 'none'  : 'block';
+  document.querySelector('#tl-play .icon-pause').style.display = playing ? 'block' : 'none';
+}
+
 function formatRaceTime(ms) {
   const s  = Math.floor(ms / 1000);
   const h  = Math.floor(s / 3600);
@@ -1732,7 +1740,7 @@ function raceAnimStep(wallMs) {
     if (raceCurrentMs >= raceEndMs) {
       raceCurrentMs = raceEndMs;
       racePlaying   = false;
-      document.getElementById('tl-play').textContent = '▶';
+      setPlayIcon(false);
     }
   }
   raceLastWall = wallMs;
@@ -1869,7 +1877,7 @@ function hideRaceTimeline() {
   try { mapInstance.getSource('race-tracks-full').setData(emptyFC); } catch {}
   try { mapInstance.getSource('race-tracks').setData(emptyFC); } catch {}
   try { mapInstance.getSource('boat-positions').setData(emptyFC); } catch {} // Chrome path
-  document.getElementById('tl-play').textContent = '▶';
+  setPlayIcon(false);
   document.getElementById('race-timeline').classList.remove('visible');
   document.getElementById('map').classList.remove('has-timeline');
   document.getElementById('settings-btn').style.bottom   = '';
@@ -1884,7 +1892,7 @@ function hideRaceTimeline() {
 document.getElementById('tl-play').addEventListener('click', () => {
   if (!raceGeoJSON) return;
   racePlaying = !racePlaying;
-  document.getElementById('tl-play').textContent = racePlaying ? '⏸' : '▶';
+  setPlayIcon(racePlaying);
   if (racePlaying) {
     if (raceCurrentMs >= raceEndMs) raceCurrentMs = raceStartMs;
     raceLastWall = null;
