@@ -100,6 +100,16 @@
       margin-top: 8px; font-size: 13px; letter-spacing: 1px;
       color: #66ff99; min-height: 18px;
     }
+    #minimap {
+      position: fixed;
+      top: 18px; left: 18px;
+      width: 150px; height: 150px;
+      border-radius: 50%;
+      background: rgba(8, 22, 40, 0.55);
+      border: 1px solid rgba(120,170,220,0.3);
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
@@ -126,6 +136,7 @@
   <div id="raceBest">Best —</div>
   <div id="raceMsg">Steuere durch die Marken in der Reihenfolge</div>
 </div>
+<canvas id="minimap" width="150" height="150"></canvas>
 <script type="importmap">
 {
   "imports": {
@@ -835,6 +846,79 @@ function updateVisuals(dt) {
   wakeMat.opacity = Math.min(0.5, sp * 0.6);
 }
 
+// --- Minimap (heading-up: boat centred and pointing up, marks around it) ---
+const mmCanvas = document.getElementById('minimap');
+const mmCtx = mmCanvas.getContext('2d');
+const MM = 150, MMC = MM / 2, MM_RANGE = 230, mmScale = (MMC - 14) / MM_RANGE;
+(function initMinimap() {
+  const dpr = window.devicePixelRatio || 1;
+  mmCanvas.width = MM * dpr;
+  mmCanvas.height = MM * dpr;
+  mmCtx.scale(dpr, dpr);
+})();
+
+function drawMinimap() {
+  mmCtx.clearRect(0, 0, MM, MM);
+  const bx = boatGroup.position.x, bz = boatGroup.position.z, h = boat.heading;
+  const sinH = Math.sin(h), cosH = Math.cos(h);
+  // world point -> map coords (bow = up, starboard = right)
+  const toMap = (wx, wz) => {
+    const dx = wx - bx, dz = wz - bz;
+    const fwd = dx * sinH - dz * cosH;   // forward of the boat
+    const stb = dx * cosH + dz * sinH;   // to starboard
+    return { x: MMC + stb * mmScale, y: MMC - fwd * mmScale };
+  };
+
+  // faint range rings
+  mmCtx.strokeStyle = 'rgba(120,170,220,0.18)';
+  mmCtx.lineWidth = 1;
+  for (const rr of [0.5, 1]) {
+    mmCtx.beginPath();
+    mmCtx.arc(MMC, MMC, (MMC - 14) * rr, 0, Math.PI * 2);
+    mmCtx.stroke();
+  }
+
+  // wind-from marker on the rim (cyan), bearing = twaDeg relative to the bow
+  {
+    const a = twaDeg * Math.PI / 180;
+    const r = MMC - 6;
+    mmCtx.fillStyle = '#33e0ff';
+    mmCtx.beginPath();
+    mmCtx.arc(MMC + Math.sin(a) * r, MMC - Math.cos(a) * r, 3, 0, Math.PI * 2);
+    mmCtx.fill();
+  }
+
+  // buoys: rounded = dim, next = green (larger), upcoming = orange; clamp to rim
+  COURSE.forEach((m, i) => {
+    let p = toMap(m.x, m.z);
+    const ddx = p.x - MMC, ddy = p.y - MMC, d = Math.hypot(ddx, ddy), rMax = MMC - 10;
+    if (d > rMax) { p.x = MMC + ddx / d * rMax; p.y = MMC + ddy / d * rMax; }
+    const next = i === race.nextMark && race.state !== 'done';
+    mmCtx.fillStyle = i < race.nextMark ? 'rgba(120,150,180,0.5)'
+      : next ? '#33ff88' : '#ff9933';
+    mmCtx.beginPath();
+    mmCtx.arc(p.x, p.y, next ? 5 : 3.5, 0, Math.PI * 2);
+    mmCtx.fill();
+    if (next) { // ring around the next mark
+      mmCtx.strokeStyle = 'rgba(80,255,140,0.7)';
+      mmCtx.lineWidth = 1.5;
+      mmCtx.beginPath();
+      mmCtx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      mmCtx.stroke();
+    }
+  });
+
+  // boat at centre, pointing up
+  mmCtx.fillStyle = '#ffffff';
+  mmCtx.beginPath();
+  mmCtx.moveTo(MMC, MMC - 8);
+  mmCtx.lineTo(MMC + 5, MMC + 6);
+  mmCtx.lineTo(MMC, MMC + 3);
+  mmCtx.lineTo(MMC - 5, MMC + 6);
+  mmCtx.closePath();
+  mmCtx.fill();
+}
+
 // --- Camera (chase) ---
 const CAM_BACK = 16;
 const CAM_HEIGHT = 7;
@@ -867,6 +951,7 @@ function animate() {
   updateVisuals(dt);
   updateRace(dt);
   updateHUD();
+  drawMinimap();
 
   // Sit the boat on the actual wave surface: sample the wave at the hull
   // centre (float height) and fore/aft + port/stbd (pitch & roll).
