@@ -501,10 +501,12 @@ function updateBoat(dt) {
   const responsiveness = target > boat.speed ? 0.8 : 1.4;
   boat.speed += (target - boat.speed) * responsiveness * dt;
 
-  // Move along heading (0 = -Z)
+  // Move along heading (0 = -Z). The hull must face the SAME direction it
+  // travels, so the mesh yaw is -heading (Three.js Y-rotation is mirrored
+  // in x relative to our movement convention).
   boatGroup.position.x += Math.sin(boat.heading) * boat.speed * dt;
   boatGroup.position.z -= Math.cos(boat.heading) * boat.speed * dt;
-  boatGroup.rotation.y = boat.heading;
+  boatGroup.rotation.y = -boat.heading;
 }
 
 // --- HUD ---
@@ -604,9 +606,8 @@ let sailAngle = 0; // smoothed boom angle
 function updateVisuals(dt) {
   // Boom trims to leeward, roughly half the wind angle, capped on a broad reach/run.
   const sheet = Math.min(Math.abs(twaDeg) * 0.5, 80) * DEG;
-  // wind from stbd (twaDeg>0) -> boom eases to port (leeward). With the clew aft (+z),
-  // a negative pivot rotation swings it to port.
-  const side = twaDeg >= 0 ? -1 : 1;
+  // Boom eases to leeward (the side away from the wind).
+  const side = twaDeg >= 0 ? 1 : -1;
   let targetAngle = side * sheet;
 
   const luffing = currentEff <= 0.02; // in irons / pinching
@@ -635,7 +636,7 @@ function updateVisuals(dt) {
   sailGeo.computeVertexNormals();
 
   // Pennant streams downwind: at TWA 0 it trails aft, swinging to leeward with the wind.
-  pennantPivot.rotation.y += (-twaDeg * DEG - pennantPivot.rotation.y) * (1 - Math.pow(0.05, dt));
+  pennantPivot.rotation.y += (twaDeg * DEG - pennantPivot.rotation.y) * (1 - Math.pow(0.05, dt));
 
   // Rudder swings with the helm (mirrors the deflection at the stern).
   rudderPivot.rotation.y = -boat.rudder;
