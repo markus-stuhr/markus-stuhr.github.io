@@ -84,10 +84,26 @@
       border-right: 5px solid transparent;
       border-bottom: 8px solid #5fd0ff;
     }
+    #markArrow { transition: none; color: #66ff99; }
+    #race {
+      position: fixed;
+      top: 42px; left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      font-family: monospace;
+      color: rgba(255,255,255,0.9);
+      pointer-events: none;
+    }
+    #raceTime { font-size: 34px; font-weight: bold; letter-spacing: 2px; }
+    #raceBest { font-size: 12px; color: rgba(150,190,230,0.7); letter-spacing: 1px; margin-top: 2px; }
+    #raceMsg {
+      margin-top: 8px; font-size: 13px; letter-spacing: 1px;
+      color: #66ff99; min-height: 18px;
+    }
   </style>
 </head>
 <body>
-<div id="info">← → / A D steuern &nbsp;·&nbsp; Geschwindigkeit kommt vom Wind</div>
+<div id="info">← → / A D steuern &nbsp;·&nbsp; Geschwindigkeit kommt vom Wind &nbsp;·&nbsp; R = Neustart</div>
 <div id="hud">
   <div id="wind">
     <div id="windCompass"><div id="windArrow"></div></div>
@@ -96,10 +112,19 @@
       <div class="value"><span id="tws">0</span><small> kn</small> &nbsp; <span id="twd">0°</span></div>
     </div>
   </div>
+  <div class="panel" id="markPanel">
+    <div class="label">Nächste Marke <span id="markNum">1/4</span></div>
+    <div class="value"><span id="markDist">—</span><small> m</small> &nbsp;<span id="markArrow" style="display:inline-block">↑</span></div>
+  </div>
   <div class="panel" style="text-align:right">
     <div class="label">Bootsgeschwindigkeit</div>
     <div class="value"><span id="sog">0.0</span><small> kn</small></div>
   </div>
+</div>
+<div id="race">
+  <div id="raceTime">00:00.0</div>
+  <div id="raceBest">Best —</div>
+  <div id="raceMsg">Steuere durch die Marken in der Reihenfolge</div>
 </div>
 <script type="importmap">
 {
@@ -133,42 +158,80 @@ sun.position.set(50, 60, 30);
 scene.add(sun);
 scene.add(new THREE.AmbientLight(0x112244, 1.2));
 
-// --- Ocean ---
-const OCEAN_SIZE = 300;
-const OCEAN_SEGS = 80;
+// --- Water texture (procedural, tileable) ---
+function makeWaterTexture() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0d3b6e';
+  ctx.fillRect(0, 0, S, S);
+  // soft lighter/darker patches; draw wrapped copies so the tile seams match
+  for (let i = 0; i < 140; i++) {
+    const x = Math.random() * S, y = Math.random() * S;
+    const r = 12 + Math.random() * 40;
+    const light = Math.random() > 0.5;
+    for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
+      const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+      const a = 0.06 + Math.random() * 0.06;
+      g.addColorStop(0, light ? `rgba(90,150,200,${a})` : `rgba(6,26,52,${a})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x + dx, y + dy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+// --- Ocean (follows the boat; texture & waves live in world space so motion shows) ---
+const OCEAN_SIZE = 600;
+const OCEAN_SEGS = 120;
+const TILE = 28; // world units per texture tile
 const oceanGeo = new THREE.PlaneGeometry(OCEAN_SIZE, OCEAN_SIZE, OCEAN_SEGS, OCEAN_SEGS);
 oceanGeo.rotateX(-Math.PI / 2);
 
+const waterTex = makeWaterTexture();
+waterTex.repeat.set(OCEAN_SIZE / TILE, OCEAN_SIZE / TILE);
+
 const oceanMat = new THREE.MeshPhongMaterial({
   color: 0x0d3b6e,
+  map: waterTex,
   specular: 0x4488cc,
   shininess: 80,
-  wireframe: false,
   side: THREE.FrontSide,
 });
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
 scene.add(ocean);
 
-// Vertex positions for wave animation
+// Cache local x/z; waves are computed from WORLD coords (local + ocean offset)
 const posAttr = oceanGeo.attributes.position;
-const baseY = new Float32Array(posAttr.count);
+const baseX = new Float32Array(posAttr.count);
+const baseZ = new Float32Array(posAttr.count);
 for (let i = 0; i < posAttr.count; i++) {
-  baseY[i] = posAttr.getY(i);
+  baseX[i] = posAttr.getX(i);
+  baseZ[i] = posAttr.getZ(i);
+}
+
+function waveHeight(x, z, t) {
+  return Math.sin(x * 0.08 + t * 0.9) * 0.5
+    + Math.sin(z * 0.12 + t * 0.7) * 0.35
+    + Math.sin((x + z) * 0.05 + t * 1.1) * 0.25;
 }
 
 function animateWaves(t) {
+  const ox = ocean.position.x, oz = ocean.position.z;
   for (let i = 0; i < posAttr.count; i++) {
-    const x = posAttr.getX(i);
-    const z = posAttr.getZ(i);
-    const y = baseY[i]
-      + Math.sin(x * 0.08 + t * 0.9) * 0.5
-      + Math.sin(z * 0.12 + t * 0.7) * 0.35
-      + Math.sin((x + z) * 0.05 + t * 1.1) * 0.25;
-    posAttr.setY(i, y);
+    posAttr.setY(i, waveHeight(baseX[i] + ox, baseZ[i] + oz, t));
   }
   posAttr.needsUpdate = true;
   oceanGeo.computeVertexNormals();
+  // Slide the texture so it stays put in world space -> visible motion past the boat
+  waterTex.offset.set(ox / TILE, -oz / TILE);
 }
 
 // --- Boat (placeholder) ---
@@ -275,7 +338,71 @@ for (let i = 0; i < 800; i++) {
 }
 starGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(starVerts), 3));
 const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true });
-scene.add(new THREE.Points(starGeo, starMat));
+const stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
+// --- Islands (fixed world positions, for orientation) ---
+function makeIsland(x, z, scale) {
+  const g = new THREE.Group();
+  // beach / base
+  const beach = new THREE.Mesh(
+    new THREE.CylinderGeometry(8 * scale, 9 * scale, 1.2, 16),
+    new THREE.MeshPhongMaterial({ color: 0x6b6a4a })
+  );
+  beach.position.y = 0.2;
+  g.add(beach);
+  // hill
+  const hill = new THREE.Mesh(
+    new THREE.ConeGeometry(6 * scale, 7 * scale, 16),
+    new THREE.MeshPhongMaterial({ color: 0x33402c, flatShading: true })
+  );
+  hill.position.y = 0.2 + 3.5 * scale;
+  g.add(hill);
+  g.position.set(x, 0, z);
+  scene.add(g);
+  return g;
+}
+[
+  [210, -110, 2.4], [-190, -60, 1.6], [70, -340, 3.0],
+  [-260, -300, 2.0], [260, -260, 1.8], [-60, 90, 1.4],
+].forEach(([x, z, s]) => makeIsland(x, z, s));
+
+// --- Regatta course: rounding marks in order ---
+const COURSE = [
+  { x: 10,   z: -100 },
+  { x: 120,  z: -200 },
+  { x: -120, z: -210 },
+  { x: 0,    z: -20  }, // finish near the start
+];
+const MARK_RADIUS = 11; // how close you must get to round a mark
+
+const buoys = [];
+COURSE.forEach((m) => {
+  const grp = new THREE.Group();
+  const buoy = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.9, 1.2, 2.4, 12),
+    new THREE.MeshPhongMaterial({ color: 0xff7700, emissive: 0x331100 })
+  );
+  buoy.position.y = 1.0;
+  grp.add(buoy);
+  const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(0.7, 12, 12),
+    new THREE.MeshPhongMaterial({ color: 0xffaa33, emissive: 0x442200 })
+  );
+  ball.position.y = 2.4;
+  grp.add(ball);
+  // light beam so the next mark is findable from a distance
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.5, 60, 8, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x66ff99, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })
+  );
+  beam.position.y = 30;
+  beam.visible = false;
+  grp.add(beam);
+  grp.position.set(m.x, 0, m.z);
+  scene.add(grp);
+  buoys.push({ grp, buoy, ball, beam });
+});
 
 // --- Wind ---
 const wind = {
@@ -298,6 +425,20 @@ window.addEventListener('keydown', (e) => {
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyR') restartRace();
+});
+
+function restartRace() {
+  race.state = 'pre';
+  race.nextMark = 0;
+  race.time = 0;
+  boat.heading = 0;
+  boat.speed = 0;
+  boatGroup.position.set(0, 0.3, 0);
+  elRaceMsg.textContent = 'Steuere durch die Marken in der Reihenfolge';
+}
 
 // Normalize radians to [-PI, PI]
 function normAngle(a) {
@@ -360,6 +501,79 @@ function updateHUD() {
   elSog.textContent = (Math.abs(boat.speed) * 1.4).toFixed(1);
   // Arrow points toward the wind source; boat marker points up (bow)
   elArrow.style.transform = `translate(-50%, -100%) rotate(${twaDeg}deg)`;
+}
+
+// --- Regatta race logic ---
+const elRaceTime = document.getElementById('raceTime');
+const elRaceBest = document.getElementById('raceBest');
+const elRaceMsg = document.getElementById('raceMsg');
+const elMarkNum = document.getElementById('markNum');
+const elMarkDist = document.getElementById('markDist');
+const elMarkArrow = document.getElementById('markArrow');
+
+const race = {
+  state: 'pre',     // 'pre' | 'racing' | 'done'
+  nextMark: 0,
+  time: 0,
+};
+let bestTime = parseFloat(localStorage.getItem('sim_best_time')) || null;
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(1).padStart(4, '0');
+  return `${String(m).padStart(2, '0')}:${sec}`;
+}
+
+function updateRace(dt) {
+  if (race.state === 'racing') race.time += dt;
+
+  if (race.state !== 'done') {
+    const mark = COURSE[race.nextMark];
+    const dx = mark.x - boatGroup.position.x;
+    const dz = mark.z - boatGroup.position.z;
+    const dist = Math.hypot(dx, dz);
+
+    // Reached the current mark?
+    if (dist < MARK_RADIUS) {
+      if (race.state === 'pre') { race.state = 'racing'; race.time = 0; }
+      race.nextMark++;
+      if (race.nextMark >= COURSE.length) {
+        race.state = 'done';
+        elRaceMsg.textContent = '🏁 Zieldurchgang!';
+        if (bestTime === null || race.time < bestTime) {
+          bestTime = race.time;
+          localStorage.setItem('sim_best_time', String(bestTime));
+          elRaceMsg.textContent = '🏁 Neue Bestzeit!';
+        }
+      } else {
+        elRaceMsg.textContent = race.state === 'racing'
+          ? `Marke ${race.nextMark} von ${COURSE.length}`
+          : elRaceMsg.textContent;
+      }
+    }
+
+    // Distance + bearing arrow to the next mark (relative to boat heading)
+    if (race.state !== 'done') {
+      elMarkNum.textContent = `${race.nextMark + 1}/${COURSE.length}`;
+      elMarkDist.textContent = Math.round(dist);
+      const bearing = Math.atan2(dx, -dz);         // world bearing to mark (0 = -z)
+      const rel = normAngle(bearing - boat.heading); // relative to bow
+      elMarkArrow.style.transform = `rotate(${rel * 180 / Math.PI}deg)`;
+    } else {
+      elMarkDist.textContent = '—';
+    }
+  }
+
+  // Highlight only the next mark: show its beam, pulse its colour.
+  buoys.forEach((b, i) => {
+    const active = i === race.nextMark && race.state !== 'done';
+    b.beam.visible = active;
+    const emis = active ? (0.4 + 0.3 * Math.sin(t * 4)) : 0.1;
+    b.ball.material.emissive.setRGB(emis * 0.5, emis, emis * 0.6);
+  });
+
+  elRaceTime.textContent = fmtTime(race.time);
+  elRaceBest.textContent = bestTime !== null ? `Best ${fmtTime(bestTime)}` : 'Best —';
 }
 
 // --- Sail / pennant / wake visuals ---
@@ -428,9 +642,17 @@ function animate() {
   const dt = Math.min(clock.getDelta(), 0.05);
   t += dt;
 
-  animateWaves(t);
   updateBoat(dt);
+
+  // Ocean & stars follow the boat so the sea is effectively infinite
+  ocean.position.x = boatGroup.position.x;
+  ocean.position.z = boatGroup.position.z;
+  stars.position.x = boatGroup.position.x;
+  stars.position.z = boatGroup.position.z;
+
+  animateWaves(t);
   updateVisuals(dt);
+  updateRace(dt);
   updateHUD();
 
   // Gently bob the boat (pitch/roll only, heading kept by updateBoat)
