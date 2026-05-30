@@ -739,13 +739,28 @@ function updateRace(dt) {
 // --- Sail / pennant / wake visuals ---
 const DEG = Math.PI / 180;
 let sailAngle = 0; // smoothed boom angle
+let heelAngle = 0; // smoothed heel (lean to leeward)
+const MAX_HEEL = 32 * DEG;
+
+// Apparent wind angle relative to the bow (radians, + = wind on starboard).
+// Combines the true wind with the boat's own motion, like the real thing.
+function apparentWindAngle() {
+  const twa = twaDeg * DEG;
+  const boatKn = Math.abs(boat.speed) * 1.4;     // same knots scale as the HUD
+  const ax = wind.tws * Math.sin(twa);            // athwartships component
+  const ay = wind.tws * Math.cos(twa) + boatKn;   // fore-aft component (boat adds headwind)
+  return Math.atan2(ax, ay);
+}
 
 function updateVisuals(dt) {
-  // Boom trims to leeward, roughly half the wind angle, capped on a broad reach/run.
-  const sheet = Math.min(Math.abs(twaDeg) * 0.5, 80) * DEG;
+  // Textbook trim: ease the boom until the sail is at its optimal angle of
+  // attack to the APPARENT wind (just shy of luffing), then hold.
+  const AOA = 15 * DEG;            // optimal angle of attack of the sail
+  const awa = apparentWindAngle();
+  let boomMag = Math.min(Math.max(Math.abs(awa) - AOA, 0), 85 * DEG);
   // Boom eases to leeward (the side away from the wind).
   const side = twaDeg >= 0 ? 1 : -1;
-  let targetAngle = side * sheet;
+  let targetAngle = side * boomMag;
 
   const luffing = currentEff <= 0.02; // in irons / pinching
   if (luffing) {
@@ -754,6 +769,12 @@ function updateVisuals(dt) {
   }
   sailAngle += (targetAngle - sailAngle) * (1 - Math.pow(0.02, dt));
   sailPivot.rotation.y = sailAngle;
+
+  // Heel: lean to leeward, driven by wind strength and point of sail. Greatest
+  // on a beam reach, fading to nothing dead downwind or head-to-wind.
+  const heelMag = MAX_HEEL * (wind.tws / wind.maxTws) * currentEff * Math.sin(Math.abs(twaDeg * DEG));
+  const heelTarget = Math.sign(twaDeg) * heelMag; // wind on stbd -> heel to port (leeward)
+  heelAngle += (heelTarget - heelAngle) * (1 - Math.pow(0.08, dt));
 
   // Belly the sail along its foot when powered up; flutter the leech when luffing.
   // The draft bows to LEEWARD, so its sign flips with the tack.
@@ -777,8 +798,12 @@ function updateVisuals(dt) {
   sailPos.needsUpdate = true;
   sailGeo.computeVertexNormals();
 
-  // Pennant streams downwind: at TWA 0 it trails aft, swinging to leeward with the wind.
-  pennantPivot.rotation.y += (twaDeg * DEG - pennantPivot.rotation.y) * (1 - Math.pow(0.05, dt));
+  // Masthead pennant streams downwind: the tip points away from the wind source.
+  // Target = -twaDeg so it lines up opposite the wind-from marker on the disc.
+  const pennantTarget = -twaDeg * DEG;
+  let pd = pennantTarget - pennantPivot.rotation.y;
+  pd = Math.atan2(Math.sin(pd), Math.cos(pd)); // shortest way round (avoid 360° spins)
+  pennantPivot.rotation.y += pd * (1 - Math.pow(0.05, dt));
 
   // Rudder swings with the helm (mirrors the deflection at the stern).
   rudderPivot.rotation.y = boat.rudder;
@@ -838,7 +863,7 @@ function animate() {
 
     boatGroup.position.y = hC - 0.06;               // waterline partway up the hull
     boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L); // bow up when the sea ahead is higher
-    boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B); // heel toward the lower side
+    boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle; // wave roll + wind heel
 
     // Wind disc: follows the boat, stays flat, marker points to the true wind source
     windRing.position.set(bx, hC + 0.45, bz);
