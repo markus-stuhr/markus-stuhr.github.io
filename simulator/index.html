@@ -358,7 +358,7 @@ sailPivot.add(sail);
 
 // Boom: a real spar from the gooseneck at the mast aft to the clew. The sail's
 // foot sits along it, and it swings out with the sailPivot when trimmed.
-const BOOM_Y = 0.78, BOOM_LEN = 2.45;
+const BOOM_Y = 0.98, BOOM_LEN = 2.45;
 const boomGeo = new THREE.CylinderGeometry(0.055, 0.055, BOOM_LEN, 10);
 boomGeo.rotateX(Math.PI / 2);            // lay the spar along z
 boomGeo.translate(0, BOOM_Y, BOOM_LEN / 2); // gooseneck at the mast (z≈0) -> clew aft
@@ -973,7 +973,7 @@ function animate() {
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle; // wave roll + wind heel
 
     // Wind disc: follows the boat, stays flat, marker points to the true wind source
-    windRing.position.set(bx, hC + 0.62, bz); // just under the boom
+    windRing.position.set(bx, hC + 0.82, bz); // just under the boom
     windRing.rotation.y = -wind.from; // marker (local -z) aligns with the wind-from world bearing
   }
 
