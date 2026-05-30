@@ -417,6 +417,43 @@ boatGroup.position.set(0, 0.3, 0);
 boatGroup.rotation.order = 'YXZ';
 scene.add(boatGroup);
 
+// --- Wind disc: flat transparent ring around the boat marking where the wind comes from ---
+const windRing = new THREE.Group();
+const RING_R = 3.4;
+// faint filled disc
+const disc = new THREE.Mesh(
+  new THREE.CircleGeometry(RING_R, 48),
+  new THREE.MeshBasicMaterial({ color: 0x88c0ff, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false })
+);
+disc.rotation.x = -Math.PI / 2;
+windRing.add(disc);
+// ring outline
+const ringOutline = new THREE.Mesh(
+  new THREE.RingGeometry(RING_R - 0.12, RING_R, 48),
+  new THREE.MeshBasicMaterial({ color: 0x9fd0ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })
+);
+ringOutline.rotation.x = -Math.PI / 2;
+windRing.add(ringOutline);
+// wind axis line across the disc (local z = wind-from -> downwind)
+const windAxis = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.05, RING_R * 2),
+  new THREE.MeshBasicMaterial({ color: 0x6fb8ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })
+);
+windAxis.rotation.x = -Math.PI / 2;
+windRing.add(windAxis);
+// wind-from marker: arrow on the ring pointing inward (the wind blows toward the boat)
+const windMarkerMat = new THREE.MeshBasicMaterial({ color: 0x33e0ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false });
+const markGeo = new THREE.BufferGeometry();
+markGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+  -0.45, 0, -RING_R - 0.05,
+   0.45, 0, -RING_R - 0.05,
+   0,    0, -RING_R + 0.7,   // tip points inward toward the boat
+]), 3));
+markGeo.setIndex([0, 1, 2, 2, 1, 0]);
+const windMarker = new THREE.Mesh(markGeo, windMarkerMat);
+windRing.add(windMarker);
+scene.add(windRing);
+
 // --- Horizon stars ---
 const starGeo = new THREE.BufferGeometry();
 const starVerts = [];
@@ -780,6 +817,10 @@ function animate() {
     boatGroup.position.y = hC - 0.06;               // waterline partway up the hull
     boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L); // bow up when the sea ahead is higher
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B); // heel toward the lower side
+
+    // Wind disc: follows the boat, stays flat, marker points to the true wind source
+    windRing.position.set(bx, hC + 0.08, bz);
+    windRing.rotation.y = -wind.from; // marker (local -z) aligns with the wind-from world bearing
   }
 
   // Chase camera locked directly astern: snaps with the boat's heading.
