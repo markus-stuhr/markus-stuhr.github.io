@@ -469,6 +469,27 @@ markGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
 markGeo.setIndex([0, 1, 2, 2, 1, 0]);
 const windMarker = new THREE.Mesh(markGeo, windMarkerMat);
 windRing.add(windMarker);
+
+// Polar zones painted on the ring (relative to the wind, which is at local -z).
+// A true wind angle `a` maps to ring angle 90°-a on starboard / 90°+a on port.
+const D2R = Math.PI / 180;
+function addBand(startDeg, lenDeg, color, opacity) {
+  const g = new THREE.RingGeometry(RING_R - 0.55, RING_R - 0.08, 40, 1, startDeg * D2R, lenDeg * D2R);
+  g.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false,
+  }));
+  windRing.add(m);
+}
+// No-go / dead zone: ±30° around the wind (red)
+addBand(60, 60, 0xff3b2f, 0.34);
+// Optimal close-hauled groove: TWA ~38–52° both sides (amber)
+addBand(90 - 52, 14, 0xffc62f, 0.34);   // starboard
+addBand(90 + 38, 14, 0xffc62f, 0.34);   // port
+// Fastest reaching zone: TWA ~80–120° both sides (green)
+addBand(90 - 120, 40, 0x2fdd5e, 0.30);  // starboard
+addBand(90 + 80, 40, 0x2fdd5e, 0.30);   // port
+
 scene.add(windRing);
 
 // --- Horizon stars ---
