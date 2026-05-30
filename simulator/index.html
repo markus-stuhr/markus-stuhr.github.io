@@ -758,8 +758,9 @@ function updateVisuals(dt) {
   const AOA = 15 * DEG;            // optimal angle of attack of the sail
   const awa = apparentWindAngle();
   let boomMag = Math.min(Math.max(Math.abs(awa) - AOA, 0), 85 * DEG);
-  // Boom eases to leeward (the side away from the wind).
-  const side = twaDeg >= 0 ? 1 : -1;
+  // Boom eases to leeward (away from the wind). Wind on starboard (twaDeg>0)
+  // -> boom swings to port, which is a negative pivot rotation (clew to -x).
+  const side = twaDeg >= 0 ? -1 : 1;
   let targetAngle = side * boomMag;
 
   const luffing = currentEff <= 0.02; // in irons / pinching
