@@ -234,15 +234,90 @@ function animateWaves(t) {
   waterTex.offset.set(ox / TILE, -oz / TILE);
 }
 
-// --- Boat (placeholder) ---
+// --- Boat ---
 const boatGroup = new THREE.Group();
 
-// Hull
-const hullGeo = new THREE.BoxGeometry(1.2, 0.5, 3.5);
-const hullMat = new THREE.MeshPhongMaterial({ color: 0xd4b483 });
-const hull = new THREE.Mesh(hullGeo, hullMat);
-hull.position.y = 0.1;
+// Hull — lofted from cross-section "stations" running bow (−z) to stern (+z)
+function buildHull() {
+  const NS = 16, NA = 12;          // stations along length, arc points per section
+  const zBow = -1.95, zStern = 1.7;
+  const maxBeam = 0.82;
+
+  const halfBeam = (s) => {
+    let b = s < 0.45
+      ? maxBeam * Math.pow(s / 0.45, 0.7)                 // sharpen toward the stem
+      : maxBeam * (1 - 0.28 * ((s - 0.45) / 0.55));       // ease to a moderate transom
+    return Math.max(0.04, b);
+  };
+  const depth  = (s) => 0.5 * (0.6 + 0.4 * Math.min(s / 0.3, 1));    // shallower forward
+  const deckY  = (s) => 0.46 + 0.32 * Math.pow(1 - s, 2) + 0.05 * s; // sheer: bow rises
+
+  const pos = [];
+  const idx = (i, j) => i * (NA + 1) + j;
+  for (let i = 0; i < NS; i++) {
+    const s = i / (NS - 1);
+    const z = zBow + (zStern - zBow) * s;
+    const hb = halfBeam(s), dp = depth(s), dy = deckY(s);
+    for (let j = 0; j <= NA; j++) {
+      const a = (Math.PI * j) / NA;     // 0 = starboard deck edge, PI = port deck edge
+      pos.push(hb * Math.cos(a), dy - dp * Math.sin(a), z);
+    }
+  }
+
+  const faces = [];
+  // hull skin
+  for (let i = 0; i < NS - 1; i++)
+    for (let j = 0; j < NA; j++) {
+      const a = idx(i, j), b = idx(i + 1, j), c = idx(i + 1, j + 1), d = idx(i, j + 1);
+      faces.push(a, b, d, b, c, d);
+    }
+  // deck: span the two deck edges (j=0 starboard, j=NA port) along the length
+  for (let i = 0; i < NS - 1; i++) {
+    const a = idx(i, 0), b = idx(i, NA), c = idx(i + 1, NA), d = idx(i + 1, 0);
+    faces.push(a, b, c, a, c, d);
+  }
+  // transom cap at the stern (last station ring), fan from its centroid
+  const last = NS - 1;
+  let cx = 0, cy = 0, cz = 0;
+  for (let j = 0; j <= NA; j++) { cx += pos[idx(last, j) * 3]; cy += pos[idx(last, j) * 3 + 1]; cz += pos[idx(last, j) * 3 + 2]; }
+  cx /= (NA + 1); cy /= (NA + 1); cz /= (NA + 1);
+  const cI = pos.length / 3; pos.push(cx, cy, cz);
+  for (let j = 0; j < NA; j++) faces.push(cI, idx(last, j + 1), idx(last, j));
+  faces.push(cI, idx(last, 0), idx(last, NA)); // close across the deck edge
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(faces);
+  g.computeVertexNormals();
+  return g;
+}
+const hullMat = new THREE.MeshPhongMaterial({ color: 0xc9a468, flatShading: false, side: THREE.DoubleSide });
+const hull = new THREE.Mesh(buildHull(), hullMat);
 boatGroup.add(hull);
+
+// Cabin trunk forward of the mast for a bit of character
+const cabin = new THREE.Mesh(
+  new THREE.BoxGeometry(0.55, 0.26, 1.0),
+  new THREE.MeshPhongMaterial({ color: 0xece3d0 })
+);
+cabin.position.set(0, 0.58, -0.65);
+boatGroup.add(cabin);
+
+// Fin keel under the midship for a proper sailing-yacht profile
+const keel = new THREE.Mesh(
+  new THREE.BoxGeometry(0.1, 0.95, 0.9),
+  new THREE.MeshPhongMaterial({ color: 0x5b4a32 })
+);
+keel.position.set(0, -0.62, 0.1);
+boatGroup.add(keel);
+// Ballast bulb at the keel foot
+const bulb = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.12, 0.7, 4, 8),
+  new THREE.MeshPhongMaterial({ color: 0x444444 })
+);
+bulb.rotation.x = Math.PI / 2;
+bulb.position.set(0, -1.05, 0.1);
+boatGroup.add(bulb);
 
 // Mast
 const mastGeo = new THREE.CylinderGeometry(0.04, 0.04, 5, 8);
@@ -322,12 +397,18 @@ boatGroup.add(wakeGroup);
 
 // --- Rudder at the stern (turns with the helm) ---
 const rudderPivot = new THREE.Group();
-rudderPivot.position.set(0, 0.05, 1.75); // stern is toward +z
+rudderPivot.position.set(0, 0, 1.7); // at the transom (stern is toward +z)
 boatGroup.add(rudderPivot);
-const rudderGeo = new THREE.BoxGeometry(0.06, 0.7, 0.9);
-rudderGeo.translate(0, -0.3, 0.35); // blade hangs below the waterline, trailing aft
-const rudder = new THREE.Mesh(rudderGeo, new THREE.MeshPhongMaterial({ color: 0x8a6a3a }));
+// Spade blade: tall and thin, hanging straight down just behind the transom
+const rudderGeo = new THREE.BoxGeometry(0.05, 0.8, 0.32);
+rudderGeo.translate(0, -0.45, 0.08);
+const rudder = new THREE.Mesh(rudderGeo, new THREE.MeshPhongMaterial({ color: 0x5b4a32 }));
 rudderPivot.add(rudder);
+// Tiller poking forward over the deck so the helm motion reads from above
+const tillerGeo = new THREE.BoxGeometry(0.04, 0.04, 0.6);
+tillerGeo.translate(0, 0.12, -0.3);
+const tiller = new THREE.Mesh(tillerGeo, new THREE.MeshPhongMaterial({ color: 0x8a6a3a }));
+rudderPivot.add(tiller);
 
 boatGroup.position.set(0, 0.3, 0);
 // Apply heading (Y) before pitch (X) and roll (Z) so wave tilt stays in the hull frame
@@ -639,7 +720,7 @@ function updateVisuals(dt) {
   pennantPivot.rotation.y += (twaDeg * DEG - pennantPivot.rotation.y) * (1 - Math.pow(0.05, dt));
 
   // Rudder swings with the helm (mirrors the deflection at the stern).
-  rudderPivot.rotation.y = -boat.rudder;
+  rudderPivot.rotation.y = boat.rudder;
 
   // Bow wake fades in with speed.
   const sp = Math.abs(boat.speed) / boat.maxSpeed;
@@ -694,7 +775,7 @@ function animate() {
     const hR = waveHeight(bx + rgtX * B, bz + rgtZ * B, t);
     const hL = waveHeight(bx - rgtX * B, bz - rgtZ * B, t);
 
-    boatGroup.position.y = hC + 0.15;               // float with the hull bottom wetted
+    boatGroup.position.y = hC - 0.06;               // waterline partway up the hull
     boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L); // bow up when the sea ahead is higher
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B); // heel toward the lower side
   }
