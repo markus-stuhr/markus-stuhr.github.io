@@ -188,16 +188,14 @@ const mast = new THREE.Mesh(mastGeo, mastMat);
 mast.position.set(0, 2.85, 0);
 boatGroup.add(mast);
 
-// Sail
-const sailGeo = new THREE.BufferGeometry();
-const sailVerts = new Float32Array([
-  0, 0.2, 0,
-  0, 4.8, 0,
-  1.8, 0.4, -0.3,
-]);
-sailGeo.setAttribute('position', new THREE.BufferAttribute(sailVerts, 3));
-sailGeo.setIndex([0, 1, 2, 2, 1, 0]);
-sailGeo.computeVertexNormals();
+// Sail — mounted on a pivot at the mast so it can be trimmed (swing around y)
+const sailPivot = new THREE.Group();
+sailPivot.position.set(0, 0, 0);
+boatGroup.add(sailPivot);
+
+// Mainsail: luff up the mast (x=0,z=0), foot running aft to the clew.
+// Lives in the y-z plane so rotating the pivot swings the boom out to leeward.
+const sailGeo = new THREE.PlaneGeometry(1, 1, 6, 6); // subdivided so we can belly/luff it
 const sailMat = new THREE.MeshPhongMaterial({
   color: 0xf5f0e8,
   side: THREE.DoubleSide,
@@ -205,8 +203,59 @@ const sailMat = new THREE.MeshPhongMaterial({
   shininess: 20,
 });
 const sail = new THREE.Mesh(sailGeo, sailMat);
-sail.position.set(0, 0.6, 0);
-boatGroup.add(sail);
+sailPivot.add(sail);
+
+// Shape the flat plane into a triangular sail in the y-z plane.
+// We map the unit plane's (x,y) corners to sail (z,y): tack, head, clew.
+const TACK = new THREE.Vector3(0, 0.4, 0);
+const HEAD = new THREE.Vector3(0, 4.6, 0);
+const CLEW = new THREE.Vector3(0, 0.5, 2.3); // clew aft toward the stern (+z)
+const sailPos = sailGeo.attributes.position;
+const sailBase = new Float32Array(sailPos.count * 3);
+for (let i = 0; i < sailPos.count; i++) {
+  // plane local coords in [-0.5, 0.5]
+  const u = sailPos.getX(i) + 0.5; // 0..1 along foot (mast -> clew)
+  const v = sailPos.getY(i) + 0.5; // 0..1 up the luff (tack -> head)
+  // Triangle: at the mast (u=0) the sail spans tack->head; at the clew (u=1) it pinches to CLEW
+  const mastPt = new THREE.Vector3().lerpVectors(TACK, HEAD, v);
+  const p = new THREE.Vector3().lerpVectors(mastPt, CLEW, u);
+  sailPos.setXYZ(i, p.x, p.y, p.z);
+  sailBase[i * 3] = p.x; sailBase[i * 3 + 1] = p.y; sailBase[i * 3 + 2] = p.z;
+}
+sailGeo.computeVertexNormals();
+
+// --- Masthead pennant (Verklicker) — a little streamer that flies with the wind ---
+const pennantPivot = new THREE.Group();
+pennantPivot.position.set(0, 5.2, 0);
+boatGroup.add(pennantPivot);
+const pennGeo = new THREE.BufferGeometry();
+pennGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+  0, 0.12, 0,
+  0, -0.12, 0,
+  0, 0, 0.9, // streamer trails aft (+z) at rest
+]), 3));
+pennGeo.setIndex([0, 1, 2, 2, 1, 0]);
+pennGeo.computeVertexNormals();
+const pennMat = new THREE.MeshBasicMaterial({ color: 0xff5544, side: THREE.DoubleSide });
+const pennant = new THREE.Mesh(pennGeo, pennMat);
+pennantPivot.add(pennant);
+
+// --- Bow wake — two foam planes at the bow, opacity scales with speed ---
+const wakeGroup = new THREE.Group();
+wakeGroup.position.set(0, -0.05, -1.6); // bow is toward -z
+const wakeMat = new THREE.MeshBasicMaterial({
+  color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide,
+  depthWrite: false,
+});
+for (const side of [-1, 1]) {
+  const wGeo = new THREE.PlaneGeometry(0.5, 3.2);
+  wGeo.rotateX(-Math.PI / 2);
+  const w = new THREE.Mesh(wGeo, wakeMat);
+  w.position.set(side * 0.5, 0, -1.2);
+  w.rotation.y = side * 0.35;
+  wakeGroup.add(w);
+}
+boatGroup.add(wakeGroup);
 
 boatGroup.position.set(0, 0.3, 0);
 scene.add(boatGroup);
@@ -267,7 +316,8 @@ function sailEfficiency(twaDeg) {
   return 1.0 - ((a - 110) / 70) * 0.35;               // ease off running downwind
 }
 
-let twaDeg = 0; // exposed for HUD
+let twaDeg = 0;   // exposed for HUD
+let currentEff = 0; // exposed for sail visuals
 
 function updateBoat(dt) {
   const left = keys['ArrowLeft'] || keys['KeyA'];
@@ -282,6 +332,7 @@ function updateBoat(dt) {
 
   // Target speed from point of sail and wind strength
   const eff = sailEfficiency(twaDeg);
+  currentEff = eff;
   const target = boat.maxSpeed * (wind.tws / wind.maxTws) * eff;
 
   // Ease toward target: quicker to pick up, slower to coast down
@@ -311,6 +362,51 @@ function updateHUD() {
   elArrow.style.transform = `translate(-50%, -100%) rotate(${twaDeg}deg)`;
 }
 
+// --- Sail / pennant / wake visuals ---
+const DEG = Math.PI / 180;
+let sailAngle = 0; // smoothed boom angle
+
+function updateVisuals(dt) {
+  // Boom trims to leeward, roughly half the wind angle, capped on a broad reach/run.
+  const sheet = Math.min(Math.abs(twaDeg) * 0.5, 80) * DEG;
+  // wind from stbd (twaDeg>0) -> boom eases to port (leeward). With the clew aft (+z),
+  // a negative pivot rotation swings it to port.
+  const side = twaDeg >= 0 ? -1 : 1;
+  let targetAngle = side * sheet;
+
+  const luffing = currentEff <= 0.02; // in irons / pinching
+  if (luffing) {
+    // Sail can't fill: sit near centreline and shiver
+    targetAngle = Math.sin(t * 14) * 6 * DEG;
+  }
+  sailAngle += (targetAngle - sailAngle) * (1 - Math.pow(0.02, dt));
+  sailPivot.rotation.y = sailAngle;
+
+  // Belly the sail along its foot when powered up; flutter the leech when luffing.
+  for (let i = 0; i < sailPos.count; i++) {
+    const u = (i % 7) / 6;          // 0 at mast, 1 at clew (plane was 6 segments wide)
+    const bx = sailBase[i * 3];
+    const by = sailBase[i * 3 + 1];
+    const bz = sailBase[i * 3 + 2];
+    let bulge;
+    if (luffing) {
+      bulge = Math.sin(t * 18 + by * 2 + bz) * 0.18 * u; // ripple, strongest at the leech
+    } else {
+      bulge = Math.sin(u * Math.PI) * 0.45 * currentEff; // smooth curve, fullest mid-foot
+    }
+    sailPos.setX(i, bx + bulge);
+  }
+  sailPos.needsUpdate = true;
+  sailGeo.computeVertexNormals();
+
+  // Pennant streams downwind: at TWA 0 it trails aft, swinging to leeward with the wind.
+  pennantPivot.rotation.y += (-twaDeg * DEG - pennantPivot.rotation.y) * (1 - Math.pow(0.05, dt));
+
+  // Bow wake fades in with speed.
+  const sp = Math.abs(boat.speed) / boat.maxSpeed;
+  wakeMat.opacity = Math.min(0.5, sp * 0.6);
+}
+
 // --- Camera (chase) ---
 const CAM_BACK = 16;
 const CAM_HEIGHT = 7;
@@ -334,6 +430,7 @@ function animate() {
 
   animateWaves(t);
   updateBoat(dt);
+  updateVisuals(dt);
   updateHUD();
 
   // Gently bob the boat (pitch/roll only, heading kept by updateBoat)
