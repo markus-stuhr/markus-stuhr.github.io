@@ -10,19 +10,97 @@
     canvas { display: block; }
     #info {
       position: fixed;
-      bottom: 20px;
+      top: 18px;
       left: 50%;
       transform: translateX(-50%);
-      color: rgba(255,255,255,0.5);
+      color: rgba(255,255,255,0.4);
       font-family: monospace;
-      font-size: 13px;
+      font-size: 12px;
       letter-spacing: 1px;
       pointer-events: none;
+    }
+    #hud {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 22px 30px;
+      font-family: monospace;
+      color: rgba(255,255,255,0.85);
+      pointer-events: none;
+      gap: 20px;
+    }
+    .panel {
+      background: rgba(8, 22, 40, 0.55);
+      border: 1px solid rgba(120,170,220,0.25);
+      border-radius: 10px;
+      padding: 12px 16px;
+      backdrop-filter: blur(4px);
+    }
+    .panel .label {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: rgba(150,190,230,0.6);
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+    .panel .value { font-size: 22px; font-weight: bold; }
+    .panel .value small { font-size: 12px; font-weight: normal; opacity: 0.6; }
+    #wind { display: flex; align-items: center; gap: 14px; }
+    #windCompass {
+      position: relative;
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      border: 1px solid rgba(120,170,220,0.3);
+      flex-shrink: 0;
+    }
+    /* small boat marker (points up = bow) */
+    #windCompass::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 0; height: 0;
+      transform: translate(-50%, -50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 16px solid rgba(212,180,131,0.9);
+      margin-top: -8px;
+    }
+    #windArrow {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 2px; height: 28px;
+      background: linear-gradient(to bottom, #5fd0ff, rgba(95,208,255,0.1));
+      transform-origin: 50% 100%;
+      transform: translate(-50%, -100%);
+    }
+    #windArrow::before {
+      content: '';
+      position: absolute;
+      top: -2px; left: 50%;
+      transform: translateX(-50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 8px solid #5fd0ff;
     }
   </style>
 </head>
 <body>
-<div id="info">↑ / W vorwärts &nbsp;·&nbsp; ↓ / S rückwärts &nbsp;·&nbsp; ← → / A D steuern</div>
+<div id="info">← → / A D steuern &nbsp;·&nbsp; Geschwindigkeit kommt vom Wind</div>
+<div id="hud">
+  <div id="wind">
+    <div id="windCompass"><div id="windArrow"></div></div>
+    <div class="panel">
+      <div class="label">True Wind</div>
+      <div class="value"><span id="tws">0</span><small> kn</small> &nbsp; <span id="twd">0°</span></div>
+    </div>
+  </div>
+  <div class="panel" style="text-align:right">
+    <div class="label">Bootsgeschwindigkeit</div>
+    <div class="value"><span id="sog">0.0</span><small> kn</small></div>
+  </div>
+</div>
 <script type="importmap">
 {
   "imports": {
@@ -150,46 +228,87 @@ starGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(star
 const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true });
 scene.add(new THREE.Points(starGeo, starMat));
 
+// --- Wind ---
+const wind = {
+  from: Math.PI * 0.25,  // direction wind blows FROM (radians, same convention as heading)
+  tws: 14,               // true wind speed in knots
+  maxTws: 25,
+};
+
 // --- Boat state & input ---
 const boat = {
   heading: 0,      // radians, 0 = facing -Z
-  speed: 0,        // current forward speed
-  maxSpeed: 12,
-  accel: 6,        // units/s^2 while pressing forward
-  drag: 1.2,       // passive slowdown per second
+  speed: 0,        // current forward speed (world units/s)
+  maxSpeed: 12,    // hull speed at ideal point of sail & full wind
   turnRate: 1.4,   // radians/s
 };
 
 const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
-  // Prevent page scroll on arrow keys / space
   if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
+// Normalize radians to [-PI, PI]
+function normAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+// Sail efficiency vs. true wind angle (|TWA| in degrees). Simplified polar:
+// 0–30° = no-go (in irons), peak on a reach ~90–110°, tapers downwind.
+function sailEfficiency(twaDeg) {
+  const a = Math.abs(twaDeg);
+  if (a < 30) return 0;
+  if (a < 50) return ((a - 30) / 20) * 0.65;          // ramp out of the no-go zone
+  if (a <= 110) return 0.65 + ((a - 50) / 60) * 0.35; // build to full power on the reach
+  return 1.0 - ((a - 110) / 70) * 0.35;               // ease off running downwind
+}
+
+let twaDeg = 0; // exposed for HUD
+
 function updateBoat(dt) {
-  const fwd = keys['ArrowUp'] || keys['KeyW'];
-  const back = keys['ArrowDown'] || keys['KeyS'];
   const left = keys['ArrowLeft'] || keys['KeyA'];
   const right = keys['ArrowRight'] || keys['KeyD'];
 
-  // Steering (only meaningful when moving, but allow slow turn-in-place too)
   if (left)  boat.heading += boat.turnRate * dt;
   if (right) boat.heading -= boat.turnRate * dt;
+  boat.heading = normAngle(boat.heading);
 
-  // Throttle
-  if (fwd)  boat.speed += boat.accel * dt;
-  if (back) boat.speed -= boat.accel * dt;
+  // True wind angle = angle between bow and the direction the wind comes from
+  twaDeg = normAngle(wind.from - boat.heading) * 180 / Math.PI;
 
-  // Passive drag toward 0
-  boat.speed -= boat.speed * boat.drag * dt;
-  boat.speed = Math.max(-boat.maxSpeed * 0.4, Math.min(boat.maxSpeed, boat.speed));
+  // Target speed from point of sail and wind strength
+  const eff = sailEfficiency(twaDeg);
+  const target = boat.maxSpeed * (wind.tws / wind.maxTws) * eff;
+
+  // Ease toward target: quicker to pick up, slower to coast down
+  const responsiveness = target > boat.speed ? 0.8 : 1.4;
+  boat.speed += (target - boat.speed) * responsiveness * dt;
 
   // Move along heading (0 = -Z)
   boatGroup.position.x += Math.sin(boat.heading) * boat.speed * dt;
   boatGroup.position.z -= Math.cos(boat.heading) * boat.speed * dt;
   boatGroup.rotation.y = boat.heading;
+}
+
+// --- HUD ---
+const elTws = document.getElementById('tws');
+const elTwd = document.getElementById('twd');
+const elSog = document.getElementById('sog');
+const elArrow = document.getElementById('windArrow');
+
+function updateHUD() {
+  elTws.textContent = wind.tws.toFixed(0);
+  // TWD relative to boat: 0° = wind on the bow, +stbd / -port
+  const rel = Math.round(twaDeg);
+  elTwd.textContent = (rel >= 0 ? '+' : '') + rel + '°';
+  // Boat speed: convert world units/s to a knots-ish readout
+  elSog.textContent = (Math.abs(boat.speed) * 1.4).toFixed(1);
+  // Arrow points toward the wind source; boat marker points up (bow)
+  elArrow.style.transform = `translate(-50%, -100%) rotate(${twaDeg}deg)`;
 }
 
 // --- Camera (chase) ---
@@ -215,6 +334,7 @@ function animate() {
 
   animateWaves(t);
   updateBoat(dt);
+  updateHUD();
 
   // Gently bob the boat (pitch/roll only, heading kept by updateBoat)
   boatGroup.position.y = 0.3
