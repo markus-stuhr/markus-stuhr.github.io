@@ -225,7 +225,7 @@ const hullHalfBeam = (s) => {
   return Math.max(0.03, b);
 };
 const hullDepth = (s) => {
-  let d = 0.4 * (0.65 + 0.35 * Math.min(s / 0.25, 1));       // shallow forward, full midship
+  let d = 0.42;                                              // deep forward: plumb stem reaches the waterline
   if (s > 0.55) d *= 1 - 0.42 * ((s - 0.55) / 0.45);         // flatten toward the broad transom
   return d;
 };
@@ -329,7 +329,7 @@ const keel = new THREE.Mesh(
   new THREE.BoxGeometry(0.07, 0.9, 0.45),
   new THREE.MeshPhongMaterial({ color: 0x4a4a4a })
 );
-keel.position.set(0, -0.42, 0.15);
+keel.position.set(0, -0.42, -0.2);
 boatGroup.add(keel);
 // Torpedo ballast bulb at the keel foot
 const bulb = new THREE.Mesh(
@@ -337,7 +337,7 @@ const bulb = new THREE.Mesh(
   new THREE.MeshPhongMaterial({ color: 0x333333 })
 );
 bulb.rotation.x = Math.PI / 2;
-bulb.position.set(0, -0.86, 0.15);
+bulb.position.set(0, -0.86, -0.2);
 boatGroup.add(bulb);
 
 // Rig group — scaled up 20% relative to the hull (keeps mast:boom etc. ratios)
@@ -471,12 +471,12 @@ pennantPivot.add(pennant);
 
 // --- Rudder at the stern (turns with the helm) ---
 const rudderPivot = new THREE.Group();
-rudderPivot.position.set(0, 0, 1.7); // at the transom (stern is toward +z)
+rudderPivot.position.set(0, 0, 1.05); // forward of the transom (stern is toward +z)
 boatGroup.add(rudderPivot);
-// Spade blade: tall and thin, hanging straight down just behind the transom
-const rudderGeo = new THREE.BoxGeometry(0.05, 0.8, 0.32);
-rudderGeo.translate(0, -0.45, 0.08);
-const rudder = new THREE.Mesh(rudderGeo, new THREE.MeshPhongMaterial({ color: 0x5b4a32 }));
+// Spade blade: tall and very thin chord, hanging straight down
+const rudderGeo = new THREE.BoxGeometry(0.05, 0.85, 0.16);
+rudderGeo.translate(0, -0.46, 0.03);
+const rudder = new THREE.Mesh(rudderGeo, new THREE.MeshPhongMaterial({ color: 0x3a3a3a }));
 rudderPivot.add(rudder);
 // Tiller poking forward over the deck so the helm motion reads from above
 const tillerGeo = new THREE.BoxGeometry(0.04, 0.04, 0.6);
