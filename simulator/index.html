@@ -421,11 +421,11 @@ sailPivot.add(stripe);
 
 // --- Jib (foresail): forestay from the bow to near the masthead ---
 const jibPivot = new THREE.Group();
-jibPivot.position.set(0, 0.62, -2.0);     // tack just above the bow deck
+jibPivot.position.set(0, 0.42, -1.79);    // tack at the bow tip (world z ~ -2.15 after rig scale)
 rigGroup.add(jibPivot);
 const JIB_TACK = new THREE.Vector3(0, 0, 0);
-const JIB_HEAD = new THREE.Vector3(0, 4.5, 1.85 + MAST_Z); // up to the mast, near the top
-const JIB_CLEW = new THREE.Vector3(0, 0.15, 1.55);          // clew near tack height -> level foot
+const JIB_HEAD = new THREE.Vector3(0, 4.63, 1.64);          // forestay up to the masthead
+const JIB_CLEW = new THREE.Vector3(0, 0.12, 1.3);           // clew aft, level-ish foot
 const jibGeo = new THREE.PlaneGeometry(1, 1, 5, 5);
 const jibPos = jibGeo.attributes.position;
 const jibBase = new Float32Array(jibPos.count * 3);
@@ -596,10 +596,10 @@ const oppMainPivot = new THREE.Group(); oppMainPivot.position.set(0, 0, MAST_Z);
 const oppBoomG = new THREE.CylinderGeometry(0.035, 0.035, BOOM_LEN, 8);
 oppBoomG.rotateX(Math.PI / 2); oppBoomG.translate(0, BOOM_Y, BOOM_LEN / 2);
 oppMainPivot.add(new THREE.Mesh(oppBoomG, new THREE.MeshPhongMaterial({ color: 0xbbbbbb })));
-const oppJibPivot = new THREE.Group(); oppJibPivot.position.set(0, 0.62, -2.0); oppRig.add(oppJibPivot);
-const OPP_JH = new THREE.Vector3(0, 4.5, 1.85 + MAST_Z);
+const oppJibPivot = new THREE.Group(); oppJibPivot.position.set(0, 0.42, -1.79); oppRig.add(oppJibPivot);
+const OPP_JH = new THREE.Vector3(0, 4.63, 1.64);
 oppJibPivot.add(new THREE.Mesh(
-  triGeo3(new THREE.Vector3(0, 0, 0), OPP_JH, new THREE.Vector3(0, 0.15, 1.55)), oppSailMat));
+  triGeo3(new THREE.Vector3(0, 0, 0), OPP_JH, new THREE.Vector3(0, 0.12, 1.3)), oppSailMat));
 const oppJibAxis = OPP_JH.clone().normalize();
 oppGroup.position.set(20, 0.3, 0);   // start 20 m to starboard of the player
 scene.add(oppGroup);
