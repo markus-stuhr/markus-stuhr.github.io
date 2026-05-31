@@ -518,7 +518,9 @@ const oppJibAxis = OPP_JH.clone().normalize();
 oppGroup.position.set(20, 0.3, 0);   // start 20 m to starboard of the player
 scene.add(oppGroup);
 
-const boat2 = { heading: 0, speed: 0, rudder: 0, maxSpeed: 12, maxRudder: 0.6, nextMark: 0, done: false };
+const START_HEADING = -Math.PI / 4; // start on a reach, not aimed at the finish buoy
+const boat2 = { heading: START_HEADING, speed: 0, rudder: 0, maxSpeed: 12, maxRudder: 0.6, nextMark: 0, done: false };
+oppGroup.rotation.y = -START_HEADING;
 let oppSailAngle = 0, oppHeel = 0;
 
 function updateOpponent(dt) {
@@ -809,8 +811,21 @@ const COURSE = [
 ];
 const MARK_RADIUS = 11; // how close you must get to round a mark
 
+// Billboard text label (canvas texture) for waypoint numbers
+function makeTextSprite(text, color = '#ffffff') {
+  const S = 128, c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 84px sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 9; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.strokeText(text, S / 2, S / 2 + 4);
+  ctx.fillStyle = color; ctx.fillText(text, S / 2, S / 2 + 4);
+  const tex = new THREE.CanvasTexture(c);
+  return new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
+}
+
 const buoys = [];
-COURSE.forEach((m) => {
+COURSE.forEach((m, i) => {
   const grp = new THREE.Group();
   const buoy = new THREE.Mesh(
     new THREE.CylinderGeometry(0.9, 1.2, 2.4, 12),
@@ -824,6 +839,11 @@ COURSE.forEach((m) => {
   );
   ball.position.y = 2.4;
   grp.add(ball);
+  // waypoint number on the buoy
+  const num = makeTextSprite(String(i + 1));
+  num.scale.set(1.7, 1.7, 1.7);
+  num.position.set(0, 1.3, 0);
+  grp.add(num);
   // light beam so the next mark is findable from a distance
   const beam = new THREE.Mesh(
     new THREE.CylinderGeometry(0.5, 0.5, 60, 8, 1, true),
@@ -846,7 +866,7 @@ const wind = {
 
 // --- Boat state & input ---
 const boat = {
-  heading: 0,      // radians, 0 = facing -Z
+  heading: START_HEADING, // start on a reach (not pointed at the finish buoy)
   speed: 0,        // current forward speed (world units/s)
   maxSpeed: 12,    // hull speed at ideal point of sail & full wind
   rudder: 0,       // current rudder deflection (radians, + = turn to port)
@@ -868,11 +888,11 @@ function restartRace() {
   race.state = 'pre';
   race.nextMark = 0;
   race.time = 0;
-  boat.heading = 0;
+  boat.heading = START_HEADING;
   boat.speed = 0;
   boatGroup.position.set(0, 0.3, 0);
   // reset the opponent too
-  boat2.heading = 0; boat2.speed = 0; boat2.rudder = 0; boat2.nextMark = 0; boat2.done = false;
+  boat2.heading = START_HEADING; boat2.speed = 0; boat2.rudder = 0; boat2.nextMark = 0; boat2.done = false;
   oppGroup.position.set(20, 0.3, 0);
   clearTrack(playerTrack); clearTrack(oppTrack);
   elRaceMsg.textContent = 'Steuere durch die Marken in der Reihenfolge';
@@ -1135,13 +1155,17 @@ markTriGeo.setAttribute('position', new THREE.Float32BufferAttribute([
   0.13, 0, -0.11,
 ], 3));
 markTriGeo.setIndex([0, 1, 2, 2, 1, 0]);
-const markPointers = COURSE.map(() => {
+const markPointers = COURSE.map((m, i) => {
   const tri = new THREE.Mesh(markTriGeo, new THREE.MeshBasicMaterial({
     color: 0xff9933, transparent: true, depthWrite: false, side: THREE.DoubleSide,
   }));
   tri.renderOrder = 6;
   compassRing.add(tri);
-  return tri;
+  const label = makeTextSprite(String(i + 1));
+  label.scale.set(0.42, 0.42, 0.42);
+  label.renderOrder = 7;
+  compassRing.add(label);
+  return { tri, label };
 });
 
 // Opponent indicator on the compass: a small dot (distinct from the mark triangles)
@@ -1157,17 +1181,20 @@ function updateMarkPointers() {
   const bx = boatGroup.position.x, bz = boatGroup.position.z;
   const R = RING_R + 0.45; // on the compass band
   markPointers.forEach((p, i) => {
-    if (race.state === 'done') { p.visible = false; return; }
-    p.visible = true;
+    const tri = p.tri, label = p.label;
+    if (race.state === 'done') { tri.visible = false; label.visible = false; return; }
+    tri.visible = true; label.visible = true;
     const dx = COURSE[i].x - bx, dz = COURSE[i].z - bz;
     const len = Math.hypot(dx, dz) || 1;
     const ux = dx / len, uz = dz / len;
-    p.position.set(ux * R, 0.05, uz * R);   // compass is world-aligned (rot 0)
-    p.rotation.y = Math.atan2(ux, uz);       // tip points outward
+    tri.position.set(ux * R, 0.05, uz * R);   // compass is world-aligned (rot 0)
+    tri.rotation.y = Math.atan2(ux, uz);       // tip points outward
+    label.position.set(ux * (R + 0.35), 0.3, uz * (R + 0.35)); // number just outside the triangle
     const next = i === race.nextMark;
-    p.material.color.setHex(i < race.nextMark ? 0x7a96b4 : next ? 0x33ff88 : 0xff9933);
-    p.scale.setScalar(next ? 1.4 : 1.0);
-    p.material.opacity = i < race.nextMark ? 0.5 : 0.95;
+    tri.material.color.setHex(i < race.nextMark ? 0x7a96b4 : next ? 0x33ff88 : 0xff9933);
+    tri.scale.setScalar(next ? 1.4 : 1.0);
+    tri.material.opacity = i < race.nextMark ? 0.5 : 0.95;
+    label.material.opacity = i < race.nextMark ? 0.45 : 0.95;
   });
 
   // opponent boat bearing
