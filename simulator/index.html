@@ -1154,6 +1154,8 @@ function fmtTime(s) {
 }
 
 function updateRace(dt) {
+  // The clock starts as soon as the boat gets underway, not only at the first mark.
+  if (race.state === 'pre' && Math.abs(boat.speed) > 0.3) { race.state = 'racing'; race.time = 0; }
   if (race.state === 'racing') race.time += dt;
 
   if (race.state !== 'done') {
