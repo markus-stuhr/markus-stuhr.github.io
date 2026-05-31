@@ -728,6 +728,27 @@ function updateOpponent(o, dt) {
     }
   }
 
+  // Collision avoidance: bend the desired heading away from any boat that is
+  // close and roughly ahead (the player and the other opponents).
+  {
+    const AVOID_R = 18;            // start avoiding within 18 m
+    const others = [{ x: boatGroup.position.x, z: boatGroup.position.z }];
+    OPPONENTS.forEach(p => { if (p !== o) others.push({ x: p.group.position.x, z: p.group.position.z }); });
+    let avoid = 0;
+    for (const ob of others) {
+      const dx = ob.x - bx, dz = ob.z - bz;
+      const d = Math.hypot(dx, dz);
+      if (d < AVOID_R && d > 0.01) {
+        const rel = normAngle(Math.atan2(dx, -dz) - st.heading); // bearing relative to our heading
+        if (Math.abs(rel) < Math.PI * 0.55) {                    // only worry about boats ahead
+          const strength = (1 - d / AVOID_R) * Math.cos(rel);
+          avoid += (rel <= 0 ? 1 : -1) * strength;               // turn away from the obstacle's side
+        }
+      }
+    }
+    desiredH = normAngle(desiredH + Math.max(-0.9, Math.min(0.9, avoid)));
+  }
+
   // Helm: steer toward the desired heading
   const err = normAngle(desiredH - st.heading);
   const rudTarget = Math.max(-st.maxRudder, Math.min(st.maxRudder, err * 2.2));
