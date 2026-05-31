@@ -469,35 +469,14 @@ const boatShadow = new THREE.Mesh(shadowGeo, new THREE.MeshBasicMaterial({
 boatShadow.scale.set(2.6, 1, 5.4);               // roughly the hull footprint (a bit larger)
 scene.add(boatShadow);
 
-// --- Wind disc: flat transparent ring around the boat marking where the wind comes from ---
+// --- Wind disc: just the coloured polar ring + a wind needle ---
 const windRing = new THREE.Group();
 const RING_R = 3.4;
-// faint filled disc
-const disc = new THREE.Mesh(
-  new THREE.CircleGeometry(RING_R, 48),
-  new THREE.MeshBasicMaterial({ color: 0x88c0ff, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false })
-);
-disc.rotation.x = -Math.PI / 2;
-windRing.add(disc);
-// ring outline
-const ringOutline = new THREE.Mesh(
-  new THREE.RingGeometry(RING_R - 0.12, RING_R, 48),
-  new THREE.MeshBasicMaterial({ color: 0x9fd0ff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false })
-);
-ringOutline.rotation.x = -Math.PI / 2;
-windRing.add(ringOutline);
-// wind axis line across the disc (local z = wind-from -> downwind)
-const windAxis = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.05, RING_R * 2),
-  new THREE.MeshBasicMaterial({ color: 0x6fb8ff, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })
-);
-windAxis.rotation.x = -Math.PI / 2;
-windRing.add(windAxis);
 // Wind needle: separate group that rotates to the wind. The coloured ring is
 // boat-fixed (red at the bow); this needle swings round to show where the wind
 // comes from. Course is good when the needle sits over green.
 const windNeedle = new THREE.Group();
-const windMarkerMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false });
+const windMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false });
 const markGeo = new THREE.BufferGeometry();
 markGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
   -0.45, 0, -RING_R - 0.05,
