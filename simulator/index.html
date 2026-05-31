@@ -177,6 +177,7 @@ const oceanMat = new THREE.MeshPhongMaterial({
   side: THREE.FrontSide,
   transparent: true,   // let the submerged hull/keel show through faintly
   opacity: 0.88,
+  depthWrite: false,   // don't let wave crests occlude the wind ring / shadow on the surface
 });
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
