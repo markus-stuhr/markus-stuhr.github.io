@@ -298,18 +298,23 @@ bulb.rotation.x = Math.PI / 2;
 bulb.position.set(0, -0.86, 0.15);
 boatGroup.add(bulb);
 
+// Rig group — scaled up 20% relative to the hull (keeps mast:boom etc. ratios)
+const rigGroup = new THREE.Group();
+rigGroup.scale.setScalar(1.2);
+boatGroup.add(rigGroup);
+
 // Mast — carbon rig (height ~1.2 x LOA: 37 m mast on a 100 ft hull)
 const MAST_Z = -0.15;
 const mastGeo = new THREE.CylinderGeometry(0.035, 0.05, 4.75, 8);
 const mastMat = new THREE.MeshPhongMaterial({ color: 0x23282e });
 const mast = new THREE.Mesh(mastGeo, mastMat);
 mast.position.set(0, 2.68, MAST_Z);
-boatGroup.add(mast);
+rigGroup.add(mast);
 
 // Sail — mounted on a pivot at the mast so it can be trimmed (swing around y)
 const sailPivot = new THREE.Group();
 sailPivot.position.set(0, 0, MAST_Z);
-boatGroup.add(sailPivot);
+rigGroup.add(sailPivot);
 
 // Mainsail: luff up the mast (x=0,z=0), foot running aft to the clew.
 // Lives in the y-z plane so rotating the pivot swings the boom out to leeward.
@@ -375,7 +380,7 @@ sailPivot.add(stripe);
 // --- Jib (foresail): forestay from the bow to near the masthead ---
 const jibPivot = new THREE.Group();
 jibPivot.position.set(0, 0.62, -2.0);     // tack just above the bow deck
-boatGroup.add(jibPivot);
+rigGroup.add(jibPivot);
 const JIB_TACK = new THREE.Vector3(0, 0, 0);
 const JIB_HEAD = new THREE.Vector3(0, 4.5, 1.85 + MAST_Z); // up to the mast, near the top
 const JIB_CLEW = new THREE.Vector3(0, 0.15, 1.55);          // clew near tack height -> level foot
@@ -400,7 +405,7 @@ const jibAxis = JIB_HEAD.clone().normalize(); // forestay axis: jib swings aroun
 // --- Masthead pennant (Verklicker) — a little streamer that flies with the wind ---
 const pennantPivot = new THREE.Group();
 pennantPivot.position.set(0, 5.1, MAST_Z);
-boatGroup.add(pennantPivot);
+rigGroup.add(pennantPivot);
 const PENN_SEG = 10, PENN_LEN = 0.48;
 const pennGeo = new THREE.BufferGeometry();
 const pennPosArr = [];
@@ -528,10 +533,11 @@ const oppKeel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.9, 0.45), new THREE
 oppKeel.position.set(0, -0.42, 0.15); oppGroup.add(oppKeel);
 const oppBulb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.75, 5, 10), new THREE.MeshPhongMaterial({ color: 0x2a2a2a }));
 oppBulb.rotation.x = Math.PI / 2; oppBulb.position.set(0, -0.86, 0.15); oppGroup.add(oppBulb);
+const oppRig = new THREE.Group(); oppRig.scale.setScalar(1.2); oppGroup.add(oppRig);
 const oppMast = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 4.75, 8), new THREE.MeshPhongMaterial({ color: 0xbbbbbb }));
-oppMast.position.set(0, 2.68, MAST_Z); oppGroup.add(oppMast);
+oppMast.position.set(0, 2.68, MAST_Z); oppRig.add(oppMast);
 const oppSailMat = new THREE.MeshPhongMaterial({ color: 0xcfd6de, side: THREE.DoubleSide });
-const oppMainPivot = new THREE.Group(); oppMainPivot.position.set(0, 0, MAST_Z); oppGroup.add(oppMainPivot);
+const oppMainPivot = new THREE.Group(); oppMainPivot.position.set(0, 0, MAST_Z); oppRig.add(oppMainPivot);
 {
   // square-top main (quad): tack, clew, head-aft, head-fwd
   const qg = new THREE.BufferGeometry();
@@ -548,7 +554,7 @@ const oppMainPivot = new THREE.Group(); oppMainPivot.position.set(0, 0, MAST_Z);
 const oppBoomG = new THREE.CylinderGeometry(0.05, 0.05, BOOM_LEN, 8);
 oppBoomG.rotateX(Math.PI / 2); oppBoomG.translate(0, BOOM_Y, BOOM_LEN / 2);
 oppMainPivot.add(new THREE.Mesh(oppBoomG, new THREE.MeshPhongMaterial({ color: 0xbbbbbb })));
-const oppJibPivot = new THREE.Group(); oppJibPivot.position.set(0, 0.62, -2.0); oppGroup.add(oppJibPivot);
+const oppJibPivot = new THREE.Group(); oppJibPivot.position.set(0, 0.62, -2.0); oppRig.add(oppJibPivot);
 const OPP_JH = new THREE.Vector3(0, 4.5, 1.85 + MAST_Z);
 oppJibPivot.add(new THREE.Mesh(
   triGeo3(new THREE.Vector3(0, 0, 0), OPP_JH, new THREE.Vector3(0, 0.15, 1.55)), oppSailMat));
