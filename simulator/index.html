@@ -828,8 +828,9 @@ function updateVisuals(dt) {
   }
   sailAngle += (targetAngle - sailAngle) * (1 - Math.pow(0.02, dt));
   sailPivot.rotation.y = sailAngle;
-  // Jib swings around the forestay, trimmed a touch tighter than the main
-  jibPivot.quaternion.setFromAxisAngle(jibAxis, -sailAngle * 0.85);
+  // Jib swings around the forestay to the SAME (leeward) side as the main,
+  // trimmed a touch tighter.
+  jibPivot.quaternion.setFromAxisAngle(jibAxis, sailAngle * 0.85);
 
   // Heel: lean to leeward, driven by wind strength and point of sail. Greatest
   // on a beam reach, fading to nothing dead downwind or head-to-wind.
