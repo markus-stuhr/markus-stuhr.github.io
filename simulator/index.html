@@ -207,6 +207,8 @@ function waveHeight(x, z, t) {
 function updateEnvironment(t) {
   const gust = 0.5 * Math.sin(t * 0.13) + 0.3 * Math.sin(t * 0.31 + 1.3) + 0.2 * Math.sin(t * 0.07 + 2.1);
   wind.tws = wind.baseTws * (1 + 0.25 * gust);
+  const shift = 0.5 * Math.sin(t * 0.06 + 1.1) + 0.3 * Math.sin(t * 0.17 + 3.3) + 0.2 * Math.sin(t * 0.04 + 0.5);
+  wind.from = wind.baseFrom + (20 * Math.PI / 180) * shift; // wind veers/backs within ±20°
   const swell = 0.5 * Math.sin(t * 0.09 + 0.6) + 0.3 * Math.sin(t * 0.23 + 2.4) + 0.2 * Math.sin(t * 0.05 + 4.0);
   waveAmp = 1 + 0.25 * swell;
 }
@@ -1028,7 +1030,8 @@ COURSE.forEach((m, i) => {
 
 // --- Wind ---
 const wind = {
-  from: Math.PI * 0.25,  // direction wind blows FROM (radians, same convention as heading)
+  baseFrom: Math.PI * 0.25, // nominal direction wind blows FROM
+  from: Math.PI * 0.25,  // current wind direction (oscillates within ±20° of base)
   baseTws: 20,           // nominal true wind speed in knots
   tws: 20,               // current true wind speed (drifts within ±25% of base)
   maxTws: 25,
