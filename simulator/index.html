@@ -263,9 +263,9 @@ const hull = new THREE.Mesh(buildHull(), [hullMat, deckMat]);
 boatGroup.add(hull);
 
 // Bowsprit / prod — the pointed spar reaching forward from the bow
-const spritGeo = new THREE.CylinderGeometry(0.03, 0.05, 1.6, 8);
+const spritGeo = new THREE.CylinderGeometry(0.018, 0.028, 0.8, 8);
 spritGeo.rotateX(Math.PI / 2);
-spritGeo.translate(0, 0.40, HULL_ZBOW - 0.55);   // extends forward of the stem
+spritGeo.translate(0, 0.40, HULL_ZBOW - 0.3);    // short, thin prod forward of the stem
 const sprit = new THREE.Mesh(spritGeo, new THREE.MeshPhongMaterial({ color: 0x23282e }));
 boatGroup.add(sprit);
 
