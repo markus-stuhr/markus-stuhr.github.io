@@ -1099,6 +1099,15 @@ const markPointers = COURSE.map(() => {
   return tri;
 });
 
+// Opponent indicator on the compass: a small dot (distinct from the mark triangles)
+const oppDotGeo = new THREE.CircleGeometry(0.16, 16);
+oppDotGeo.rotateX(-Math.PI / 2);
+const oppDot = new THREE.Mesh(oppDotGeo, new THREE.MeshBasicMaterial({
+  color: 0x223342, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+}));
+oppDot.renderOrder = 6;
+compassRing.add(oppDot);
+
 function updateMarkPointers() {
   const bx = boatGroup.position.x, bz = boatGroup.position.z;
   const R = RING_R + 0.45; // on the compass band
@@ -1115,6 +1124,11 @@ function updateMarkPointers() {
     p.scale.setScalar(next ? 1.4 : 1.0);
     p.material.opacity = i < race.nextMark ? 0.5 : 0.95;
   });
+
+  // opponent boat bearing
+  const odx = oppGroup.position.x - bx, odz = oppGroup.position.z - bz;
+  const ol = Math.hypot(odx, odz) || 1;
+  oppDot.position.set(odx / ol * R, 0.06, odz / ol * R);
 }
 
 function spawnFoam(t, x, z, perpX, perpZ) {
