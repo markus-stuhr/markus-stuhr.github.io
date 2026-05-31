@@ -1409,7 +1409,7 @@ function updateMarkPointers() {
     tri.position.set(ux * R, 0.05, uz * R);   // compass is world-aligned (rot 0)
     tri.rotation.y = Math.atan2(ux, uz);       // tip points outward
     label.position.set(ux * (R + 0.35), 0.3, uz * (R + 0.35)); // number just outside the triangle
-    tri.material.color.setHex(i < race.nextMark ? 0x7a96b4 : next ? 0x33ff88 : 0xff9933);
+    tri.material.color.setHex(0x33ff88); // all buoy arrows green
     tri.scale.setScalar(next ? 2.0 : 1.0);
     tri.renderOrder = next ? 8 : 6; // current target always draws over the other arrows
     tri.material.opacity = i < race.nextMark ? 0.5 : 0.95;
