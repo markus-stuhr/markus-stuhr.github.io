@@ -68,18 +68,11 @@
 <body>
 <div id="info">← → / A D steuern &nbsp;·&nbsp; Geschwindigkeit kommt vom Wind &nbsp;·&nbsp; R = Neustart</div>
 <div id="hud">
-  <div class="panel">
-    <div class="label">True Wind</div>
-    <div class="value"><span id="tws">0</span><small> kn</small> &nbsp; <span id="twd">0°</span></div>
-  </div>
-  <div class="panel" id="markPanel">
-    <div class="label">Nächste Marke <span id="markNum">1/4</span></div>
-    <div class="value"><span id="markDist">—</span><small> m</small> &nbsp;<span id="markArrow" style="display:inline-block">↑</span></div>
-  </div>
-  <div class="panel" style="text-align:right">
-    <div class="label">Bootsgeschwindigkeit</div>
-    <div class="value"><span id="sog">0.0</span><small> kn</small></div>
-  </div>
+  <div class="panel"><div class="label">TWS</div><div class="value"><span id="tws">0</span><small> kn</small></div></div>
+  <div class="panel"><div class="label">TWA</div><div class="value"><span id="twd">0°</span></div></div>
+  <div class="panel"><div class="label">VMG</div><div class="value"><span id="vmg">0</span><small> %</small></div></div>
+  <div class="panel"><div class="label">Marke <span id="markNum">1/4</span></div><div class="value"><span id="markDist">—</span><small> m</small></div></div>
+  <div class="panel"><div class="label">Speed</div><div class="value"><span id="sog">0.0</span><small> kn</small></div></div>
 </div>
 <div id="race">
   <div id="raceTime">00:00.0</div>
@@ -977,7 +970,7 @@ const elRaceBest = document.getElementById('raceBest');
 const elRaceMsg = document.getElementById('raceMsg');
 const elMarkNum = document.getElementById('markNum');
 const elMarkDist = document.getElementById('markDist');
-const elMarkArrow = document.getElementById('markArrow');
+const elVmg = document.getElementById('vmg');
 
 const race = {
   state: 'pre',     // 'pre' | 'racing' | 'done'
@@ -1020,15 +1013,17 @@ function updateRace(dt) {
       }
     }
 
-    // Distance + bearing arrow to the next mark (relative to boat heading)
+    // Distance + VMG toward the next mark
     if (race.state !== 'done') {
       elMarkNum.textContent = `${race.nextMark + 1}/${COURSE.length}`;
       elMarkDist.textContent = Math.round(dist);
-      const bearing = Math.atan2(dx, -dz);         // world bearing to mark (0 = -z)
-      const rel = normAngle(bearing - boat.heading); // relative to bow
-      elMarkArrow.style.transform = `rotate(${rel * 180 / Math.PI}deg)`;
+      const bearing = Math.atan2(dx, -dz);            // world bearing to mark (0 = -z)
+      const rel = normAngle(bearing - boat.heading);  // course error to the mark
+      // VMG = share of boat speed actually closing on the mark (100% = straight at it)
+      elVmg.textContent = Math.round(Math.cos(rel) * 100);
     } else {
       elMarkDist.textContent = '—';
+      elVmg.textContent = '—';
     }
   }
 
