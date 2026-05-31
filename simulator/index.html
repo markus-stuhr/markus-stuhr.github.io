@@ -1057,6 +1057,22 @@ COURSE.forEach((m, i) => {
   beam.position.y = 30;
   beam.visible = false;
   grp.add(beam);
+  // transparent green zone showing the radius at which you've rounded the mark
+  const zoneGeo = new THREE.CircleGeometry(MARK_RADIUS, 48);
+  zoneGeo.rotateX(-Math.PI / 2);
+  const zone = new THREE.Mesh(zoneGeo, new THREE.MeshBasicMaterial({
+    color: 0x33ff88, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false,
+  }));
+  zone.position.y = 0.06;
+  zone.renderOrder = -1;
+  grp.add(zone);
+  const ringGeo = new THREE.RingGeometry(MARK_RADIUS - 0.25, MARK_RADIUS, 48);
+  ringGeo.rotateX(-Math.PI / 2);
+  const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+    color: 0x33ff88, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+  }));
+  ring.position.y = 0.07;
+  grp.add(ring);
   grp.position.set(m.x, 0, m.z);
   scene.add(grp);
   buoys.push({ grp, buoy, ball, beam });
