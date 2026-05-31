@@ -330,7 +330,7 @@ sailPivot.add(sail);
 
 // Boom: a real spar from the gooseneck at the mast aft to the clew. The sail's
 // foot sits along it, and it swings out with the sailPivot when trimmed.
-const BOOM_Y = 0.9, BOOM_LEN = 1.45; // mast (~5.0) is ~3.5x the boom; stays within the hull
+const BOOM_Y = 0.7, BOOM_LEN = 1.45; // lower boom (deck gap ~66%); mast ~3.5x the boom
 const boomGeo = new THREE.CylinderGeometry(0.055, 0.055, BOOM_LEN, 10);
 boomGeo.rotateX(Math.PI / 2);            // lay the spar along z
 boomGeo.translate(0, BOOM_Y, BOOM_LEN / 2); // gooseneck at the mast (z≈0) -> clew aft
@@ -1141,7 +1141,7 @@ function updateVisuals(dt) {
   // Belly the sail along its foot when powered up; flutter the leech when luffing.
   // The draft bows to LEEWARD, so its sign flips with the tack.
   const lee = twaDeg >= 0 ? -1 : 1; // local -x is to leeward when wind is on starboard
-  const headY = 5.05, footY = 0.9;
+  const headY = 5.05, footY = 0.7;
   for (let i = 0; i < sailPos.count; i++) {
     const u = (i % 7) / 6;          // 0 at mast, 1 at clew (plane was 6 segments wide)
     const bx = sailBase[i * 3];
