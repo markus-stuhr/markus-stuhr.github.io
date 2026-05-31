@@ -484,6 +484,33 @@ tillerGeo.translate(0, 0.12, -0.3);
 const tiller = new THREE.Mesh(tillerGeo, new THREE.MeshPhongMaterial({ color: 0x8a6a3a }));
 rudderPivot.add(tiller);
 
+// --- Standing rigging: forestay, backstay, twin-spreader cap shrouds ---
+{
+  const seg = [];
+  const L = (ax, ay, az, bx, by, bz) => seg.push(ax, ay, az, bx, by, bz);
+  const M = [0, 6.07, -0.18];        // masthead (mast top, rig scaled 1.2)
+  const mz = -0.18;                  // mast fore-aft position (scaled)
+  const sp1 = 2.6, sp2 = 4.35;       // two spreader heights
+  const x1 = 0.42, x2 = 0.30;        // spreader tip half-widths (lower/upper)
+  const chx = 0.5, chy = 0.36, chz = 0.0; // chainplate at the deck edge (midship)
+  // fore & back stays
+  L(...M, 0, 0.55, HULL_ZBOW);
+  L(...M, 0, 0.42, HULL_ZSTERN);
+  // spreaders (both sides, two levels)
+  L(0, sp1, mz, x1, sp1, mz); L(0, sp1, mz, -x1, sp1, mz);
+  L(0, sp2, mz, x2, sp2, mz); L(0, sp2, mz, -x2, sp2, mz);
+  // cap shroud over the spreaders to the chainplate, both sides
+  for (const s of [1, -1]) {
+    L(...M, s * x2, sp2, mz);
+    L(s * x2, sp2, mz, s * x1, sp1, mz);
+    L(s * x1, sp1, mz, s * chx, chy, chz);
+  }
+  const rg = new THREE.BufferGeometry();
+  rg.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3));
+  const rigging = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0x20242a, transparent: true, opacity: 0.85 }));
+  boatGroup.add(rigging);
+}
+
 boatGroup.position.set(0, 0.3, 0);
 // Apply heading (Y) before pitch (X) and roll (Z) so wave tilt stays in the hull frame
 boatGroup.rotation.order = 'YXZ';
