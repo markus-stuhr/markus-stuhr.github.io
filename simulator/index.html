@@ -327,12 +327,25 @@ function goldStripe(side) {
 boatGroup.add(goldStripe(1));
 boatGroup.add(goldStripe(-1));
 
-// Deep, thin fin keel under the midship (draft ~0.22 x LOA)
-const keel = new THREE.Mesh(
-  new THREE.BoxGeometry(0.07, 0.9, 0.22),
-  new THREE.MeshPhongMaterial({ color: 0x4a4a4a })
-);
-keel.position.set(0, -0.42, -0.2);
+// Deep fin keel, sitting just aft of the mast: tapered chord, slightly raked aft,
+// reaching to a torpedo ballast bulb (shape after the reference silhouette)
+const keelGeo = new THREE.BufferGeometry();
+keelGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+  // front face (x = +0.03): top-fwd, top-aft, bot-aft, bot-fwd
+   0.03, -0.06, -0.20,   0.03, -0.06,  0.10,   0.03, -0.84, 0.09,   0.03, -0.84, -0.07, // 0,1,2,3
+  // back face (x = -0.03)
+  -0.03, -0.06, -0.20,  -0.03, -0.06,  0.10,  -0.03, -0.84, 0.09,  -0.03, -0.84, -0.07, // 4,5,6,7
+], 3));
+keelGeo.setIndex([
+  0,1,2, 0,2,3,            // front
+  4,6,5, 4,7,6,            // back
+  0,4,1, 1,4,5,            // top edge
+  3,2,7, 7,2,6,            // bottom edge
+  0,3,4, 4,3,7,            // forward edge
+  1,5,2, 2,5,6,            // aft edge
+]);
+keelGeo.computeVertexNormals();
+const keel = new THREE.Mesh(keelGeo, new THREE.MeshPhongMaterial({ color: 0x4a4a4a }));
 boatGroup.add(keel);
 // Torpedo ballast bulb at the keel foot
 const bulb = new THREE.Mesh(
@@ -340,7 +353,7 @@ const bulb = new THREE.Mesh(
   new THREE.MeshPhongMaterial({ color: 0x333333 })
 );
 bulb.rotation.x = Math.PI / 2;
-bulb.position.set(0, -0.86, -0.2);
+bulb.position.set(0, -0.86, 0.01);
 boatGroup.add(bulb);
 
 // Rig group — scaled up 20% relative to the hull (keeps mast:boom etc. ratios)
@@ -480,9 +493,9 @@ boatGroup.add(rudderPivot);
 const rudderGeo = new THREE.BufferGeometry();
 rudderGeo.setAttribute('position', new THREE.Float32BufferAttribute([
   // front face (x = +0.025): top-fwd, top-aft, bot-aft, bot-fwd
-   0.025, -0.02, -0.05,   0.025, -0.02,  0.11,   0.025, -0.74, 0.16,   0.025, -0.74, 0.10, // 0,1,2,3
+   0.025, 0.10, -0.05,   0.025, 0.10,  0.11,   0.025, -0.66, 0.16,   0.025, -0.66, 0.10, // 0,1,2,3
   // back face (x = -0.025)
-  -0.025, -0.02, -0.05,  -0.025, -0.02,  0.11,  -0.025, -0.74, 0.16,  -0.025, -0.74, 0.10, // 4,5,6,7
+  -0.025, 0.10, -0.05,  -0.025, 0.10,  0.11,  -0.025, -0.66, 0.16,  -0.025, -0.66, 0.10, // 4,5,6,7
 ], 3));
 rudderGeo.setIndex([
   0,1,2, 0,2,3,            // front
