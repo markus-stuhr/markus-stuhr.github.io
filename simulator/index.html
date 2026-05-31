@@ -374,16 +374,25 @@ const jibAxis = JIB_HEAD.clone().normalize(); // forestay axis: jib swings aroun
 const pennantPivot = new THREE.Group();
 pennantPivot.position.set(0, 6.25, MAST_Z);
 boatGroup.add(pennantPivot);
+const PENN_SEG = 10, PENN_LEN = 0.95;
 const pennGeo = new THREE.BufferGeometry();
-pennGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-  0, 0.12, 0,
-  0, -0.12, 0,
-  0, 0, 0.9, // streamer trails aft (+z) at rest
-]), 3));
-pennGeo.setIndex([0, 1, 2, 2, 1, 0]);
-pennGeo.computeVertexNormals();
+const pennPosArr = [];
+const pennFrac = []; // 0 at the mast, 1 at the free tip — for the flutter wave
+for (let i = 0; i <= PENN_SEG; i++) {
+  const f = i / PENN_SEG, z = f * PENN_LEN, hh = 0.13 * (1 - f); // tapers to a point
+  pennPosArr.push(0, hh, z, 0, -hh, z);
+  pennFrac.push(f, f);
+}
+const pennIdx = [];
+for (let i = 0; i < PENN_SEG; i++) {
+  const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+  pennIdx.push(a, b, c, c, b, d);
+}
+pennGeo.setAttribute('position', new THREE.Float32BufferAttribute(pennPosArr, 3));
+pennGeo.setIndex(pennIdx);
 const pennMat = new THREE.MeshBasicMaterial({ color: 0xff5544, side: THREE.DoubleSide });
 const pennant = new THREE.Mesh(pennGeo, pennMat);
+const pennPos = pennGeo.attributes.position;
 pennantPivot.add(pennant);
 
 // --- Rudder at the stern (turns with the helm) ---
@@ -908,6 +917,12 @@ function updateVisuals(dt) {
   let pd = pennantTarget - pennantPivot.rotation.y;
   pd = Math.atan2(Math.sin(pd), Math.cos(pd)); // shortest way round (avoid 360° spins)
   pennantPivot.rotation.y += pd * (1 - Math.pow(0.05, dt));
+  // Flutter: a travelling wave runs out to the free tip
+  for (let i = 0; i < pennPos.count; i++) {
+    const f = pennFrac[i];
+    pennPos.setX(i, Math.sin(t * 9 - f * 7) * 0.13 * f);
+  }
+  pennPos.needsUpdate = true;
 
   // Rudder swings with the helm (mirrors the deflection at the stern).
   rudderPivot.rotation.y = boat.rudder;
