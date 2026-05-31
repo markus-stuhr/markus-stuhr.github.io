@@ -948,7 +948,7 @@ COURSE.forEach((m, i) => {
 // --- Wind ---
 const wind = {
   from: Math.PI * 0.25,  // direction wind blows FROM (radians, same convention as heading)
-  tws: 15,               // true wind speed in knots
+  tws: 20,               // true wind speed in knots
   maxTws: 25,
 };
 
@@ -1276,19 +1276,20 @@ function updateMarkPointers() {
   const R = RING_R + 0.45; // on the compass band
   markPointers.forEach((p, i) => {
     const tri = p.tri, label = p.label;
+    const next = i === race.nextMark;
     if (race.state === 'done') { tri.visible = false; label.visible = false; return; }
-    tri.visible = true; label.visible = true;
+    tri.visible = true;
+    label.visible = next; // only the current target shows its number
     const dx = COURSE[i].x - bx, dz = COURSE[i].z - bz;
     const len = Math.hypot(dx, dz) || 1;
     const ux = dx / len, uz = dz / len;
     tri.position.set(ux * R, 0.05, uz * R);   // compass is world-aligned (rot 0)
     tri.rotation.y = Math.atan2(ux, uz);       // tip points outward
     label.position.set(ux * (R + 0.35), 0.3, uz * (R + 0.35)); // number just outside the triangle
-    const next = i === race.nextMark;
     tri.material.color.setHex(i < race.nextMark ? 0x7a96b4 : next ? 0x33ff88 : 0xff9933);
     tri.scale.setScalar(next ? 2.0 : 1.0);
     tri.material.opacity = i < race.nextMark ? 0.5 : 0.95;
-    label.material.opacity = i < race.nextMark ? 0.45 : 0.95;
+    label.material.opacity = 0.95;
   });
 
   // opponent boat bearing
