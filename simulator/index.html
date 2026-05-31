@@ -514,6 +514,54 @@ scene.add(windNeedle);
 
 scene.add(windRing);
 
+// --- Compass ring: an outer ring fixed to the WORLD (North up). It stays put
+// while the boat-fixed inner ring turns, so it reads cardinal directions. ---
+const compassRing = new THREE.Group(); // world -z is North
+{
+  const CR = RING_R + 0.22;                 // just outside the polar ring
+  const major = [], minor = [];
+  for (let i = 0; i < 16; i++) {
+    const a = i * (Math.PI * 2 / 16);        // 0 = North, clockwise
+    const dx = Math.sin(a), dz = -Math.cos(a); // a=0 -> -z (N); a=90° -> +x (E)
+    const cardinal = (i % 4 === 0);
+    const rOut = CR + (cardinal ? 0.5 : 0.3);
+    (cardinal ? major : minor).push(dx * CR, 0.01, dz * CR, dx * rOut, 0.01, dz * rOut);
+  }
+  const mkLines = (verts, opacity, w) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    compassRing.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({
+      color: 0xeef4ff, transparent: true, opacity, depthWrite: false,
+    })));
+  };
+  mkLines(major, 0.5);
+  mkLines(minor, 0.25);
+
+  // Cardinal labels N / O / S / W as billboard sprites
+  function makeLabel(txt, color) {
+    const s = 64, c = document.createElement('canvas');
+    c.width = c.height = s;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = color; ctx.font = 'bold 44px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(txt, s / 2, s / 2 + 2);
+    const tex = new THREE.CanvasTexture(c);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
+    sp.scale.set(0.9, 0.9, 0.9);
+    return sp;
+  }
+  const labels = [['N', 0, '#ff5544'], ['O', 4, '#eef4ff'], ['S', 8, '#eef4ff'], ['W', 12, '#eef4ff']];
+  const rLabel = CR + 0.95;
+  labels.forEach(([txt, i, col]) => {
+    const a = i * (Math.PI * 2 / 16);
+    const sp = makeLabel(txt, col);
+    sp.position.set(Math.sin(a) * rLabel, 0.45, -Math.cos(a) * rLabel);
+    sp.renderOrder = 6;
+    compassRing.add(sp);
+  });
+}
+scene.add(compassRing);
+
 // --- Horizon stars ---
 const starGeo = new THREE.BufferGeometry();
 const starVerts = [];
@@ -1027,6 +1075,8 @@ function animate() {
     windRing.rotation.y = boatGroup.rotation.y;     // ring turns with the boat
     windNeedle.position.set(bx, hC + 0.07, bz);
     windNeedle.rotation.y = -wind.from;             // needle points to the wind source
+    // Compass follows the boat's position but stays aligned to North (rotation 0)
+    compassRing.position.set(bx, hC + 0.05, bz);
 
     // Soft shadow on the water: flat, aligned with the hull, nudged away from the sun
     boatShadow.position.set(bx - 0.5, hC + 0.04, bz - 0.3);
