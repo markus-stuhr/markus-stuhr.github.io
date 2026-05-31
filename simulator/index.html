@@ -526,21 +526,29 @@ scene.add(windNeedle);
   windRing.add(polar);
 }
 
-// Angle gridlines every 30° around the ring (relative to the bow)
+// Angle ticks only near the rim (inner ~80% stays clear): long every 30°,
+// short every 10° (two minor ticks between each major one).
 {
-  const verts = [];
-  const rIn = 0.6, rOut = RING_R + 0.05;                 // spokes from near the boat to the rim
-  for (let deg = 0; deg < 360; deg += 30) {
-    const a = deg * Math.PI / 180;                        // measured from the bow (local -z)
+  const rOut = RING_R + 0.04;
+  const rMajor = RING_R * 0.78;   // long ticks reach in to ~78% of the radius
+  const rMinor = RING_R * 0.90;   // short ticks only in the outer band
+  const major = [], minor = [];
+  for (let deg = 0; deg < 360; deg += 10) {
+    const a = deg * Math.PI / 180;          // from the bow (local -z)
     const dx = Math.sin(a), dz = -Math.cos(a);
-    verts.push(dx * rIn, 0.01, dz * rIn, dx * rOut, 0.01, dz * rOut);
+    const arr = (deg % 30 === 0) ? major : minor;
+    const rIn = (deg % 30 === 0) ? rMajor : rMinor;
+    arr.push(dx * rIn, 0.01, dz * rIn, dx * rOut, 0.01, dz * rOut);
   }
-  const lg = new THREE.BufferGeometry();
-  lg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-  const lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
-    color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false,
-  }));
-  windRing.add(lines);
+  const mk = (verts, opacity) => {
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    windRing.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
+      color: 0xffffff, transparent: true, opacity, depthWrite: false,
+    })));
+  };
+  mk(major, 0.35);
+  mk(minor, 0.2);
 }
 
 scene.add(windRing);
