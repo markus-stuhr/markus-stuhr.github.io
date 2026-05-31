@@ -342,19 +342,22 @@ sailPivot.add(gooseneck);
 // Shape the flat plane into a triangular sail in the y-z plane.
 // We map the unit plane's (x,y) corners to sail (z,y): tack, head, clew.
 // Tack and clew sit on the boom so the foot runs right along the spar.
+// Square-top main: a quadrilateral (tack, clew, head-aft, head-fwd) with a
+// nearly straight leech and a squared headboard rather than a pointed top.
 const TACK = new THREE.Vector3(0, BOOM_Y, 0);
-const HEAD = new THREE.Vector3(0, 4.85, 0);          // head near the masthead
+const HEAD = new THREE.Vector3(0, 4.85, 0);          // top at the mast (masthead)
+const HEAD_AFT = new THREE.Vector3(0, 4.6, 0.62);    // squared head, aft corner
 const CLEW = new THREE.Vector3(0, BOOM_Y, BOOM_LEN); // clew at the boom end, aft (+z)
 const sailPos = sailGeo.attributes.position;
 const sailBase = new Float32Array(sailPos.count * 3);
 const _lu = new THREE.Vector3(), _le = new THREE.Vector3(), _p = new THREE.Vector3();
 for (let i = 0; i < sailPos.count; i++) {
-  // plane local coords in [0,1]: u = luff(0) -> leech(1), v = tack(0) -> head(1)
+  // plane local coords in [0,1]: u = luff(0) -> leech(1), v = foot(0) -> head(1)
   const u = sailPos.getX(i) + 0.5;
   const v = sailPos.getY(i) + 0.5;
-  _lu.lerpVectors(TACK, HEAD, v);                 // luff point on the mast
-  _le.lerpVectors(CLEW, HEAD, v);                 // straight leech (clew -> head)
-  _le.z += Math.sin(v * Math.PI) * 0.6;           // roach: convex leech, fullest mid-height
+  _lu.lerpVectors(TACK, HEAD, v);                 // luff edge (mast)
+  _le.lerpVectors(CLEW, HEAD_AFT, v);             // leech edge (clew -> head-aft)
+  _le.z += Math.sin(v * Math.PI) * 0.12;          // slight roach only
   _p.lerpVectors(_lu, _le, u);
   sailPos.setXYZ(i, _p.x, _p.y, _p.z);
   sailBase[i * 3] = _p.x; sailBase[i * 3 + 1] = _p.y; sailBase[i * 3 + 2] = _p.z;
@@ -529,8 +532,19 @@ const oppMast = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 4.75, 8),
 oppMast.position.set(0, 2.68, MAST_Z); oppGroup.add(oppMast);
 const oppSailMat = new THREE.MeshPhongMaterial({ color: 0xcfd6de, side: THREE.DoubleSide });
 const oppMainPivot = new THREE.Group(); oppMainPivot.position.set(0, 0, MAST_Z); oppGroup.add(oppMainPivot);
-oppMainPivot.add(new THREE.Mesh(
-  triGeo3(new THREE.Vector3(0, BOOM_Y, 0), new THREE.Vector3(0, 4.85, 0), new THREE.Vector3(0, BOOM_Y, BOOM_LEN)), oppSailMat));
+{
+  // square-top main (quad): tack, clew, head-aft, head-fwd
+  const qg = new THREE.BufferGeometry();
+  qg.setAttribute('position', new THREE.Float32BufferAttribute([
+    0, BOOM_Y, 0,            // tack
+    0, BOOM_Y, BOOM_LEN,     // clew
+    0, 4.6, 0.62,            // head aft
+    0, 4.85, 0,              // head fwd (mast)
+  ], 3));
+  qg.setIndex([0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0]);
+  qg.computeVertexNormals();
+  oppMainPivot.add(new THREE.Mesh(qg, oppSailMat));
+}
 const oppBoomG = new THREE.CylinderGeometry(0.05, 0.05, BOOM_LEN, 8);
 oppBoomG.rotateX(Math.PI / 2); oppBoomG.translate(0, BOOM_Y, BOOM_LEN / 2);
 oppMainPivot.add(new THREE.Mesh(oppBoomG, new THREE.MeshPhongMaterial({ color: 0xbbbbbb })));
