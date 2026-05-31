@@ -643,18 +643,31 @@ scene.add(windNeedle);
   const seg = 120;
   const g = new THREE.RingGeometry(RING_R - 0.30, RING_R - 0.08, seg, 1); // narrow band
   const pos = g.attributes.position;
-  const cRed = new THREE.Color(0xff3b2f), cYel = new THREE.Color(0xffd23b), cGrn = new THREE.Color(0x2fdd5e);
+  // colour ramp by efficiency: red (no-go) -> orange -> dark green (close-hauled) -> bright green (reach)
+  const stops = [
+    [0.00, new THREE.Color(0xff3b2f)],
+    [0.30, new THREE.Color(0xff8a2f)],
+    [0.60, new THREE.Color(0x148a39)], // darker green = the close-hauled groove
+    [1.00, new THREE.Color(0x5dff7a)], // bright green = fastest reach
+  ];
   const tmp = new THREE.Color();
+  const rampColor = (e) => {
+    for (let s = 1; s < stops.length; s++) {
+      if (e <= stops[s][0]) {
+        const f = (e - stops[s - 1][0]) / (stops[s][0] - stops[s - 1][0]);
+        return tmp.copy(stops[s - 1][1]).lerp(stops[s][1], f);
+      }
+    }
+    return tmp.copy(stops[stops.length - 1][1]);
+  };
   const colors = [];
   for (let i = 0; i < pos.count; i++) {
     const phi = Math.atan2(pos.getY(i), pos.getX(i));   // from +x toward +y
     let diff = phi - Math.PI / 2;                        // relative to wind source
     diff = Math.atan2(Math.sin(diff), Math.cos(diff));   // wrap to -PI..PI
     const twa = Math.abs(diff) * 180 / Math.PI;          // 0 (into wind) .. 180 (downwind)
-    const eff = sailEfficiency(twa);                     // 0..1 from the polar
-    if (eff < 0.5) tmp.copy(cRed).lerp(cYel, eff / 0.5);
-    else tmp.copy(cYel).lerp(cGrn, (eff - 0.5) / 0.5);
-    colors.push(tmp.r, tmp.g, tmp.b);
+    const c = rampColor(sailEfficiency(twa));
+    colors.push(c.r, c.g, c.b);
   }
   g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   g.rotateX(-Math.PI / 2);
@@ -873,13 +886,14 @@ function normAngle(a) {
 }
 
 // Sail efficiency vs. true wind angle (|TWA| in degrees). Simplified polar:
-// 0–30° = no-go (in irons), peak on a reach ~90–110°, tapers downwind.
+// narrow no-go (<22°), a strong close-hauled groove, peak on the reach, easing downwind.
 function sailEfficiency(twaDeg) {
   const a = Math.abs(twaDeg);
-  if (a < 30) return 0;
-  if (a < 50) return ((a - 30) / 20) * 0.65;          // ramp out of the no-go zone
-  if (a <= 110) return 0.65 + ((a - 50) / 60) * 0.35; // build to full power on the reach
-  return 1.0 - ((a - 110) / 70) * 0.35;               // ease off running downwind
+  if (a < 22) return 0;                               // narrow no-go (in irons)
+  if (a < 32) return ((a - 22) / 10) * 0.45;          // quick ramp out of the no-go
+  if (a < 50) return 0.45 + ((a - 32) / 18) * 0.25;   // close-hauled groove (~0.45–0.70)
+  if (a <= 110) return 0.70 + ((a - 50) / 60) * 0.30; // build to full power on the reach
+  return 1.0 - ((a - 110) / 70) * 0.30;               // ease off running downwind
 }
 
 let twaDeg = 0;   // exposed for HUD
