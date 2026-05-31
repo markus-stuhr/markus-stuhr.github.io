@@ -587,6 +587,29 @@ function updateOpponent(dt) {
   oppJibPivot.quaternion.setFromAxisAngle(oppJibAxis, oppSailAngle * 0.85);
 }
 
+// --- Track lines: each boat leaves a dashed trail on the water (the sailed course) ---
+function makeTrack(color) {
+  const mat = new THREE.LineDashedMaterial({
+    color, dashSize: 1.3, gapSize: 0.9, transparent: true, opacity: 0.7, depthWrite: false,
+  });
+  const line = new THREE.Line(new THREE.BufferGeometry(), mat);
+  line.frustumCulled = false;
+  scene.add(line);
+  return { line, pts: [], lx: null, lz: null };
+}
+const playerTrack = makeTrack(0xffffff);
+const oppTrack = makeTrack(0x2a3a48);
+function recordTrack(tr, x, z) {
+  if (tr.lx === null || Math.hypot(x - tr.lx, z - tr.lz) > 2.5) {
+    tr.pts.push(new THREE.Vector3(x, 0.08, z));
+    if (tr.pts.length > 800) tr.pts.shift();
+    tr.line.geometry.setFromPoints(tr.pts);
+    tr.line.computeLineDistances();
+    tr.lx = x; tr.lz = z;
+  }
+}
+function clearTrack(tr) { tr.pts.length = 0; tr.lx = null; tr.line.geometry.setFromPoints([]); }
+
 // --- Wind disc: just the coloured polar ring + a wind needle ---
 const windRing = new THREE.Group();
 const RING_R = 3.4;
@@ -832,6 +855,7 @@ function restartRace() {
   // reset the opponent too
   boat2.heading = 0; boat2.speed = 0; boat2.rudder = 0; boat2.nextMark = 0; boat2.done = false;
   oppGroup.position.set(20, 0.3, 0);
+  clearTrack(playerTrack); clearTrack(oppTrack);
   elRaceMsg.textContent = 'Steuere durch die Marken in der Reihenfolge';
 }
 
@@ -1243,6 +1267,8 @@ function animate() {
   updateMarkPointers();
   updateWake(t, dt);
   updateOpponent(dt);
+  recordTrack(playerTrack, boatGroup.position.x, boatGroup.position.z);
+  recordTrack(oppTrack, oppGroup.position.x, oppGroup.position.z);
 
   // Sit the boat on the actual wave surface: sample the wave at the hull
   // centre (float height) and fore/aft + port/stbd (pitch & roll).
