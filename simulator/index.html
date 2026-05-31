@@ -119,7 +119,7 @@ function makeWaterTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = S;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#1c6a70';
+  ctx.fillStyle = '#1d6486';
   ctx.fillRect(0, 0, S, S);
   // soft lighter/darker patches; draw wrapped copies so the tile seams match
   for (let i = 0; i < 140; i++) {
@@ -129,7 +129,7 @@ function makeWaterTexture() {
     for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
       const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
       const a = 0.07 + Math.random() * 0.07;
-      g.addColorStop(0, light ? `rgba(90,200,195,${a})` : `rgba(8,45,55,${a})`);
+      g.addColorStop(0, light ? `rgba(95,185,215,${a})` : `rgba(8,42,62,${a})`);
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -153,9 +153,9 @@ const waterTex = makeWaterTexture();
 waterTex.repeat.set(OCEAN_SIZE / TILE, OCEAN_SIZE / TILE);
 
 const oceanMat = new THREE.MeshPhongMaterial({
-  color: 0xbfeae4,        // slight turquoise tint over the texture
+  color: 0xc3e4ef,        // slight blue-turquoise tint over the texture
   map: waterTex,
-  specular: 0x88c0b8,
+  specular: 0x88b8cc,
   shininess: 90,
   side: THREE.FrontSide,
   transparent: true,   // let the submerged hull/keel show through faintly
