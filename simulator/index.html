@@ -332,9 +332,9 @@ boatGroup.add(goldStripe(-1));
 const keelGeo = new THREE.BufferGeometry();
 keelGeo.setAttribute('position', new THREE.Float32BufferAttribute([
   // front face (x = +0.03): top-fwd, top-aft, bot-aft, bot-fwd
-   0.03, -0.06, -0.20,   0.03, -0.06,  0.10,   0.03, -0.84, 0.09,   0.03, -0.84, -0.07, // 0,1,2,3
+   0.03, -0.06, -0.15,   0.03, -0.06,  0.05,   0.03, -0.84, 0.06,   0.03, -0.84, -0.04, // 0,1,2,3
   // back face (x = -0.03)
-  -0.03, -0.06, -0.20,  -0.03, -0.06,  0.10,  -0.03, -0.84, 0.09,  -0.03, -0.84, -0.07, // 4,5,6,7
+  -0.03, -0.06, -0.15,  -0.03, -0.06,  0.05,  -0.03, -0.84, 0.06,  -0.03, -0.84, -0.04, // 4,5,6,7
 ], 3));
 keelGeo.setIndex([
   0,1,2, 0,2,3,            // front
