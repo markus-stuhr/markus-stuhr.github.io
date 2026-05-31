@@ -380,7 +380,7 @@ const boom = new THREE.Mesh(boomGeo, new THREE.MeshPhongMaterial({ color: 0x2328
 sailPivot.add(boom);
 // Gooseneck fitting where the boom meets the mast
 const gooseneck = new THREE.Mesh(
-  new THREE.SphereGeometry(0.09, 8, 8),
+  new THREE.SphereGeometry(0.035, 8, 8),
   new THREE.MeshPhongMaterial({ color: 0x333333 })
 );
 gooseneck.position.set(0, BOOM_Y, 0.02);
@@ -501,8 +501,16 @@ rudderPivot.add(tiller);
   // fore & back stays
   L(...M, 0, 0.55, HULL_ZBOW);
   L(...M, 0, 0.42, HULL_ZSTERN);
-  // spreader bars (both sides)
-  for (const sp of SP) { L(0, sp.h, mz, sp.x, sp.h, mz); L(0, sp.h, mz, -sp.x, sp.h, mz); }
+  // spreader bars as thin cylinders (a bit thicker than the wires)
+  const sprMat = new THREE.MeshPhongMaterial({ color: 0x23282e });
+  for (const sp of SP) {
+    for (const s of [1, -1]) {
+      const g = new THREE.CylinderGeometry(0.016, 0.016, sp.x, 6);
+      g.rotateZ(Math.PI / 2);                  // lie along x
+      g.translate(s * sp.x / 2, sp.h, mz);
+      boatGroup.add(new THREE.Mesh(g, sprMat));
+    }
+  }
   // cap shroud over all spreaders down to the chainplate, both sides
   for (const s of [1, -1]) {
     let px = 0, py = M[1], pz = mz;            // start at the masthead
