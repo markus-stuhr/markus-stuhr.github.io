@@ -197,14 +197,18 @@ function animateWaves(t) {
 const boatGroup = new THREE.Group();
 
 // Hull — lofted from cross-section "stations" running bow (−z) to stern (+z)
-const HULL_ZBOW = -2.15, HULL_ZSTERN = 1.95, HULL_MAXBEAM = 0.46; // LOA ~4.1, narrow racing hull
+const HULL_ZBOW = -2.15, HULL_ZSTERN = 1.95, HULL_MAXBEAM = 0.52; // LOA ~4.1, beamy aft
 const hullHalfBeam = (s) => {
   let b = s < 0.5
     ? HULL_MAXBEAM * Math.pow(s / 0.5, 0.6)                  // fine, almost plumb bow
-    : HULL_MAXBEAM * (1 - 0.18 * ((s - 0.5) / 0.5));         // carry beam aft to a wide transom
+    : HULL_MAXBEAM * (1 - 0.04 * ((s - 0.5) / 0.5));         // carry beam to a wide transom
   return Math.max(0.03, b);
 };
-const hullDepth = (s) => 0.4 * (0.65 + 0.35 * Math.min(s / 0.25, 1)); // shallow canoe body
+const hullDepth = (s) => {
+  let d = 0.4 * (0.65 + 0.35 * Math.min(s / 0.25, 1));       // shallow forward, full midship
+  if (s > 0.55) d *= 1 - 0.42 * ((s - 0.55) / 0.45);         // flatten toward the broad transom
+  return d;
+};
 const hullDeckY = (s) => 0.30 + 0.16 * Math.pow(1 - s, 2) + 0.03 * s; // low, nearly flat sheer
 
 function buildHull() {
