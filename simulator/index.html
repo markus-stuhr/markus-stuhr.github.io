@@ -1022,9 +1022,9 @@ function animate() {
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle; // wave roll + wind heel
 
     // Polar ring is fixed to the boat (red at the bow); the needle shows the wind.
-    windRing.position.set(bx, hC + 0.82, bz); // just under the boom
+    windRing.position.set(bx, hC + 0.05, bz); // sit on the water surface
     windRing.rotation.y = boatGroup.rotation.y;     // ring turns with the boat
-    windNeedle.position.set(bx, hC + 0.84, bz);
+    windNeedle.position.set(bx, hC + 0.07, bz);
     windNeedle.rotation.y = -wind.from;             // needle points to the wind source
 
     // Soft shadow on the water: flat, aligned with the hull, nudged away from the sun
