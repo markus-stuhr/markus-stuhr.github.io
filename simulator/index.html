@@ -503,7 +503,7 @@ scene.add(windNeedle);
 // green abeam (fastest). The needle above then reads the wind against it.
 {
   const seg = 120;
-  const g = new THREE.RingGeometry(RING_R - 0.55, RING_R - 0.08, seg, 1);
+  const g = new THREE.RingGeometry(RING_R - 0.30, RING_R - 0.08, seg, 1); // narrow band
   const pos = g.attributes.position;
   const cRed = new THREE.Color(0xff3b2f), cYel = new THREE.Color(0xffd23b), cGrn = new THREE.Color(0x2fdd5e);
   const tmp = new THREE.Color();
@@ -521,9 +521,26 @@ scene.add(windNeedle);
   g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   g.rotateX(-Math.PI / 2);
   const polar = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    vertexColors: true, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+    vertexColors: true, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false,
   }));
   windRing.add(polar);
+}
+
+// Angle gridlines every 30° around the ring (relative to the bow)
+{
+  const verts = [];
+  const rIn = 0.6, rOut = RING_R + 0.05;                 // spokes from near the boat to the rim
+  for (let deg = 0; deg < 360; deg += 30) {
+    const a = deg * Math.PI / 180;                        // measured from the bow (local -z)
+    const dx = Math.sin(a), dz = -Math.cos(a);
+    verts.push(dx * rIn, 0.01, dz * rIn, dx * rOut, 0.01, dz * rOut);
+  }
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  const lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false,
+  }));
+  windRing.add(lines);
 }
 
 scene.add(windRing);
