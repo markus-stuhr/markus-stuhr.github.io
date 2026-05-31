@@ -261,15 +261,15 @@ boatGroup.add(hull);
 
 // Teak deck panel, inset from the dark deck edge (margin tapers to 0 at the stern)
 {
-  const NSD = 22, bowStart = 0.16, sideMargin = 0.08;
+  const NSD = 26, bowStart = 0.04, sideMargin = 0.07;
   const pts = [];
   for (let k = 0; k <= NSD; k++) {
     const s = bowStart + (1 - bowStart) * (k / NSD);
     const z = HULL_ZBOW + (HULL_ZSTERN - HULL_ZBOW) * s;
     const hb = hullHalfBeam(s);
-    const margin = sideMargin * (s < 0.82 ? 1 : Math.max(0, (1 - s) / 0.18)); // full to the edge aft
+    const edge = Math.max(0, hb - sideMargin);  // constant dark border to the stern; teak pinches at the bow tip
     const dy = hullDeckY(s) + 0.006;
-    pts.push(hb - margin, dy, z, -(hb - margin), dy, z); // starboard, port
+    pts.push(edge, dy, z, -edge, dy, z); // starboard, port
   }
   const tf = [];
   for (let k = 0; k < NSD; k++) {
@@ -298,7 +298,7 @@ function goldStripe(side) {
     const s = k / 24, z = HULL_ZBOW + (HULL_ZSTERN - HULL_ZBOW) * s;
     pts.push(new THREE.Vector3(side * hullHalfBeam(s) * 0.99, hullDeckY(s) - 0.06, z));
   }
-  const tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 0.02, 6, false);
+  const tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 0.009, 6, false);
   return new THREE.Mesh(tube, new THREE.MeshPhongMaterial({ color: 0xd8b24a, emissive: 0x2e2408, shininess: 90 }));
 }
 boatGroup.add(goldStripe(1));
