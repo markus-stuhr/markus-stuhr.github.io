@@ -537,27 +537,30 @@ const compassRing = new THREE.Group(); // world -z is North
   mkLines(major, 0.5);
   mkLines(minor, 0.25);
 
-  // Cardinal labels N / O / S / W as billboard sprites
+  // Cardinal labels N / O / S / W lying flat in the ring plane (small, North-up)
   function makeLabel(txt, color) {
     const s = 64, c = document.createElement('canvas');
     c.width = c.height = s;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = color; ctx.font = 'bold 44px sans-serif';
+    ctx.fillStyle = color; ctx.font = 'bold 46px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(txt, s / 2, s / 2 + 2);
     const tex = new THREE.CanvasTexture(c);
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
-    sp.scale.set(0.9, 0.9, 0.9);
-    return sp;
+    const g = new THREE.PlaneGeometry(0.5, 0.5);
+    g.rotateX(-Math.PI / 2);                 // lie flat; texture top points North (-z)
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    m.renderOrder = 6;
+    return m;
   }
   const labels = [['N', 0, '#ff5544'], ['O', 4, '#eef4ff'], ['S', 8, '#eef4ff'], ['W', 12, '#eef4ff']];
-  const rLabel = CR + 0.95;
+  const rLabel = CR + 0.7;
   labels.forEach(([txt, i, col]) => {
     const a = i * (Math.PI * 2 / 16);
-    const sp = makeLabel(txt, col);
-    sp.position.set(Math.sin(a) * rLabel, 0.45, -Math.cos(a) * rLabel);
-    sp.renderOrder = 6;
-    compassRing.add(sp);
+    const m = makeLabel(txt, col);
+    m.position.set(Math.sin(a) * rLabel, 0.04, -Math.cos(a) * rLabel);
+    compassRing.add(m);
   });
 }
 scene.add(compassRing);
