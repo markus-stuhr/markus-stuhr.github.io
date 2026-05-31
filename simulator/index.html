@@ -71,6 +71,7 @@
   <div class="panel"><div class="label">TWS</div><div class="value"><span id="tws">0</span><small> kn</small></div></div>
   <div class="panel"><div class="label">TWA</div><div class="value"><span id="twd">0°</span></div></div>
   <div class="panel"><div class="label">VMG</div><div class="value"><span id="vmg">0</span><small> %</small></div></div>
+  <div class="panel"><div class="label">%Speed</div><div class="value"><span id="vmgspeed">0.0</span><small> kn</small></div></div>
   <div class="panel"><div class="label">Marke <span id="markNum">1/4</span></div><div class="value"><span id="markDist">—</span><small> m</small></div></div>
   <div class="panel"><div class="label">Speed</div><div class="value"><span id="sog">0.0</span><small> kn</small></div></div>
 </div>
@@ -971,6 +972,7 @@ const elRaceMsg = document.getElementById('raceMsg');
 const elMarkNum = document.getElementById('markNum');
 const elMarkDist = document.getElementById('markDist');
 const elVmg = document.getElementById('vmg');
+const elVmgSpeed = document.getElementById('vmgspeed');
 
 const race = {
   state: 'pre',     // 'pre' | 'racing' | 'done'
@@ -1021,9 +1023,12 @@ function updateRace(dt) {
       const rel = normAngle(bearing - boat.heading);  // course error to the mark
       // VMG = share of boat speed actually closing on the mark (100% = straight at it)
       elVmg.textContent = Math.round(Math.cos(rel) * 100);
+      // %Speed = actual velocity made good toward the mark (speed × VMG), in kn
+      elVmgSpeed.textContent = (Math.abs(boat.speed) * 1.4 * Math.cos(rel)).toFixed(1);
     } else {
       elMarkDist.textContent = '—';
       elVmg.textContent = '—';
+      elVmgSpeed.textContent = '—';
     }
   }
 
