@@ -914,13 +914,18 @@ function updateVisuals(dt) {
 }
 
 // --- Mark bearing indicators on the compass ring ---
-// One marker per course mark, placed at the world bearing to that mark.
+// One small triangle per mark, sitting at the world bearing and pointing outward.
+const markTriGeo = new THREE.BufferGeometry();
+markTriGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+  0, 0, 0.20,    // tip (points outward, +z before rotation)
+  -0.13, 0, -0.11,
+  0.13, 0, -0.11,
+], 3));
+markTriGeo.setIndex([0, 1, 2, 2, 1, 0]);
 const markPointers = COURSE.map(() => {
-  const tri = new THREE.Mesh(
-    new THREE.CircleGeometry(0.22, 16),
-    new THREE.MeshBasicMaterial({ color: 0xff9933, transparent: true, depthWrite: false, side: THREE.DoubleSide })
-  );
-  tri.geometry.rotateX(-Math.PI / 2); // lie flat on the compass plane
+  const tri = new THREE.Mesh(markTriGeo, new THREE.MeshBasicMaterial({
+    color: 0xff9933, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }));
   tri.renderOrder = 6;
   compassRing.add(tri);
   return tri;
@@ -934,7 +939,9 @@ function updateMarkPointers() {
     p.visible = true;
     const dx = COURSE[i].x - bx, dz = COURSE[i].z - bz;
     const len = Math.hypot(dx, dz) || 1;
-    p.position.set(dx / len * R, 0.05, dz / len * R); // compass is world-aligned (rot 0)
+    const ux = dx / len, uz = dz / len;
+    p.position.set(ux * R, 0.05, uz * R);   // compass is world-aligned (rot 0)
+    p.rotation.y = Math.atan2(ux, uz);       // tip points outward
     const next = i === race.nextMark;
     p.material.color.setHex(i < race.nextMark ? 0x7a96b4 : next ? 0x33ff88 : 0xff9933);
     p.scale.setScalar(next ? 1.4 : 1.0);
