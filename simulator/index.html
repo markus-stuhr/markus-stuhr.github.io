@@ -397,7 +397,7 @@ sailGeo.computeVertexNormals();
 
 // --- Jib (foresail): forestay from the bow to near the masthead ---
 const jibPivot = new THREE.Group();
-jibPivot.position.set(0, 0.32, -2.0);     // tack at the bow
+jibPivot.position.set(0, 0.62, -2.0);     // tack just above the bow deck
 boatGroup.add(jibPivot);
 const JIB_TACK = new THREE.Vector3(0, 0, 0);
 const JIB_HEAD = new THREE.Vector3(0, 5.5, 1.85 + MAST_Z); // up to the mast, near the top
