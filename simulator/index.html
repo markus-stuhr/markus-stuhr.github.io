@@ -493,8 +493,11 @@ const windAxis = new THREE.Mesh(
 );
 windAxis.rotation.x = -Math.PI / 2;
 windRing.add(windAxis);
-// wind-from marker: arrow on the ring pointing inward (the wind blows toward the boat)
-const windMarkerMat = new THREE.MeshBasicMaterial({ color: 0x33e0ff, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false });
+// Wind needle: separate group that rotates to the wind. The coloured ring is
+// boat-fixed (red at the bow); this needle swings round to show where the wind
+// comes from. Course is good when the needle sits over green.
+const windNeedle = new THREE.Group();
+const windMarkerMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false });
 const markGeo = new THREE.BufferGeometry();
 markGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
   -0.45, 0, -RING_R - 0.05,
@@ -502,12 +505,12 @@ markGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
    0,    0, -RING_R + 0.7,   // tip points inward toward the boat
 ]), 3));
 markGeo.setIndex([0, 1, 2, 2, 1, 0]);
-const windMarker = new THREE.Mesh(markGeo, windMarkerMat);
-windRing.add(windMarker);
+windNeedle.add(new THREE.Mesh(markGeo, windMarkerMat));
+scene.add(windNeedle);
 
-// Continuous polar band: colour the whole ring by sail efficiency at each
-// angle — red (no-go) -> yellow -> green (fast). The wind source is at local
-// -z (ring angle 90°), so a vertex's angle from there is its true wind angle.
+// Continuous polar band fixed to the BOAT: colour by sail efficiency at each
+// angle from the bow — red (no-go) at the bow (local -z), through yellow, to
+// green abeam (fastest). The needle above then reads the wind against it.
 {
   const seg = 120;
   const g = new THREE.RingGeometry(RING_R - 0.55, RING_R - 0.08, seg, 1);
@@ -1005,9 +1008,11 @@ function animate() {
     boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L); // bow up when the sea ahead is higher
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle; // wave roll + wind heel
 
-    // Wind disc: follows the boat, stays flat, marker points to the true wind source
+    // Polar ring is fixed to the boat (red at the bow); the needle shows the wind.
     windRing.position.set(bx, hC + 0.82, bz); // just under the boom
-    windRing.rotation.y = -wind.from; // marker (local -z) aligns with the wind-from world bearing
+    windRing.rotation.y = boatGroup.rotation.y;     // ring turns with the boat
+    windNeedle.position.set(bx, hC + 0.84, bz);
+    windNeedle.rotation.y = -wind.from;             // needle points to the wind source
 
     // Soft shadow on the water: flat, aligned with the hull, nudged away from the sun
     boatShadow.position.set(bx - 0.5, hC + 0.04, bz - 0.3);
