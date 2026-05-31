@@ -1028,22 +1028,26 @@ function makeTextSprite(text, color = '#ffffff') {
 const buoys = [];
 COURSE.forEach((m, i) => {
   const grp = new THREE.Group();
+  // the physical buoy is small (~20% of the old size); kept in a scaled sub-group
+  const body = new THREE.Group();
+  body.scale.setScalar(0.2);
+  grp.add(body);
   const buoy = new THREE.Mesh(
     new THREE.CylinderGeometry(0.9, 1.2, 2.4, 12),
     new THREE.MeshPhongMaterial({ color: 0xff7700, emissive: 0x331100 })
   );
   buoy.position.y = 1.0;
-  grp.add(buoy);
+  body.add(buoy);
   const ball = new THREE.Mesh(
     new THREE.SphereGeometry(0.7, 12, 12),
     new THREE.MeshPhongMaterial({ color: 0xffaa33, emissive: 0x442200 })
   );
   ball.position.y = 2.4;
-  grp.add(ball);
-  // waypoint number on the buoy
+  body.add(ball);
+  // waypoint number at the old size, floating above the small buoy
   const num = makeTextSprite(String(i + 1));
   num.scale.set(1.7, 1.7, 1.7);
-  num.position.set(0, 1.3, 0);
+  num.position.set(0, 1.5, 0);
   grp.add(num);
   // light beam so the next mark is findable from a distance
   const beam = new THREE.Mesh(
