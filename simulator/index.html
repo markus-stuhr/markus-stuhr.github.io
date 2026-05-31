@@ -868,8 +868,9 @@ scene.add(windNeedle);
   for (let deg = 0; deg < 360; deg += 10) {
     const a = deg * Math.PI / 180;          // from the bow (local -z)
     const dx = Math.sin(a), dz = -Math.cos(a);
+    const beam = (deg === 90 || deg === 270); // exactly starboard / port: long beam lines
     const arr = (deg % 30 === 0) ? major : minor;
-    const rIn = (deg % 30 === 0) ? rMajor : rMinor;
+    const rIn = beam ? (2 * rMajor - rOut) : (deg % 30 === 0) ? rMajor : rMinor; // beam lines twice as long, reaching toward the boat
     arr.push(dx * rIn, 0.01, dz * rIn, dx * rOut, 0.01, dz * rOut);
   }
   const mk = (verts, opacity) => {
