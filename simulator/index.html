@@ -645,10 +645,10 @@ scene.add(windNeedle);
   const pos = g.attributes.position;
   // colour ramp by efficiency: red (no-go) -> orange -> dark green (close-hauled) -> bright green (reach)
   const stops = [
-    [0.00, new THREE.Color(0xff3b2f)],
-    [0.30, new THREE.Color(0xff8a2f)],
-    [0.60, new THREE.Color(0x148a39)], // darker green = the close-hauled groove
-    [1.00, new THREE.Color(0x5dff7a)], // bright green = fastest reach
+    [0.00, new THREE.Color(0xff3b2f)], // red (no-go)
+    [0.33, new THREE.Color(0xffd23b)], // yellow
+    [0.66, new THREE.Color(0x66ff88)], // light green
+    [1.00, new THREE.Color(0x148a39)], // dark green (fastest)
   ];
   const tmp = new THREE.Color();
   const rampColor = (e) => {
