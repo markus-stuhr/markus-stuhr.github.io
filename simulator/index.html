@@ -326,15 +326,17 @@ const HEAD = new THREE.Vector3(0, 4.85, 0);          // head near the masthead
 const CLEW = new THREE.Vector3(0, BOOM_Y, BOOM_LEN); // clew at the boom end, aft (+z)
 const sailPos = sailGeo.attributes.position;
 const sailBase = new Float32Array(sailPos.count * 3);
+const _lu = new THREE.Vector3(), _le = new THREE.Vector3(), _p = new THREE.Vector3();
 for (let i = 0; i < sailPos.count; i++) {
-  // plane local coords in [-0.5, 0.5]
-  const u = sailPos.getX(i) + 0.5; // 0..1 along foot (mast -> clew)
-  const v = sailPos.getY(i) + 0.5; // 0..1 up the luff (tack -> head)
-  // Triangle: at the mast (u=0) the sail spans tack->head; at the clew (u=1) it pinches to CLEW
-  const mastPt = new THREE.Vector3().lerpVectors(TACK, HEAD, v);
-  const p = new THREE.Vector3().lerpVectors(mastPt, CLEW, u);
-  sailPos.setXYZ(i, p.x, p.y, p.z);
-  sailBase[i * 3] = p.x; sailBase[i * 3 + 1] = p.y; sailBase[i * 3 + 2] = p.z;
+  // plane local coords in [0,1]: u = luff(0) -> leech(1), v = tack(0) -> head(1)
+  const u = sailPos.getX(i) + 0.5;
+  const v = sailPos.getY(i) + 0.5;
+  _lu.lerpVectors(TACK, HEAD, v);                 // luff point on the mast
+  _le.lerpVectors(CLEW, HEAD, v);                 // straight leech (clew -> head)
+  _le.z += Math.sin(v * Math.PI) * 0.6;           // roach: convex leech, fullest mid-height
+  _p.lerpVectors(_lu, _le, u);
+  sailPos.setXYZ(i, _p.x, _p.y, _p.z);
+  sailBase[i * 3] = _p.x; sailBase[i * 3 + 1] = _p.y; sailBase[i * 3 + 2] = _p.z;
 }
 sailGeo.computeVertexNormals();
 
