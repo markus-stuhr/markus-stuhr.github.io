@@ -447,6 +447,28 @@ boatGroup.position.set(0, 0.3, 0);
 boatGroup.rotation.order = 'YXZ';
 scene.add(boatGroup);
 
+// --- Soft transparent shadow on the water under the boat ---
+function makeShadowTexture() {
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, 'rgba(0,20,40,0.55)');
+  g.addColorStop(0.55, 'rgba(0,20,40,0.32)');
+  g.addColorStop(1, 'rgba(0,20,40,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  return new THREE.CanvasTexture(c);
+}
+const shadowGeo = new THREE.PlaneGeometry(1, 1);
+shadowGeo.rotateX(-Math.PI / 2);                 // lie flat on the water (XZ plane)
+const boatShadow = new THREE.Mesh(shadowGeo, new THREE.MeshBasicMaterial({
+  map: makeShadowTexture(), transparent: true, depthWrite: false, opacity: 0.7,
+}));
+boatShadow.scale.set(2.6, 1, 5.4);               // roughly the hull footprint (a bit larger)
+scene.add(boatShadow);
+
 // --- Wind disc: flat transparent ring around the boat marking where the wind comes from ---
 const windRing = new THREE.Group();
 const RING_R = 3.4;
@@ -978,6 +1000,10 @@ function animate() {
     // Wind disc: follows the boat, stays flat, marker points to the true wind source
     windRing.position.set(bx, hC + 0.82, bz); // just under the boom
     windRing.rotation.y = -wind.from; // marker (local -z) aligns with the wind-from world bearing
+
+    // Soft shadow on the water: flat, aligned with the hull, nudged away from the sun
+    boatShadow.position.set(bx - 0.5, hC + 0.04, bz - 0.3);
+    boatShadow.rotation.y = boatGroup.rotation.y;
   }
 
   // Chase camera locked directly astern: snaps with the boat's heading.
