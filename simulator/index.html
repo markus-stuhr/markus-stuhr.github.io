@@ -1616,6 +1616,17 @@ function animate() {
   buoys.forEach((b, i) => {
     const m = COURSE[i];
     b.grp.position.y = waveHeight(m.x, m.z, t);
+    // Drape the rounding-radius circle onto the wave surface (only the visible one)
+    if (b.zone.visible) {
+      [b.zone, b.ring].forEach((mesh) => {
+        const p = mesh.geometry.attributes.position;
+        for (let k = 0; k < p.count; k++) {
+          const wy = waveHeight(m.x + p.getX(k), m.z + p.getZ(k), t);
+          p.setY(k, wy - b.grp.position.y); // mesh.position.y keeps it just above water
+        }
+        p.needsUpdate = true;
+      });
+    }
   });
 
   // Chase camera: astern by default, orbited around the boat by mouse drag.
