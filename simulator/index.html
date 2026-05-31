@@ -484,26 +484,33 @@ tillerGeo.translate(0, 0.12, -0.3);
 const tiller = new THREE.Mesh(tillerGeo, new THREE.MeshPhongMaterial({ color: 0x8a6a3a }));
 rudderPivot.add(tiller);
 
-// --- Standing rigging: forestay, backstay, twin-spreader cap shrouds ---
+// --- Standing rigging: forestay, backstay, 4-spreader cap shrouds ---
 {
   const seg = [];
   const L = (ax, ay, az, bx, by, bz) => seg.push(ax, ay, az, bx, by, bz);
   const M = [0, 6.07, -0.18];        // masthead (mast top, rig scaled 1.2)
   const mz = -0.18;                  // mast fore-aft position (scaled)
-  const sp1 = 2.6, sp2 = 4.35;       // two spreader heights
-  const x1 = 0.42, x2 = 0.30;        // spreader tip half-widths (lower/upper)
+  // four spreader levels (height, tip half-width); the top one is shorter
+  const SP = [
+    { h: 1.55, x: 0.46 },
+    { h: 2.75, x: 0.39 },
+    { h: 3.90, x: 0.31 },
+    { h: 4.95, x: 0.20 },
+  ];
   const chx = 0.5, chy = 0.36, chz = 0.0; // chainplate at the deck edge (midship)
   // fore & back stays
   L(...M, 0, 0.55, HULL_ZBOW);
   L(...M, 0, 0.42, HULL_ZSTERN);
-  // spreaders (both sides, two levels)
-  L(0, sp1, mz, x1, sp1, mz); L(0, sp1, mz, -x1, sp1, mz);
-  L(0, sp2, mz, x2, sp2, mz); L(0, sp2, mz, -x2, sp2, mz);
-  // cap shroud over the spreaders to the chainplate, both sides
+  // spreader bars (both sides)
+  for (const sp of SP) { L(0, sp.h, mz, sp.x, sp.h, mz); L(0, sp.h, mz, -sp.x, sp.h, mz); }
+  // cap shroud over all spreaders down to the chainplate, both sides
   for (const s of [1, -1]) {
-    L(...M, s * x2, sp2, mz);
-    L(s * x2, sp2, mz, s * x1, sp1, mz);
-    L(s * x1, sp1, mz, s * chx, chy, chz);
+    let px = 0, py = M[1], pz = mz;            // start at the masthead
+    for (let k = SP.length - 1; k >= 0; k--) { // top spreader down to the lowest
+      const nx = s * SP[k].x, ny = SP[k].h;
+      L(px, py, pz, nx, ny, mz); px = nx; py = ny; pz = mz;
+    }
+    L(px, py, pz, s * chx, chy, chz);          // lowest spreader -> chainplate
   }
   const rg = new THREE.BufferGeometry();
   rg.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3));
