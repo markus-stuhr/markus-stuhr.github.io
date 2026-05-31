@@ -1269,7 +1269,7 @@ function updateVisuals(dt) {
     if (luffing) {
       bulge = Math.sin(t * 18 + by * 2 + bz) * 0.18 * u; // ripple, strongest at the leech
     } else {
-      bulge = Math.sin(u * Math.PI) * 0.45 * currentEff * vTaper * lee; // fullest mid-foot, to leeward
+      bulge = Math.sin(u * Math.PI) * 0.32 * currentEff * vTaper * lee; // fullest mid-foot, to leeward
     }
     sailPos.setX(i, bx + bulge);
   }
