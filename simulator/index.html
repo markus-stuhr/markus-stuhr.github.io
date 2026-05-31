@@ -1033,6 +1033,12 @@ function animate() {
     boatShadow.rotation.y = boatGroup.rotation.y;
   }
 
+  // Buoys bob up and down on the waves at their own positions
+  buoys.forEach((b, i) => {
+    const m = COURSE[i];
+    b.grp.position.y = waveHeight(m.x, m.z, t);
+  });
+
   // Chase camera: astern by default, orbited around the boat by mouse drag.
   {
     const h = boat.heading;
