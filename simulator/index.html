@@ -859,6 +859,25 @@ function updateVisuals(dt) {
   sailPos.needsUpdate = true;
   sailGeo.computeVertexNormals();
 
+  // Jib gets the same treatment: belly to leeward when powered, shiver when luffing.
+  const jibHeadY = JIB_HEAD.y;
+  for (let i = 0; i < jibPos.count; i++) {
+    const u = (i % 6) / 5;          // 0 at luff (forestay), 1 at clew
+    const bx = jibBase[i * 3];
+    const by = jibBase[i * 3 + 1];
+    const bz = jibBase[i * 3 + 2];
+    const vTaper = 1 - 0.5 * (by / jibHeadY);          // ease draft toward the head
+    let bulge;
+    if (luffing) {
+      bulge = Math.sin(t * 18 + by * 2 + bz) * 0.14 * u;
+    } else {
+      bulge = Math.sin(u * Math.PI) * 0.34 * currentEff * vTaper * lee;
+    }
+    jibPos.setX(i, bx + bulge);
+  }
+  jibPos.needsUpdate = true;
+  jibGeo.computeVertexNormals();
+
   // Masthead pennant streams downwind: the tip points away from the wind source.
   // Target = -twaDeg so it lines up opposite the wind-from marker on the disc.
   const pennantTarget = -twaDeg * DEG;
