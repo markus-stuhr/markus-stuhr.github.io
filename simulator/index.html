@@ -963,9 +963,32 @@ function drawMinimap() {
   mmCtx.fill();
 }
 
-// --- Camera (chase) ---
+// --- Camera (chase + mouse orbit) ---
 const CAM_BACK = 16;
 const CAM_HEIGHT = 7;
+const CAM_DIST = Math.hypot(CAM_BACK, CAM_HEIGHT);
+const CAM_BASE_ELEV = Math.atan2(CAM_HEIGHT, CAM_BACK);
+let camYaw = 0, camPitch = 0; // orbit offset from the astern view (drag to change)
+
+(function initOrbit() {
+  let dragging = false, lastX = 0, lastY = 0;
+  const el = renderer.domElement;
+  el.style.cursor = 'grab';
+  el.addEventListener('pointerdown', (e) => {
+    dragging = true; lastX = e.clientX; lastY = e.clientY;
+    el.style.cursor = 'grabbing'; el.setPointerCapture?.(e.pointerId);
+  });
+  const end = () => { dragging = false; el.style.cursor = 'grab'; };
+  el.addEventListener('pointerup', end);
+  el.addEventListener('pointercancel', end);
+  el.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    camYaw   -= (e.clientX - lastX) * 0.006;
+    camPitch += (e.clientY - lastY) * 0.005;
+    camPitch = Math.max(-0.3, Math.min(1.0, camPitch)); // keep elevation sensible
+    lastX = e.clientX; lastY = e.clientY;
+  });
+})();
 
 // --- Resize ---
 window.addEventListener('resize', () => {
@@ -1027,13 +1050,24 @@ function animate() {
     boatShadow.rotation.y = boatGroup.rotation.y;
   }
 
-  // Chase camera locked directly astern: snaps with the boat's heading.
-  camera.position.set(
-    boatGroup.position.x - Math.sin(boat.heading) * CAM_BACK,
-    boatGroup.position.y + CAM_HEIGHT,
-    boatGroup.position.z + Math.cos(boat.heading) * CAM_BACK
-  );
-  camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5, boatGroup.position.z);
+  // Chase camera: astern by default, orbited around the boat by mouse drag.
+  {
+    const h = boat.heading;
+    const elev = CAM_BASE_ELEV + camPitch;
+    const horiz = CAM_DIST * Math.cos(elev);
+    const vert = CAM_DIST * Math.sin(elev);
+    // astern horizontal unit vector, rotated by the orbit yaw
+    const ax = -Math.sin(h), az = Math.cos(h);
+    const cy = Math.cos(camYaw), sy = Math.sin(camYaw);
+    const dirX = ax * cy + az * sy;
+    const dirZ = -ax * sy + az * cy;
+    camera.position.set(
+      boatGroup.position.x + dirX * horiz,
+      boatGroup.position.y + vert,
+      boatGroup.position.z + dirZ * horiz
+    );
+    camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5, boatGroup.position.z);
+  }
 
   renderer.render(scene, camera);
 }
