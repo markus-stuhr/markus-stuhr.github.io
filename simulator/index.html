@@ -230,11 +230,13 @@ function buildHull() {
       const a = idx(i, j), b = idx(i + 1, j), c = idx(i + 1, j + 1), d = idx(i, j + 1);
       faces.push(a, b, d, b, c, d);
     }
+  const skinLen = faces.length;
   // deck: span the two deck edges (j=0 starboard, j=NA port) along the length
   for (let i = 0; i < NS - 1; i++) {
     const a = idx(i, 0), b = idx(i, NA), c = idx(i + 1, NA), d = idx(i + 1, 0);
     faces.push(a, b, c, a, c, d);
   }
+  const deckLen = faces.length;
   // transom cap at the stern (last station ring), fan from its centroid
   const last = NS - 1;
   let cx = 0, cy = 0, cz = 0;
@@ -247,20 +249,17 @@ function buildHull() {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setIndex(faces);
+  // material groups: 0 = hull skin (navy), 1 = deck (teak), 0 = transom (navy)
+  g.addGroup(0, skinLen, 0);
+  g.addGroup(skinLen, deckLen - skinLen, 1);
+  g.addGroup(deckLen, faces.length - deckLen, 0);
   g.computeVertexNormals();
   return g;
 }
 const hullMat = new THREE.MeshPhongMaterial({ color: 0x1a2733, flatShading: false, side: THREE.DoubleSide, specular: 0x556677, shininess: 60 });
-const hull = new THREE.Mesh(buildHull(), hullMat);
+const deckMat = new THREE.MeshPhongMaterial({ color: 0xb08a4f, side: THREE.DoubleSide, shininess: 25 }); // teak deck
+const hull = new THREE.Mesh(buildHull(), [hullMat, deckMat]);
 boatGroup.add(hull);
-
-// Low, flat coachroof (teak)
-const cabin = new THREE.Mesh(
-  new THREE.BoxGeometry(0.42, 0.16, 1.1),
-  new THREE.MeshPhongMaterial({ color: 0x9a7b46 })
-);
-cabin.position.set(0, 0.40, -0.5);
-boatGroup.add(cabin);
 
 // Deep, thin fin keel under the midship (draft ~0.22 x LOA)
 const keel = new THREE.Mesh(
