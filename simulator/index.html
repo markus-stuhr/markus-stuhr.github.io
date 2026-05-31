@@ -497,7 +497,7 @@ rudderPivot.add(tiller);
     { h: 3.90, x: 0.31 },
     { h: 4.95, x: 0.20 },
   ];
-  const chx = 0.5, chy = 0.36, chz = 0.0; // chainplate at the deck edge (midship)
+  const chx = 0.5, chy = 0.36, chz = mz; // chainplate in the mast plane so the shroud stays straight
   // fore & back stays
   L(...M, 0, 0.55, HULL_ZBOW);
   L(...M, 0, 0.42, HULL_ZSTERN);
