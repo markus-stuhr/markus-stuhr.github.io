@@ -63,6 +63,22 @@
       margin-top: 8px; font-size: 13px; letter-spacing: 1px;
       color: #66ff99; min-height: 18px;
     }
+    .steerbtn {
+      position: fixed; bottom: 92px;
+      width: 72px; height: 72px; border-radius: 50%;
+      background: rgba(8, 22, 40, 0.5);
+      border: 1px solid rgba(150,190,230,0.35);
+      color: rgba(255,255,255,0.85);
+      font-size: 42px; line-height: 1; font-family: sans-serif;
+      backdrop-filter: blur(4px);
+      -webkit-tap-highlight-color: transparent;
+      touch-action: none; user-select: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      padding-bottom: 4px;
+    }
+    .steerbtn:active { background: rgba(60,120,180,0.6); }
+    #btnLeft { left: 22px; }
+    #btnRight { right: 22px; }
   </style>
 </head>
 <body>
@@ -80,6 +96,8 @@
   <div id="raceBest">Best —</div>
   <div id="raceMsg">Steuere durch die Marken in der Reihenfolge</div>
 </div>
+<button id="btnLeft" class="steerbtn">‹</button>
+<button id="btnRight" class="steerbtn">›</button>
 <script type="importmap">
 {
   "imports": {
@@ -1355,6 +1373,21 @@ let camZoom = 1;              // distance multiplier (mouse wheel)
     camZoom *= Math.exp(e.deltaY * 0.0012);             // scroll up = closer, down = farther
     camZoom = Math.max(0.15, Math.min(6, camZoom));     // very near .. far away
   }, { passive: false });
+})();
+
+// --- On-screen steering buttons (touch / click) drive the same keys ---
+(function initTouchSteer() {
+  const bind = (id, code) => {
+    const el = document.getElementById(id);
+    const down = (e) => { e.preventDefault(); keys[code] = true; };
+    const up = (e) => { e.preventDefault(); keys[code] = false; };
+    el.addEventListener('pointerdown', down);
+    el.addEventListener('pointerup', up);
+    el.addEventListener('pointerleave', up);
+    el.addEventListener('pointercancel', up);
+  };
+  bind('btnLeft', 'ArrowLeft');
+  bind('btnRight', 'ArrowRight');
 })();
 
 // --- Resize ---
