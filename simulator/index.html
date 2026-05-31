@@ -609,6 +609,12 @@ function recordTrack(tr, x, z) {
   }
 }
 function clearTrack(tr) { tr.pts.length = 0; tr.lx = null; tr.line.geometry.setFromPoints([]); }
+function updateTrackHeights(tr) {
+  const pos = tr.line.geometry.attributes.position;
+  if (!pos) return;
+  for (let i = 0; i < pos.count; i++) pos.setY(i, waveHeight(pos.getX(i), pos.getZ(i), t) + 0.05);
+  pos.needsUpdate = true;
+}
 
 // --- Wind disc: just the coloured polar ring + a wind needle ---
 const windRing = new THREE.Group();
@@ -1269,6 +1275,8 @@ function animate() {
   updateOpponent(dt);
   recordTrack(playerTrack, boatGroup.position.x, boatGroup.position.z);
   recordTrack(oppTrack, oppGroup.position.x, oppGroup.position.z);
+  updateTrackHeights(playerTrack);
+  updateTrackHeights(oppTrack);
 
   // Sit the boat on the actual wave surface: sample the wave at the hull
   // centre (float height) and fore/aft + port/stbd (pitch & roll).
