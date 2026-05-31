@@ -197,19 +197,20 @@ function animateWaves(t) {
 const boatGroup = new THREE.Group();
 
 // Hull — lofted from cross-section "stations" running bow (−z) to stern (+z)
+const HULL_ZBOW = -2.15, HULL_ZSTERN = 1.95, HULL_MAXBEAM = 0.46; // LOA ~4.1, narrow racing hull
+const hullHalfBeam = (s) => {
+  let b = s < 0.5
+    ? HULL_MAXBEAM * Math.pow(s / 0.5, 0.6)                  // fine, almost plumb bow
+    : HULL_MAXBEAM * (1 - 0.18 * ((s - 0.5) / 0.5));         // carry beam aft to a wide transom
+  return Math.max(0.03, b);
+};
+const hullDepth = (s) => 0.4 * (0.65 + 0.35 * Math.min(s / 0.25, 1)); // shallow canoe body
+const hullDeckY = (s) => 0.30 + 0.16 * Math.pow(1 - s, 2) + 0.03 * s; // low, nearly flat sheer
+
 function buildHull() {
   const NS = 18, NA = 12;          // stations along length, arc points per section
-  const zBow = -2.15, zStern = 1.95; // LOA ~4.1, long and sleek
-  const maxBeam = 0.46;              // narrow racing hull
-
-  const halfBeam = (s) => {
-    let b = s < 0.5
-      ? maxBeam * Math.pow(s / 0.5, 0.6)                  // fine, almost plumb bow
-      : maxBeam * (1 - 0.18 * ((s - 0.5) / 0.5));         // carry beam aft to a wide transom
-    return Math.max(0.03, b);
-  };
-  const depth  = (s) => 0.4 * (0.65 + 0.35 * Math.min(s / 0.25, 1)); // shallow canoe body
-  const deckY  = (s) => 0.30 + 0.16 * Math.pow(1 - s, 2) + 0.03 * s; // low, nearly flat sheer
+  const zBow = HULL_ZBOW, zStern = HULL_ZSTERN;
+  const halfBeam = hullHalfBeam, depth = hullDepth, deckY = hullDeckY;
 
   const pos = [];
   const idx = (i, j) => i * (NA + 1) + j;
@@ -260,6 +261,26 @@ const hullMat = new THREE.MeshPhongMaterial({ color: 0x1a2733, flatShading: fals
 const deckMat = new THREE.MeshPhongMaterial({ color: 0xb08a4f, side: THREE.DoubleSide, shininess: 25 }); // teak deck
 const hull = new THREE.Mesh(buildHull(), [hullMat, deckMat]);
 boatGroup.add(hull);
+
+// Bowsprit / prod — the pointed spar reaching forward from the bow
+const spritGeo = new THREE.CylinderGeometry(0.03, 0.05, 1.6, 8);
+spritGeo.rotateX(Math.PI / 2);
+spritGeo.translate(0, 0.40, HULL_ZBOW - 0.55);   // extends forward of the stem
+const sprit = new THREE.Mesh(spritGeo, new THREE.MeshPhongMaterial({ color: 0x23282e }));
+boatGroup.add(sprit);
+
+// Gold cove line along the sheer on both sides of the hull
+function goldStripe(side) {
+  const pts = [];
+  for (let k = 0; k <= 24; k++) {
+    const s = k / 24, z = HULL_ZBOW + (HULL_ZSTERN - HULL_ZBOW) * s;
+    pts.push(new THREE.Vector3(side * hullHalfBeam(s) * 0.99, hullDeckY(s) - 0.06, z));
+  }
+  const tube = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 48, 0.02, 6, false);
+  return new THREE.Mesh(tube, new THREE.MeshPhongMaterial({ color: 0xd8b24a, emissive: 0x2e2408, shininess: 90 }));
+}
+boatGroup.add(goldStripe(1));
+boatGroup.add(goldStripe(-1));
 
 // Deep, thin fin keel under the midship (draft ~0.22 x LOA)
 const keel = new THREE.Mesh(
