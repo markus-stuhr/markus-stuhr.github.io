@@ -345,8 +345,8 @@ sailPivot.add(gooseneck);
 // Square-top main: a quadrilateral (tack, clew, head-aft, head-fwd) with a
 // nearly straight leech and a squared headboard rather than a pointed top.
 const TACK = new THREE.Vector3(0, BOOM_Y, 0);
-const HEAD = new THREE.Vector3(0, 4.85, 0);          // top at the mast (masthead)
-const HEAD_AFT = new THREE.Vector3(0, 4.6, 0.62);    // squared head, aft corner
+const HEAD = new THREE.Vector3(0, 5.05, 0);          // top at the masthead
+const HEAD_AFT = new THREE.Vector3(0, 4.82, 0.62);   // squared head, aft corner
 const CLEW = new THREE.Vector3(0, BOOM_Y, BOOM_LEN); // clew at the boom end, aft (+z)
 const sailPos = sailGeo.attributes.position;
 const sailBase = new Float32Array(sailPos.count * 3);
@@ -538,8 +538,8 @@ const oppMainPivot = new THREE.Group(); oppMainPivot.position.set(0, 0, MAST_Z);
   qg.setAttribute('position', new THREE.Float32BufferAttribute([
     0, BOOM_Y, 0,            // tack
     0, BOOM_Y, BOOM_LEN,     // clew
-    0, 4.6, 0.62,            // head aft
-    0, 4.85, 0,              // head fwd (mast)
+    0, 4.82, 0.62,           // head aft
+    0, 5.05, 0,              // head fwd (masthead)
   ], 3));
   qg.setIndex([0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0]);
   qg.computeVertexNormals();
@@ -1135,7 +1135,7 @@ function updateVisuals(dt) {
   // Belly the sail along its foot when powered up; flutter the leech when luffing.
   // The draft bows to LEEWARD, so its sign flips with the tack.
   const lee = twaDeg >= 0 ? -1 : 1; // local -x is to leeward when wind is on starboard
-  const headY = 4.85, footY = 0.9;
+  const headY = 5.05, footY = 0.9;
   for (let i = 0; i < sailPos.count; i++) {
     const u = (i % 7) / 6;          // 0 at mast, 1 at clew (plane was 6 segments wide)
     const bx = sailBase[i * 3];
