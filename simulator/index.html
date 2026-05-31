@@ -401,12 +401,12 @@ const jibAxis = JIB_HEAD.clone().normalize(); // forestay axis: jib swings aroun
 const pennantPivot = new THREE.Group();
 pennantPivot.position.set(0, 5.1, MAST_Z);
 boatGroup.add(pennantPivot);
-const PENN_SEG = 10, PENN_LEN = 0.95;
+const PENN_SEG = 10, PENN_LEN = 0.48;
 const pennGeo = new THREE.BufferGeometry();
 const pennPosArr = [];
 const pennFrac = []; // 0 at the mast, 1 at the free tip — for the flutter wave
 for (let i = 0; i <= PENN_SEG; i++) {
-  const f = i / PENN_SEG, z = f * PENN_LEN, hh = 0.13 * (1 - f); // tapers to a point
+  const f = i / PENN_SEG, z = f * PENN_LEN, hh = 0.065 * (1 - f); // tapers to a point
   pennPosArr.push(0, hh, z, 0, -hh, z);
   pennFrac.push(f, f);
 }
@@ -1182,7 +1182,7 @@ function updateVisuals(dt) {
   // Flutter: a travelling wave runs out to the free tip
   for (let i = 0; i < pennPos.count; i++) {
     const f = pennFrac[i];
-    pennPos.setX(i, Math.sin(t * 9 - f * 7) * 0.13 * f);
+    pennPos.setX(i, Math.sin(t * 9 - f * 7) * 0.065 * f);
   }
   pennPos.needsUpdate = true;
 
