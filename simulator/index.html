@@ -254,18 +254,18 @@ const boatGroup = new THREE.Group();
 
 // Hull — lofted from cross-section "stations" running bow (−z) to stern (+z)
 function buildHull() {
-  const NS = 16, NA = 12;          // stations along length, arc points per section
-  const zBow = -1.95, zStern = 1.7;
-  const maxBeam = 0.82;
+  const NS = 18, NA = 12;          // stations along length, arc points per section
+  const zBow = -2.15, zStern = 1.95; // LOA ~4.1, long and sleek
+  const maxBeam = 0.46;              // narrow racing hull
 
   const halfBeam = (s) => {
-    let b = s < 0.45
-      ? maxBeam * Math.pow(s / 0.45, 0.7)                 // sharpen toward the stem
-      : maxBeam * (1 - 0.28 * ((s - 0.45) / 0.55));       // ease to a moderate transom
-    return Math.max(0.04, b);
+    let b = s < 0.5
+      ? maxBeam * Math.pow(s / 0.5, 0.6)                  // fine, almost plumb bow
+      : maxBeam * (1 - 0.18 * ((s - 0.5) / 0.5));         // carry beam aft to a wide transom
+    return Math.max(0.03, b);
   };
-  const depth  = (s) => 0.5 * (0.6 + 0.4 * Math.min(s / 0.3, 1));    // shallower forward
-  const deckY  = (s) => 0.46 + 0.32 * Math.pow(1 - s, 2) + 0.05 * s; // sheer: bow rises
+  const depth  = (s) => 0.4 * (0.65 + 0.35 * Math.min(s / 0.25, 1)); // shallow canoe body
+  const deckY  = (s) => 0.30 + 0.16 * Math.pow(1 - s, 2) + 0.03 * s; // low, nearly flat sheer
 
   const pos = [];
   const idx = (i, j) => i * (NA + 1) + j;
@@ -310,40 +310,41 @@ const hullMat = new THREE.MeshPhongMaterial({ color: 0xc9a468, flatShading: fals
 const hull = new THREE.Mesh(buildHull(), hullMat);
 boatGroup.add(hull);
 
-// Cabin trunk forward of the mast for a bit of character
+// Low, flat coachroof for a sleek racing look
 const cabin = new THREE.Mesh(
-  new THREE.BoxGeometry(0.55, 0.26, 1.0),
-  new THREE.MeshPhongMaterial({ color: 0xece3d0 })
+  new THREE.BoxGeometry(0.42, 0.16, 1.1),
+  new THREE.MeshPhongMaterial({ color: 0xb89a62 })
 );
-cabin.position.set(0, 0.58, -0.65);
+cabin.position.set(0, 0.40, -0.5);
 boatGroup.add(cabin);
 
-// Fin keel under the midship for a proper sailing-yacht profile
+// Deep, thin fin keel under the midship (draft ~0.22 x LOA)
 const keel = new THREE.Mesh(
-  new THREE.BoxGeometry(0.1, 0.95, 0.9),
-  new THREE.MeshPhongMaterial({ color: 0x5b4a32 })
+  new THREE.BoxGeometry(0.07, 0.9, 0.45),
+  new THREE.MeshPhongMaterial({ color: 0x4a4a4a })
 );
-keel.position.set(0, -0.62, 0.1);
+keel.position.set(0, -0.42, 0.15);
 boatGroup.add(keel);
-// Ballast bulb at the keel foot
+// Torpedo ballast bulb at the keel foot
 const bulb = new THREE.Mesh(
-  new THREE.CapsuleGeometry(0.12, 0.7, 4, 8),
-  new THREE.MeshPhongMaterial({ color: 0x444444 })
+  new THREE.CapsuleGeometry(0.1, 0.75, 5, 10),
+  new THREE.MeshPhongMaterial({ color: 0x333333 })
 );
 bulb.rotation.x = Math.PI / 2;
-bulb.position.set(0, -1.05, 0.1);
+bulb.position.set(0, -0.86, 0.15);
 boatGroup.add(bulb);
 
-// Mast
-const mastGeo = new THREE.CylinderGeometry(0.04, 0.04, 5, 8);
+// Mast — tall fractional rig (height ~1.57 x LOA), stepped slightly forward
+const MAST_Z = -0.15;
+const mastGeo = new THREE.CylinderGeometry(0.035, 0.05, 6.1, 8);
 const mastMat = new THREE.MeshPhongMaterial({ color: 0xcccccc });
 const mast = new THREE.Mesh(mastGeo, mastMat);
-mast.position.set(0, 2.85, 0);
+mast.position.set(0, 3.35, MAST_Z);
 boatGroup.add(mast);
 
 // Sail — mounted on a pivot at the mast so it can be trimmed (swing around y)
 const sailPivot = new THREE.Group();
-sailPivot.position.set(0, 0, 0);
+sailPivot.position.set(0, 0, MAST_Z);
 boatGroup.add(sailPivot);
 
 // Mainsail: luff up the mast (x=0,z=0), foot running aft to the clew.
@@ -360,7 +361,7 @@ sailPivot.add(sail);
 
 // Boom: a real spar from the gooseneck at the mast aft to the clew. The sail's
 // foot sits along it, and it swings out with the sailPivot when trimmed.
-const BOOM_Y = 0.98, BOOM_LEN = 2.45;
+const BOOM_Y = 0.9, BOOM_LEN = 2.55;
 const boomGeo = new THREE.CylinderGeometry(0.055, 0.055, BOOM_LEN, 10);
 boomGeo.rotateX(Math.PI / 2);            // lay the spar along z
 boomGeo.translate(0, BOOM_Y, BOOM_LEN / 2); // gooseneck at the mast (z≈0) -> clew aft
@@ -378,7 +379,7 @@ sailPivot.add(gooseneck);
 // We map the unit plane's (x,y) corners to sail (z,y): tack, head, clew.
 // Tack and clew sit on the boom so the foot runs right along the spar.
 const TACK = new THREE.Vector3(0, BOOM_Y, 0);
-const HEAD = new THREE.Vector3(0, 4.6, 0);
+const HEAD = new THREE.Vector3(0, 6.0, 0);           // head near the masthead (tall rig)
 const CLEW = new THREE.Vector3(0, BOOM_Y, BOOM_LEN); // clew at the boom end, aft (+z)
 const sailPos = sailGeo.attributes.position;
 const sailBase = new Float32Array(sailPos.count * 3);
@@ -394,9 +395,34 @@ for (let i = 0; i < sailPos.count; i++) {
 }
 sailGeo.computeVertexNormals();
 
+// --- Jib (foresail): forestay from the bow to near the masthead ---
+const jibPivot = new THREE.Group();
+jibPivot.position.set(0, 0.32, -2.0);     // tack at the bow
+boatGroup.add(jibPivot);
+const JIB_TACK = new THREE.Vector3(0, 0, 0);
+const JIB_HEAD = new THREE.Vector3(0, 5.5, 1.85 + MAST_Z); // up to the mast, near the top
+const JIB_CLEW = new THREE.Vector3(0, 0.85, 1.55);          // sheets aft to the side deck
+const jibGeo = new THREE.PlaneGeometry(1, 1, 5, 5);
+const jibPos = jibGeo.attributes.position;
+const jibBase = new Float32Array(jibPos.count * 3);
+for (let i = 0; i < jibPos.count; i++) {
+  const u = jibPos.getX(i) + 0.5; // 0 = luff (forestay), 1 = clew
+  const v = jibPos.getY(i) + 0.5; // 0 = tack, 1 = head
+  const luffPt = new THREE.Vector3().lerpVectors(JIB_TACK, JIB_HEAD, v);
+  const p = new THREE.Vector3().lerpVectors(luffPt, JIB_CLEW, u);
+  jibPos.setXYZ(i, p.x, p.y, p.z);
+  jibBase[i * 3] = p.x; jibBase[i * 3 + 1] = p.y; jibBase[i * 3 + 2] = p.z;
+}
+jibGeo.computeVertexNormals();
+const jib = new THREE.Mesh(jibGeo, new THREE.MeshPhongMaterial({
+  color: 0xf0ebe0, side: THREE.DoubleSide, specular: 0x333333, shininess: 20,
+}));
+jibPivot.add(jib);
+const jibAxis = JIB_HEAD.clone().normalize(); // forestay axis: jib swings around it
+
 // --- Masthead pennant (Verklicker) — a little streamer that flies with the wind ---
 const pennantPivot = new THREE.Group();
-pennantPivot.position.set(0, 5.2, 0);
+pennantPivot.position.set(0, 6.25, MAST_Z);
 boatGroup.add(pennantPivot);
 const pennGeo = new THREE.BufferGeometry();
 pennGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
@@ -449,7 +475,7 @@ shadowGeo.rotateX(-Math.PI / 2);                 // lie flat on the water (XZ pl
 const boatShadow = new THREE.Mesh(shadowGeo, new THREE.MeshBasicMaterial({
   map: makeShadowTexture(), transparent: true, depthWrite: false, opacity: 0.7,
 }));
-boatShadow.scale.set(2.6, 1, 5.4);               // roughly the hull footprint (a bit larger)
+boatShadow.scale.set(2.0, 1, 6.0);               // roughly the hull footprint (a bit larger)
 scene.add(boatShadow);
 
 // --- Wind disc: just the coloured polar ring + a wind needle ---
@@ -802,6 +828,8 @@ function updateVisuals(dt) {
   }
   sailAngle += (targetAngle - sailAngle) * (1 - Math.pow(0.02, dt));
   sailPivot.rotation.y = sailAngle;
+  // Jib swings around the forestay, trimmed a touch tighter than the main
+  jibPivot.quaternion.setFromAxisAngle(jibAxis, -sailAngle * 0.85);
 
   // Heel: lean to leeward, driven by wind strength and point of sail. Greatest
   // on a beam reach, fading to nothing dead downwind or head-to-wind.
@@ -812,7 +840,7 @@ function updateVisuals(dt) {
   // Belly the sail along its foot when powered up; flutter the leech when luffing.
   // The draft bows to LEEWARD, so its sign flips with the tack.
   const lee = twaDeg >= 0 ? -1 : 1; // local -x is to leeward when wind is on starboard
-  const headY = 4.6, footY = 0.5;
+  const headY = 6.0, footY = 0.9;
   for (let i = 0; i < sailPos.count; i++) {
     const u = (i % 7) / 6;          // 0 at mast, 1 at clew (plane was 6 segments wide)
     const bx = sailBase[i * 3];
@@ -956,7 +984,7 @@ function animate() {
     const h = boat.heading;
     const fwdX = Math.sin(h), fwdZ = -Math.cos(h); // bow direction
     const rgtX = Math.cos(h), rgtZ = Math.sin(h);  // starboard direction
-    const L = 1.6, B = 0.55;                        // half length / half beam
+    const L = 1.9, B = 0.46;                        // half length / half beam
 
     const hC = waveHeight(bx, bz, t);
     const hF = waveHeight(bx + fwdX * L, bz + fwdZ * L, t);
