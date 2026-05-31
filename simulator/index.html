@@ -650,64 +650,72 @@ function triGeo3(a, b, c) {
   g.computeVertexNormals();
   return g;
 }
-const oppGroup = new THREE.Group();
-oppGroup.rotation.order = 'YXZ';
-const oppHull = new THREE.Mesh(buildHull(), new THREE.MeshPhongMaterial({ color: 0x8c9aa6, side: THREE.DoubleSide }));
-oppGroup.add(oppHull);
-const oppKeel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.9, 0.45), new THREE.MeshPhongMaterial({ color: 0x3a3a3a }));
-oppKeel.position.set(0, -0.42, 0.15); oppGroup.add(oppKeel);
-const oppBulb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.75, 5, 10), new THREE.MeshPhongMaterial({ color: 0x2a2a2a }));
-oppBulb.rotation.x = Math.PI / 2; oppBulb.position.set(0, -0.86, 0.15); oppGroup.add(oppBulb);
-const oppRig = new THREE.Group(); oppRig.scale.setScalar(1.2); oppGroup.add(oppRig);
-const oppMast = new THREE.Mesh(new THREE.CylinderGeometry(0.0245, 0.035, 4.75, 8), new THREE.MeshPhongMaterial({ color: 0xbbbbbb }));
-oppMast.position.set(0, 2.68, MAST_Z); oppRig.add(oppMast);
-const oppSailMat = new THREE.MeshPhongMaterial({ color: 0xcfd6de, side: THREE.DoubleSide });
-const oppMainPivot = new THREE.Group(); oppMainPivot.position.set(0, 0, MAST_Z); oppRig.add(oppMainPivot);
-{
-  // square-top main (quad): tack, clew, head-aft, head-fwd
+const START_HEADING = -Math.PI / 4; // start on a reach, not aimed at the finish buoy
+const OPP_JH = new THREE.Vector3(0, 4.63, 1.64);
+const oppJibAxis = OPP_JH.clone().normalize();
+
+// Build one computer-sailed boat with its own colours and start position.
+function makeOpponent(opts) {
+  const group = new THREE.Group();
+  group.rotation.order = 'YXZ';
+  const hull = new THREE.Mesh(buildHull(), new THREE.MeshPhongMaterial({ color: opts.hull, side: THREE.DoubleSide }));
+  group.add(hull);
+  const keel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.9, 0.45), new THREE.MeshPhongMaterial({ color: 0x3a3a3a }));
+  keel.position.set(0, -0.42, 0.15); group.add(keel);
+  const bulb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.75, 5, 10), new THREE.MeshPhongMaterial({ color: 0x2a2a2a }));
+  bulb.rotation.x = Math.PI / 2; bulb.position.set(0, -0.86, 0.15); group.add(bulb);
+  const rig = new THREE.Group(); rig.scale.setScalar(1.2); group.add(rig);
+  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.0245, 0.035, 4.75, 8), new THREE.MeshPhongMaterial({ color: opts.rig }));
+  mast.position.set(0, 2.68, MAST_Z); rig.add(mast);
+  const sailMat = new THREE.MeshPhongMaterial({ color: opts.sail, side: THREE.DoubleSide });
+  const mainPivot = new THREE.Group(); mainPivot.position.set(0, 0, MAST_Z); rig.add(mainPivot);
   const qg = new THREE.BufferGeometry();
   qg.setAttribute('position', new THREE.Float32BufferAttribute([
-    0, BOOM_Y, 0,            // tack
-    0, BOOM_Y, BOOM_LEN,     // clew
-    0, 4.82, 0.42,           // head aft
-    0, 5.05, 0,              // head fwd (masthead)
+    0, BOOM_Y, 0, 0, BOOM_Y, BOOM_LEN, 0, 4.82, 0.42, 0, 5.05, 0,
   ], 3));
   qg.setIndex([0, 1, 2, 0, 2, 3, 2, 1, 0, 3, 2, 0]);
   qg.computeVertexNormals();
-  oppMainPivot.add(new THREE.Mesh(qg, oppSailMat));
+  mainPivot.add(new THREE.Mesh(qg, sailMat));
+  const boomG = new THREE.CylinderGeometry(0.035, 0.035, BOOM_LEN, 8);
+  boomG.rotateX(Math.PI / 2); boomG.translate(0, BOOM_Y, BOOM_LEN / 2);
+  mainPivot.add(new THREE.Mesh(boomG, new THREE.MeshPhongMaterial({ color: opts.rig })));
+  const jibPivot = new THREE.Group(); jibPivot.position.set(0, 0.42, -1.79); rig.add(jibPivot);
+  jibPivot.add(new THREE.Mesh(triGeo3(new THREE.Vector3(0, 0, 0), OPP_JH, new THREE.Vector3(0, 0.12, 1.3)), sailMat));
+  group.position.set(opts.x, 0.3, opts.z);
+  group.rotation.y = -START_HEADING;
+  scene.add(group);
+  return {
+    group, mainPivot, jibPivot,
+    start: { x: opts.x, z: opts.z },
+    trackColor: opts.track, dotColor: opts.dot,
+    sailAngle: 0, heel: 0,
+    state: { heading: START_HEADING, speed: 0, rudder: 0, maxSpeed: 12, maxRudder: 0.6, nextMark: 0, done: false },
+  };
 }
-const oppBoomG = new THREE.CylinderGeometry(0.035, 0.035, BOOM_LEN, 8);
-oppBoomG.rotateX(Math.PI / 2); oppBoomG.translate(0, BOOM_Y, BOOM_LEN / 2);
-oppMainPivot.add(new THREE.Mesh(oppBoomG, new THREE.MeshPhongMaterial({ color: 0xbbbbbb })));
-const oppJibPivot = new THREE.Group(); oppJibPivot.position.set(0, 0.42, -1.79); oppRig.add(oppJibPivot);
-const OPP_JH = new THREE.Vector3(0, 4.63, 1.64);
-oppJibPivot.add(new THREE.Mesh(
-  triGeo3(new THREE.Vector3(0, 0, 0), OPP_JH, new THREE.Vector3(0, 0.12, 1.3)), oppSailMat));
-const oppJibAxis = OPP_JH.clone().normalize();
-oppGroup.position.set(20, 0.3, 0);   // start 20 m to starboard of the player
-scene.add(oppGroup);
 
-const START_HEADING = -Math.PI / 4; // start on a reach, not aimed at the finish buoy
-const boat2 = { heading: START_HEADING, speed: 0, rudder: 0, maxSpeed: 12, maxRudder: 0.6, nextMark: 0, done: false };
-oppGroup.rotation.y = -START_HEADING;
-let oppSailAngle = 0, oppHeel = 0;
+const OPPONENTS = [
+  makeOpponent({ hull: 0x8c9aa6, sail: 0xcfd6de, rig: 0xbbbbbb, track: 0x2a3a48, dot: 0x111820, x: 20,  z: 0 }),
+  makeOpponent({ hull: 0x9a4634, sail: 0xe4d8c8, rig: 0x7a3a2c, track: 0x5a2a20, dot: 0x6a241a, x: -22, z: 4 }),
+  makeOpponent({ hull: 0x3a6a4c, sail: 0xd2dccb, rig: 0x2e5238, track: 0x244a2e, dot: 0x1c4a2c, x: 38,  z: -8 }),
+];
 
-function updateOpponent(dt) {
-  const bx = oppGroup.position.x, bz = oppGroup.position.z;
+function updateOpponent(o, dt) {
+  const st = o.state, group = o.group;
+  const bx = group.position.x, bz = group.position.z;
 
   // Course progress
-  if (!boat2.done) {
-    const m = COURSE[boat2.nextMark];
+  if (!st.done) {
+    const m = COURSE[st.nextMark];
     if (Math.hypot(m.x - bx, m.z - bz) < MARK_RADIUS) {
-      boat2.nextMark++;
-      if (boat2.nextMark >= COURSE.length) boat2.done = true;
+      st.nextMark++;
+      if (st.nextMark >= COURSE.length) st.done = true;
     }
   }
 
   // Pick a desired heading toward the next mark, tacking upwind when needed
-  let desiredH = boat2.heading;
-  if (!boat2.done) {
-    const m = COURSE[boat2.nextMark];
+  let desiredH = st.heading;
+  if (!st.done) {
+    const m = COURSE[st.nextMark];
     const bearing = Math.atan2(m.x - bx, -(m.z - bz)); // heading that points at the mark
     const twaDirect = normAngle(wind.from - bearing) * 180 / Math.PI;
     const NOGO = 42;
@@ -721,41 +729,41 @@ function updateOpponent(dt) {
   }
 
   // Helm: steer toward the desired heading
-  const err = normAngle(desiredH - boat2.heading);
-  const rudTarget = Math.max(-boat2.maxRudder, Math.min(boat2.maxRudder, err * 2.2));
-  boat2.rudder += (rudTarget - boat2.rudder) * (1 - Math.pow(0.02, dt));
+  const err = normAngle(desiredH - st.heading);
+  const rudTarget = Math.max(-st.maxRudder, Math.min(st.maxRudder, err * 2.2));
+  st.rudder += (rudTarget - st.rudder) * (1 - Math.pow(0.02, dt));
 
   // Same sailing physics as the player
-  const twa2 = normAngle(wind.from - boat2.heading) * 180 / Math.PI;
+  const twa2 = normAngle(wind.from - st.heading) * 180 / Math.PI;
   const eff2 = sailEfficiency(twa2);
-  const target = boat2.maxSpeed * (wind.tws / wind.maxTws) * eff2 * (boat2.done ? 0 : 1);
-  boat2.speed += (target - boat2.speed) * (target > boat2.speed ? 0.85 : 0.45) * dt;
-  const steerage = 0.35 + 0.65 * Math.min(Math.abs(boat2.speed) / boat2.maxSpeed, 1);
-  boat2.heading = normAngle(boat2.heading + boat2.rudder * 1.3 * steerage * dt);
-  oppGroup.position.x += Math.sin(boat2.heading) * boat2.speed * dt;
-  oppGroup.position.z -= Math.cos(boat2.heading) * boat2.speed * dt;
-  oppGroup.rotation.y = -boat2.heading;
+  const target = st.maxSpeed * (wind.tws / wind.maxTws) * eff2 * (st.done ? 0 : 1);
+  st.speed += (target - st.speed) * (target > st.speed ? 0.85 : 0.45) * dt;
+  const steerage = 0.35 + 0.65 * Math.min(Math.abs(st.speed) / st.maxSpeed, 1);
+  st.heading = normAngle(st.heading + st.rudder * 1.3 * steerage * dt);
+  group.position.x += Math.sin(st.heading) * st.speed * dt;
+  group.position.z -= Math.cos(st.heading) * st.speed * dt;
+  group.rotation.y = -st.heading;
 
   // Sit on the waves + heel + sail trim
-  const h = boat2.heading;
+  const h = st.heading;
   const fwdX = Math.sin(h), fwdZ = -Math.cos(h), rgtX = Math.cos(h), rgtZ = Math.sin(h);
   const hC = waveHeight(bx, bz, t);
   const hF = waveHeight(bx + fwdX * 1.9, bz + fwdZ * 1.9, t);
   const hA = waveHeight(bx - fwdX * 1.9, bz - fwdZ * 1.9, t);
   const hR = waveHeight(bx + rgtX * 0.46, bz + rgtZ * 0.46, t);
   const hL = waveHeight(bx - rgtX * 0.46, bz - rgtZ * 0.46, t);
-  oppGroup.position.y = hC - 0.06;
-  oppGroup.rotation.x = Math.atan2(hF - hA, 3.8);
+  group.position.y = hC - 0.06;
+  group.rotation.x = Math.atan2(hF - hA, 3.8);
   const heelMag = MAX_HEEL * (wind.tws / wind.maxTws) * eff2 * Math.sin(Math.abs(twa2 * DEG));
-  oppHeel += (Math.sign(twa2) * heelMag - oppHeel) * (1 - Math.pow(0.08, dt));
-  oppGroup.rotation.z = Math.atan2(hR - hL, 1.0) + oppHeel;
+  o.heel += (Math.sign(twa2) * heelMag - o.heel) * (1 - Math.pow(0.08, dt));
+  group.rotation.z = Math.atan2(hR - hL, 1.0) + o.heel;
 
   const side = twa2 >= 0 ? -1 : 1;
   const sheet = Math.min(Math.abs(twa2) * 0.5, 80) * DEG;
   const targetSail = eff2 <= 0.02 ? Math.sin(t * 14) * 6 * DEG : side * sheet;
-  oppSailAngle += (targetSail - oppSailAngle) * (1 - Math.pow(0.02, dt));
-  oppMainPivot.rotation.y = oppSailAngle;
-  oppJibPivot.quaternion.setFromAxisAngle(oppJibAxis, oppSailAngle * 0.85);
+  o.sailAngle += (targetSail - o.sailAngle) * (1 - Math.pow(0.02, dt));
+  o.mainPivot.rotation.y = o.sailAngle;
+  o.jibPivot.quaternion.setFromAxisAngle(oppJibAxis, o.sailAngle * 0.85);
 }
 
 // --- Track lines: each boat leaves a dashed trail on the water (the sailed course) ---
@@ -769,7 +777,7 @@ function makeTrack(color) {
   return { line, pts: [], lx: null, lz: null };
 }
 const playerTrack = makeTrack(0xffffff);
-const oppTrack = makeTrack(0x2a3a48);
+OPPONENTS.forEach(o => { o.track = makeTrack(o.trackColor); });
 function recordTrack(tr, x, z) {
   if (tr.lx === null || Math.hypot(x - tr.lx, z - tr.lz) > 2.5) {
     tr.pts.push(new THREE.Vector3(x, 0.08, z));
@@ -1064,10 +1072,15 @@ function restartRace() {
   boat.heading = START_HEADING;
   boat.speed = 0;
   boatGroup.position.set(0, 0.3, 0);
-  // reset the opponent too
-  boat2.heading = START_HEADING; boat2.speed = 0; boat2.rudder = 0; boat2.nextMark = 0; boat2.done = false;
-  oppGroup.position.set(20, 0.3, 0);
-  clearTrack(playerTrack); clearTrack(oppTrack);
+  // reset the opponents too
+  clearTrack(playerTrack);
+  OPPONENTS.forEach(o => {
+    Object.assign(o.state, { heading: START_HEADING, speed: 0, rudder: 0, nextMark: 0, done: false });
+    o.sailAngle = 0; o.heel = 0;
+    o.group.position.set(o.start.x, 0.3, o.start.z);
+    o.group.rotation.y = -START_HEADING;
+    clearTrack(o.track);
+  });
   elRaceMsg.textContent = 'Steuere durch die Marken in der Reihenfolge';
 }
 
@@ -1349,12 +1362,15 @@ const markPointers = COURSE.map((m, i) => {
   return { tri, label };
 });
 
-// Opponent indicator on the compass: a black triangle, like the mark pointers
-const oppDot = new THREE.Mesh(markTriGeo, new THREE.MeshBasicMaterial({
-  color: 0x111820, transparent: true, depthWrite: false, side: THREE.DoubleSide,
-}));
-oppDot.renderOrder = 6;
-compassRing.add(oppDot);
+// Opponent indicators on the compass: a triangle each, like the mark pointers
+OPPONENTS.forEach(o => {
+  const dot = new THREE.Mesh(markTriGeo, new THREE.MeshBasicMaterial({
+    color: o.dotColor, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  }));
+  dot.renderOrder = 6;
+  compassRing.add(dot);
+  o.dot = dot;
+});
 
 function updateMarkPointers() {
   const bx = boatGroup.position.x, bz = boatGroup.position.z;
@@ -1378,12 +1394,14 @@ function updateMarkPointers() {
     label.material.opacity = 0.95;
   });
 
-  // opponent boat bearing
-  const odx = oppGroup.position.x - bx, odz = oppGroup.position.z - bz;
-  const ol = Math.hypot(odx, odz) || 1;
-  const oux = odx / ol, ouz = odz / ol;
-  oppDot.position.set(oux * R, 0.06, ouz * R);
-  oppDot.rotation.y = Math.atan2(oux, ouz); // tip points outward, like the marks
+  // opponent boat bearings
+  OPPONENTS.forEach(o => {
+    const odx = o.group.position.x - bx, odz = o.group.position.z - bz;
+    const ol = Math.hypot(odx, odz) || 1;
+    const oux = odx / ol, ouz = odz / ol;
+    o.dot.position.set(oux * R, 0.06, ouz * R);
+    o.dot.rotation.y = Math.atan2(oux, ouz); // tip points outward, like the marks
+  });
 }
 
 function spawnFoam(t, x, z, perpX, perpZ) {
@@ -1512,11 +1530,11 @@ function animate() {
   updateHUD();
   updateMarkPointers();
   updateWake(t, dt);
-  updateOpponent(dt);
+  OPPONENTS.forEach(o => updateOpponent(o, dt));
   recordTrack(playerTrack, boatGroup.position.x, boatGroup.position.z);
-  recordTrack(oppTrack, oppGroup.position.x, oppGroup.position.z);
+  OPPONENTS.forEach(o => recordTrack(o.track, o.group.position.x, o.group.position.z));
   updateTrackHeights(playerTrack);
-  updateTrackHeights(oppTrack);
+  OPPONENTS.forEach(o => updateTrackHeights(o.track));
 
   // Sit the boat on the actual wave surface: sample the wave at the hull
   // centre (float height) and fore/aft + port/stbd (pitch & roll).
