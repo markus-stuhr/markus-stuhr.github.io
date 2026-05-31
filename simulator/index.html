@@ -1075,7 +1075,7 @@ COURSE.forEach((m, i) => {
   grp.add(ring);
   grp.position.set(m.x, 0, m.z);
   scene.add(grp);
-  buoys.push({ grp, buoy, ball, beam });
+  buoys.push({ grp, buoy, ball, beam, zone, ring });
 });
 
 // --- Wind ---
@@ -1272,6 +1272,8 @@ function updateRace(dt) {
   buoys.forEach((b, i) => {
     const active = i === race.nextMark && race.state !== 'done';
     b.beam.visible = active;
+    b.zone.visible = active;   // rounding-radius circle only on the current target
+    b.ring.visible = active;
     const emis = active ? (0.4 + 0.3 * Math.sin(t * 4)) : 0.1;
     b.ball.material.emissive.setRGB(emis * 0.5, emis, emis * 0.6);
   });
