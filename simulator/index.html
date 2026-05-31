@@ -149,8 +149,8 @@ import * as THREE from 'three';
 
 // --- Scene ---
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0a1628);
-scene.fog = new THREE.FogExp2(0x0a1628, 0.008);
+scene.background = new THREE.Color(0x9fc6ea); // daytime sky
+scene.fog = new THREE.FogExp2(0xbcd6ee, 0.0045);
 
 // --- Camera ---
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
@@ -164,10 +164,11 @@ renderer.setPixelRatio(devicePixelRatio);
 document.body.appendChild(renderer.domElement);
 
 // --- Lights ---
-const sun = new THREE.DirectionalLight(0xffeedd, 1.4);
-sun.position.set(50, 60, 30);
+const sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
+sun.position.set(50, 70, 30);
 scene.add(sun);
-scene.add(new THREE.AmbientLight(0x112244, 1.2));
+// Daylight ambient: bright sky above, sea-tinted bounce below
+scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x2a5a86, 1.1));
 
 // --- Water texture (procedural, tileable) ---
 function makeWaterTexture() {
@@ -175,7 +176,7 @@ function makeWaterTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = S;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#0d3b6e';
+  ctx.fillStyle = '#3f86c4';
   ctx.fillRect(0, 0, S, S);
   // soft lighter/darker patches; draw wrapped copies so the tile seams match
   for (let i = 0; i < 140; i++) {
@@ -184,8 +185,8 @@ function makeWaterTexture() {
     const light = Math.random() > 0.5;
     for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
       const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
-      const a = 0.06 + Math.random() * 0.06;
-      g.addColorStop(0, light ? `rgba(90,150,200,${a})` : `rgba(6,26,52,${a})`);
+      const a = 0.07 + Math.random() * 0.07;
+      g.addColorStop(0, light ? `rgba(150,205,240,${a})` : `rgba(20,70,120,${a})`);
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -209,16 +210,17 @@ const waterTex = makeWaterTexture();
 waterTex.repeat.set(OCEAN_SIZE / TILE, OCEAN_SIZE / TILE);
 
 const oceanMat = new THREE.MeshPhongMaterial({
-  color: 0x0d3b6e,
+  color: 0xffffff,        // white so the texture shows at full daytime brightness
   map: waterTex,
-  specular: 0x4488cc,
-  shininess: 80,
+  specular: 0x99c4e8,
+  shininess: 90,
   side: THREE.FrontSide,
   transparent: true,   // let the submerged hull/keel show through faintly
-  opacity: 0.86,
+  opacity: 0.88,
 });
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.renderOrder = -1; // draw before other transparent objects (e.g. wind disc)
 scene.add(ocean);
 
 // Cache local x/z; waves are computed from WORLD coords (local + ocean offset)
@@ -519,6 +521,7 @@ for (let i = 0; i < 800; i++) {
 starGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(starVerts), 3));
 const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true });
 const stars = new THREE.Points(starGeo, starMat);
+stars.visible = false; // daytime
 scene.add(stars);
 
 // --- Islands (fixed world positions, for orientation) ---
