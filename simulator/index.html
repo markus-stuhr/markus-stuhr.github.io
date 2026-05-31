@@ -505,25 +505,33 @@ markGeo.setIndex([0, 1, 2, 2, 1, 0]);
 const windMarker = new THREE.Mesh(markGeo, windMarkerMat);
 windRing.add(windMarker);
 
-// Polar zones painted on the ring (relative to the wind, which is at local -z).
-// A true wind angle `a` maps to ring angle 90°-a on starboard / 90°+a on port.
-const D2R = Math.PI / 180;
-function addBand(startDeg, lenDeg, color, opacity) {
-  const g = new THREE.RingGeometry(RING_R - 0.55, RING_R - 0.08, 40, 1, startDeg * D2R, lenDeg * D2R);
+// Continuous polar band: colour the whole ring by sail efficiency at each
+// angle — red (no-go) -> yellow -> green (fast). The wind source is at local
+// -z (ring angle 90°), so a vertex's angle from there is its true wind angle.
+{
+  const seg = 120;
+  const g = new THREE.RingGeometry(RING_R - 0.55, RING_R - 0.08, seg, 1);
+  const pos = g.attributes.position;
+  const cRed = new THREE.Color(0xff3b2f), cYel = new THREE.Color(0xffd23b), cGrn = new THREE.Color(0x2fdd5e);
+  const tmp = new THREE.Color();
+  const colors = [];
+  for (let i = 0; i < pos.count; i++) {
+    const phi = Math.atan2(pos.getY(i), pos.getX(i));   // from +x toward +y
+    let diff = phi - Math.PI / 2;                        // relative to wind source
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));   // wrap to -PI..PI
+    const twa = Math.abs(diff) * 180 / Math.PI;          // 0 (into wind) .. 180 (downwind)
+    const eff = sailEfficiency(twa);                     // 0..1 from the polar
+    if (eff < 0.5) tmp.copy(cRed).lerp(cYel, eff / 0.5);
+    else tmp.copy(cYel).lerp(cGrn, (eff - 0.5) / 0.5);
+    colors.push(tmp.r, tmp.g, tmp.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   g.rotateX(-Math.PI / 2);
-  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false,
+  const polar = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
   }));
-  windRing.add(m);
+  windRing.add(polar);
 }
-// No-go / dead zone: ±30° around the wind (red)
-addBand(60, 60, 0xff3b2f, 0.34);
-// Optimal close-hauled groove: TWA ~38–52° both sides (amber)
-addBand(90 - 52, 14, 0xffc62f, 0.34);   // starboard
-addBand(90 + 38, 14, 0xffc62f, 0.34);   // port
-// Fastest reaching zone: TWA ~80–120° both sides (green)
-addBand(90 - 120, 40, 0x2fdd5e, 0.30);  // starboard
-addBand(90 + 80, 40, 0x2fdd5e, 0.30);   // port
 
 scene.add(windRing);
 
