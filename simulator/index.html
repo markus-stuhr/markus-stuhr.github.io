@@ -1117,8 +1117,8 @@ async function buildCaribbean() {
   const latN = clat + dLat, latS = clat - dLat, lngW = clng - dLng, lngE = clng + dLng;
 
   // --- Map texture: stitch @2x (retina) tiles into one canvas for sharpness ---
-  const SZ = 14;          // @2x at z14 ≈ z15 detail, but only ~49 tiles
-  const TPX = 512;        // @2x tiles are 512 px -> double the pixel density
+  const SZ = 14;
+  const TPX = 1024;       // topo-v2 @2x tiles are 1024 px -> sharp; drawn 1:1
   const txMin = Math.floor(lngToTile(lngW, SZ)), txMax = Math.floor(lngToTile(lngE, SZ));
   const tyMin = Math.floor(latToTile(latN, SZ)), tyMax = Math.floor(latToTile(latS, SZ));
   const nx = txMax - txMin + 1, ny = tyMax - tyMin + 1;
@@ -1142,14 +1142,15 @@ async function buildCaribbean() {
   const dxMin = Math.floor(lngToTile(lngW, DZ)), dxMax = Math.floor(lngToTile(lngE, DZ));
   const dyMin = Math.floor(latToTile(latN, DZ)), dyMax = Math.floor(latToTile(latS, DZ));
   const dnx = dxMax - dxMin + 1, dny = dyMax - dyMin + 1;
+  const DPX = 512; // MapTiler terrain-RGB tiles are 512 px (drawn 1:1, no scaling -> exact values)
   const demC = document.createElement('canvas');
-  demC.width = dnx * 256; demC.height = dny * 256;
+  demC.width = dnx * DPX; demC.height = dny * DPX;
   const dctx = demC.getContext('2d', { willReadFrequently: true });
   await Promise.all((() => {
     const jobs = [];
     for (let tx = dxMin; tx <= dxMax; tx++) for (let ty = dyMin; ty <= dyMax; ty++) {
       jobs.push(loadImage(`https://api.maptiler.com/tiles/terrain-rgb-v2/${DZ}/${tx}/${ty}.webp?key=${MAPTILER_KEY}`)
-        .then(im => { if (im) dctx.drawImage(im, (tx - dxMin) * 256, (ty - dyMin) * 256); }));
+        .then(im => { if (im) dctx.drawImage(im, (tx - dxMin) * DPX, (ty - dyMin) * DPX, DPX, DPX); }));
     }
     return jobs;
   })());
