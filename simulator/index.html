@@ -230,10 +230,10 @@
   <input id="rpSeek" type="range" min="0" max="1000" value="0">
   <span id="rpTime">00:00</span>
   <div class="seg" id="rpSpeed">
-    <button data-value="10">10×</button>
-    <button data-value="30" class="active">30×</button>
-    <button data-value="60">60×</button>
-    <button data-value="120">120×</button>
+    <button data-value="1">1×</button>
+    <button data-value="3">3×</button>
+    <button data-value="10" class="active">10×</button>
+    <button data-value="50">50×</button>
   </div>
 </div>
 <script type="importmap">
@@ -1974,7 +1974,7 @@ function startGame() {
 }
 
 // ===================== REPLAY MODE =====================
-const replay = { ms: 0, playing: false, speed: 30, duration: 0 };
+const replay = { ms: 0, playing: false, speed: 10, duration: 0 };
 let REPLAY = null;            // { dtms, count, wind, boats:[{name,isV,xs,zs,hd,sp,group,mainPivot,jibPivot}] }
 const replayGroup = new THREE.Group(); scene.add(replayGroup); // marks etc.
 const showLoading = (on) => document.getElementById('loading').classList.toggle('on', on);
@@ -2050,7 +2050,7 @@ async function startReplay() {
   boatGroup.visible = windRing.visible = windNeedle.visible = compassRing.visible = true;
   wakePoints.visible = true; replayGroup.visible = true;
   wind.maxTws = 28;
-  replay.ms = 0; replay.playing = true; replay.speed = 30;
+  replay.ms = 0; replay.playing = true; replay.speed = 10;
   syncSpeedButtons();
   showLoading(false);
   document.getElementById('replayBar').classList.add('on');
