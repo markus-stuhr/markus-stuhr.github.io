@@ -211,18 +211,43 @@ def reconstruct_wind(boats_k, t0, t1):
             peak = [s for K in boats_k for (t, c, s) in K if tw <= t < tw + WIN and s is not None]
             up_med = st.median(up) if up else None
             pk = max(peak) if peak else None
-            samples.append([tw + WIN / 2, twd, up_med, pk])
+            samples.append([tw + WIN / 2, twd, up_med, pk, len(b)])
         tw += WIN_STEP
     if not samples:
         return []
+
+    # Reliability filter: drop windows whose TWD disagrees with the robust
+    # global direction unless they are backed by enough tacks. This removes
+    # sustained downwind-leg artifacts (gybe leakage) at the course ends;
+    # the interpolation below then holds the last reliable bearing.
+    def circ_median(vals):
+        best, bestc = vals[0], 1e9
+        for v in vals:
+            c = sum(adiff(v, u) for u in vals)
+            if c < bestc:
+                bestc, best = c, v
+        return best
+    # tack-weighted global direction
+    gx = sum(s[4] * math.cos(math.radians(s[1])) for s in samples)
+    gy = sum(s[4] * math.sin(math.radians(s[1])) for s in samples)
+    gdir = (math.degrees(math.atan2(gy, gx)) + 360) % 360
+    good = []
+    for s in samples:
+        ntacks, dev = s[4], adiff(s[1], gdir)
+        # keep if strongly supported by tacks, or close to the global trend;
+        # genuine veer/back stays (<28°), sparse downwind flips are dropped
+        if (ntacks >= 10) or (dev < 28):
+            good.append(s)
+    if len(good) < 2:
+        good = samples
 
     # Fill TWD gaps (windows with no tacks) by circular interpolation across the grid;
     # estimate TWS from upwind speed + reaching peaks (proxy).
     # Build a regular timeline and interpolate.
     times = [t0 + k * WIN_STEP for k in range(int((t1 - t0) / WIN_STEP) + 1)]
-    known_t = [s[0] for s in samples]
-    known_twd = [s[1] for s in samples]
-    # carry upwind/peak signals
+    known_t = [s[0] for s in good]          # TWD only from reliable windows
+    known_twd = [s[1] for s in good]
+    # speed signals are unambiguous -> keep them from every window
     up_known = [(s[0], s[2]) for s in samples if s[2] is not None]
     pk_known = [(s[0], s[3]) for s in samples if s[3] is not None]
 
@@ -253,9 +278,9 @@ def reconstruct_wind(boats_k, t0, t1):
                 return known[i][1] + (known[i + 1][1] - known[i][1]) * f
         return known[-1][1]
 
-    out = []
+    twd_arr, tws_arr = [], []
     for ts in times:
-        twd = lerp_circ(ts)
+        twd_arr.append(lerp_circ(ts))
         up = lerp_lin(ts, up_known)
         pk = lerp_lin(ts, pk_known)
         # TWS proxy: blend upwind speed (×~1.35) and reaching peak (×~0.95)
@@ -264,7 +289,17 @@ def reconstruct_wind(boats_k, t0, t1):
             cand.append(up * 1.35)
         if pk:
             cand.append(pk * 0.95)
-        tws = round(max(cand)) if cand else None
+        tws_arr.append(max(cand) if cand else None)
+
+    # Final smoothing: circular moving average on TWD, plain average on TWS (±2 samples).
+    out = []
+    for i, ts in enumerate(times):
+        lo, hi = max(0, i - 2), min(len(times), i + 3)
+        x = sum(math.cos(math.radians(twd_arr[j])) for j in range(lo, hi))
+        y = sum(math.sin(math.radians(twd_arr[j])) for j in range(lo, hi))
+        twd = (math.degrees(math.atan2(y, x)) + 360) % 360
+        tv = [tws_arr[j] for j in range(lo, hi) if tws_arr[j]]
+        tws = round(sum(tv) / len(tv)) if tv else None
         out.append({'t': round(ts - t0), 'twd': round(twd), 'tws': tws})
     return out
 
