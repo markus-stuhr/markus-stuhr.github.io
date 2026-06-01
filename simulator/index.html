@@ -124,6 +124,41 @@
       cursor: pointer; font-family: inherit;
     }
     #startBtn:hover { background: #128a4b; }
+    .replay-info { font-size: 14px; color: #20303c; line-height: 1.5; }
+    .replay-info small { color: #6b7c89; }
+    #loading {
+      position: fixed; inset: 0; z-index: 25; display: none;
+      align-items: center; justify-content: center;
+      background: rgba(140,180,210,0.35); backdrop-filter: blur(2px);
+      font-family: -apple-system, system-ui, sans-serif; color: #fff;
+      font-size: 28px; font-weight: 700; letter-spacing: 1px;
+      text-shadow: 0 2px 16px rgba(0,0,0,0.4);
+    }
+    #loading.on { display: flex; }
+    #replayBar {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      z-index: 16; display: none; align-items: center; gap: 14px;
+      padding: 10px 16px; border-radius: 12px;
+      background: rgba(8,22,40,0.6); border: 1px solid rgba(120,170,220,0.25);
+      backdrop-filter: blur(6px);
+      font-family: monospace; color: rgba(255,255,255,0.9);
+      width: min(680px, 92vw);
+    }
+    #replayBar.on { display: flex; }
+    #rpPlay {
+      flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%;
+      border: 1px solid rgba(150,190,230,0.4); background: rgba(60,120,180,0.5);
+      color: #fff; font-size: 18px; cursor: pointer;
+    }
+    #rpSeek { flex: 1 1 auto; cursor: pointer; accent-color: #4aa0e0; }
+    #rpTime { flex: 0 0 auto; font-size: 13px; letter-spacing: 1px; min-width: 96px; text-align: center; }
+    #rpSpeed { flex: 0 0 auto; gap: 4px; }
+    #rpSpeed button {
+      padding: 5px 8px; font-size: 11px; border-radius: 7px;
+      border: 1px solid rgba(150,190,230,0.3); background: rgba(8,22,40,0.4);
+      color: rgba(255,255,255,0.85); cursor: pointer; font-family: monospace;
+    }
+    #rpSpeed button.active { background: #1d6fb8; border-color: #1d6fb8; }
     #countdown {
       position: fixed; inset: 0; z-index: 15; display: none;
       align-items: center; justify-content: center; pointer-events: none;
@@ -157,30 +192,50 @@
       <div class="sec-label">Modus</div>
       <div class="seg" id="segMode">
         <button data-value="race" class="active">Race</button>
-        <button data-value="replay" disabled>Replay</button>
+        <button data-value="replay">Replay</button>
       </div>
     </div>
-    <div class="menu-section">
-      <div class="sec-label">Windstärke</div>
-      <div class="seg" id="segWind">
-        <button data-value="10">10 kn</button>
-        <button data-value="15">15 kn</button>
-        <button data-value="20" class="active">20 kn</button>
-        <button data-value="25">25 kn</button>
+    <div id="raceOpts">
+      <div class="menu-section">
+        <div class="sec-label">Windstärke</div>
+        <div class="seg" id="segWind">
+          <button data-value="10">10 kn</button>
+          <button data-value="15">15 kn</button>
+          <button data-value="20" class="active">20 kn</button>
+          <button data-value="25">25 kn</button>
+        </div>
+      </div>
+      <div class="menu-section">
+        <div class="sec-label">Wellenstärke</div>
+        <div class="seg" id="segWave">
+          <button data-value="0.5">Ruhig</button>
+          <button data-value="1" class="active">Mittel</button>
+          <button data-value="1.6">Hoch</button>
+        </div>
       </div>
     </div>
-    <div class="menu-section">
-      <div class="sec-label">Wellenstärke</div>
-      <div class="seg" id="segWave">
-        <button data-value="0.5">Ruhig</button>
-        <button data-value="1" class="active">Mittel</button>
-        <button data-value="1.6">Hoch</button>
+    <div id="replayOpts" style="display:none">
+      <div class="menu-section">
+        <div class="sec-label">Rennen</div>
+        <div class="replay-info">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · folgt der „V"</small></div>
       </div>
     </div>
     <button id="startBtn">Start</button>
   </div>
 </div>
 <div id="countdown"></div>
+<div id="loading">Lade Karte…</div>
+<div id="replayBar">
+  <button id="rpPlay">⏸</button>
+  <input id="rpSeek" type="range" min="0" max="1000" value="0">
+  <span id="rpTime">00:00</span>
+  <div class="seg" id="rpSpeed">
+    <button data-value="10">10×</button>
+    <button data-value="30" class="active">30×</button>
+    <button data-value="60">60×</button>
+    <button data-value="120">120×</button>
+  </div>
+</div>
 <script type="importmap">
 {
   "imports": {
@@ -207,7 +262,7 @@ const SIM_SPEED = 3;
 
 // --- Real-world geography (BVI North Sound — the TracTrac race area) ---
 const MAPTILER_KEY = 'nKyAvBkGUvss9FTqT7f6'; // shared with the Globe project
-const GEO_CENTER = { lat: 18.4807, lng: -64.4744 }; // scene origin = course centre
+let GEO_CENTER = { lat: 18.4807, lng: -64.4744 }; // scene origin (mutable: re-centred per race in replay)
 // Project lat/lng -> scene metres (1 unit = 1 m). North = -z (matches compass/COURSE).
 function geoToLocal(lat, lng) {
   const clat = GEO_CENTER.lat, clng = GEO_CENTER.lng;
@@ -1116,9 +1171,21 @@ const loadImage = (url) => new Promise((res) => {
   im.src = url;
 });
 
-async function buildCaribbean() {
-  const SPAN = 7000; // metres half-extent around the course centre (~14 km box)
-  const clat = GEO_CENTER.lat, clng = GEO_CENTER.lng;
+function clearTerrain() {
+  for (const m of terrainGroup.children.slice()) {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) { if (m.material.map) m.material.map.dispose(); m.material.dispose(); }
+    terrainGroup.remove(m);
+  }
+}
+
+// Build the terrain centred on (centerLat,centerLng) covering +/-spanM metres.
+// routePts (scene XZ) drives the LOD: tiles near the route render sharper.
+async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
+  GEO_CENTER = { lat: centerLat, lng: centerLng }; // geoToLocal must share this origin
+  clearTerrain();
+  const SPAN = spanM;
+  const clat = centerLat, clng = centerLng;
   const dLat = SPAN / 111320;
   const dLng = SPAN / (111320 * Math.cos(clat * Math.PI / 180));
   const latN = clat + dLat, latS = clat - dLat, lngW = clng - dLng, lngE = clng + dLng;
@@ -1181,8 +1248,8 @@ async function buildCaribbean() {
     return (h00 * (1 - fx) + h10 * fx) * (1 - fy) + (h01 * (1 - fx) + h11 * fx) * fy;
   };
 
-  // --- Route polyline (scene XZ) for LOD: course marks + start ---
-  const route = [{ x: 0, z: 0 }, ...COURSE];
+  // --- Route polyline (scene XZ) for LOD ---
+  const route = (routePts && routePts.length > 1) ? routePts : [{ x: 0, z: 0 }, ...COURSE];
   const distToRoute = (x, z) => {
     let best = Infinity;
     for (let s = 0; s < route.length - 1; s++) {
@@ -1286,7 +1353,8 @@ const COURSE = [
 ].map(m => ({ x: m.x * M, z: m.z * M }));   // course laid out in metres
 const MARK_RADIUS = 30; // metres: how close you must get to round a mark
 
-buildCaribbean(); // build the LOD terrain now that the route (COURSE) is known
+// Default terrain (race-mode course area / menu backdrop) once the route is known
+buildCaribbean(18.4807, -64.4744, 7000, [{ x: 0, z: 0 }, ...COURSE]);
 
 // Billboard text label (canvas texture) for waypoint numbers
 function makeTextSprite(text, color = '#ffffff') {
@@ -1877,7 +1945,15 @@ function wireSeg(id) {
 }
 const getWind = wireSeg('segWind');
 const getWave = wireSeg('segWave');
-wireSeg('segMode'); // Race is fixed; Replay is disabled for now
+wireSeg('segMode');
+const getMode = () => document.querySelector('#segMode .active').dataset.value;
+// toggle race/replay option panels when the mode changes
+document.getElementById('segMode').addEventListener('click', (e) => {
+  if (!e.target.closest('button')) return;
+  const replay = getMode() === 'replay';
+  document.getElementById('raceOpts').style.display = replay ? 'none' : '';
+  document.getElementById('replayOpts').style.display = replay ? '' : 'none';
+});
 
 function startGame() {
   const windVal = getWind();
@@ -1896,7 +1972,237 @@ function startGame() {
   cd.style.display = 'flex';
   cd.textContent = '3';
 }
-document.getElementById('startBtn').addEventListener('click', startGame);
+
+// ===================== REPLAY MODE =====================
+const replay = { ms: 0, playing: false, speed: 30, duration: 0 };
+let REPLAY = null;            // { dtms, count, wind, boats:[{name,isV,xs,zs,hd,sp,group,mainPivot,jibPivot}] }
+const replayGroup = new THREE.Group(); scene.add(replayGroup); // marks etc.
+const showLoading = (on) => document.getElementById('loading').classList.toggle('on', on);
+const lerpAng = (a, b, f) => a + (((b - a + 540) % 360 - 180)) * f; // degrees, wraparound
+
+function hideRaceObjects() {
+  OPPONENTS.forEach(o => { o.group.visible = false; o.track.line.visible = false; if (o.dot) o.dot.visible = false; });
+  buoys.forEach(b => { b.grp.visible = false; });
+  markPointers.forEach(p => { p.tri.visible = false; p.outline.visible = false; p.label.visible = false; });
+  playerTrack.line.visible = false;
+}
+
+async function startReplay() {
+  document.body.classList.remove('menu');
+  document.getElementById('menu').classList.add('hidden');
+  showLoading(true);
+  const data = await (await fetch('races/maxi-and-maxi-gp-race-1.json')).json();
+
+  // bounding box over all tracks -> centre + span
+  let minLa = 9e9, maxLa = -9e9, minLo = 9e9, maxLo = -9e9;
+  data.boats.forEach(b => b.track.forEach(p => {
+    if (p[1] < minLa) minLa = p[1]; if (p[1] > maxLa) maxLa = p[1];
+    if (p[0] < minLo) minLo = p[0]; if (p[0] > maxLo) maxLo = p[0];
+  }));
+  const cLat = (minLa + maxLa) / 2, cLng = (minLo + maxLo) / 2;
+  GEO_CENTER = { lat: cLat, lng: cLng };
+  const halfZ = (maxLa - minLa) * 111320 / 2;
+  const halfX = (maxLo - minLo) * 111320 * Math.cos(cLat * Math.PI / 180) / 2;
+  const span = Math.max(halfX, halfZ) + 1500;
+
+  const vi = data.boats.findIndex(b => b.name === 'V');
+  const vRoute = data.boats[vi].track.map(p => { const q = geoToLocal(p[1], p[0]); return { x: q.x, z: q.z }; });
+  await buildCaribbean(cLat, cLng, span, vRoute);
+
+  // build per-boat projected tracks + headings + speeds
+  REPLAY = { dtms: data.dt * 1000, count: data.count, wind: data.wind, boats: [] };
+  replay.duration = (data.count - 1) * data.dt * 1000;
+  const SAILMAT = { sail: 0xe9edf2, rig: 0x40464e };
+  data.boats.forEach((b) => {
+    const n = b.track.length;
+    const xs = new Float32Array(n), zs = new Float32Array(n), hd = new Float32Array(n), sp = new Float32Array(n);
+    for (let k = 0; k < n; k++) { const q = geoToLocal(b.track[k][1], b.track[k][0]); xs[k] = q.x; zs[k] = q.z; }
+    for (let k = 0; k < n; k++) {
+      const k0 = Math.max(0, k - 1), k1 = Math.min(n - 1, k + 1);
+      const dx = xs[k1] - xs[k0], dz = zs[k1] - zs[k0];
+      hd[k] = Math.atan2(dx, -dz) * 180 / Math.PI;             // heading in degrees
+      sp[k] = Math.hypot(dx, dz) / ((k1 - k0) * data.dt || 1);  // m/s
+    }
+    const isV = b.name === 'V';
+    let group, mainPivot, jibPivot;
+    if (isV) { group = boatGroup; }
+    else {
+      const hull = parseInt(b.color.slice(1), 16);
+      const o = makeOpponent({ hull, sail: SAILMAT.sail, rig: SAILMAT.rig, track: hull, dot: hull, x: 0, z: 0 });
+      group = o.group; mainPivot = o.mainPivot; jibPivot = o.jibPivot;
+    }
+    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, group, mainPivot, jibPivot });
+  });
+
+  // marks as simple orange buoys
+  for (const m of replayGroup.children.slice()) replayGroup.remove(m);
+  data.marks.forEach(mk => {
+    const q = geoToLocal(mk.lat, mk.lng);
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.2, 2.4, 12),
+      new THREE.MeshPhongMaterial({ color: 0xff7700, emissive: 0x331100 }));
+    body.position.y = 1.0; body.scale.setScalar(M); g.add(body);
+    g.position.set(q.x, 0, q.z); g.userData = { x: q.x, z: q.z };
+    replayGroup.add(g);
+  });
+
+  hideRaceObjects();
+  boatGroup.visible = windRing.visible = windNeedle.visible = compassRing.visible = true;
+  wakePoints.visible = true; replayGroup.visible = true;
+  wind.maxTws = 28;
+  replay.ms = 0; replay.playing = true; replay.speed = 30;
+  syncSpeedButtons();
+  showLoading(false);
+  document.getElementById('replayBar').classList.add('on');
+  gameState = 'replay';
+}
+
+function sampleWind(ms) {
+  const w = REPLAY.wind, sec = ms / 1000;
+  if (sec <= w[0].t) return w[0];
+  const last = w[w.length - 1];
+  if (sec >= last.t) return last;
+  let lo = 0, hi = w.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (w[mid].t <= sec) lo = mid; else hi = mid; }
+  const f = (sec - w[lo].t) / (w[hi].t - w[lo].t);
+  return { twd: lerpAng(w[lo].twd, w[hi].twd, f), tws: w[lo].tws + (w[hi].tws - w[lo].tws) * f };
+}
+
+function replaySample(rb, ms) {
+  const f = ms / REPLAY.dtms;
+  const k0 = Math.max(0, Math.min(REPLAY.count - 1, Math.floor(f)));
+  const k1 = Math.min(REPLAY.count - 1, k0 + 1);
+  const a = f - k0;
+  return {
+    x: rb.xs[k0] + (rb.xs[k1] - rb.xs[k0]) * a,
+    z: rb.zs[k0] + (rb.zs[k1] - rb.zs[k0]) * a,
+    h: lerpAng(rb.hd[k0], rb.hd[k1], a) * Math.PI / 180,
+    sp: rb.sp[k0] + (rb.sp[k1] - rb.sp[k0]) * a,
+  };
+}
+
+function placeReplayBoat(rb, s) {
+  const g = rb.group;
+  g.position.x = s.x; g.position.z = s.z;
+  const fwdX = Math.sin(s.h), fwdZ = -Math.cos(s.h), rgtX = Math.cos(s.h), rgtZ = Math.sin(s.h);
+  const L = 1.9 * M, B = 0.46 * M;
+  const hC = waveHeight(s.x, s.z, t);
+  g.position.y = hC - 0.06 * M;
+  g.rotation.y = -s.h;
+  g.rotation.x = Math.atan2(waveHeight(s.x + fwdX * L, s.z + fwdZ * L, t) - waveHeight(s.x - fwdX * L, s.z - fwdZ * L, t), 2 * L);
+  const twa = normAngle(wind.from - s.h) * 180 / Math.PI;
+  const wroll = Math.atan2(waveHeight(s.x + rgtX * B, s.z + rgtZ * B, t) - waveHeight(s.x - rgtX * B, s.z - rgtZ * B, t), 2 * B);
+  const heelMag = MAX_HEEL * (wind.tws / wind.maxTws) * Math.sin(Math.abs(twa * DEG)) * 0.8;
+  g.rotation.z = wroll + Math.sign(twa) * heelMag;
+  if (rb.mainPivot) {
+    const side = twa >= 0 ? -1 : 1;
+    const sheet = Math.min(Math.abs(twa) * 0.5, 80) * DEG;
+    rb.mainPivot.rotation.y = side * sheet;
+    rb.jibPivot.quaternion.setFromAxisAngle(oppJibAxis, side * sheet * 0.85);
+  }
+}
+
+const fmtClock = (ms) => {
+  const s = Math.floor(ms / 1000), m = Math.floor(s / 60);
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
+function updateReplayFrame(dt) {
+  t += dt; // waves animate at real time
+  if (replay.playing) {
+    replay.ms += dt * 1000 * replay.speed;
+    if (replay.ms >= replay.duration) { replay.ms = replay.duration; replay.playing = false; document.getElementById('rpPlay').textContent = '▶'; }
+  }
+  // wind from data
+  const wm = sampleWind(replay.ms);
+  wind.from = ((wm.twd % 360) + 360) % 360 * Math.PI / 180;
+  wind.tws = wm.tws;
+  // place boats
+  REPLAY.boats.forEach(rb => {
+    const s = replaySample(rb, replay.ms);
+    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boat.heading = s.h; boat.speed = s.sp; }
+    else placeReplayBoat(rb, s);
+  });
+  ocean.position.set(boatGroup.position.x, 0, boatGroup.position.z);
+  stars.position.set(boatGroup.position.x, 0, boatGroup.position.z);
+  animateWaves(t);
+  updateVisuals(dt);   // V sails/heel/pennant from boat.heading + wind
+  updateWake(t, dt);   // V wake
+  floatPlayerBoat();
+  // marks bob on the waves
+  replayGroup.children.forEach(g => { g.position.y = waveHeight(g.userData.x, g.userData.z, t); });
+  // HUD + timeline
+  elSog.textContent = (Math.abs(boat.speed) * 1.94).toFixed(1);
+  elTws.textContent = wind.tws.toFixed(0);
+  const slider = document.getElementById('rpSeek');
+  if (!slider.matches(':active')) slider.value = String(Math.round(replay.ms / replay.duration * 1000));
+  document.getElementById('rpTime').textContent = `${fmtClock(replay.ms)} / ${fmtClock(replay.duration)}`;
+  chaseCamera();
+  renderer.render(scene, camera);
+}
+
+// timeline controls
+function syncSpeedButtons() {
+  document.querySelectorAll('#rpSpeed button').forEach(b =>
+    b.classList.toggle('active', parseFloat(b.dataset.value) === replay.speed));
+}
+document.getElementById('rpPlay').addEventListener('click', () => {
+  if (replay.ms >= replay.duration) replay.ms = 0;
+  replay.playing = !replay.playing;
+  document.getElementById('rpPlay').textContent = replay.playing ? '⏸' : '▶';
+});
+document.getElementById('rpSeek').addEventListener('input', (e) => {
+  replay.ms = parseFloat(e.target.value) / 1000 * replay.duration;
+});
+document.getElementById('rpSpeed').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  replay.speed = parseFloat(b.dataset.value); syncSpeedButtons();
+});
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  if (getMode() === 'replay') startReplay(); else startGame();
+});
+
+// Sit boatGroup (the detailed boat — player or replay's "V") on the wave surface,
+// and place the wind/compass rings + shadow. Uses boat.heading + wind.
+function floatPlayerBoat() {
+  const bx = boatGroup.position.x, bz = boatGroup.position.z;
+  const h = boat.heading;
+  const fwdX = Math.sin(h), fwdZ = -Math.cos(h);
+  const rgtX = Math.cos(h), rgtZ = Math.sin(h);
+  const L = 1.9 * M, B = 0.46 * M;
+  const hC = waveHeight(bx, bz, t);
+  const hF = waveHeight(bx + fwdX * L, bz + fwdZ * L, t);
+  const hA = waveHeight(bx - fwdX * L, bz - fwdZ * L, t);
+  const hR = waveHeight(bx + rgtX * B, bz + rgtZ * B, t);
+  const hL = waveHeight(bx - rgtX * B, bz - rgtZ * B, t);
+  boatGroup.position.y = hC - 0.06 * M;
+  boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L);
+  boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle;
+  windRing.position.set(bx, hC + 0.05 * M, bz);
+  windRing.rotation.y = boatGroup.rotation.y;
+  windNeedle.position.set(bx, hC + 0.07 * M, bz);
+  windNeedle.rotation.y = -wind.from;
+  compassRing.position.set(bx, hC + 0.05 * M, bz);
+  boatShadow.position.set(bx - 0.5 * M, hC + 0.04 * M, bz - 0.3 * M);
+  boatShadow.rotation.y = boatGroup.rotation.y;
+}
+
+function chaseCamera() {
+  const h = boat.heading;
+  const elev = CAM_BASE_ELEV + camPitch;
+  const horiz = CAM_DIST * camZoom * Math.cos(elev);
+  const vert = CAM_DIST * camZoom * Math.sin(elev);
+  const ax = -Math.sin(h), az = Math.cos(h);
+  const cy = Math.cos(camYaw), sy = Math.sin(camYaw);
+  const dirX = ax * cy + az * sy;
+  const dirZ = -ax * sy + az * cy;
+  camera.position.set(
+    boatGroup.position.x + dirX * horiz,
+    boatGroup.position.y + vert,
+    boatGroup.position.z + dirZ * horiz
+  );
+  camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5 * M, boatGroup.position.z);
+}
 
 // --- Animate ---
 const clock = new THREE.Clock();
@@ -1917,6 +2223,12 @@ function animate() {
     camera.position.set(Math.sin(menuYaw) * 3 * M, 5.5 * M, Math.cos(menuYaw) * 3 * M);
     camera.lookAt(Math.sin(menuYaw + 0.5) * 60 * M, 3 * M, Math.cos(menuYaw + 0.5) * 60 * M);
     renderer.render(scene, camera);
+    return;
+  }
+
+  // Replay: play back the recorded race, following "V".
+  if (gameState === 'replay') {
+    updateReplayFrame(dt);
     return;
   }
 
@@ -1961,37 +2273,7 @@ function animate() {
   updateTrackHeights(playerTrack);
   OPPONENTS.forEach(o => updateTrackHeights(o.track));
 
-  // Sit the boat on the actual wave surface: sample the wave at the hull
-  // centre (float height) and fore/aft + port/stbd (pitch & roll).
-  {
-    const bx = boatGroup.position.x, bz = boatGroup.position.z;
-    const h = boat.heading;
-    const fwdX = Math.sin(h), fwdZ = -Math.cos(h); // bow direction
-    const rgtX = Math.cos(h), rgtZ = Math.sin(h);  // starboard direction
-    const L = 1.9 * M, B = 0.46 * M;                // half length / half beam (metres)
-
-    const hC = waveHeight(bx, bz, t);
-    const hF = waveHeight(bx + fwdX * L, bz + fwdZ * L, t);
-    const hA = waveHeight(bx - fwdX * L, bz - fwdZ * L, t);
-    const hR = waveHeight(bx + rgtX * B, bz + rgtZ * B, t);
-    const hL = waveHeight(bx - rgtX * B, bz - rgtZ * B, t);
-
-    boatGroup.position.y = hC - 0.06 * M;           // waterline partway up the hull
-    boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L); // bow up when the sea ahead is higher
-    boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle; // wave roll + wind heel
-
-    // Polar ring is fixed to the boat (red at the bow); the needle shows the wind.
-    windRing.position.set(bx, hC + 0.05 * M, bz); // sit on the water surface
-    windRing.rotation.y = boatGroup.rotation.y;     // ring turns with the boat
-    windNeedle.position.set(bx, hC + 0.07 * M, bz);
-    windNeedle.rotation.y = -wind.from;             // needle points to the wind source
-    // Compass follows the boat's position but stays aligned to North (rotation 0)
-    compassRing.position.set(bx, hC + 0.05 * M, bz);
-
-    // Soft shadow on the water: flat, aligned with the hull, nudged away from the sun
-    boatShadow.position.set(bx - 0.5 * M, hC + 0.04 * M, bz - 0.3 * M);
-    boatShadow.rotation.y = boatGroup.rotation.y;
-  }
+  floatPlayerBoat();
 
   // Buoys bob up and down on the waves at their own positions
   buoys.forEach((b, i) => {
@@ -2010,24 +2292,7 @@ function animate() {
     }
   });
 
-  // Chase camera: astern by default, orbited around the boat by mouse drag.
-  {
-    const h = boat.heading;
-    const elev = CAM_BASE_ELEV + camPitch;
-    const horiz = CAM_DIST * camZoom * Math.cos(elev);
-    const vert = CAM_DIST * camZoom * Math.sin(elev);
-    // astern horizontal unit vector, rotated by the orbit yaw
-    const ax = -Math.sin(h), az = Math.cos(h);
-    const cy = Math.cos(camYaw), sy = Math.sin(camYaw);
-    const dirX = ax * cy + az * sy;
-    const dirZ = -ax * sy + az * cy;
-    camera.position.set(
-      boatGroup.position.x + dirX * horiz,
-      boatGroup.position.y + vert,
-      boatGroup.position.z + dirZ * horiz
-    );
-    camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5 * M, boatGroup.position.z);
-  }
+  chaseCamera();
 
   renderer.render(scene, camera);
 }
