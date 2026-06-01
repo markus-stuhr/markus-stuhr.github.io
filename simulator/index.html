@@ -198,13 +198,25 @@ const M = 7.4;
 // (a 30 m maxi at ~13 kn would otherwise crawl across the screen).
 const SIM_SPEED = 3;
 
+// --- Real-world geography (BVI North Sound — the TracTrac race area) ---
+const MAPTILER_KEY = 'nKyAvBkGUvss9FTqT7f6'; // shared with the Globe project
+const GEO_CENTER = { lat: 18.4807, lng: -64.4744 }; // scene origin = course centre
+// Project lat/lng -> scene metres (1 unit = 1 m). North = -z (matches compass/COURSE).
+function geoToLocal(lat, lng) {
+  const clat = GEO_CENTER.lat, clng = GEO_CENTER.lng;
+  return {
+    x: (lng - clng) * Math.cos(clat * Math.PI / 180) * 111320,
+    z: -(lat - clat) * 111320,
+  };
+}
+
 // --- Scene ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc6ea); // daytime sky
-scene.fog = new THREE.FogExp2(0x9fc6ea, 0.0045); // fade the sea into the sky colour, not white
+scene.fog = new THREE.FogExp2(0x9fc6ea, 0.00018); // thin haze so the islands stay visible for km
 
 // --- Camera ---
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 4000);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 20000);
 camera.position.set(0, 8, 20);
 camera.lookAt(0, 0, 0);
 
@@ -251,8 +263,8 @@ function makeWaterTexture() {
 }
 
 // --- Ocean (follows the boat; texture & waves live in world space so motion shows) ---
-const OCEAN_SIZE = 600;
-const OCEAN_SEGS = 120;
+const OCEAN_SIZE = 1500;  // metres; large enough that its edge isn't right by the boat
+const OCEAN_SEGS = 200;   // ~7.5 m cells -> still fine wave detail near the boat
 const TILE = 28; // world units per texture tile
 const oceanGeo = new THREE.PlaneGeometry(OCEAN_SIZE, OCEAN_SIZE, OCEAN_SEGS, OCEAN_SEGS);
 oceanGeo.rotateX(-Math.PI / 2);
@@ -266,8 +278,8 @@ const oceanMat = new THREE.MeshPhongMaterial({
   specular: 0x88b8cc,
   shininess: 90,
   side: THREE.FrontSide,
-  transparent: true,   // let the submerged hull/keel show through faintly
-  opacity: 0.88,
+  transparent: true,   // slightly see-through so satellite shallows tint the water, but it still reads as sea
+  opacity: 0.82,
   depthWrite: false,   // don't let wave crests occlude the wind ring / shadow on the surface
 });
 
@@ -1073,34 +1085,118 @@ const stars = new THREE.Points(starGeo, starMat);
 stars.visible = false; // daytime
 scene.add(stars);
 
-// --- Islands (fixed world positions, for orientation) ---
-function makeIsland(x, z, scale) {
-  const g = new THREE.Group();
-  // beach / base
-  const beach = new THREE.Mesh(
-    new THREE.CylinderGeometry(8 * scale, 9 * scale, 1.2, 16),
-    new THREE.MeshPhongMaterial({ color: 0x6b6a4a })
-  );
-  beach.position.y = 0.2;
-  g.add(beach);
-  // hill
-  const hill = new THREE.Mesh(
-    new THREE.ConeGeometry(6 * scale, 7 * scale, 16),
-    new THREE.MeshPhongMaterial({ color: 0x33402c, flatShading: true })
-  );
-  hill.position.y = 0.2 + 3.5 * scale;
-  g.add(hill);
-  g.position.set(x, 0, z);
-  islandGroup.add(g);
-  return g;
+// --- Real terrain: BVI North Sound from MapTiler satellite + terrain-RGB tiles ---
+const terrainGroup = new THREE.Group();
+scene.add(terrainGroup);
+
+// Web-Mercator tile <-> lat/lng helpers
+const tileToLng = (x, z) => x / Math.pow(2, z) * 360 - 180;
+const tileToLat = (y, z) => {
+  const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
+  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+};
+const lngToTile = (lng, z) => (lng + 180) / 360 * Math.pow(2, z);
+const latToTile = (lat, z) => {
+  const r = lat * Math.PI / 180;
+  return (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * Math.pow(2, z);
+};
+const loadImage = (url) => new Promise((res) => {
+  const im = new Image();
+  im.crossOrigin = 'anonymous';
+  im.onload = () => res(im);
+  im.onerror = () => res(null);   // skip failed tiles
+  im.src = url;
+});
+
+async function buildCaribbean() {
+  const SPAN = 7000; // metres half-extent around the course centre (~14 km box)
+  const clat = GEO_CENTER.lat, clng = GEO_CENTER.lng;
+  const dLat = SPAN / 111320;
+  const dLng = SPAN / (111320 * Math.cos(clat * Math.PI / 180));
+  const latN = clat + dLat, latS = clat - dLat, lngW = clng - dLng, lngE = clng + dLng;
+
+  // --- Satellite texture: stitch tiles into one canvas ---
+  const SZ = 14;
+  const txMin = Math.floor(lngToTile(lngW, SZ)), txMax = Math.floor(lngToTile(lngE, SZ));
+  const tyMin = Math.floor(latToTile(latN, SZ)), tyMax = Math.floor(latToTile(latS, SZ));
+  const nx = txMax - txMin + 1, ny = tyMax - tyMin + 1;
+  const sat = document.createElement('canvas');
+  sat.width = nx * 256; sat.height = ny * 256;
+  const sctx = sat.getContext('2d');
+  await Promise.all((() => {
+    const jobs = [];
+    for (let tx = txMin; tx <= txMax; tx++) for (let ty = tyMin; ty <= tyMax; ty++) {
+      jobs.push(loadImage(`https://api.maptiler.com/tiles/satellite-v2/${SZ}/${tx}/${ty}.jpg?key=${MAPTILER_KEY}`)
+        .then(im => { if (im) sctx.drawImage(im, (tx - txMin) * 256, (ty - tyMin) * 256); }));
+    }
+    return jobs;
+  })());
+  const tex = new THREE.CanvasTexture(sat);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+
+  // --- DEM (terrain-RGB) decoded into one elevation canvas ---
+  const DZ = 13;
+  const dxMin = Math.floor(lngToTile(lngW, DZ)), dxMax = Math.floor(lngToTile(lngE, DZ));
+  const dyMin = Math.floor(latToTile(latN, DZ)), dyMax = Math.floor(latToTile(latS, DZ));
+  const dnx = dxMax - dxMin + 1, dny = dyMax - dyMin + 1;
+  const demC = document.createElement('canvas');
+  demC.width = dnx * 256; demC.height = dny * 256;
+  const dctx = demC.getContext('2d', { willReadFrequently: true });
+  await Promise.all((() => {
+    const jobs = [];
+    for (let tx = dxMin; tx <= dxMax; tx++) for (let ty = dyMin; ty <= dyMax; ty++) {
+      jobs.push(loadImage(`https://api.maptiler.com/tiles/terrain-rgb-v2/${DZ}/${tx}/${ty}.webp?key=${MAPTILER_KEY}`)
+        .then(im => { if (im) dctx.drawImage(im, (tx - dxMin) * 256, (ty - dyMin) * 256); }));
+    }
+    return jobs;
+  })());
+  const dem = dctx.getImageData(0, 0, demC.width, demC.height).data;
+  const elevAt = (lat, lng) => {
+    const fx = (lngToTile(lng, DZ) - dxMin) / dnx;
+    const fy = (latToTile(lat, DZ) - dyMin) / dny;
+    const px = Math.max(0, Math.min(demC.width - 1, Math.round(fx * (demC.width - 1))));
+    const py = Math.max(0, Math.min(demC.height - 1, Math.round(fy * (demC.height - 1))));
+    const i = (py * demC.width + px) * 4;
+    return -10000 + (dem[i] * 65536 + dem[i + 1] * 256 + dem[i + 2]) * 0.1;
+  };
+
+  // --- Terrain mesh: sample a regular grid over the satellite tile extent ---
+  const N = 220;
+  const verts = (N + 1) * (N + 1);
+  const pos = new Float32Array(verts * 3);
+  const uv = new Float32Array(verts * 2);
+  for (let j = 0; j <= N; j++) {
+    for (let i = 0; i <= N; i++) {
+      const u = i / N, v = j / N;
+      const lng = tileToLng(txMin + u * nx, SZ);
+      const lat = tileToLat(tyMin + v * ny, SZ);
+      const p = geoToLocal(lat, lng);
+      let h = elevAt(lat, lng);
+      // terrain-RGB ships as lossy WebP -> a few metres of decode noise over water;
+      // treat anything below ~8 m as sea (real islands here are far taller)
+      if (h < 8) h = 0;
+      const k = (j * (N + 1) + i);
+      pos[k * 3] = p.x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = p.z;
+      uv[k * 2] = u; uv[k * 2 + 1] = 1 - v;
+    }
+  }
+  const idx = [];
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const a = j * (N + 1) + i, b = a + 1, c = a + (N + 1), d = c + 1;
+    idx.push(a, c, b, b, c, d);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
+  mesh.position.y = -0.6;             // dip the coastline just under the sea surface
+  mesh.renderOrder = -2;              // draw before the transparent ocean
+  terrainGroup.add(mesh);
 }
-const islandGroup = new THREE.Group();
-islandGroup.scale.setScalar(M); // positions + sizes authored in old units -> real metres
-scene.add(islandGroup);
-[
-  [210, -110, 2.4], [-190, -60, 1.6], [70, -340, 3.0],
-  [-260, -300, 2.0], [260, -260, 1.8], [-60, 90, 1.4],
-].forEach(([x, z, s]) => makeIsland(x, z, s));
+buildCaribbean();
 
 // --- Regatta course: rounding marks in order ---
 const COURSE = [
