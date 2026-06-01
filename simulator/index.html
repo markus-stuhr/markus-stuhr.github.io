@@ -2122,6 +2122,9 @@ function updateReplayFrame(dt) {
     if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; }
     else placeReplayBoat(rb, s);
   });
+  // updateBoat isn't run in replay, so derive the values its sail/heel visuals need
+  twaDeg = normAngle(wind.from - boat.heading) * 180 / Math.PI;
+  currentEff = sailEfficiency(twaDeg);
   ocean.position.set(boatGroup.position.x, 0, boatGroup.position.z);
   stars.position.set(boatGroup.position.x, 0, boatGroup.position.z);
   animateWaves(t);
