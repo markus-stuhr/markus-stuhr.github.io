@@ -340,14 +340,13 @@ const oceanMat = new THREE.MeshPhongMaterial({
   specular: 0x88b8cc,
   shininess: 90,
   side: THREE.FrontSide,
-  transparent: true,   // slightly see-through so satellite shallows tint the water, but it still reads as sea
-  opacity: 0.82,
+  transparent: true,   // own animated water surface; opaque so the map water doesn't bleed through (no "blobs")
+  opacity: 1.0,
   depthWrite: false,   // don't let wave crests occlude the wind ring / shadow on the surface
 });
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
 ocean.renderOrder = -1; // draw before other transparent objects (e.g. wind disc)
-ocean.visible = false; // TEMP: hide computed water to see the raw satellite imagery
 scene.add(ocean);
 
 // Cache local x/z; waves are computed from WORLD coords (local + ocean offset)
@@ -1336,7 +1335,7 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
       geo.setIndex(idx);
       geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
-      mesh.position.y = -0.6;
+      mesh.position.y = -1.8;   // below the deepest wave trough (~-1.4 m) so the map never pokes through
       mesh.renderOrder = -2;
       terrainGroup.add(mesh);
     }
