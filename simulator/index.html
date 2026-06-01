@@ -1194,6 +1194,7 @@ function restartRace() {
   boat.heading = START_HEADING;
   boat.speed = 0;
   boatGroup.position.set(0, 0.3, 0);
+  boatGroup.rotation.y = -START_HEADING; // face the right way during the countdown
   // reset the opponents too
   clearTrack(playerTrack);
   OPPONENTS.forEach(o => {
