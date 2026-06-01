@@ -81,6 +81,54 @@
     .steerbtn:active { background: rgba(60,120,180,0.6); }
     #btnLeft { left: 22px; }
     #btnRight { right: 22px; }
+
+    /* --- Start menu --- */
+    body.menu #hud, body.menu #race, body.menu #info, body.menu .steerbtn { display: none; }
+    #menu {
+      position: fixed; inset: 0; z-index: 20;
+      display: flex; align-items: center; justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    }
+    #menu.hidden { display: none; }
+    .menu-card {
+      background: rgba(255,255,255,0.95);
+      border-radius: 22px;
+      padding: 30px 34px 26px;
+      width: min(360px, 86vw);
+      box-shadow: 0 20px 60px rgba(0,28,56,0.4);
+      color: #14242f; text-align: center;
+    }
+    .menu-card h1 { font-size: 25px; letter-spacing: 0.3px; margin-bottom: 22px; font-weight: 700; }
+    .menu-section { margin-bottom: 18px; text-align: left; }
+    .sec-label {
+      font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase;
+      color: #6b7c89; margin-bottom: 7px;
+    }
+    .seg { display: flex; gap: 8px; }
+    .seg button {
+      flex: 1; padding: 9px 0; border-radius: 10px;
+      border: 1.5px solid #ccd6de; background: #fff; color: #20303c;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      font-family: inherit; transition: background .12s, border-color .12s, color .12s;
+    }
+    .seg button:hover:not(:disabled) { border-color: #5aa0d8; }
+    .seg button.active { background: #1d6fb8; border-color: #1d6fb8; color: #fff; }
+    .seg button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #startBtn {
+      margin-top: 8px; width: 100%; padding: 13px 0;
+      border: none; border-radius: 12px;
+      background: #16a35a; color: #fff;
+      font-size: 16px; font-weight: 700; letter-spacing: 1px;
+      cursor: pointer; font-family: inherit;
+    }
+    #startBtn:hover { background: #128a4b; }
+    #countdown {
+      position: fixed; inset: 0; z-index: 15; display: none;
+      align-items: center; justify-content: center; pointer-events: none;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      color: #fff; font-size: 22vh; font-weight: 800;
+      text-shadow: 0 6px 40px rgba(0,0,0,0.55);
+    }
   </style>
 </head>
 <body>
@@ -100,6 +148,37 @@
 </div>
 <button id="btnLeft" class="steerbtn">‹</button>
 <button id="btnRight" class="steerbtn">›</button>
+<div id="menu">
+  <div class="menu-card">
+    <h1>Racing Simulator</h1>
+    <div class="menu-section">
+      <div class="sec-label">Modus</div>
+      <div class="seg" id="segMode">
+        <button data-value="race" class="active">Race</button>
+        <button data-value="replay" disabled>Replay</button>
+      </div>
+    </div>
+    <div class="menu-section">
+      <div class="sec-label">Windstärke</div>
+      <div class="seg" id="segWind">
+        <button data-value="10">10 kn</button>
+        <button data-value="15">15 kn</button>
+        <button data-value="20" class="active">20 kn</button>
+        <button data-value="25">25 kn</button>
+      </div>
+    </div>
+    <div class="menu-section">
+      <div class="sec-label">Wellenstärke</div>
+      <div class="seg" id="segWave">
+        <button data-value="0.5">Ruhig</button>
+        <button data-value="1" class="active">Mittel</button>
+        <button data-value="1.6">Hoch</button>
+      </div>
+    </div>
+    <button id="startBtn">Start</button>
+  </div>
+</div>
+<div id="countdown"></div>
 <script type="importmap">
 {
   "imports": {
@@ -196,7 +275,8 @@ for (let i = 0; i < posAttr.count; i++) {
   baseZ[i] = posAttr.getZ(i);
 }
 
-let waveAmp = 1;   // slowly drifts within ±25% (see updateEnvironment)
+let waveAmp = 1;   // slowly drifts within ±25% of waveBase (see updateEnvironment)
+let waveBase = 1;  // base sea state chosen in the start menu
 function waveHeight(x, z, t) {
   return (Math.sin(x * 0.08 + t * 0.9) * 0.5
     + Math.sin(z * 0.12 + t * 0.7) * 0.35
@@ -210,7 +290,7 @@ function updateEnvironment(t) {
   const shift = 0.5 * Math.sin(t * 0.06 + 1.1) + 0.3 * Math.sin(t * 0.17 + 3.3) + 0.2 * Math.sin(t * 0.04 + 0.5);
   wind.from = wind.baseFrom + (20 * Math.PI / 180) * shift; // wind veers/backs within ±20°
   const swell = 0.5 * Math.sin(t * 0.09 + 0.6) + 0.3 * Math.sin(t * 0.23 + 2.4) + 0.2 * Math.sin(t * 0.05 + 4.0);
-  waveAmp = 1 + 0.25 * swell;
+  waveAmp = waveBase * (1 + 0.25 * swell);
 }
 
 function animateWaves(t) {
@@ -1566,6 +1646,61 @@ window.addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+// --- Game state & start menu ---
+// 'menu'      : empty animated sea behind the overlay, sim hidden
+// 'countdown' : race scene placed but frozen, 3-2-1 shown
+// 'racing'    : full simulation running
+let gameState = 'menu';
+let countdownTimer = 0;
+let menuYaw = 0;
+
+// Show / hide all the race-world objects (the menu shows only the empty sea).
+function setWorldVisible(v) {
+  boatGroup.visible = v;
+  boatShadow.visible = v;
+  windRing.visible = v;
+  windNeedle.visible = v;
+  compassRing.visible = v;
+  wakePoints.visible = v;
+  playerTrack.line.visible = v;
+  buoys.forEach(b => { b.grp.visible = v; });
+  OPPONENTS.forEach(o => { o.group.visible = v; o.track.line.visible = v; });
+}
+
+// Segmented button group: returns a getter for the currently selected value.
+function wireSeg(id) {
+  const seg = document.getElementById(id);
+  seg.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    seg.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+  });
+  return () => parseFloat(seg.querySelector('.active').dataset.value);
+}
+const getWind = wireSeg('segWind');
+const getWave = wireSeg('segWave');
+wireSeg('segMode'); // Race is fixed; Replay is disabled for now
+
+function startGame() {
+  const windVal = getWind();
+  waveBase = getWave();
+  wind.baseTws = windVal;
+  wind.maxTws = windVal * 1.25;   // full power at the top of the gusts
+  wind.from = wind.baseFrom;
+  restartRace();
+  setWorldVisible(true);
+  document.body.classList.remove('menu');
+  document.getElementById('menu').classList.add('hidden');
+  // Freeze the scene and run a 3-2-1 countdown before the boats move.
+  gameState = 'countdown';
+  countdownTimer = 3;
+  const cd = document.getElementById('countdown');
+  cd.style.display = 'flex';
+  cd.textContent = '3';
+}
+document.getElementById('startBtn').addEventListener('click', startGame);
+
 // --- Animate ---
 const clock = new THREE.Clock();
 let t = 0;
@@ -1573,10 +1708,37 @@ let t = 0;
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
-  t += dt;
+
+  // Menu: just the empty sea, slowly drifting, behind the overlay.
+  if (gameState === 'menu') {
+    t += dt;
+    menuYaw += dt * 0.04;
+    ocean.position.set(0, 0, 0);
+    stars.position.set(0, 0, 0);
+    updateEnvironment(t);
+    animateWaves(t);
+    camera.position.set(Math.sin(menuYaw) * 3, 5.5, Math.cos(menuYaw) * 3);
+    camera.lookAt(Math.sin(menuYaw + 0.5) * 60, 3, Math.cos(menuYaw + 0.5) * 60);
+    renderer.render(scene, camera);
+    return;
+  }
+
+  // Countdown: tick the 3-2-1 timer; the scene stays frozen until it ends.
+  if (gameState === 'countdown') {
+    countdownTimer -= dt;
+    const n = Math.ceil(countdownTimer);
+    document.getElementById('countdown').textContent = n > 0 ? String(n) : 'Los!';
+    if (countdownTimer <= 0) {
+      gameState = 'racing';
+      document.getElementById('countdown').style.display = 'none';
+    }
+  }
+
+  const moving = gameState === 'racing';
+  if (moving) t += dt; // frozen sea & boats during the countdown
 
   updateEnvironment(t);
-  updateBoat(dt);
+  if (moving) updateBoat(dt);
 
   // Ocean & stars follow the boat so the sea is effectively infinite
   ocean.position.x = boatGroup.position.x;
@@ -1585,14 +1747,16 @@ function animate() {
   stars.position.z = boatGroup.position.z;
 
   animateWaves(t);
-  updateVisuals(dt);
-  updateRace(dt);
+  updateVisuals(dt);   // sails trim/fill even during the countdown
+  updateRace(dt);      // clock only advances once the boat is moving
   updateHUD();
   updateMarkPointers();
   updateWake(t, dt);
-  OPPONENTS.forEach(o => updateOpponent(o, dt));
-  recordTrack(playerTrack, boatGroup.position.x, boatGroup.position.z);
-  OPPONENTS.forEach(o => recordTrack(o.track, o.group.position.x, o.group.position.z));
+  if (moving) OPPONENTS.forEach(o => updateOpponent(o, dt));
+  if (moving) {
+    recordTrack(playerTrack, boatGroup.position.x, boatGroup.position.z);
+    OPPONENTS.forEach(o => recordTrack(o.track, o.group.position.x, o.group.position.z));
+  }
   updateTrackHeights(playerTrack);
   OPPONENTS.forEach(o => updateTrackHeights(o.track));
 
@@ -1667,6 +1831,9 @@ function animate() {
   renderer.render(scene, camera);
 }
 
+// Start on the menu: empty sea behind the overlay.
+document.body.classList.add('menu');
+setWorldVisible(false);
 animate();
 </script>
 </body>
