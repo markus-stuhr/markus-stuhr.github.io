@@ -1137,7 +1137,7 @@ async function buildCaribbean() {
   tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
   // --- DEM (terrain-RGB) decoded into one elevation canvas ---
-  const DZ = 13;
+  const DZ = 14; // match the texture zoom so coastlines line up
   const dxMin = Math.floor(lngToTile(lngW, DZ)), dxMax = Math.floor(lngToTile(lngE, DZ));
   const dyMin = Math.floor(latToTile(latN, DZ)), dyMax = Math.floor(latToTile(latS, DZ));
   const dnx = dxMax - dxMin + 1, dny = dyMax - dyMin + 1;
@@ -1163,24 +1163,36 @@ async function buildCaribbean() {
   };
 
   // --- Terrain mesh: sample a regular grid over the satellite tile extent ---
-  const N = 220;
-  const verts = (N + 1) * (N + 1);
-  const pos = new Float32Array(verts * 3);
-  const uv = new Float32Array(verts * 2);
+  const N = 220, W = N + 1;
+  const pos = new Float32Array(W * W * 3);
+  const uv = new Float32Array(W * W * 2);
+  const H = new Float32Array(W * W);   // raw elevation per grid node
+  const PX = new Float32Array(W * W), PZ = new Float32Array(W * W);
   for (let j = 0; j <= N; j++) {
     for (let i = 0; i <= N; i++) {
       const u = i / N, v = j / N;
       const lng = tileToLng(txMin + u * nx, SZ);
       const lat = tileToLat(tyMin + v * ny, SZ);
       const p = geoToLocal(lat, lng);
-      let h = elevAt(lat, lng);
-      // terrain-RGB ships as lossy WebP -> a few metres of decode noise over water;
-      // treat anything below ~8 m as sea (real islands here are far taller)
-      if (h < 8) h = 0;
-      const k = (j * (N + 1) + i);
-      pos[k * 3] = p.x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = p.z;
+      const k = j * W + i;
+      PX[k] = p.x; PZ[k] = p.z;
+      H[k] = elevAt(lat, lng);
       uv[k * 2] = u; uv[k * 2 + 1] = 1 - v;
     }
+  }
+  // Smooth the heightfield (terrain-RGB arrives as lossy WebP -> spiky decode
+  // noise); a few box-blur passes turn the noise/needles into real hills.
+  for (let pass = 0; pass < 4; pass++) {
+    const T = H.slice();
+    for (let j = 1; j < N; j++) for (let i = 1; i < N; i++) {
+      const k = j * W + i;
+      H[k] = (T[k] + T[k - 1] + T[k + 1] + T[k - W] + T[k + W]) / 5;
+    }
+  }
+  for (let k = 0; k < W * W; k++) {
+    let h = H[k];
+    if (h < 8) h = 0; // below ~8 m -> sea level (real islands here are far taller)
+    pos[k * 3] = PX[k]; pos[k * 3 + 1] = h; pos[k * 3 + 2] = PZ[k];
   }
   const idx = [];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
