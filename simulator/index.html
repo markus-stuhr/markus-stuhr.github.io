@@ -285,6 +285,7 @@ const oceanMat = new THREE.MeshPhongMaterial({
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
 ocean.renderOrder = -1; // draw before other transparent objects (e.g. wind disc)
+ocean.visible = false; // TEMP: hide computed water to see the raw satellite imagery
 scene.add(ocean);
 
 // Cache local x/z; waves are computed from WORLD coords (local + ocean offset)
