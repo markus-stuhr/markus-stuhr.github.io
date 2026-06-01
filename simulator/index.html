@@ -191,6 +191,11 @@
 <script type="module">
 import * as THREE from 'three';
 
+// Cache map tiles + libraries so reloads don't refetch everything
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
 // Scene scale: 1 unit = 1 metre. The boat/scene were authored in arbitrary
 // units (maxi hull = 4.1 units ≈ 30.5 m), so world objects/positions/camera are
 // scaled by M to make the unit a real metre — needed for real terrain + GPS tracks.
