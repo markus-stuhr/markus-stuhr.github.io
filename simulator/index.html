@@ -1118,131 +1118,159 @@ async function buildCaribbean() {
   const dLng = SPAN / (111320 * Math.cos(clat * Math.PI / 180));
   const latN = clat + dLat, latS = clat - dLat, lngW = clng - dLng, lngE = clng + dLng;
 
-  // --- Map texture: render the vector style offscreen with MapLibre so we can
-  // strip the contour lines and labels, then grab its canvas. Locked to the
-  // exact tile-aligned bbox so it lines up with the elevation grid below. ---
+  // tile-aligned bbox (mercator) — all sampling/UVs reference this
   const SZ = 14;
   const txMin = Math.floor(lngToTile(lngW, SZ)), txMax = Math.floor(lngToTile(lngE, SZ));
   const tyMin = Math.floor(latToTile(latN, SZ)), tyMax = Math.floor(latToTile(latS, SZ));
   const nx = txMax - txMin + 1, ny = tyMax - tyMin + 1;
-  // tile-aligned geographic bounds (= UV grid extent)
-  const bW = tileToLng(txMin, SZ), bE = tileToLng(txMax + 1, SZ);
-  const bN = tileToLat(tyMin, SZ), bS = tileToLat(tyMax + 1, SZ);
-  const sat = await new Promise((resolve) => {
-    // Render at high resolution (~RES px per tile) for crisp close-up detail.
-    // Account for devicePixelRatio so the output canvas hits the target size,
-    // and lift MapLibre's default 4096 px canvas cap.
-    const dpr = window.devicePixelRatio || 1;
-    const RES = 1024;
-    const div = document.createElement('div');
-    div.style.cssText = `position:absolute;left:-99999px;top:0;width:${nx * RES / dpr}px;height:${ny * RES / dpr}px;`;
-    document.body.appendChild(div);
-    const map = new maplibregl.Map({
-      container: div,
-      style: `https://api.maptiler.com/maps/topo-v2/style.json?key=${MAPTILER_KEY}`,
-      center: [(bW + bE) / 2, (bN + bS) / 2], zoom: SZ,
-      interactive: false, attributionControl: false,
-      preserveDrawingBuffer: true, fadeDuration: 0,
-      maxCanvasSize: [16384, 16384],
-    });
-    map.on('load', () => {
-      // drop every label (symbol) and contour line layer
-      (map.getStyle().layers || []).forEach((l) => {
-        if (l.type === 'symbol' || /contour/i.test(l.id)) { try { map.removeLayer(l.id); } catch {} }
-      });
-      map.fitBounds([[bW, bS], [bE, bN]], { padding: 0, animate: false, duration: 0 });
-      map.once('idle', () => {
-        const c = map.getCanvas();
-        const out = document.createElement('canvas');
-        out.width = c.width; out.height = c.height;
-        out.getContext('2d').drawImage(c, 0, 0);
-        resolve(out);
-        map.remove(); div.remove();
-      });
-    });
-  });
-  const tex = new THREE.CanvasTexture(sat);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
 
-  // --- DEM (terrain-RGB) decoded into one elevation canvas ---
-  const DZ = 14; // match the texture zoom so coastlines line up
-  const dxMin = Math.floor(lngToTile(lngW, DZ)), dxMax = Math.floor(lngToTile(lngE, DZ));
-  const dyMin = Math.floor(latToTile(latN, DZ)), dyMax = Math.floor(latToTile(latS, DZ));
-  const dnx = dxMax - dxMin + 1, dny = dyMax - dyMin + 1;
-  const DPX = 512; // MapTiler terrain-RGB tiles are 512 px (drawn 1:1, no scaling -> exact values)
+  // --- DEM (terrain-RGB) decoded once into one elevation canvas ---
+  const dxMin = txMin, dxMax = txMax, dyMin = tyMin, dyMax = tyMax, dnx = nx, dny = ny;
+  const DPX = 512; // terrain-RGB tiles are 512 px (drawn 1:1 -> exact values)
   const demC = document.createElement('canvas');
   demC.width = dnx * DPX; demC.height = dny * DPX;
   const dctx = demC.getContext('2d', { willReadFrequently: true });
   await Promise.all((() => {
     const jobs = [];
     for (let tx = dxMin; tx <= dxMax; tx++) for (let ty = dyMin; ty <= dyMax; ty++) {
-      jobs.push(loadImage(`https://api.maptiler.com/tiles/terrain-rgb-v2/${DZ}/${tx}/${ty}.webp?key=${MAPTILER_KEY}`)
+      jobs.push(loadImage(`https://api.maptiler.com/tiles/terrain-rgb-v2/${SZ}/${tx}/${ty}.webp?key=${MAPTILER_KEY}`)
         .then(im => { if (im) dctx.drawImage(im, (tx - dxMin) * DPX, (ty - dyMin) * DPX, DPX, DPX); }));
     }
     return jobs;
   })());
   const dem = dctx.getImageData(0, 0, demC.width, demC.height).data;
   const elevAt = (lat, lng) => {
-    const fx = (lngToTile(lng, DZ) - dxMin) / dnx;
-    const fy = (latToTile(lat, DZ) - dyMin) / dny;
+    const fx = (lngToTile(lng, SZ) - dxMin) / dnx;
+    const fy = (latToTile(lat, SZ) - dyMin) / dny;
     const px = Math.max(0, Math.min(demC.width - 1, Math.round(fx * (demC.width - 1))));
     const py = Math.max(0, Math.min(demC.height - 1, Math.round(fy * (demC.height - 1))));
     const i = (py * demC.width + px) * 4;
     return -10000 + (dem[i] * 65536 + dem[i + 1] * 256 + dem[i + 2]) * 0.1;
   };
 
-  // --- Terrain mesh: sample a regular grid over the satellite tile extent ---
-  const N = 220, W = N + 1;
-  const pos = new Float32Array(W * W * 3);
-  const uv = new Float32Array(W * W * 2);
-  const H = new Float32Array(W * W);   // raw elevation per grid node
-  const PX = new Float32Array(W * W), PZ = new Float32Array(W * W);
-  for (let j = 0; j <= N; j++) {
-    for (let i = 0; i <= N; i++) {
-      const u = i / N, v = j / N;
-      const lng = tileToLng(txMin + u * nx, SZ);
-      const lat = tileToLat(tyMin + v * ny, SZ);
-      const p = geoToLocal(lat, lng);
-      const k = j * W + i;
-      PX[k] = p.x; PZ[k] = p.z;
-      H[k] = elevAt(lat, lng);
-      uv[k * 2] = u; uv[k * 2 + 1] = 1 - v;
-    }
+  // --- One global, smoothed + sea-masked height grid (shared by all chunks ->
+  // no seams). Sampled bilinearly by gridElev(lat,lng). ---
+  const Ng = 256, Wg = Ng + 1;
+  const Hg = new Float32Array(Wg * Wg);
+  for (let j = 0; j <= Ng; j++) for (let i = 0; i <= Ng; i++) {
+    const lng = tileToLng(txMin + (i / Ng) * nx, SZ);
+    const lat = tileToLat(tyMin + (j / Ng) * ny, SZ);
+    Hg[j * Wg + i] = elevAt(lat, lng);
   }
-  // Mark sea cells from the RAW heights first (below ~8 m -> sea; also drops
-  // lossy-WebP decode noise). Smoothing must not lift these, or island height
-  // bleeds into the surrounding water -> "blue mountains".
-  const isSea = new Uint8Array(W * W);
-  for (let k = 0; k < W * W; k++) isSea[k] = H[k] < 8 ? 1 : 0;
-  // Smooth the heightfield so real land becomes rounded hills, not spikes.
+  const sea = new Uint8Array(Wg * Wg);
+  for (let k = 0; k < Wg * Wg; k++) sea[k] = Hg[k] < 8 ? 1 : 0; // <8 m -> sea (drops noise)
   for (let pass = 0; pass < 4; pass++) {
-    const T = H.slice();
-    for (let j = 1; j < N; j++) for (let i = 1; i < N; i++) {
-      const k = j * W + i;
-      H[k] = (T[k] + T[k - 1] + T[k + 1] + T[k - W] + T[k + W]) / 5;
+    const T = Hg.slice();
+    for (let j = 1; j < Ng; j++) for (let i = 1; i < Ng; i++) {
+      const k = j * Wg + i;
+      Hg[k] = (T[k] + T[k - 1] + T[k + 1] + T[k - Wg] + T[k + Wg]) / 5;
     }
   }
-  for (let k = 0; k < W * W; k++) {
-    const h = isSea[k] ? 0 : Math.max(0, H[k]); // water stays flat at sea level
-    pos[k * 3] = PX[k]; pos[k * 3 + 1] = h; pos[k * 3 + 2] = PZ[k];
+  for (let k = 0; k < Wg * Wg; k++) Hg[k] = sea[k] ? 0 : Math.max(0, Hg[k]);
+  const gridElev = (lat, lng) => {
+    const gx = Math.max(0, Math.min(Ng - 0.001, ((lngToTile(lng, SZ) - txMin) / nx) * Ng));
+    const gy = Math.max(0, Math.min(Ng - 0.001, ((latToTile(lat, SZ) - tyMin) / ny) * Ng));
+    const x0 = Math.floor(gx), y0 = Math.floor(gy), fx = gx - x0, fy = gy - y0;
+    const h00 = Hg[y0 * Wg + x0], h10 = Hg[y0 * Wg + x0 + 1];
+    const h01 = Hg[(y0 + 1) * Wg + x0], h11 = Hg[(y0 + 1) * Wg + x0 + 1];
+    return (h00 * (1 - fx) + h10 * fx) * (1 - fy) + (h01 * (1 - fx) + h11 * fx) * fy;
+  };
+
+  // --- Route polyline (scene XZ) for LOD: course marks + start ---
+  const route = [{ x: 0, z: 0 }, ...COURSE];
+  const distToRoute = (x, z) => {
+    let best = Infinity;
+    for (let s = 0; s < route.length - 1; s++) {
+      const a = route[s], b = route[s + 1];
+      const dx = b.x - a.x, dz = b.z - a.z, L2 = dx * dx + dz * dz || 1;
+      let t = ((x - a.x) * dx + (z - a.z) * dz) / L2; t = Math.max(0, Math.min(1, t));
+      const px = a.x + t * dx, pz = a.z + t * dz;
+      best = Math.min(best, Math.hypot(x - px, z - pz));
+    }
+    return best;
+  };
+
+  // --- One reused offscreen MapLibre map; render each chunk's texture ---
+  const dpr = window.devicePixelRatio || 1;
+  const mapDiv = document.createElement('div');
+  mapDiv.style.cssText = 'position:absolute;left:-99999px;top:0;width:512px;height:512px;';
+  document.body.appendChild(mapDiv);
+  const map = new maplibregl.Map({
+    container: mapDiv,
+    style: `https://api.maptiler.com/maps/topo-v2/style.json?key=${MAPTILER_KEY}`,
+    center: [clng, clat], zoom: SZ,
+    interactive: false, attributionControl: false,
+    preserveDrawingBuffer: true, fadeDuration: 0, maxCanvasSize: [16384, 16384],
+  });
+  await new Promise((res) => map.on('load', () => {
+    (map.getStyle().layers || []).forEach((l) => {
+      if (l.type === 'symbol' || /contour/i.test(l.id)) { try { map.removeLayer(l.id); } catch {} }
+    });
+    res();
+  }));
+  const renderChunk = async (w, s, e, n, RES) => {
+    mapDiv.style.width = (RES / dpr) + 'px';
+    mapDiv.style.height = (RES * (ny / nx) / dpr) + 'px';
+    map.resize();
+    map.fitBounds([[w, s], [e, n]], { padding: 0, animate: false, duration: 0 });
+    await Promise.race([
+      new Promise((res) => map.once('idle', res)),
+      new Promise((res) => setTimeout(res, 4000)),
+    ]);
+    const c = map.getCanvas();
+    const out = document.createElement('canvas');
+    out.width = c.width; out.height = c.height;
+    out.getContext('2d').drawImage(c, 0, 0);
+    return out;
+  };
+
+  // --- Chunk grid with route-based LOD ---
+  const CC = 4;          // 4x4 chunks over the box (~3.5 km each)
+  const CN = 48;         // mesh grid resolution per chunk
+  const maxA = renderer.capabilities.getMaxAnisotropy();
+  for (let cy = 0; cy < CC; cy++) {
+    for (let cx = 0; cx < CC; cx++) {
+      const w = tileToLng(txMin + (cx / CC) * nx, SZ);
+      const e = tileToLng(txMin + ((cx + 1) / CC) * nx, SZ);
+      const n = tileToLat(tyMin + (cy / CC) * ny, SZ);
+      const s = tileToLat(tyMin + ((cy + 1) / CC) * ny, SZ);
+      // tier by distance from chunk centre to the route
+      const cc = geoToLocal((n + s) / 2, (w + e) / 2);
+      const d = distToRoute(cc.x, cc.z);
+      const RES = d < 1500 ? 2560 : d < 4000 ? 1280 : 640;
+      const tex = new THREE.CanvasTexture(await renderChunk(w, s, e, n, RES));
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = maxA;
+      // mesh sampling the SHARED height grid -> seamless across chunks
+      const V = CN + 1;
+      const pos = new Float32Array(V * V * 3), uv = new Float32Array(V * V * 2);
+      for (let j = 0; j <= CN; j++) for (let i = 0; i <= CN; i++) {
+        const u = i / CN, v = j / CN;
+        const lng = tileToLng(txMin + (cx + u) / CC * nx, SZ);
+        const lat = tileToLat(tyMin + (cy + v) / CC * ny, SZ);
+        const p = geoToLocal(lat, lng);
+        const k = j * V + i;
+        pos[k * 3] = p.x; pos[k * 3 + 1] = gridElev(lat, lng); pos[k * 3 + 2] = p.z;
+        uv[k * 2] = u; uv[k * 2 + 1] = 1 - v;
+      }
+      const idx = [];
+      for (let j = 0; j < CN; j++) for (let i = 0; i < CN; i++) {
+        const a = j * V + i, b = a + 1, c2 = a + V, dd = c2 + 1;
+        idx.push(a, c2, b, b, c2, dd);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
+      mesh.position.y = -0.6;
+      mesh.renderOrder = -2;
+      terrainGroup.add(mesh);
+    }
   }
-  const idx = [];
-  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-    const a = j * (N + 1) + i, b = a + 1, c = a + (N + 1), d = c + 1;
-    idx.push(a, c, b, b, c, d);
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  geo.setIndex(idx);
-  geo.computeVertexNormals();
-  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
-  mesh.position.y = -0.6;             // dip the coastline just under the sea surface
-  mesh.renderOrder = -2;              // draw before the transparent ocean
-  terrainGroup.add(mesh);
+  map.remove(); mapDiv.remove();
 }
-buildCaribbean();
 
 // --- Regatta course: rounding marks in order ---
 const COURSE = [
@@ -1252,6 +1280,8 @@ const COURSE = [
   { x: 0,    z: -20  }, // finish near the start
 ].map(m => ({ x: m.x * M, z: m.z * M }));   // course laid out in metres
 const MARK_RADIUS = 30; // metres: how close you must get to round a mark
+
+buildCaribbean(); // build the LOD terrain now that the route (COURSE) is known
 
 // Billboard text label (canvas texture) for waypoint numbers
 function makeTextSprite(text, color = '#ffffff') {
