@@ -2119,7 +2119,7 @@ function updateReplayFrame(dt) {
   // place boats
   REPLAY.boats.forEach(rb => {
     const s = replaySample(rb, replay.ms);
-    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boat.heading = s.h; boat.speed = s.sp; }
+    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; }
     else placeReplayBoat(rb, s);
   });
   ocean.position.set(boatGroup.position.x, 0, boatGroup.position.z);
