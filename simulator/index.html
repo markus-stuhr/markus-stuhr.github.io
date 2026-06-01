@@ -194,6 +194,10 @@ import * as THREE from 'three';
 // scaled by M to make the unit a real metre — needed for real terrain + GPS tracks.
 const M = 7.4;
 
+// Sim runs faster than wall-clock so a realistic metre-scale course feels lively
+// (a 30 m maxi at ~13 kn would otherwise crawl across the screen).
+const SIM_SPEED = 3;
+
 // --- Scene ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc6ea); // daytime sky
@@ -1752,9 +1756,13 @@ function animate() {
 
   const moving = gameState === 'racing';
   if (moving) t += dt; // frozen sea & boats during the countdown
+  // Time compression: real sailing on a metre-scale course is slow, so the
+  // simulation (boat/opponents/clock/wake) runs faster than wall-clock. The wave
+  // field still evolves at real time (calm sea), so speeds/knots stay realistic.
+  const sdt = dt * SIM_SPEED;
 
   updateEnvironment(t);
-  if (moving) updateBoat(dt);
+  if (moving) updateBoat(sdt);
 
   // Ocean & stars follow the boat so the sea is effectively infinite
   ocean.position.x = boatGroup.position.x;
@@ -1763,12 +1771,12 @@ function animate() {
   stars.position.z = boatGroup.position.z;
 
   animateWaves(t);
-  updateVisuals(dt);   // sails trim/fill even during the countdown
-  updateRace(dt);      // clock only advances once the boat is moving
+  updateVisuals(sdt);  // sails trim/fill even during the countdown
+  updateRace(sdt);     // clock only advances once the boat is moving
   updateHUD();
   updateMarkPointers();
-  updateWake(t, dt);
-  if (moving) OPPONENTS.forEach(o => updateOpponent(o, dt));
+  updateWake(t, sdt);
+  if (moving) OPPONENTS.forEach(o => updateOpponent(o, sdt));
   if (moving) {
     recordTrack(playerTrack, boatGroup.position.x, boatGroup.position.z);
     OPPONENTS.forEach(o => recordTrack(o.track, o.group.position.x, o.group.position.z));
