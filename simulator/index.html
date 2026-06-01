@@ -335,15 +335,21 @@ const waterTex = makeWaterTexture();
 waterTex.repeat.set(OCEAN_SIZE / TILE, OCEAN_SIZE / TILE);
 
 const oceanMat = new THREE.MeshPhongMaterial({
-  color: 0xc3e4ef,        // slight blue-turquoise tint over the texture
-  map: waterTex,
+  color: 0x68a7c4,        // matches the topo-v2 map water colour (so it blends seamlessly)
   specular: 0x88b8cc,
   shininess: 90,
   side: THREE.FrontSide,
-  transparent: true,   // own animated water surface; opaque so the map water doesn't bleed through (no "blobs")
+  transparent: true,   // own animated water; fades to the map water at the plane edges
   opacity: 1.0,
   depthWrite: false,   // don't let wave crests occlude the wind ring / shadow on the surface
 });
+// Fade the water out toward the plane edges so it blends into the distant map water.
+oceanMat.onBeforeCompile = (sh) => {
+  sh.vertexShader = 'attribute float aAlpha;\nvarying float vAlpha;\n' +
+    sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vAlpha = aAlpha;');
+  sh.fragmentShader = 'varying float vAlpha;\n' +
+    sh.fragmentShader.replace('#include <dithering_fragment>', '#include <dithering_fragment>\n  gl_FragColor.a *= vAlpha;');
+};
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
 ocean.renderOrder = -1; // draw before other transparent objects (e.g. wind disc)
@@ -353,10 +359,16 @@ scene.add(ocean);
 const posAttr = oceanGeo.attributes.position;
 const baseX = new Float32Array(posAttr.count);
 const baseZ = new Float32Array(posAttr.count);
+const oceanAlpha = new Float32Array(posAttr.count);
 for (let i = 0; i < posAttr.count; i++) {
   baseX[i] = posAttr.getX(i);
   baseZ[i] = posAttr.getZ(i);
+  // radial alpha: full near the boat, fading to 0 before the plane edge
+  const d = Math.hypot(baseX[i], baseZ[i]);
+  const r0 = OCEAN_SIZE * 0.30, r1 = OCEAN_SIZE * 0.48;
+  oceanAlpha[i] = 1 - Math.max(0, Math.min(1, (d - r0) / (r1 - r0)));
 }
+oceanGeo.setAttribute('aAlpha', new THREE.BufferAttribute(oceanAlpha, 1));
 
 let waveAmp = 1;   // slowly drifts within ±25% of waveBase (see updateEnvironment)
 let waveBase = 1;  // base sea state chosen in the start menu
