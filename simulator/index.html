@@ -2031,7 +2031,7 @@ async function startReplay() {
       const o = makeOpponent({ hull, sail: SAILMAT.sail, rig: SAILMAT.rig, track: hull, dot: hull, x: 0, z: 0 });
       group = o.group; mainPivot = o.mainPivot; jibPivot = o.jibPivot;
     }
-    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, group, mainPivot, jibPivot });
+    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, group, mainPivot, jibPivot, color: parseInt(b.color.slice(1), 16), line: null, lastIdx: -1 });
   });
 
   // marks as simple orange buoys
@@ -2044,6 +2044,17 @@ async function startReplay() {
     body.position.y = 1.0; body.scale.setScalar(M); g.add(body);
     g.position.set(q.x, 0, q.z); g.userData = { x: q.x, z: q.z };
     replayGroup.add(g);
+  });
+
+  // dashed track line per boat, in its own colour
+  REPLAY.boats.forEach(rb => {
+    const mat = new THREE.LineDashedMaterial({
+      color: rb.color, dashSize: 6 * M, gapSize: 4 * M, transparent: true, opacity: 0.6, depthWrite: false,
+    });
+    const line = new THREE.Line(new THREE.BufferGeometry(), mat);
+    line.frustumCulled = false;
+    replayGroup.add(line);
+    rb.line = line; rb.lastIdx = -1;
   });
 
   hideRaceObjects();
@@ -2102,6 +2113,17 @@ function placeReplayBoat(rb, s) {
   }
 }
 
+function updateReplayTrails() {
+  const idx = Math.min(REPLAY.count - 1, Math.floor(replay.ms / REPLAY.dtms));
+  REPLAY.boats.forEach(rb => {
+    if (idx === rb.lastIdx || !rb.line) return;
+    rb.lastIdx = idx;
+    const pts = [];
+    for (let k = 0; k <= idx; k++) pts.push(new THREE.Vector3(rb.xs[k], 0.2 * M, rb.zs[k]));
+    rb.line.geometry.setFromPoints(pts);
+    rb.line.computeLineDistances();
+  });
+}
 const fmtClock = (ms) => {
   const s = Math.floor(ms / 1000), m = Math.floor(s / 60);
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -2131,8 +2153,11 @@ function updateReplayFrame(dt) {
   updateVisuals(dt);   // V sails/heel/pennant from boat.heading + wind
   updateWake(t, dt);   // V wake
   floatPlayerBoat();
-  // marks bob on the waves
-  replayGroup.children.forEach(g => { g.position.y = waveHeight(g.userData.x, g.userData.z, t); });
+  updateReplayTrails();
+  // marks bob on the waves (skip the track lines, which have no userData)
+  replayGroup.children.forEach(g => {
+    if (g.userData && g.userData.x !== undefined) g.position.y = waveHeight(g.userData.x, g.userData.z, t);
+  });
   // HUD + timeline
   elSog.textContent = (Math.abs(boat.speed) * 1.94).toFixed(1);
   elTws.textContent = wind.tws.toFixed(0);
