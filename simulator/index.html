@@ -335,9 +335,10 @@ const waterTex = makeWaterTexture();
 waterTex.repeat.set(OCEAN_SIZE / TILE, OCEAN_SIZE / TILE);
 
 const oceanMat = new THREE.MeshPhongMaterial({
-  color: 0x68a7c4,        // matches the topo-v2 map water colour (so it blends seamlessly)
-  specular: 0x88b8cc,
-  shininess: 90,
+  color: 0x14303a,        // small diffuse for subtle wave-slope shading
+  emissive: 0x5e9bb6,     // bright base ~ the topo-v2 map water colour, regardless of lighting
+  specular: 0x33505a,     // faint highlights only — avoid a blown-out sun glare
+  shininess: 110,
   side: THREE.FrontSide,
   transparent: true,   // own animated water; fades to the map water at the plane edges
   opacity: 1.0,
