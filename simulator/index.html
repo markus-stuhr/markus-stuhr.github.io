@@ -1129,8 +1129,13 @@ async function buildCaribbean() {
   const bW = tileToLng(txMin, SZ), bE = tileToLng(txMax + 1, SZ);
   const bN = tileToLat(tyMin, SZ), bS = tileToLat(tyMax + 1, SZ);
   const sat = await new Promise((resolve) => {
+    // Render at high resolution (~RES px per tile) for crisp close-up detail.
+    // Account for devicePixelRatio so the output canvas hits the target size,
+    // and lift MapLibre's default 4096 px canvas cap.
+    const dpr = window.devicePixelRatio || 1;
+    const RES = 1024;
     const div = document.createElement('div');
-    div.style.cssText = `position:absolute;left:-99999px;top:0;width:${nx * 512}px;height:${ny * 512}px;`;
+    div.style.cssText = `position:absolute;left:-99999px;top:0;width:${nx * RES / dpr}px;height:${ny * RES / dpr}px;`;
     document.body.appendChild(div);
     const map = new maplibregl.Map({
       container: div,
@@ -1138,6 +1143,7 @@ async function buildCaribbean() {
       center: [(bW + bE) / 2, (bN + bS) / 2], zoom: SZ,
       interactive: false, attributionControl: false,
       preserveDrawingBuffer: true, fadeDuration: 0,
+      maxCanvasSize: [16384, 16384],
     });
     map.on('load', () => {
       // drop every label (symbol) and contour line layer
