@@ -1,0 +1,7 @@
+# Raw GPS track exports — too large for the repo; convert to slim JSON instead
+*.gpx
+simulator/GPS Tracks/
+globe/Performance Race 1.gpx
+
+# macOS cruft
+.DS_Store
