@@ -1237,7 +1237,7 @@ async function buildCaribbean() {
       // tier by distance from chunk centre to the route
       const cc = geoToLocal((n + s) / 2, (w + e) / 2);
       const d = distToRoute(cc.x, cc.z);
-      const RES = d < 1500 ? 2560 : d < 4000 ? 1280 : 640;
+      const RES = d < 1500 ? 4096 : d < 4000 ? 2048 : 768;
       const tex = new THREE.CanvasTexture(await renderChunk(w, s, e, n, RES));
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = maxA;
