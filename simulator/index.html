@@ -1116,19 +1116,20 @@ async function buildCaribbean() {
   const dLng = SPAN / (111320 * Math.cos(clat * Math.PI / 180));
   const latN = clat + dLat, latS = clat - dLat, lngW = clng - dLng, lngE = clng + dLng;
 
-  // --- Satellite texture: stitch tiles into one canvas ---
-  const SZ = 14;
+  // --- Map texture: stitch @2x (retina) tiles into one canvas for sharpness ---
+  const SZ = 14;          // @2x at z14 ≈ z15 detail, but only ~49 tiles
+  const TPX = 512;        // @2x tiles are 512 px -> double the pixel density
   const txMin = Math.floor(lngToTile(lngW, SZ)), txMax = Math.floor(lngToTile(lngE, SZ));
   const tyMin = Math.floor(latToTile(latN, SZ)), tyMax = Math.floor(latToTile(latS, SZ));
   const nx = txMax - txMin + 1, ny = tyMax - tyMin + 1;
   const sat = document.createElement('canvas');
-  sat.width = nx * 256; sat.height = ny * 256;
+  sat.width = nx * TPX; sat.height = ny * TPX;
   const sctx = sat.getContext('2d');
   await Promise.all((() => {
     const jobs = [];
     for (let tx = txMin; tx <= txMax; tx++) for (let ty = tyMin; ty <= tyMax; ty++) {
-      jobs.push(loadImage(`https://api.maptiler.com/maps/topo-v2/${SZ}/${tx}/${ty}.png?key=${MAPTILER_KEY}`)
-        .then(im => { if (im) sctx.drawImage(im, (tx - txMin) * 256, (ty - tyMin) * 256); }));
+      jobs.push(loadImage(`https://api.maptiler.com/maps/topo-v2/${SZ}/${tx}/${ty}@2x.png?key=${MAPTILER_KEY}`)
+        .then(im => { if (im) sctx.drawImage(im, (tx - txMin) * TPX, (ty - tyMin) * TPX, TPX, TPX); }));
     }
     return jobs;
   })());
