@@ -189,13 +189,18 @@
 <script type="module">
 import * as THREE from 'three';
 
+// Scene scale: 1 unit = 1 metre. The boat/scene were authored in arbitrary
+// units (maxi hull = 4.1 units ≈ 30.5 m), so world objects/positions/camera are
+// scaled by M to make the unit a real metre — needed for real terrain + GPS tracks.
+const M = 7.4;
+
 // --- Scene ---
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9fc6ea); // daytime sky
 scene.fog = new THREE.FogExp2(0x9fc6ea, 0.0045); // fade the sea into the sky colour, not white
 
 // --- Camera ---
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 4000);
 camera.position.set(0, 8, 20);
 camera.lookAt(0, 0, 0);
 
@@ -647,7 +652,8 @@ rudderPivot.add(tiller);
   boatGroup.add(rigging);
 }
 
-boatGroup.position.set(0, 0.3, 0);
+boatGroup.position.set(0, 0.3 * M, 0);
+boatGroup.scale.setScalar(M); // render the model at real size (1 unit = 1 m)
 // Apply heading (Y) before pitch (X) and roll (Z) so wave tilt stays in the hull frame
 boatGroup.rotation.order = 'YXZ';
 scene.add(boatGroup);
@@ -671,7 +677,7 @@ shadowGeo.rotateX(-Math.PI / 2);                 // lie flat on the water (XZ pl
 const boatShadow = new THREE.Mesh(shadowGeo, new THREE.MeshBasicMaterial({
   map: makeShadowTexture(), transparent: true, depthWrite: false, opacity: 0.7,
 }));
-boatShadow.scale.set(2.0, 1, 6.0);               // roughly the hull footprint (a bit larger)
+boatShadow.scale.set(2.0 * M, 1, 6.0 * M);       // roughly the hull footprint (a bit larger)
 scene.add(boatShadow);
 
 // --- Wake: foam particles dropped at the stern (handles turns, visible from any angle) ---
@@ -761,15 +767,17 @@ function makeOpponent(opts) {
   mainPivot.add(new THREE.Mesh(boomG, new THREE.MeshPhongMaterial({ color: opts.rig })));
   const jibPivot = new THREE.Group(); jibPivot.position.set(0, 0.42, -1.79); rig.add(jibPivot);
   jibPivot.add(new THREE.Mesh(triGeo3(new THREE.Vector3(0, 0, 0), OPP_JH, new THREE.Vector3(0, 0.12, 1.3)), sailMat));
-  group.position.set(opts.x, 0.3, opts.z);
+  const sx = opts.x * M, sz = opts.z * M;
+  group.position.set(sx, 0.3 * M, sz);
+  group.scale.setScalar(M); // render the model at real size (1 unit = 1 m)
   group.rotation.y = -START_HEADING;
   scene.add(group);
   return {
     group, mainPivot, jibPivot,
-    start: { x: opts.x, z: opts.z },
+    start: { x: sx, z: sz },
     trackColor: opts.track, dotColor: opts.dot,
     sailAngle: 0, heel: 0,
-    state: { heading: START_HEADING, speed: 0, rudder: 0, maxSpeed: 12, maxRudder: 0.6, nextMark: 0, done: false },
+    state: { heading: START_HEADING, speed: 0, rudder: 0, maxSpeed: 7, maxRudder: 0.6, nextMark: 0, done: false },
   };
 }
 
@@ -811,7 +819,7 @@ function updateOpponent(o, dt) {
   // Collision avoidance: bend the desired heading away from any boat that is
   // close and roughly ahead (the player and the other opponents).
   {
-    const AVOID_R = 18;            // start avoiding within 18 m
+    const AVOID_R = 18 * M;        // start avoiding within ~130 m
     const others = [{ x: boatGroup.position.x, z: boatGroup.position.z }];
     OPPONENTS.forEach(p => { if (p !== o) others.push({ x: p.group.position.x, z: p.group.position.z }); });
     let avoid = 0;
@@ -848,16 +856,17 @@ function updateOpponent(o, dt) {
   // Sit on the waves + heel + sail trim
   const h = st.heading;
   const fwdX = Math.sin(h), fwdZ = -Math.cos(h), rgtX = Math.cos(h), rgtZ = Math.sin(h);
+  const L2 = 1.9 * M, B2 = 0.46 * M;
   const hC = waveHeight(bx, bz, t);
-  const hF = waveHeight(bx + fwdX * 1.9, bz + fwdZ * 1.9, t);
-  const hA = waveHeight(bx - fwdX * 1.9, bz - fwdZ * 1.9, t);
-  const hR = waveHeight(bx + rgtX * 0.46, bz + rgtZ * 0.46, t);
-  const hL = waveHeight(bx - rgtX * 0.46, bz - rgtZ * 0.46, t);
-  group.position.y = hC - 0.06;
-  group.rotation.x = Math.atan2(hF - hA, 3.8);
+  const hF = waveHeight(bx + fwdX * L2, bz + fwdZ * L2, t);
+  const hA = waveHeight(bx - fwdX * L2, bz - fwdZ * L2, t);
+  const hR = waveHeight(bx + rgtX * B2, bz + rgtZ * B2, t);
+  const hL = waveHeight(bx - rgtX * B2, bz - rgtZ * B2, t);
+  group.position.y = hC - 0.06 * M;
+  group.rotation.x = Math.atan2(hF - hA, 2 * L2);
   const heelMag = MAX_HEEL * (wind.tws / wind.maxTws) * eff2 * Math.sin(Math.abs(twa2 * DEG));
   o.heel += (Math.sign(twa2) * heelMag - o.heel) * (1 - Math.pow(0.08, dt));
-  group.rotation.z = Math.atan2(hR - hL, 1.0) + o.heel;
+  group.rotation.z = Math.atan2(hR - hL, 2 * B2) + o.heel;
 
   const side = twa2 >= 0 ? -1 : 1;
   const sheet = Math.min(Math.abs(twa2) * 0.5, 80) * DEG;
@@ -870,7 +879,7 @@ function updateOpponent(o, dt) {
 // --- Track lines: each boat leaves a dashed trail on the water (the sailed course) ---
 function makeTrack(color) {
   const mat = new THREE.LineDashedMaterial({
-    color, dashSize: 1.3, gapSize: 0.9, transparent: true, opacity: 0.5, depthWrite: false,
+    color, dashSize: 1.3 * M, gapSize: 0.9 * M, transparent: true, opacity: 0.5, depthWrite: false,
   });
   const line = new THREE.Line(new THREE.BufferGeometry(), mat);
   line.frustumCulled = false;
@@ -880,8 +889,8 @@ function makeTrack(color) {
 const playerTrack = makeTrack(0xffffff);
 OPPONENTS.forEach(o => { o.track = makeTrack(o.trackColor); });
 function recordTrack(tr, x, z) {
-  if (tr.lx === null || Math.hypot(x - tr.lx, z - tr.lz) > 2.5) {
-    tr.pts.push(new THREE.Vector3(x, 0.08, z));
+  if (tr.lx === null || Math.hypot(x - tr.lx, z - tr.lz) > 2.5 * M) {
+    tr.pts.push(new THREE.Vector3(x, 0.08 * M, z));
     if (tr.pts.length > 800) tr.pts.shift();
     tr.line.geometry.setFromPoints(tr.pts);
     tr.line.computeLineDistances();
@@ -892,17 +901,19 @@ function clearTrack(tr) { tr.pts.length = 0; tr.lx = null; tr.line.geometry.setF
 function updateTrackHeights(tr) {
   const pos = tr.line.geometry.attributes.position;
   if (!pos) return;
-  for (let i = 0; i < pos.count; i++) pos.setY(i, waveHeight(pos.getX(i), pos.getZ(i), t) + 0.05);
+  for (let i = 0; i < pos.count; i++) pos.setY(i, waveHeight(pos.getX(i), pos.getZ(i), t) + 0.05 * M);
   pos.needsUpdate = true;
 }
 
 // --- Wind disc: just the coloured polar ring + a wind needle ---
 const windRing = new THREE.Group();
+windRing.scale.setScalar(M); // ring geometry authored in old units -> real size
 const RING_R = 3.4;
 // Wind needle: separate group that rotates to the wind. The coloured ring is
 // boat-fixed (red at the bow); this needle swings round to show where the wind
 // comes from. Course is good when the needle sits over green.
 const windNeedle = new THREE.Group();
+windNeedle.scale.setScalar(M);
 const windMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false });
 const markGeo = new THREE.BufferGeometry();
 // Chevron arrowhead pointing inward toward the boat (tip, wings, notched back)
@@ -990,6 +1001,7 @@ scene.add(windRing);
 // --- Compass ring: an outer ring fixed to the WORLD (North up). It stays put
 // while the boat-fixed inner ring turns, so it reads cardinal directions. ---
 const compassRing = new THREE.Group(); // world -z is North
+compassRing.scale.setScalar(M); // ring + mark pointers authored in old units -> real size
 {
   const CR = RING_R + 0.22;                 // just outside the polar ring
   const major = [], minor = [];
@@ -1075,9 +1087,12 @@ function makeIsland(x, z, scale) {
   hill.position.y = 0.2 + 3.5 * scale;
   g.add(hill);
   g.position.set(x, 0, z);
-  scene.add(g);
+  islandGroup.add(g);
   return g;
 }
+const islandGroup = new THREE.Group();
+islandGroup.scale.setScalar(M); // positions + sizes authored in old units -> real metres
+scene.add(islandGroup);
 [
   [210, -110, 2.4], [-190, -60, 1.6], [70, -340, 3.0],
   [-260, -300, 2.0], [260, -260, 1.8], [-60, 90, 1.4],
@@ -1089,8 +1104,8 @@ const COURSE = [
   { x: 120,  z: -200 },
   { x: -120, z: -210 },
   { x: 0,    z: -20  }, // finish near the start
-];
-const MARK_RADIUS = 11; // how close you must get to round a mark
+].map(m => ({ x: m.x * M, z: m.z * M }));   // course laid out in metres
+const MARK_RADIUS = 30; // metres: how close you must get to round a mark
 
 // Billboard text label (canvas texture) for waypoint numbers
 function makeTextSprite(text, color = '#ffffff') {
@@ -1110,7 +1125,7 @@ COURSE.forEach((m, i) => {
   const grp = new THREE.Group();
   // the physical buoy is small (~20% of the old size); kept in a scaled sub-group
   const body = new THREE.Group();
-  body.scale.setScalar(0.2);
+  body.scale.setScalar(0.2 * M); // small buoy, in real metres
   grp.add(body);
   const buoy = new THREE.Mesh(
     new THREE.CylinderGeometry(0.9, 1.2, 2.4, 12),
@@ -1126,32 +1141,32 @@ COURSE.forEach((m, i) => {
   body.add(ball);
   // waypoint number at the old size, floating above the small buoy
   const num = makeTextSprite(String(i + 1));
-  num.scale.set(1.7, 1.7, 1.7);
-  num.position.set(0, 1.5, 0);
+  num.scale.set(1.7 * M, 1.7 * M, 1.7 * M);
+  num.position.set(0, 1.5 * M, 0);
   grp.add(num);
-  // light beam so the next mark is findable from a distance
+  // light beam so the next mark is findable from a distance (scales with the buoy body)
   const beam = new THREE.Mesh(
     new THREE.CylinderGeometry(0.5, 0.5, 60, 8, 1, true),
     new THREE.MeshBasicMaterial({ color: 0x66ff99, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })
   );
   beam.position.y = 30;
   beam.visible = false;
-  grp.add(beam);
+  body.add(beam);
   // transparent green zone showing the radius at which you've rounded the mark
   const zoneGeo = new THREE.CircleGeometry(MARK_RADIUS, 48);
   zoneGeo.rotateX(-Math.PI / 2);
   const zone = new THREE.Mesh(zoneGeo, new THREE.MeshBasicMaterial({
     color: 0x33ff88, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false,
   }));
-  zone.position.y = 0.06;
+  zone.position.y = 0.06 * M;
   zone.renderOrder = -1;
   grp.add(zone);
-  const ringGeo = new THREE.RingGeometry(MARK_RADIUS - 0.25, MARK_RADIUS, 48);
+  const ringGeo = new THREE.RingGeometry(MARK_RADIUS - 1.0, MARK_RADIUS, 48);
   ringGeo.rotateX(-Math.PI / 2);
   const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
     color: 0x33ff88, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
   }));
-  ring.position.y = 0.07;
+  ring.position.y = 0.07 * M;
   grp.add(ring);
   grp.position.set(m.x, 0, m.z);
   scene.add(grp);
@@ -1171,7 +1186,7 @@ const wind = {
 const boat = {
   heading: START_HEADING, // start on a reach (not pointed at the finish buoy)
   speed: 0,        // current forward speed (world units/s)
-  maxSpeed: 12,    // hull speed at ideal point of sail & full wind
+  maxSpeed: 7,     // m/s at ideal point of sail & full wind (~13.5 kn maxi)
   rudder: 0,       // current rudder deflection (radians, + = turn to port)
   maxRudder: 0.6,  // ~35°
 };
@@ -1193,14 +1208,14 @@ function restartRace() {
   race.time = 0;
   boat.heading = START_HEADING;
   boat.speed = 0;
-  boatGroup.position.set(0, 0.3, 0);
+  boatGroup.position.set(0, 0.3 * M, 0);
   boatGroup.rotation.y = -START_HEADING; // face the right way during the countdown
   // reset the opponents too
   clearTrack(playerTrack);
   OPPONENTS.forEach(o => {
     Object.assign(o.state, { heading: START_HEADING, speed: 0, rudder: 0, nextMark: 0, done: false });
     o.sailAngle = 0; o.heel = 0;
-    o.group.position.set(o.start.x, 0.3, o.start.z);
+    o.group.position.set(o.start.x, 0.3 * M, o.start.z);
     o.group.rotation.y = -START_HEADING;
     clearTrack(o.track);
   });
@@ -1277,7 +1292,7 @@ function updateHUD() {
   const rel = Math.round(twaDeg);
   elTwd.textContent = (rel >= 0 ? '+' : '') + rel + '°';
   // Boat speed: convert world units/s to a knots-ish readout
-  elSog.textContent = (Math.abs(boat.speed) * 1.4).toFixed(1);
+  elSog.textContent = (Math.abs(boat.speed) * 1.94).toFixed(1);
 }
 
 // --- Regatta race logic ---
@@ -1341,7 +1356,7 @@ function updateRace(dt) {
       // VMG = share of boat speed actually closing on the mark (100% = straight at it)
       elVmg.textContent = Math.round(Math.cos(rel) * 100);
       // %Speed = actual velocity made good toward the mark (speed × VMG), in kn
-      elVmgSpeed.textContent = (Math.abs(boat.speed) * 1.4 * Math.cos(rel)).toFixed(1);
+      elVmgSpeed.textContent = (Math.abs(boat.speed) * 1.94 * Math.cos(rel)).toFixed(1);
     } else {
       elMarkDist.textContent = '—';
       elVmg.textContent = '—';
@@ -1373,7 +1388,7 @@ const MAX_HEEL = 32 * DEG;
 // Combines the true wind with the boat's own motion, like the real thing.
 function apparentWindAngle() {
   const twa = twaDeg * DEG;
-  const boatKn = Math.abs(boat.speed) * 1.4;     // same knots scale as the HUD
+  const boatKn = Math.abs(boat.speed) * 1.94;    // same knots scale as the HUD (m/s -> kn)
   const ax = wind.tws * Math.sin(twa);            // athwartships component
   const ay = wind.tws * Math.cos(twa) + boatKn;   // fore-aft component (boat adds headwind)
   return Math.atan2(ax, ay);
@@ -1547,19 +1562,19 @@ function updateMarkPointers() {
 
 function spawnFoam(t, x, z, perpX, perpZ) {
   const i = wakeNext % WAKE_N; wakeNext++;
-  const lat = (Math.random() * 2 - 1) * 0.08;      // tiny jitter: stay almost on the centreline
+  const lat = (Math.random() * 2 - 1) * 0.08 * M;  // tiny jitter: stay almost on the centreline
   const px = x + perpX * lat, pz = z + perpZ * lat;
-  wakePos[i * 3] = px; wakePos[i * 3 + 1] = waveHeight(px, pz, t) + 0.05; wakePos[i * 3 + 2] = pz;
-  const drift = (Math.random() * 2 - 1) * 0.04;    // barely any outward spread
+  wakePos[i * 3] = px; wakePos[i * 3 + 1] = waveHeight(px, pz, t) + 0.05 * M; wakePos[i * 3 + 2] = pz;
+  const drift = (Math.random() * 2 - 1) * 0.04 * M; // barely any outward spread
   wakeVX[i] = perpX * drift; wakeVZ[i] = perpZ * drift;
   wakeBorn[i] = t;
-  wakeBase[i] = 1.0 + Math.random() * 0.7;
+  wakeBase[i] = (1.0 + Math.random() * 0.7) * M;   // particle size (view depth scales with M)
 }
 
 function updateWake(t, dt) {
   const h = boat.heading;
-  const sternX = boatGroup.position.x - Math.sin(h) * 1.9;
-  const sternZ = boatGroup.position.z + Math.cos(h) * 1.9;
+  const sternX = boatGroup.position.x - Math.sin(h) * 1.9 * M;
+  const sternZ = boatGroup.position.z + Math.cos(h) * 1.9 * M;
   const perpX = Math.cos(h), perpZ = Math.sin(h);   // athwartships (starboard)
   const speed = Math.abs(boat.speed);
 
@@ -1567,8 +1582,8 @@ function updateWake(t, dt) {
   if (!wakeSeeded) { wakeLastX = sternX; wakeLastZ = sternZ; wakeSeeded = true; }
   if (speed > 0.4) {
     let d = Math.hypot(sternX - wakeLastX, sternZ - wakeLastZ);
-    while (d > 0.18) {
-      const f = 0.18 / d;
+    while (d > 0.18 * M) {
+      const f = 0.18 * M / d;
       wakeLastX += (sternX - wakeLastX) * f;
       wakeLastZ += (sternZ - wakeLastZ) * f;
       spawnFoam(t, wakeLastX, wakeLastZ, perpX, perpZ);
@@ -1582,7 +1597,7 @@ function updateWake(t, dt) {
     if (age < 0 || age > WAKE_LIFE) { wakeAlphaA[i] = 0; continue; }
     wakePos[i * 3] += wakeVX[i] * dt;
     wakePos[i * 3 + 2] += wakeVZ[i] * dt;
-    wakePos[i * 3 + 1] = waveHeight(wakePos[i * 3], wakePos[i * 3 + 2], t) + 0.05;
+    wakePos[i * 3 + 1] = waveHeight(wakePos[i * 3], wakePos[i * 3 + 2], t) + 0.05 * M;
     const f = age / WAKE_LIFE;
     wakeAlphaA[i] = (1 - f) * 0.7;
     wakeSizeA[i] = wakeBase[i] * (0.5 + f * 1.8);   // grows as it dissipates
@@ -1593,8 +1608,8 @@ function updateWake(t, dt) {
 }
 
 // --- Camera (chase + mouse orbit) ---
-const CAM_BACK = 16;
-const CAM_HEIGHT = 7;
+const CAM_BACK = 16 * M;
+const CAM_HEIGHT = 7 * M;
 const CAM_DIST = Math.hypot(CAM_BACK, CAM_HEIGHT);
 const CAM_BASE_ELEV = Math.atan2(CAM_HEIGHT, CAM_BACK);
 let camYaw = 0, camPitch = 0; // orbit offset from the astern view (drag to change)
@@ -1718,8 +1733,8 @@ function animate() {
     stars.position.set(0, 0, 0);
     updateEnvironment(t);
     animateWaves(t);
-    camera.position.set(Math.sin(menuYaw) * 3, 5.5, Math.cos(menuYaw) * 3);
-    camera.lookAt(Math.sin(menuYaw + 0.5) * 60, 3, Math.cos(menuYaw + 0.5) * 60);
+    camera.position.set(Math.sin(menuYaw) * 3 * M, 5.5 * M, Math.cos(menuYaw) * 3 * M);
+    camera.lookAt(Math.sin(menuYaw + 0.5) * 60 * M, 3 * M, Math.cos(menuYaw + 0.5) * 60 * M);
     renderer.render(scene, camera);
     return;
   }
@@ -1768,7 +1783,7 @@ function animate() {
     const h = boat.heading;
     const fwdX = Math.sin(h), fwdZ = -Math.cos(h); // bow direction
     const rgtX = Math.cos(h), rgtZ = Math.sin(h);  // starboard direction
-    const L = 1.9, B = 0.46;                        // half length / half beam
+    const L = 1.9 * M, B = 0.46 * M;                // half length / half beam (metres)
 
     const hC = waveHeight(bx, bz, t);
     const hF = waveHeight(bx + fwdX * L, bz + fwdZ * L, t);
@@ -1776,20 +1791,20 @@ function animate() {
     const hR = waveHeight(bx + rgtX * B, bz + rgtZ * B, t);
     const hL = waveHeight(bx - rgtX * B, bz - rgtZ * B, t);
 
-    boatGroup.position.y = hC - 0.06;               // waterline partway up the hull
+    boatGroup.position.y = hC - 0.06 * M;           // waterline partway up the hull
     boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L); // bow up when the sea ahead is higher
     boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle; // wave roll + wind heel
 
     // Polar ring is fixed to the boat (red at the bow); the needle shows the wind.
-    windRing.position.set(bx, hC + 0.05, bz); // sit on the water surface
+    windRing.position.set(bx, hC + 0.05 * M, bz); // sit on the water surface
     windRing.rotation.y = boatGroup.rotation.y;     // ring turns with the boat
-    windNeedle.position.set(bx, hC + 0.07, bz);
+    windNeedle.position.set(bx, hC + 0.07 * M, bz);
     windNeedle.rotation.y = -wind.from;             // needle points to the wind source
     // Compass follows the boat's position but stays aligned to North (rotation 0)
-    compassRing.position.set(bx, hC + 0.05, bz);
+    compassRing.position.set(bx, hC + 0.05 * M, bz);
 
     // Soft shadow on the water: flat, aligned with the hull, nudged away from the sun
-    boatShadow.position.set(bx - 0.5, hC + 0.04, bz - 0.3);
+    boatShadow.position.set(bx - 0.5 * M, hC + 0.04 * M, bz - 0.3 * M);
     boatShadow.rotation.y = boatGroup.rotation.y;
   }
 
@@ -1826,7 +1841,7 @@ function animate() {
       boatGroup.position.y + vert,
       boatGroup.position.z + dirZ * horiz
     );
-    camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5, boatGroup.position.z);
+    camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5 * M, boatGroup.position.z);
   }
 
   renderer.render(scene, camera);
