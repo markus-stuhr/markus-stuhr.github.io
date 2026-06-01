@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sailing Simulator</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #000; overflow: hidden; }
@@ -1116,23 +1118,43 @@ async function buildCaribbean() {
   const dLng = SPAN / (111320 * Math.cos(clat * Math.PI / 180));
   const latN = clat + dLat, latS = clat - dLat, lngW = clng - dLng, lngE = clng + dLng;
 
-  // --- Map texture: stitch @2x (retina) tiles into one canvas for sharpness ---
+  // --- Map texture: render the vector style offscreen with MapLibre so we can
+  // strip the contour lines and labels, then grab its canvas. Locked to the
+  // exact tile-aligned bbox so it lines up with the elevation grid below. ---
   const SZ = 14;
-  const TPX = 1024;       // topo-v2 @2x tiles are 1024 px -> sharp; drawn 1:1
   const txMin = Math.floor(lngToTile(lngW, SZ)), txMax = Math.floor(lngToTile(lngE, SZ));
   const tyMin = Math.floor(latToTile(latN, SZ)), tyMax = Math.floor(latToTile(latS, SZ));
   const nx = txMax - txMin + 1, ny = tyMax - tyMin + 1;
-  const sat = document.createElement('canvas');
-  sat.width = nx * TPX; sat.height = ny * TPX;
-  const sctx = sat.getContext('2d');
-  await Promise.all((() => {
-    const jobs = [];
-    for (let tx = txMin; tx <= txMax; tx++) for (let ty = tyMin; ty <= tyMax; ty++) {
-      jobs.push(loadImage(`https://api.maptiler.com/maps/topo-v2/${SZ}/${tx}/${ty}@2x.png?key=${MAPTILER_KEY}`)
-        .then(im => { if (im) sctx.drawImage(im, (tx - txMin) * TPX, (ty - tyMin) * TPX, TPX, TPX); }));
-    }
-    return jobs;
-  })());
+  // tile-aligned geographic bounds (= UV grid extent)
+  const bW = tileToLng(txMin, SZ), bE = tileToLng(txMax + 1, SZ);
+  const bN = tileToLat(tyMin, SZ), bS = tileToLat(tyMax + 1, SZ);
+  const sat = await new Promise((resolve) => {
+    const div = document.createElement('div');
+    div.style.cssText = `position:absolute;left:-99999px;top:0;width:${nx * 512}px;height:${ny * 512}px;`;
+    document.body.appendChild(div);
+    const map = new maplibregl.Map({
+      container: div,
+      style: `https://api.maptiler.com/maps/topo-v2/style.json?key=${MAPTILER_KEY}`,
+      center: [(bW + bE) / 2, (bN + bS) / 2], zoom: SZ,
+      interactive: false, attributionControl: false,
+      preserveDrawingBuffer: true, fadeDuration: 0,
+    });
+    map.on('load', () => {
+      // drop every label (symbol) and contour line layer
+      (map.getStyle().layers || []).forEach((l) => {
+        if (l.type === 'symbol' || /contour/i.test(l.id)) { try { map.removeLayer(l.id); } catch {} }
+      });
+      map.fitBounds([[bW, bS], [bE, bN]], { padding: 0, animate: false, duration: 0 });
+      map.once('idle', () => {
+        const c = map.getCanvas();
+        const out = document.createElement('canvas');
+        out.width = c.width; out.height = c.height;
+        out.getContext('2d').drawImage(c, 0, 0);
+        resolve(out);
+        map.remove(); div.remove();
+      });
+    });
+  });
   const tex = new THREE.CanvasTexture(sat);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
