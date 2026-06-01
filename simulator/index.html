@@ -301,17 +301,18 @@ function makeWaterTexture() {
   const c = document.createElement('canvas');
   c.width = c.height = S;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#1d6486';
+  // Near-white base so it multiplies the emissive colour ~1.0; faint darker/lighter
+  // mottling gives a subtle moving ripple when scrolled (used as emissiveMap).
+  ctx.fillStyle = '#f2f6f8';
   ctx.fillRect(0, 0, S, S);
-  // soft lighter/darker patches; draw wrapped copies so the tile seams match
-  for (let i = 0; i < 140; i++) {
+  for (let i = 0; i < 150; i++) {
     const x = Math.random() * S, y = Math.random() * S;
-    const r = 12 + Math.random() * 40;
+    const r = 10 + Math.random() * 36;
     const light = Math.random() > 0.5;
     for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
       const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
-      const a = 0.07 + Math.random() * 0.07;
-      g.addColorStop(0, light ? `rgba(95,185,215,${a})` : `rgba(8,42,62,${a})`);
+      const a = 0.05 + Math.random() * 0.06;
+      g.addColorStop(0, light ? `rgba(255,255,255,${a})` : `rgba(70,120,145,${a})`);
       g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
@@ -336,7 +337,8 @@ waterTex.repeat.set(OCEAN_SIZE / TILE, OCEAN_SIZE / TILE);
 
 const oceanMat = new THREE.MeshPhongMaterial({
   color: 0x14303a,        // small diffuse for subtle wave-slope shading
-  emissive: 0x5e9bb6,     // bright base ~ the topo-v2 map water colour, regardless of lighting
+  emissive: 0x6ba9c4,     // bright base ~ the topo-v2 map water colour, regardless of lighting
+  emissiveMap: waterTex,  // faint scrolling ripple so the movement reads
   specular: 0x33505a,     // faint highlights only — avoid a blown-out sun glare
   shininess: 110,
   side: THREE.FrontSide,
