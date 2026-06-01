@@ -2049,7 +2049,7 @@ async function startReplay() {
   // dashed track line per boat, in its own colour
   REPLAY.boats.forEach(rb => {
     const mat = new THREE.LineDashedMaterial({
-      color: rb.color, dashSize: 6 * M, gapSize: 4 * M, transparent: true, opacity: 0.6, depthWrite: false,
+      color: rb.color, dashSize: 1.5 * M, gapSize: 1 * M, transparent: true, opacity: 0.6, depthWrite: false,
     });
     const line = new THREE.Line(new THREE.BufferGeometry(), mat);
     line.frustumCulled = false;
