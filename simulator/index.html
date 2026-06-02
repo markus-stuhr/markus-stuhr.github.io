@@ -2123,7 +2123,7 @@ async function startReplay() {
       const o = makeOpponent({ hull, sail, rig, track: hull, dot: hull, x: 0, z: 0 });
       group = o.group; mainPivot = o.mainPivot; jibPivot = o.jibPivot; oppPennPivot = o.oppPennPivot;
     }
-    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, hl, twa_r, group, mainPivot, jibPivot, oppPennPivot, color: parseInt(b.color.slice(1), 16), line: null, lastIdx: -1 });
+    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, hl, twa_r, group, mainPivot, jibPivot, oppPennPivot, heel: 0, color: parseInt(b.color.slice(1), 16), line: null, lastIdx: -1 });
   });
 
   // marks as simple orange buoys
@@ -2186,7 +2186,7 @@ function replaySample(rb, ms) {
   };
 }
 
-function placeReplayBoat(rb, s) {
+function placeReplayBoat(rb, s, dt) {
   const g = rb.group;
   g.position.x = s.x; g.position.z = s.z;
   const fwdX = Math.sin(s.h), fwdZ = -Math.cos(s.h), rgtX = Math.cos(s.h), rgtZ = Math.sin(s.h);
@@ -2197,8 +2197,9 @@ function placeReplayBoat(rb, s) {
   g.rotation.x = Math.atan2(waveHeight(s.x + fwdX * L, s.z + fwdZ * L, t) - waveHeight(s.x - fwdX * L, s.z - fwdZ * L, t), 2 * L);
   const twa = normAngle(wind.from - s.h) * 180 / Math.PI;
   const wroll = Math.atan2(waveHeight(s.x + rgtX * B, s.z + rgtZ * B, t) - waveHeight(s.x - rgtX * B, s.z - rgtZ * B, t), 2 * B);
-  const heelRad = s.hl !== null ? -s.hl * DEG : heelTarget(twa, wind.tws) * DEG;
-  g.rotation.z = wroll + heelRad;
+  const heelTarget_ = s.hl !== null ? -s.hl * DEG : heelTarget(twa, wind.tws) * DEG;
+  rb.heel += (heelTarget_ - rb.heel) * (1 - Math.pow(0.82, dt));
+  g.rotation.z = wroll + rb.heel;
   if (rb.mainPivot) {
     const side = twa >= 0 ? -1 : 1;
     const sheet = Math.min(Math.abs(twa) * 0.5, 80) * DEG;
@@ -2237,7 +2238,7 @@ function updateReplayFrame(dt) {
   REPLAY.boats.forEach(rb => {
     const s = replaySample(rb, replay.ms);
     if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; if (s.hl !== null) heelAngle = -s.hl * DEG; }
-    else placeReplayBoat(rb, s);
+    else placeReplayBoat(rb, s, dt);
   });
   // updateBoat isn't run in replay, so derive the values its sail/heel visuals need
   twaDeg = normAngle(wind.from - boat.heading) * 180 / Math.PI;
