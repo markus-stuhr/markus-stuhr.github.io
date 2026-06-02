@@ -1666,7 +1666,7 @@ function heelShape(aDeg) {
   return g * run * nogo;
 }
 function heelTarget(twaDeg, twsKn) {
-  return -Math.sign(twaDeg) * HEEL_MAX * Math.min(twsKn / HEEL_REF_TWS, 2.0) * heelShape(Math.abs(twaDeg));
+  return Math.sign(twaDeg) * HEEL_MAX * Math.min(twsKn / HEEL_REF_TWS, 2.0) * heelShape(Math.abs(twaDeg));
 }
 
 // Apparent wind angle relative to the bow (radians, + = wind on starboard).
