@@ -237,7 +237,11 @@
     <div id="replayOpts" style="display:none">
       <div class="menu-section">
         <div class="sec-label">Race</div>
-        <div class="replay-info">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · following „V"</small></div>
+        <div class="seg" id="segRace">
+          <button data-value="maxi-and-maxi-gp-race-1" class="active">Maxi GP</button>
+          <button data-value="performance-race-1">Performance</button>
+        </div>
+        <div id="raceInfo" class="replay-info" style="margin-top:8px">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · following „V"</small></div>
       </div>
       <div class="menu-section">
         <div class="sec-label">Orientation</div>
@@ -2076,8 +2080,18 @@ const getWind = wireSeg('segWind');
 const getWave = wireSeg('segWave');
 wireSeg('segMode');
 wireSeg('segOrient');
+wireSeg('segRace');
 const getMode   = () => document.querySelector('#segMode .active').dataset.value;
-const getOrient = () => document.querySelector('#segOrient .active')?.dataset.value ?? 'data';
+const getOrient = () => document.querySelector('#segOrient .active')?.dataset.value ?? 'tractrac';
+const getRace   = () => document.querySelector('#segRace .active')?.dataset.value ?? 'maxi-and-maxi-gp-race-1';
+const RACE_INFO = {
+  'maxi-and-maxi-gp-race-1': 'Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · following V (Wallycento)</small>',
+  'performance-race-1':       'Performance — Race 1<br><small>BVI North Sound · following Ammonite2 (winner)</small>',
+};
+document.getElementById('segRace').addEventListener('click', (e) => {
+  if (!e.target.closest('button')) return;
+  document.getElementById('raceInfo').innerHTML = RACE_INFO[getRace()] ?? '';
+});
 // toggle race/replay option panels when the mode changes
 document.getElementById('segMode').addEventListener('click', (e) => {
   if (!e.target.closest('button')) return;
@@ -2127,7 +2141,7 @@ async function startReplay() {
   document.body.classList.remove('menu');
   document.getElementById('menu').classList.add('hidden');
   showLoading(true);
-  const data = await (await fetch('races/maxi-and-maxi-gp-race-1.json')).json();
+  const data = await (await fetch(`races/${getRace()}.json`)).json();
 
   // bounding box over all tracks -> centre + span
   let minLa = 9e9, maxLa = -9e9, minLo = 9e9, maxLo = -9e9;
