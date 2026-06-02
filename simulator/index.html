@@ -241,7 +241,7 @@
           <button data-value="maxi-and-maxi-gp-race-1" class="active">Maxi GP</button>
           <button data-value="performance-race-1">Performance</button>
         </div>
-        <div id="raceInfo" class="replay-info" style="margin-top:8px">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · following „V"</small></div>
+        <div id="raceInfo" class="replay-info" style="margin-top:8px">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · following V</small></div>
       </div>
       <div class="menu-section">
         <div class="sec-label">Orientation</div>
@@ -2087,9 +2087,11 @@ const getMode   = () => document.querySelector('#segMode .active').dataset.value
 const getOrient = () => document.querySelector('#segOrient .active')?.dataset.value ?? 'tractrac';
 const getRace   = () => document.querySelector('#segRace .active')?.dataset.value ?? 'maxi-and-maxi-gp-race-1';
 const RACE_INFO = {
-  'maxi-and-maxi-gp-race-1': 'Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · following V (Wallycento)</small>',
-  'performance-race-1':       'Performance — Race 1<br><small>BVI North Sound · following Ammonite2 (winner)</small>',
+  'maxi-and-maxi-gp-race-1': 'Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · following V</small>',
+  'performance-race-1':       'Performance — Race 1<br><small>BVI North Sound · following Ammonite2</small>',
 };
+// Set initial info text on page load
+document.getElementById('raceInfo').innerHTML = RACE_INFO[getRace()] ?? '';
 document.getElementById('segRace').addEventListener('click', (e) => {
   if (!e.target.closest('button')) return;
   document.getElementById('raceInfo').innerHTML = RACE_INFO[getRace()] ?? '';
