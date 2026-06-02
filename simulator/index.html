@@ -2059,6 +2059,8 @@ async function startReplay() {
     if (hl) for (let k = 0; k < n; k++) hl[k] = b.track[k][2];
     const twa_r = b.track[0].length > 3 ? new Float32Array(n) : null;
     if (twa_r) for (let k = 0; k < n; k++) twa_r[k] = b.track[k][3];
+    const hasRealHdg = b.track[0].length > 4 && b.track[0][4] !== null;
+    if (hasRealHdg) for (let k = 0; k < n; k++) hd[k] = b.track[k][4] ?? hd[k];
     const isV = b.name === 'V';
     let group, mainPivot, jibPivot;
     if (isV) { group = boatGroup; }
