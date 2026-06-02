@@ -407,7 +407,7 @@ const oceanMat = new THREE.MeshPhongMaterial({
   shininess: 110,
   side: THREE.FrontSide,
   transparent: true,   // own animated water; fades to the map water at the plane edges
-  opacity: 1.0,
+  opacity: 0.72,
   depthWrite: false,   // don't let wave crests occlude the wind ring / shadow on the surface
 });
 // Fade the water out toward the plane edges so it blends into the distant map water.
@@ -599,12 +599,14 @@ keelGeo.setIndex([
 ]);
 keelGeo.computeVertexNormals();
 const keel = new THREE.Mesh(keelGeo, new THREE.MeshPhongMaterial({ color: 0x4a4a4a }));
+keel.material.depthTest = false; keel.renderOrder = 1;
 boatGroup.add(keel);
 // Torpedo ballast bulb at the keel foot
 const bulb = new THREE.Mesh(
   new THREE.CapsuleGeometry(0.1, 0.75, 5, 10),
   new THREE.MeshPhongMaterial({ color: 0x333333 })
 );
+bulb.material.depthTest = false; bulb.renderOrder = 1;
 bulb.rotation.x = Math.PI / 2;
 bulb.position.set(0, -0.86, 0.01);
 boatGroup.add(bulb);
@@ -760,6 +762,7 @@ rudderGeo.setIndex([
 ]);
 rudderGeo.computeVertexNormals();
 const rudder = new THREE.Mesh(rudderGeo, new THREE.MeshPhongMaterial({ color: 0x3a3a3a, side: THREE.DoubleSide }));
+rudder.material.depthTest = false; rudder.renderOrder = 1;
 rudderPivot.add(rudder);
 // Tiller poking forward over the deck so the helm motion reads from above
 const tillerGeo = new THREE.BoxGeometry(0.04, 0.04, 0.6);
@@ -904,9 +907,9 @@ function makeOpponent(opts) {
   const hull = new THREE.Mesh(buildHull(), new THREE.MeshPhongMaterial({ color: opts.hull, side: THREE.DoubleSide }));
   group.add(hull);
   const keel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.9, 0.45), new THREE.MeshPhongMaterial({ color: 0x3a3a3a }));
-  keel.position.set(0, -0.42, 0.15); group.add(keel);
+  keel.position.set(0, -0.42, 0.15); keel.material.depthTest = false; keel.renderOrder = 1; group.add(keel);
   const bulb = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.75, 5, 10), new THREE.MeshPhongMaterial({ color: 0x2a2a2a }));
-  bulb.rotation.x = Math.PI / 2; bulb.position.set(0, -0.86, 0.15); group.add(bulb);
+  bulb.rotation.x = Math.PI / 2; bulb.position.set(0, -0.86, 0.15); bulb.material.depthTest = false; bulb.renderOrder = 1; group.add(bulb);
   const rig = new THREE.Group(); rig.scale.setScalar(1.2); group.add(rig);
   const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.0245, 0.035, 4.75, 8), new THREE.MeshPhongMaterial({ color: opts.rig }));
   mast.position.set(0, 2.68, MAST_Z); rig.add(mast);
