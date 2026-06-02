@@ -1537,9 +1537,9 @@ function normAngle(a) {
 // narrow no-go (<22°), a strong close-hauled groove, peak on the reach, easing downwind.
 function sailEfficiency(twaDeg) {
   const a = Math.abs(twaDeg);
-  if (a < 22) return 0;                               // narrow no-go (in irons)
-  if (a < 32) return ((a - 22) / 10) * 0.45;          // quick ramp out of the no-go
-  if (a < 50) return 0.45 + ((a - 32) / 18) * 0.25;   // close-hauled groove (~0.45–0.70)
+  if (a < 15) return 0;                               // no-go zone — data shows sailing <15° not sustained
+  if (a < 27) return ((a - 15) / 12) * 0.45;          // ramp out of no-go (15–27°)
+  if (a < 50) return 0.45 + ((a - 27) / 23) * 0.25;   // close-hauled groove (~0.45–0.70)
   if (a <= 110) return 0.70 + ((a - 50) / 60) * 0.30; // build to full power on the reach
   return 1.0 - ((a - 110) / 70) * 0.30;               // ease off running downwind
 }
@@ -1695,7 +1695,7 @@ const HEEL_REF_TWS = 17.5;   // reference wind speed (knots)
 function heelShape(aDeg) {
   const g    = Math.exp(-0.5 * Math.pow((aDeg - 56) / 80, 2));   // Gauss peak ~56°, wide
   const run  = aDeg > 130 ? 0.44 + 0.56 * Math.exp(-0.5 * Math.pow((aDeg - 130) / 30, 2)) : 1.0;
-  const nogo = Math.min(Math.max((aDeg - 22) / 10, 0), 1);       // no-go ramp <22°
+  const nogo = Math.min(Math.max((aDeg - 15) / 12, 0), 1);       // no-go ramp <15°
   return g * run * nogo;
 }
 function heelTarget(twaDeg, twsKn) {
