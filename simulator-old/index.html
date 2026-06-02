@@ -152,13 +152,6 @@
   <div class="menu-card">
     <h1>Racing Simulator</h1>
     <div class="menu-section">
-      <div class="sec-label">Modus</div>
-      <div class="seg" id="segMode">
-        <button data-value="race" class="active">Race</button>
-        <button data-value="replay" disabled>Replay</button>
-      </div>
-    </div>
-    <div class="menu-section">
       <div class="sec-label">Windstärke</div>
       <div class="seg" id="segWind">
         <button data-value="10">10 kn</button>
@@ -173,6 +166,8 @@
         <button data-value="0.5">Ruhig</button>
         <button data-value="1" class="active">Mittel</button>
         <button data-value="1.6">Hoch</button>
+        <button data-value="2.6">Sehr hoch</button>
+        <button data-value="4">Extrem</button>
       </div>
     </div>
     <button id="startBtn">Start</button>
@@ -1681,7 +1676,6 @@ function wireSeg(id) {
 }
 const getWind = wireSeg('segWind');
 const getWave = wireSeg('segWave');
-wireSeg('segMode'); // Race is fixed; Replay is disabled for now
 
 function startGame() {
   const windVal = getWind();
