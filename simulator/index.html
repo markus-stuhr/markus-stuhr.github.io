@@ -1448,7 +1448,7 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
       geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
       geo.setIndex(idx);
       geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, depthWrite: false }));
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex }));
       mesh.position.y = -1.8;   // below the deepest wave trough (~-1.4 m) so the map never pokes through
       mesh.renderOrder = -2;
       terrainGroup.add(mesh);
