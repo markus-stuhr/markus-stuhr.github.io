@@ -1022,6 +1022,23 @@ windMarkerMesh.renderOrder = 5; // draw on top of the coloured ring
 windNeedle.add(windMarkerMesh);
 scene.add(windNeedle);
 
+// ADX TWA needle: semi-transparent cyan arrow showing the real measured TWA
+// from the boat's instruments — lets you compare against the reverse-engineered TWD needle.
+const adxNeedle = new THREE.Group();
+adxNeedle.scale.setScalar(M);
+const adxMarkerMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false });
+const adxMarkGeo = new THREE.BufferGeometry();
+adxMarkGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+  0,     0, -RING_R + 0.78,
+  -0.5,  0, -RING_R - 0.12,
+  0,     0, -RING_R + 0.04,
+  0.5,   0, -RING_R - 0.12,
+]), 3));
+adxMarkGeo.setIndex([0, 1, 2, 0, 2, 3]);
+adxNeedle.add(new THREE.Mesh(adxMarkGeo, adxMarkerMat));
+adxNeedle.visible = false;
+scene.add(adxNeedle);
+
 // Continuous polar band fixed to the BOAT: colour by sail efficiency at each
 // angle from the bow — red (no-go) at the bow (local -z), through yellow, to
 // green abeam (fastest). The needle above then reads the wind against it.
@@ -1989,7 +2006,8 @@ function startGame() {
 
 // ===================== REPLAY MODE =====================
 const replay = { ms: 0, playing: false, speed: 3, duration: 0 };
-let REPLAY = null;            // { dtms, count, wind, boats:[{name,isV,xs,zs,hd,sp,group,mainPivot,jibPivot}] }
+let REPLAY = null;
+let replayAdxTwaDeg = null; // real measured TWA from ADX, set each replay frame            // { dtms, count, wind, boats:[{name,isV,xs,zs,hd,sp,group,mainPivot,jibPivot}] }
 const replayGroup = new THREE.Group(); scene.add(replayGroup); // marks etc.
 const showLoading = (on) => document.getElementById('loading').classList.toggle('on', on);
 const lerpAng = (a, b, f) => a + (((b - a + 540) % 360 - 180)) * f; // degrees, wraparound
@@ -2039,6 +2057,8 @@ async function startReplay() {
     }
     const hl = b.track[0].length > 2 ? new Float32Array(n) : null;
     if (hl) for (let k = 0; k < n; k++) hl[k] = b.track[k][2];
+    const twa_r = b.track[0].length > 3 ? new Float32Array(n) : null;
+    if (twa_r) for (let k = 0; k < n; k++) twa_r[k] = b.track[k][3];
     const isV = b.name === 'V';
     let group, mainPivot, jibPivot;
     if (isV) { group = boatGroup; }
@@ -2047,7 +2067,7 @@ async function startReplay() {
       const o = makeOpponent({ hull, sail: SAILMAT.sail, rig: SAILMAT.rig, track: hull, dot: hull, x: 0, z: 0 });
       group = o.group; mainPivot = o.mainPivot; jibPivot = o.jibPivot;
     }
-    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, hl, group, mainPivot, jibPivot, color: parseInt(b.color.slice(1), 16), line: null, lastIdx: -1 });
+    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, hl, twa_r, group, mainPivot, jibPivot, color: parseInt(b.color.slice(1), 16), line: null, lastIdx: -1 });
   });
 
   // marks as simple orange buoys
@@ -2075,6 +2095,7 @@ async function startReplay() {
 
   hideRaceObjects();
   boatGroup.visible = windRing.visible = windNeedle.visible = compassRing.visible = true;
+  replayAdxTwaDeg = null; adxNeedle.visible = false;
   wakePoints.visible = true; replayGroup.visible = true;
   wind.maxTws = 28;
   replay.ms = 0; replay.playing = true; replay.speed = 3;
@@ -2106,6 +2127,7 @@ function replaySample(rb, ms) {
     h: lerpAng(rb.hd[k0], rb.hd[k1], a) * Math.PI / 180,
     sp: rb.sp[k0] + (rb.sp[k1] - rb.sp[k0]) * a,
     hl: rb.hl ? rb.hl[k0] + (rb.hl[k1] - rb.hl[k0]) * a : null,
+    twa: rb.twa_r ? rb.twa_r[k0] + (rb.twa_r[k1] - rb.twa_r[k0]) * a : null,
   };
 }
 
@@ -2158,7 +2180,7 @@ function updateReplayFrame(dt) {
   // place boats
   REPLAY.boats.forEach(rb => {
     const s = replaySample(rb, replay.ms);
-    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; if (s.hl !== null) heelAngle = s.hl * DEG; }
+    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; if (s.hl !== null) heelAngle = s.hl * DEG; if (s.twa !== null) replayAdxTwaDeg = s.twa; }
     else placeReplayBoat(rb, s);
   });
   // updateBoat isn't run in replay, so derive the values its sail/heel visuals need
@@ -2227,6 +2249,11 @@ function floatPlayerBoat() {
   windRing.rotation.y = boatGroup.rotation.y;
   windNeedle.position.set(bx, hC + 0.07 * M, bz);
   windNeedle.rotation.y = -wind.from;
+  if (replayAdxTwaDeg !== null) {
+    adxNeedle.visible = true;
+    adxNeedle.position.set(bx, hC + 0.09 * M, bz);
+    adxNeedle.rotation.y = -(boat.heading + replayAdxTwaDeg * DEG);
+  }
   compassRing.position.set(bx, hC + 0.05 * M, bz);
   boatShadow.position.set(bx - 0.5 * M, hC + 0.04 * M, bz - 0.3 * M);
   boatShadow.rotation.y = boatGroup.rotation.y;
