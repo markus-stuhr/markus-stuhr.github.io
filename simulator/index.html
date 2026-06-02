@@ -2084,6 +2084,7 @@ async function startReplay() {
       hd[k] = Math.atan2(dx, -dz) * 180 / Math.PI;             // heading in degrees
       sp[k] = Math.hypot(dx, dz) / ((k1 - k0) * data.dt || 1);  // m/s
     }
+    const isV = b.name === 'V';
     const hl = b.track[0].length > 2 ? new Float32Array(n) : null;
     if (hl) for (let k = 0; k < n; k++) hl[k] = b.track[k][2];
     const twa_r = b.track[0].length > 3 ? new Float32Array(n) : null;
@@ -2095,13 +2096,11 @@ async function startReplay() {
     if (hl || twa_r || (hasRealHdg && useDataOrient)) {
       for (let k = 0; k < n; k++) {
         const ks = Math.max(0, Math.min(n - 1, k + sensorShift));
-        if (hl)                         hl[k]    = b.track[ks][2];
-        if (twa_r)                      twa_r[k] = b.track[ks][3];
-        if (hasRealHdg && useDataOrient) hd[k]   = ((b.track[ks][4] ?? hd[k]) + orientOffset + 360) % 360;
-        // TracTrac mode: hd[k] already set from GPS position differences above
+        if (hl)                          hl[k]    = b.track[ks][2];
+        if (twa_r)                       twa_r[k] = b.track[ks][3];
+        if (hasRealHdg && useDataOrient) hd[k]    = ((b.track[ks][4] ?? hd[k]) + orientOffset + 360) % 360;
       }
     }
-    const isV = b.name === 'V';
     let group, mainPivot, jibPivot;
     if (isV) { group = boatGroup; }
     else {
