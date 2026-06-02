@@ -189,19 +189,19 @@
   </style>
 </head>
 <body>
-<div id="info">← → / A D steuern &nbsp;·&nbsp; Geschwindigkeit kommt vom Wind &nbsp;·&nbsp; R = Neustart</div>
+<div id="info">← → / A D to steer &nbsp;·&nbsp; speed comes from the wind &nbsp;·&nbsp; R = restart</div>
 <div id="hud">
   <div class="panel"><div class="label">TWS</div><div class="value"><span id="tws">0</span><small> kn</small></div></div>
   <div class="panel"><div class="label">TWA</div><div class="value"><span id="twd">0°</span></div></div>
   <div class="panel"><div class="label">VMG</div><div class="value"><span id="vmg">0</span><small> %</small></div></div>
   <div class="panel"><div class="label">%Speed</div><div class="value"><span id="vmgspeed">0.0</span><small> kn</small></div></div>
-  <div class="panel"><div class="label">Marke <span id="markNum">1/4</span></div><div class="value"><span id="markDist">—</span><small> m</small></div></div>
+  <div class="panel"><div class="label">Mark <span id="markNum">1/4</span></div><div class="value"><span id="markDist">—</span><small> m</small></div></div>
   <div class="panel"><div class="label">Speed</div><div class="value"><span id="sog">0.0</span><small> kn</small></div></div>
 </div>
 <div id="race">
   <div id="raceTime">00:00.0</div>
   <div id="raceBest">Best —</div>
-  <div id="raceMsg">Steuere durch die Marken in der Reihenfolge</div>
+  <div id="raceMsg">Steer through the marks in order</div>
 </div>
 <button id="btnLeft" class="steerbtn">‹</button>
 <button id="btnRight" class="steerbtn">›</button>
@@ -209,7 +209,7 @@
   <div class="menu-card">
     <h1>Racing Simulator</h1>
     <div class="menu-section">
-      <div class="sec-label">Modus</div>
+      <div class="sec-label">Mode</div>
       <div class="seg" id="segMode">
         <button data-value="race" class="active">Race</button>
         <button data-value="replay">Replay</button>
@@ -217,7 +217,7 @@
     </div>
     <div id="raceOpts">
       <div class="menu-section">
-        <div class="sec-label">Windstärke</div>
+        <div class="sec-label">Wind Speed</div>
         <div class="seg" id="segWind">
           <button data-value="10">10 kn</button>
           <button data-value="15">15 kn</button>
@@ -226,21 +226,21 @@
         </div>
       </div>
       <div class="menu-section">
-        <div class="sec-label">Wellenstärke</div>
+        <div class="sec-label">Sea State</div>
         <div class="seg" id="segWave">
-          <button data-value="0.5">Ruhig</button>
-          <button data-value="1" class="active">Mittel</button>
-          <button data-value="1.6">Hoch</button>
+          <button data-value="0.5">Calm</button>
+          <button data-value="1" class="active">Moderate</button>
+          <button data-value="1.6">Rough</button>
         </div>
       </div>
     </div>
     <div id="replayOpts" style="display:none">
       <div class="menu-section">
-        <div class="sec-label">Rennen</div>
-        <div class="replay-info">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · folgt der „V"</small></div>
+        <div class="sec-label">Race</div>
+        <div class="replay-info">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · following „V"</small></div>
       </div>
       <div class="menu-section">
-        <div class="sec-label">Orientierung</div>
+        <div class="sec-label">Orientation</div>
         <div class="seg" id="segOrient">
           <button data-value="tractrac" class="active">TracTrac</button>
           <button data-value="data">Data</button>
@@ -269,7 +269,7 @@
   </div>
 </div>
 <div id="countdown"></div>
-<div id="loading">Lade Karte…</div>
+<div id="loading">Loading map…</div>
 <div id="replayBar">
   <div id="rpDataRow">
     <div class="rp-panel"><div class="rp-label">Speed</div><div class="rp-value"><span id="rpSog">0.0</span><small> kn</small></div></div>
@@ -1551,7 +1551,7 @@ function restartRace() {
     o.group.rotation.y = -START_HEADING;
     clearTrack(o.track);
   });
-  elRaceMsg.textContent = 'Steuere durch die Marken in der Reihenfolge';
+  elRaceMsg.textContent = 'Steer through the marks in order';
 }
 
 // Normalize radians to [-PI, PI]
@@ -1666,15 +1666,15 @@ function updateRace(dt) {
       race.nextMark++;
       if (race.nextMark >= COURSE.length) {
         race.state = 'done';
-        elRaceMsg.textContent = '🏁 Zieldurchgang!';
+        elRaceMsg.textContent = '🏁 Finish!';
         if (bestTime === null || race.time < bestTime) {
           bestTime = race.time;
           localStorage.setItem('sim_best_time', String(bestTime));
-          elRaceMsg.textContent = '🏁 Neue Bestzeit!';
+          elRaceMsg.textContent = '🏁 New best time!';
         }
       } else {
         elRaceMsg.textContent = race.state === 'racing'
-          ? `Marke ${race.nextMark} von ${COURSE.length}`
+          ? `Mark ${race.nextMark} of ${COURSE.length}`
           : elRaceMsg.textContent;
       }
     }
@@ -2399,7 +2399,7 @@ function animate() {
   if (gameState === 'countdown') {
     countdownTimer -= dt;
     const n = Math.ceil(countdownTimer);
-    document.getElementById('countdown').textContent = n > 0 ? String(n) : 'Los!';
+    document.getElementById('countdown').textContent = n > 0 ? String(n) : 'Go!';
     if (countdownTimer <= 0) {
       gameState = 'racing';
       document.getElementById('countdown').style.display = 'none';
