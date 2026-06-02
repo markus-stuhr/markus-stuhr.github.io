@@ -2105,7 +2105,9 @@ async function startReplay() {
     if (isV) { group = boatGroup; }
     else {
       const hull = parseInt(b.color.slice(1), 16);
-      const o = makeOpponent({ hull, sail: SAILMAT.sail, rig: SAILMAT.rig, track: hull, dot: hull, x: 0, z: 0 });
+      const sail = b.sail ? parseInt(b.sail.slice(1), 16) : SAILMAT.sail;
+      const rig  = b.rig  ? parseInt(b.rig.slice(1),  16) : SAILMAT.rig;
+      const o = makeOpponent({ hull, sail, rig, track: hull, dot: hull, x: 0, z: 0 });
       group = o.group; mainPivot = o.mainPivot; jibPivot = o.jibPivot;
     }
     REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, hl, twa_r, group, mainPivot, jibPivot, color: parseInt(b.color.slice(1), 16), line: null, lastIdx: -1 });
