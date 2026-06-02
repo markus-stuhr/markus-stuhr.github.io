@@ -1288,7 +1288,10 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
   };
 
   // --- Route polyline (scene XZ) for LOD ---
-  const route = (routePts && routePts.length > 1) ? routePts : [{ x: 0, z: 0 }, ...COURSE];
+  // Downsample route for LOD distance calc — 200 pts is plenty for terrain sharpening
+  const routeFull = (routePts && routePts.length > 1) ? routePts : [{ x: 0, z: 0 }, ...COURSE];
+  const routeStep = Math.max(1, Math.floor(routeFull.length / 200));
+  const route = routeFull.filter((_, i) => i % routeStep === 0 || i === routeFull.length - 1);
   const distToRoute = (x, z) => {
     let best = Infinity;
     for (let s = 0; s < route.length - 1; s++) {
