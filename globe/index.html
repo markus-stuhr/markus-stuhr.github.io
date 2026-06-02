@@ -654,6 +654,10 @@
     <button class="tl-speed" data-speed="8">8×</button>
     <button class="tl-speed active" data-speed="16">16×</button>
   </div>
+  <div id="tl-race-switch" style="display:flex;gap:5px;margin-left:6px;flex-shrink:0">
+    <button class="tl-speed active" data-race-idx="0" title="Performance Race 1">Perf</button>
+    <button class="tl-speed"        data-race-idx="1" title="Maxi & Maxi GP Race 1">Maxi</button>
+  </div>
 </div>
 
 <script>
@@ -706,6 +710,22 @@ const SPOTS = [
   }
 ];
 
+const MARK_LIST = [
+  { name: "WB",   lat: 18.49317, lng: -64.52225 },
+  { name: "Ba",   lat: 18.42850, lng: -64.45440 },
+  { name: "GD",   lat: 18.48167, lng: -64.45623 },
+  { name: "Ge",   lat: 18.49318, lng: -64.45721 },
+  { name: "CI",   lat: 18.49490, lng: -64.46364 },
+  { name: "TR",   lat: 18.49000, lng: -64.49450 },
+  { name: "WD",   lat: 18.48304, lng: -64.47257 },
+  { name: "SF",   lat: 18.56041, lng: -64.41926 },
+  { name: "M1",   lat: 18.55719, lng: -64.42305 },
+  { name: "UW",   lat: 18.52485, lng: -64.39196 },
+  { name: "M2",   lat: 18.55782, lng: -64.41775 },
+  { name: "LW",   lat: 18.51971, lng: -64.38495 },
+  { name: "LW_B", lat: 18.52059, lng: -64.38782 },
+];
+
 const RACES = [
   {
     name: "North Sound Maxi Regatta",
@@ -713,20 +733,23 @@ const RACES = [
     region: "Caribbean — BVI",
     lat: 18.49, lng: -64.45,
     zoom: 13,
-    date: "March 2026",
+    date: "March 20, 2026",
     boats: 3,
     geojson: 'race1.geojson',
     type: 'race',
-    marks: [
-      { name: "WB", lat: 18.4933,              lng: -64.5225              },
-      { name: "Ba", lat: 18.4285,              lng: -64.4544              },
-      { name: "GD", lat: 18.48167113165485,    lng: -64.45623204856257    },
-      { name: "Ge", lat: 18.493179409525393,   lng: -64.45721020544745    },
-      { name: "CI", lat: 18.49490428693168,    lng: -64.46363563888845    },
-      { name: "TR", lat: 18.49,                lng: -64.4945              },
-      { name: "WD", lat: 18.48303452621442,    lng: -64.47256675886582    },
-      { name: "1",  lat: 18.52481,             lng: -64.39226             }
-    ]
+    marks: MARK_LIST,
+  },
+  {
+    name: "North Sound Maxi Regatta",
+    race: "Maxi & Maxi GP Race 1",
+    region: "Caribbean — BVI",
+    lat: 18.49, lng: -64.45,
+    zoom: 13,
+    date: "March 20, 2026",
+    boats: 7,
+    geojson: 'race2.geojson',
+    type: 'race',
+    marks: MARK_LIST,
   }
 ];
 
@@ -1904,12 +1927,26 @@ document.getElementById('tl-play').addEventListener('click', () => {
 });
 
 // ── Speed buttons ─────────────────────────────────────────
-document.querySelectorAll('.tl-speed').forEach(btn => {
+document.querySelectorAll('.tl-speed[data-speed]').forEach(btn => {
   btn.addEventListener('click', () => {
     raceSpeed = parseFloat(btn.dataset.speed);
-    document.querySelectorAll('.tl-speed').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tl-speed[data-speed]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   });
+});
+
+// ── Race switcher ──────────────────────────────────────────
+let activeRaceIdx = 0;
+document.getElementById('tl-race-switch').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-race-idx]');
+  if (!btn) return;
+  const idx = parseInt(btn.dataset.raceIdx);
+  if (idx === activeRaceIdx) return;
+  activeRaceIdx = idx;
+  document.querySelectorAll('[data-race-idx]').forEach(b =>
+    b.classList.toggle('active', parseInt(b.dataset.raceIdx) === idx));
+  const race = RACES[idx];
+  if (race) loadRaceTracks(race);
 });
 
 // ── Scrubber ──────────────────────────────────────────────
