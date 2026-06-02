@@ -885,13 +885,25 @@ function makeOpponent(opts) {
   mainPivot.add(new THREE.Mesh(boomG, new THREE.MeshPhongMaterial({ color: opts.rig })));
   const jibPivot = new THREE.Group(); jibPivot.position.set(0, 0.42, -1.79); rig.add(jibPivot);
   jibPivot.add(new THREE.Mesh(triGeo3(new THREE.Vector3(0, 0, 0), OPP_JH, new THREE.Vector3(0, 0.12, 1.3)), sailMat));
+  // Masthead pennant (Verklicker)
+  const oppPennPivot = new THREE.Group();
+  oppPennPivot.position.set(0, 5.1, MAST_Z);
+  rig.add(oppPennPivot);
+  { const pg = new THREE.BufferGeometry(); const N = 6, L = 0.42;
+    const pp = []; const pi = [];
+    for (let i = 0; i <= N; i++) { const f = i/N, hh = 0.055*(1-f); pp.push(0,hh,f*L, 0,-hh,f*L); }
+    for (let i = 0; i < N; i++) { const a=i*2,b=a+1,c=a+2,d=a+3; pi.push(a,b,c,c,b,d); }
+    pg.setAttribute('position', new THREE.Float32BufferAttribute(pp, 3));
+    pg.setIndex(pi);
+    oppPennPivot.add(new THREE.Mesh(pg, new THREE.MeshBasicMaterial({ color: 0xff5544, side: THREE.DoubleSide })));
+  }
   const sx = opts.x * M, sz = opts.z * M;
   group.position.set(sx, 0.3 * M, sz);
   group.scale.setScalar(M); // render the model at real size (1 unit = 1 m)
   group.rotation.y = -START_HEADING;
   scene.add(group);
   return {
-    group, mainPivot, jibPivot,
+    group, mainPivot, jibPivot, oppPennPivot,
     start: { x: sx, z: sz },
     trackColor: opts.track, dotColor: opts.dot,
     sailAngle: 0, heel: 0,
@@ -991,6 +1003,7 @@ function updateOpponent(o, dt) {
   o.sailAngle += (targetSail - o.sailAngle) * (1 - Math.pow(0.02, dt));
   o.mainPivot.rotation.y = o.sailAngle;
   o.jibPivot.quaternion.setFromAxisAngle(oppJibAxis, o.sailAngle * 0.85);
+  if (o.oppPennPivot) o.oppPennPivot.rotation.y = -twa2 * DEG;
 }
 
 // --- Track lines: each boat leaves a dashed trail on the water (the sailed course) ---
@@ -2101,16 +2114,16 @@ async function startReplay() {
         if (hasRealHdg && useDataOrient) hd[k]    = ((b.track[ks][4] ?? hd[k]) + orientOffset + 360) % 360;
       }
     }
-    let group, mainPivot, jibPivot;
+    let group, mainPivot, jibPivot, oppPennPivot = null;
     if (isV) { group = boatGroup; }
     else {
       const hull = parseInt(b.color.slice(1), 16);
       const sail = b.sail ? parseInt(b.sail.slice(1), 16) : SAILMAT.sail;
       const rig  = b.rig  ? parseInt(b.rig.slice(1),  16) : SAILMAT.rig;
       const o = makeOpponent({ hull, sail, rig, track: hull, dot: hull, x: 0, z: 0 });
-      group = o.group; mainPivot = o.mainPivot; jibPivot = o.jibPivot;
+      group = o.group; mainPivot = o.mainPivot; jibPivot = o.jibPivot; oppPennPivot = o.oppPennPivot;
     }
-    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, hl, twa_r, group, mainPivot, jibPivot, color: parseInt(b.color.slice(1), 16), line: null, lastIdx: -1 });
+    REPLAY.boats.push({ name: b.name, isV, xs, zs, hd, sp, hl, twa_r, group, mainPivot, jibPivot, oppPennPivot, color: parseInt(b.color.slice(1), 16), line: null, lastIdx: -1 });
   });
 
   // marks as simple orange buoys
@@ -2192,6 +2205,7 @@ function placeReplayBoat(rb, s) {
     rb.mainPivot.rotation.y = side * sheet;
     rb.jibPivot.quaternion.setFromAxisAngle(oppJibAxis, side * sheet * 0.85);
   }
+  if (rb.oppPennPivot) rb.oppPennPivot.rotation.y = -twa * DEG;
 }
 
 function updateReplayTrails() {
