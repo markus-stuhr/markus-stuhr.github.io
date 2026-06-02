@@ -219,6 +219,14 @@
         <div class="sec-label">Rennen</div>
         <div class="replay-info">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · folgt der „V"</small></div>
       </div>
+      <div class="menu-section">
+        <div class="sec-label">Orientation Offset</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input id="orientOffset" type="number" value="-13.5" step="0.5"
+            style="width:72px;padding:6px 8px;border-radius:8px;border:1px solid #b0c8e0;background:#f0f6fc;font-size:15px;color:#1a2a3a;text-align:right">
+          <span style="font-size:13px;color:#6b7c89">°</span>
+        </div>
+      </div>
     </div>
     <button id="startBtn">Start</button>
   </div>
@@ -2042,8 +2050,9 @@ async function startReplay() {
     if (hl) for (let k = 0; k < n; k++) hl[k] = b.track[k][2];
     const twa_r = b.track[0].length > 3 ? new Float32Array(n) : null;
     if (twa_r) for (let k = 0; k < n; k++) twa_r[k] = b.track[k][3];
+    const orientOffset = parseFloat(document.getElementById('orientOffset')?.value) || 0;
     const hasRealHdg = b.track[0].length > 4 && b.track[0][4] !== null;
-    if (hasRealHdg) for (let k = 0; k < n; k++) hd[k] = b.track[k][4] ?? hd[k];
+    if (hasRealHdg) for (let k = 0; k < n; k++) hd[k] = ((b.track[k][4] ?? hd[k]) + orientOffset + 360) % 360;
     const isV = b.name === 'V';
     let group, mainPivot, jibPivot;
     if (isV) { group = boatGroup; }
