@@ -994,7 +994,7 @@ function updateOpponent(o, dt) {
   const hL = waveHeight(bx - rgtX * B2, bz - rgtZ * B2, t);
   group.position.y = hC - 0.06 * M;
   group.rotation.x = Math.atan2(hF - hA, 2 * L2);
-  o.heel += (heelTarget(twa2, wind.tws) * DEG - o.heel) * (1 - Math.pow(0.47, dt));
+  o.heel += (heelTarget(twa2, wind.tws) * DEG - o.heel) * (1 - Math.pow(0.82, dt));
   group.rotation.z = Math.atan2(hR - hL, 2 * B2) + o.heel;
 
   const side = twa2 >= 0 ? -1 : 1;
@@ -1736,7 +1736,7 @@ function updateVisuals(dt) {
 
   // Heel: lean to leeward, driven by wind strength and point of sail. Greatest
   // on a beam reach, fading to nothing dead downwind or head-to-wind.
-  heelAngle += (heelTarget(twaDeg, wind.tws) * DEG - heelAngle) * (1 - Math.pow(0.47, dt));
+  heelAngle += (heelTarget(twaDeg, wind.tws) * DEG - heelAngle) * (1 - Math.pow(0.82, dt));
 
   // Belly the sail along its foot when powered up; flutter the leech when luffing.
   // The draft bows to LEEWARD, so its sign flips with the tack.
