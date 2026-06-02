@@ -324,6 +324,13 @@ function geoToLocal(lat, lng) {
     z: -(lat - clat) * 111320,
   };
 }
+function localToGeo(x, z) {
+  const clat = GEO_CENTER.lat, clng = GEO_CENTER.lng;
+  return {
+    lat: clat - z / 111320,
+    lng: clng + x / (Math.cos(clat * Math.PI / 180) * 111320),
+  };
+}
 
 // --- Scene ---
 const scene = new THREE.Scene();
@@ -995,6 +1002,25 @@ function updateOpponent(o, dt) {
     desiredH = normAngle(desiredH + Math.max(-0.9, Math.min(0.9, avoid)));
   }
 
+  // Land avoidance: sample elevation in front and to the sides; steer away if too shallow
+  if (window.terrainElevAt) {
+    const LAND_MARGIN = -30;  // metres — avoid shallower than 30 m depth
+    const PROBE = 60 * M;     // look 60 m ahead
+    const fwdX = Math.sin(st.heading), fwdZ = -Math.cos(st.heading);
+    const geo_f  = localToGeo(bx + fwdX * PROBE,          bz + fwdZ * PROBE);
+    const geo_fl = localToGeo(bx + (fwdX - fwdZ) * PROBE * 0.7, bz + (fwdZ + fwdX) * PROBE * 0.7);
+    const geo_fr = localToGeo(bx + (fwdX + fwdZ) * PROBE * 0.7, bz + (fwdZ - fwdX) * PROBE * 0.7);
+    const ef  = window.terrainElevAt(geo_f.lat,  geo_f.lng);
+    const efl = window.terrainElevAt(geo_fl.lat, geo_fl.lng);
+    const efr = window.terrainElevAt(geo_fr.lat, geo_fr.lng);
+    if (ef > LAND_MARGIN || efl > LAND_MARGIN || efr > LAND_MARGIN) {
+      // steer toward the deeper side
+      const bias = (efl - efr) * 0.05;  // positive = left is shallower → turn right
+      desiredH = normAngle(desiredH - bias);
+      if (ef > LAND_MARGIN) desiredH = normAngle(st.heading + Math.PI * 0.4 * (efl > efr ? -1 : 1));
+    }
+  }
+
   // Helm: steer toward the desired heading
   const err = normAngle(desiredH - st.heading);
   const rudTarget = Math.max(-st.maxRudder, Math.min(st.maxRudder, err * 2.2));
@@ -1425,6 +1451,8 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
     }
   }
   map.remove(); mapDiv.remove();
+  // Expose elevation lookup for land-avoidance (lat/lng → metres above sea level)
+  window.terrainElevAt = gridElev;
 }
 
 // --- Regatta course: rounding marks in order ---
