@@ -2344,9 +2344,17 @@ function updateReplayFrame(dt) {
   replay.seeked = false;
   floatPlayerBoat();
   updateReplayTrails();
-  // marks bob on the waves (skip the track lines, which have no userData)
+  // marks sit on terrain when on land, otherwise bob on waves
   replayGroup.children.forEach(g => {
-    if (g.userData && g.userData.x !== undefined) g.position.y = waveHeight(g.userData.x, g.userData.z, t);
+    if (g.userData && g.userData.x !== undefined) {
+      let baseY = waveHeight(g.userData.x, g.userData.z, t);
+      if (window.terrainElevAt) {
+        const geo = localToGeo(g.userData.x, g.userData.z);
+        const elev = window.terrainElevAt(geo.lat, geo.lng);
+        if (elev > baseY) baseY = elev + 0.5;
+      }
+      g.position.y = baseY;
+    }
   });
   // Replay HUD
   document.getElementById('rpSog').textContent  = (Math.abs(boat.speed) * 1.94).toFixed(1);
@@ -2497,10 +2505,16 @@ function animate() {
 
   floatPlayerBoat();
 
-  // Buoys bob up and down on the waves at their own positions
+  // Buoys sit on terrain when on land, otherwise bob on waves
   buoys.forEach((b, i) => {
     const m = COURSE[i];
-    b.grp.position.y = waveHeight(m.x, m.z, t);
+    let baseY = waveHeight(m.x, m.z, t);
+    if (window.terrainElevAt) {
+      const geo = localToGeo(m.x, m.z);
+      const elev = window.terrainElevAt(geo.lat, geo.lng);
+      if (elev > baseY) baseY = elev + 0.5; // sit on land surface
+    }
+    b.grp.position.y = baseY;
     // Drape the rounding-radius circle onto the wave surface (only the visible one)
     if (b.zone.visible) {
       [b.zone, b.ring].forEach((mesh) => {
