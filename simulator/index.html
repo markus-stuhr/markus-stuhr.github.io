@@ -893,7 +893,7 @@ function triGeo3(a, b, c) {
   g.computeVertexNormals();
   return g;
 }
-const START_HEADING = Math.PI * 0.5; // start facing East — open water, away from islands
+const START_HEADING = Math.PI * 0.65; // start facing SE — toward first mark, away from islands
 const OPP_JH = new THREE.Vector3(0, 4.63, 1.64);
 const oppJibAxis = OPP_JH.clone().normalize();
 
@@ -1460,13 +1460,13 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
 }
 
 // --- Regatta course: rounding marks in order ---
-// Real BVI North Sound marks — scene metres relative to GEO_CENTER (18.4807, -64.4744)
-// All marks confirmed in water from actual regatta GPS tracks.
+// Race course — symmetric triangle in the southern North Sound, clear of all islands.
+// All marks south of start (lat < 18.4807), well within open water.
 const COURSE = [
-  { x: 1136,  z: -1581 },   // CI  — NNE 1947 m  (beat/reach)
-  { x: -2122, z: -1035 },   // TR  — WNW 2361 m  (long reach west)
-  { x: 1918,  z:  -108 },   // GD  — E   1921 m  (reach east, leeward)
-  { x:    0,  z:  -400 },   // Fin — back to start area
+  { x:  1400, z:  600 },  // A — SE  1.5 km (leeward gate)
+  { x:     0, z: 2400 },  // B — S   2.4 km (southern mark)
+  { x: -1400, z:  600 },  // C — SW  1.5 km (windward mark)
+  { x:     0, z:  300 },  // Finish  — slightly south of start
 ];
 const MARK_RADIUS = 30; // metres: how close you must get to round a mark
 
