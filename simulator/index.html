@@ -2256,7 +2256,8 @@ const fmtClock = (ms) => {
   return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 };
 function updateReplayFrame(dt) {
-  const adt = replay.playing ? dt : 0; // animation dt — freeze everything when paused
+  const adt = replay.playing ? dt : 0;               // animation dt — freeze when paused
+  const rdt = replay.playing ? dt * replay.speed : 0; // replay-scaled dt for physics (heel etc.)
   t += adt;
   if (replay.playing) {
     replay.ms += dt * 1000 * replay.speed;
@@ -2270,7 +2271,7 @@ function updateReplayFrame(dt) {
   REPLAY.boats.forEach(rb => {
     const s = replaySample(rb, replay.ms);
     if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; }
-    else placeReplayBoat(rb, s, adt);
+    else placeReplayBoat(rb, s, rdt);
   });
   // updateBoat isn't run in replay, so derive the values its sail/heel visuals need
   twaDeg = normAngle(wind.from - boat.heading) * 180 / Math.PI;
