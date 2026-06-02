@@ -2237,7 +2237,7 @@ function updateReplayFrame(dt) {
   // place boats
   REPLAY.boats.forEach(rb => {
     const s = replaySample(rb, replay.ms);
-    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; if (s.hl !== null) heelAngle = -s.hl * DEG; }
+    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; }
     else placeReplayBoat(rb, s, dt);
   });
   // updateBoat isn't run in replay, so derive the values its sail/heel visuals need
@@ -2246,8 +2246,10 @@ function updateReplayFrame(dt) {
   ocean.position.set(boatGroup.position.x, 0, boatGroup.position.z);
   stars.position.set(boatGroup.position.x, 0, boatGroup.position.z);
   animateWaves(t);
-  updateVisuals(dt);   // V sails/heel/pennant from boat.heading + wind
+  updateVisuals(dt);   // V sails/pennant from boat.heading + wind
   updateWake(t, dt);   // V wake
+  // Override heel with real ADX data after updateVisuals (no smoothing for V in replay)
+  { const vb = REPLAY.boats.find(rb => rb.isV); if (vb) { const sv = replaySample(vb, replay.ms); if (sv.hl !== null) heelAngle = -sv.hl * DEG; } }
   floatPlayerBoat();
   updateReplayTrails();
   // marks bob on the waves (skip the track lines, which have no userData)
