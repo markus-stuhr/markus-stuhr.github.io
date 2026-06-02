@@ -999,7 +999,7 @@ function updateOpponent(o, dt) {
 
   const side = twa2 >= 0 ? -1 : 1;
   const sheet = Math.min(Math.abs(twa2) * 0.5, 80) * DEG;
-  const targetSail = eff2 <= 0.02 ? Math.sin(t * 14) * 6 * DEG : side * sheet;
+  const targetSail = eff2 <= 0.02 ? Math.sin(t * 14) * 3 * DEG : side * sheet;
   o.sailAngle += (targetSail - o.sailAngle) * (1 - Math.pow(0.02, dt));
   o.mainPivot.rotation.y = o.sailAngle;
   o.jibPivot.quaternion.setFromAxisAngle(oppJibAxis, o.sailAngle * 0.85);
@@ -1726,7 +1726,7 @@ function updateVisuals(dt) {
   const luffing = currentEff <= 0.02; // in irons / pinching
   if (luffing) {
     // Sail can't fill: sit near centreline and shiver
-    targetAngle = Math.sin(t * 14) * 6 * DEG;
+    targetAngle = Math.sin(t * 14) * 3 * DEG;
   }
   sailAngle += (targetAngle - sailAngle) * (1 - Math.pow(0.02, dt));
   sailPivot.rotation.y = sailAngle;
@@ -1751,7 +1751,7 @@ function updateVisuals(dt) {
     const vTaper = 1 - 0.55 * vNorm;               // draft eases off toward the head
     let bulge;
     if (luffing) {
-      bulge = Math.sin(t * 18 + by * 2 + bz) * 0.18 * u; // ripple, strongest at the leech
+      bulge = Math.sin(t * 18 + by * 2 + bz) * 0.09 * u; // ripple, strongest at the leech
     } else {
       bulge = Math.sin(u * Math.PI) * 0.32 * currentEff * vTaper * lee; // fullest mid-foot, to leeward
     }
@@ -1770,7 +1770,7 @@ function updateVisuals(dt) {
     const vTaper = 1 - 0.5 * (by / jibHeadY);          // ease draft toward the head
     let bulge;
     if (luffing) {
-      bulge = Math.sin(t * 18 + by * 2 + bz) * 0.14 * u;
+      bulge = Math.sin(t * 18 + by * 2 + bz) * 0.07 * u;
     } else {
       bulge = Math.sin(u * Math.PI) * 0.34 * currentEff * vTaper * lee;
     }
