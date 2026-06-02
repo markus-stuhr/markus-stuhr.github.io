@@ -2229,7 +2229,7 @@ function placeReplayBoat(rb, s, dt) {
   const twa = normAngle(wind.from - s.h) * 180 / Math.PI;
   const wroll = Math.atan2(waveHeight(s.x + rgtX * B, s.z + rgtZ * B, t) - waveHeight(s.x - rgtX * B, s.z - rgtZ * B, t), 2 * B);
   const heelTarget_ = s.hl !== null ? -s.hl * DEG : heelTarget(twa, wind.tws) * DEG;
-  rb.heel += (heelTarget_ - rb.heel) * (1 - Math.pow(0.65, dt));
+  rb.heel = replay.seeked ? heelTarget_ : rb.heel + (heelTarget_ - rb.heel) * (1 - Math.pow(0.65, dt));
   g.rotation.z = wroll + rb.heel;
   if (rb.mainPivot) {
     const side = twa >= 0 ? -1 : 1;
@@ -2281,6 +2281,7 @@ function updateReplayFrame(dt) {
   updateWake(t, dt);   // V wake
   // Override heel with real ADX data after updateVisuals (no smoothing for V in replay)
   { const vb = REPLAY.boats.find(rb => rb.isV); if (vb) { const sv = replaySample(vb, replay.ms); if (sv.hl !== null) heelAngle = -sv.hl * DEG; } }
+  replay.seeked = false;
   floatPlayerBoat();
   updateReplayTrails();
   // marks bob on the waves (skip the track lines, which have no userData)
@@ -2311,6 +2312,7 @@ document.getElementById('rpPlay').addEventListener('click', () => {
 });
 document.getElementById('rpSeek').addEventListener('input', (e) => {
   replay.ms = parseFloat(e.target.value) / 1000 * replay.duration;
+  replay.seeked = true;
 });
 document.getElementById('rpSpeed').addEventListener('click', (e) => {
   const b = e.target.closest('button'); if (!b) return;
