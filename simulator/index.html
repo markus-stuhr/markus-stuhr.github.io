@@ -220,19 +220,28 @@
         <div class="replay-info">Maxi &amp; Maxi GP — Race 1<br><small>BVI North Sound · folgt der „V"</small></div>
       </div>
       <div class="menu-section">
-        <div class="sec-label">Orientation Offset</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input id="orientOffset" type="number" value="-13.5" step="0.5"
-            style="width:72px;padding:6px 8px;border-radius:8px;border:1px solid #b0c8e0;background:#f0f6fc;font-size:15px;color:#1a2a3a;text-align:right">
-          <span style="font-size:13px;color:#6b7c89">°</span>
+        <div class="sec-label">Orientierung</div>
+        <div class="seg" id="segOrient">
+          <button data-value="data" class="active">Data</button>
+          <button data-value="tractrac">TracTrac</button>
         </div>
       </div>
-      <div class="menu-section">
-        <div class="sec-label">Sensor Shift</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <input id="sensorShift" type="number" value="-2" step="0.1"
-            style="width:72px;padding:6px 8px;border-radius:8px;border:1px solid #b0c8e0;background:#f0f6fc;font-size:15px;color:#1a2a3a;text-align:right">
-          <span style="font-size:13px;color:#6b7c89">s</span>
+      <div id="dataOrientOpts">
+        <div class="menu-section">
+          <div class="sec-label">Orientation Offset</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input id="orientOffset" type="number" value="-13.5" step="0.5"
+              style="width:72px;padding:6px 8px;border-radius:8px;border:1px solid #b0c8e0;background:#f0f6fc;font-size:15px;color:#1a2a3a;text-align:right">
+            <span style="font-size:13px;color:#6b7c89">°</span>
+          </div>
+        </div>
+        <div class="menu-section">
+          <div class="sec-label">Sensor Shift</div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input id="sensorShift" type="number" value="-2" step="0.1"
+              style="width:72px;padding:6px 8px;border-radius:8px;border:1px solid #b0c8e0;background:#f0f6fc;font-size:15px;color:#1a2a3a;text-align:right">
+            <span style="font-size:13px;color:#6b7c89">s</span>
+          </div>
         </div>
       </div>
     </div>
@@ -1988,13 +1997,20 @@ function wireSeg(id) {
 const getWind = wireSeg('segWind');
 const getWave = wireSeg('segWave');
 wireSeg('segMode');
-const getMode = () => document.querySelector('#segMode .active').dataset.value;
+wireSeg('segOrient');
+const getMode   = () => document.querySelector('#segMode .active').dataset.value;
+const getOrient = () => document.querySelector('#segOrient .active')?.dataset.value ?? 'data';
 // toggle race/replay option panels when the mode changes
 document.getElementById('segMode').addEventListener('click', (e) => {
   if (!e.target.closest('button')) return;
   const replay = getMode() === 'replay';
   document.getElementById('raceOpts').style.display = replay ? 'none' : '';
   document.getElementById('replayOpts').style.display = replay ? '' : 'none';
+});
+// toggle Data-only options when orientation mode changes
+document.getElementById('segOrient').addEventListener('click', (e) => {
+  if (!e.target.closest('button')) return;
+  document.getElementById('dataOrientOpts').style.display = getOrient() === 'data' ? '' : 'none';
 });
 
 function startGame() {
@@ -2069,15 +2085,17 @@ async function startReplay() {
     if (hl) for (let k = 0; k < n; k++) hl[k] = b.track[k][2];
     const twa_r = b.track[0].length > 3 ? new Float32Array(n) : null;
     if (twa_r) for (let k = 0; k < n; k++) twa_r[k] = b.track[k][3];
-    const orientOffset = parseFloat(document.getElementById('orientOffset')?.value) || 0;
-    const sensorShift  = Math.round((parseFloat(document.getElementById('sensorShift')?.value) || 0) / data.dt);
-    const hasRealHdg = b.track[0].length > 4 && b.track[0][4] !== null;
-    if (hl || twa_r || hasRealHdg) {
+    const useDataOrient = isV && getOrient() === 'data';
+    const orientOffset  = parseFloat(document.getElementById('orientOffset')?.value) || 0;
+    const sensorShift   = Math.round((parseFloat(document.getElementById('sensorShift')?.value) || 0) / data.dt);
+    const hasRealHdg    = b.track[0].length > 4 && b.track[0][4] !== null;
+    if (hl || twa_r || (hasRealHdg && useDataOrient)) {
       for (let k = 0; k < n; k++) {
         const ks = Math.max(0, Math.min(n - 1, k + sensorShift));
-        if (hl)          hl[k]   = b.track[ks][2];
-        if (twa_r)       twa_r[k] = b.track[ks][3];
-        if (hasRealHdg)  hd[k]   = ((b.track[ks][4] ?? hd[k]) + orientOffset + 360) % 360;
+        if (hl)                         hl[k]    = b.track[ks][2];
+        if (twa_r)                      twa_r[k] = b.track[ks][3];
+        if (hasRealHdg && useDataOrient) hd[k]   = ((b.track[ks][4] ?? hd[k]) + orientOffset + 360) % 360;
+        // TracTrac mode: hd[k] already set from GPS position differences above
       }
     }
     const isV = b.name === 'V';
