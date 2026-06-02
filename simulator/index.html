@@ -1004,7 +1004,7 @@ function updateOpponent(o, dt) {
 
   // Land avoidance: sample elevation in front and to the sides; steer away if too shallow
   if (window.terrainElevAt) {
-    const LAND_MARGIN = -30;  // metres — avoid shallower than 30 m depth
+    const LAND_MARGIN = -15;  // metres — avoid shallower than 15 m depth
     const PROBE = 60 * M;     // look 60 m ahead
     const fwdX = Math.sin(st.heading), fwdZ = -Math.cos(st.heading);
     const geo_f  = localToGeo(bx + fwdX * PROBE,          bz + fwdZ * PROBE);
