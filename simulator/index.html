@@ -2159,6 +2159,12 @@ async function startReplay() {
   const vRoute = data.boats[vi].track.map(p => { const q = geoToLocal(p[1], p[0]); return { x: q.x, z: q.z }; });
   // Pre-position the camera at the V boat's start so the world loads around the right spot
   { const p0 = vRoute[0]; boatGroup.position.set(p0.x, 0.3 * M, p0.z); }
+  // Apply V-boat colors from JSON
+  { const vb = data.boats[vi];
+    if (vb.color) hullMat.color.setHex(parseInt(vb.color.slice(1), 16));
+    if (vb.sail)  { sailMat.color.setHex(parseInt(vb.sail.slice(1), 16)); jib.material.color.setHex(parseInt(vb.sail.slice(1), 16)); }
+    if (vb.rig)   mastMat.color.setHex(parseInt(vb.rig.slice(1),  16));
+  }
   await buildCaribbean(cLat, cLng, span, vRoute);
 
   // build per-boat projected tracks + headings + speeds
