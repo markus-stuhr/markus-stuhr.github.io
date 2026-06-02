@@ -2109,6 +2109,8 @@ async function startReplay() {
 
   const vi = data.boats.findIndex(b => b.name === 'V');
   const vRoute = data.boats[vi].track.map(p => { const q = geoToLocal(p[1], p[0]); return { x: q.x, z: q.z }; });
+  // Pre-position the camera at the V boat's start so the world loads around the right spot
+  { const p0 = vRoute[0]; boatGroup.position.set(p0.x, 0.3 * M, p0.z); }
   await buildCaribbean(cLat, cLng, span, vRoute);
 
   // build per-boat projected tracks + headings + speeds
