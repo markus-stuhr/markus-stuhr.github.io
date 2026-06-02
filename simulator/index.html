@@ -893,7 +893,7 @@ function triGeo3(a, b, c) {
   g.computeVertexNormals();
   return g;
 }
-const START_HEADING = Math.PI * 0.1; // start heading slightly NNE toward WD gate
+const START_HEADING = Math.PI * 0.5; // start facing East — open water, away from islands
 const OPP_JH = new THREE.Vector3(0, 4.63, 1.64);
 const oppJibAxis = OPP_JH.clone().normalize();
 
@@ -1462,13 +1462,11 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
 // --- Regatta course: rounding marks in order ---
 // Real BVI North Sound marks — scene metres relative to GEO_CENTER (18.4807, -64.4744)
 // All marks confirmed in water from actual regatta GPS tracks.
-// Wind typically SSE (~155°) → upwind leg is NNE
 const COURSE = [
-  { x:  193,  z:  -260, label: 'WD'  },  // Gate     — NNE   324 m  (quick start leg)
-  { x: 1136,  z: -1581, label: 'CI'  },  // Windward — NNE  1947 m  (beat upwind)
-  { x: 1815,  z: -1389, label: 'Ge'  },  // Reach    — ENE  2286 m  (port reach)
-  { x: -2122, z: -1035, label: 'TR'  },  // W Mark   — WNW  2361 m  (long run/reach)
-  { x:    0,  z:  -200, label: 'Fin' },  // Finish   — near start
+  { x: 1136,  z: -1581 },   // CI  — NNE 1947 m  (beat/reach)
+  { x: -2122, z: -1035 },   // TR  — WNW 2361 m  (long reach west)
+  { x: 1918,  z:  -108 },   // GD  — E   1921 m  (reach east, leeward)
+  { x:    0,  z:  -400 },   // Fin — back to start area
 ];
 const MARK_RADIUS = 30; // metres: how close you must get to round a mark
 
