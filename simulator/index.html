@@ -2142,7 +2142,7 @@ function placeReplayBoat(rb, s) {
   g.rotation.x = Math.atan2(waveHeight(s.x + fwdX * L, s.z + fwdZ * L, t) - waveHeight(s.x - fwdX * L, s.z - fwdZ * L, t), 2 * L);
   const twa = normAngle(wind.from - s.h) * 180 / Math.PI;
   const wroll = Math.atan2(waveHeight(s.x + rgtX * B, s.z + rgtZ * B, t) - waveHeight(s.x - rgtX * B, s.z - rgtZ * B, t), 2 * B);
-  const heelRad = s.hl !== null ? s.hl * DEG : Math.sign(twa) * MAX_HEEL * (wind.tws / wind.maxTws) * Math.sin(Math.abs(twa * DEG)) * 0.8;
+  const heelRad = s.hl !== null ? -s.hl * DEG : Math.sign(twa) * MAX_HEEL * (wind.tws / wind.maxTws) * Math.sin(Math.abs(twa * DEG)) * 0.8;
   g.rotation.z = wroll + heelRad;
   if (rb.mainPivot) {
     const side = twa >= 0 ? -1 : 1;
@@ -2180,7 +2180,7 @@ function updateReplayFrame(dt) {
   // place boats
   REPLAY.boats.forEach(rb => {
     const s = replaySample(rb, replay.ms);
-    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; if (s.hl !== null) heelAngle = s.hl * DEG; if (s.twa !== null) replayAdxTwaDeg = s.twa; }
+    if (rb.isV) { boatGroup.position.x = s.x; boatGroup.position.z = s.z; boatGroup.rotation.y = -s.h; boat.heading = s.h; boat.speed = s.sp; if (s.hl !== null) heelAngle = -s.hl * DEG; if (s.twa !== null) replayAdxTwaDeg = s.twa; }
     else placeReplayBoat(rb, s);
   });
   // updateBoat isn't run in replay, so derive the values its sail/heel visuals need
