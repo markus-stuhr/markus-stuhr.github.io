@@ -965,8 +965,7 @@ function updateOpponent(o, dt) {
   const hL = waveHeight(bx - rgtX * B2, bz - rgtZ * B2, t);
   group.position.y = hC - 0.06 * M;
   group.rotation.x = Math.atan2(hF - hA, 2 * L2);
-  const heelMag = MAX_HEEL * (wind.tws / wind.maxTws) * eff2 * Math.sin(Math.abs(twa2 * DEG));
-  o.heel += (Math.sign(twa2) * heelMag - o.heel) * (1 - Math.pow(0.08, dt));
+  o.heel += (heelTarget(twa2, wind.tws) * DEG - o.heel) * (1 - Math.pow(0.08, dt));
   group.rotation.z = Math.atan2(hR - hL, 2 * B2) + o.heel;
 
   const side = twa2 >= 0 ? -1 : 1;
@@ -1654,7 +1653,21 @@ function updateRace(dt) {
 const DEG = Math.PI / 180;
 let sailAngle = 0; // smoothed boom angle
 let heelAngle = 0; // smoothed heel (lean to leeward)
-const MAX_HEEL = 32 * DEG;
+const MAX_HEEL = 32 * DEG; // legacy (speed visuals only)
+
+// Heel physics — fitted to ADX sensor data (RMSE 4.6°, r=0.97)
+// heelDeg = −sign(TWA) × HEEL_MAX × (TWS/HEEL_REF_TWS) × heelShape(|TWA|)
+const HEEL_MAX     = 28.2;   // degrees at ref wind
+const HEEL_REF_TWS = 17.5;   // reference wind speed (knots)
+function heelShape(aDeg) {
+  const g    = Math.exp(-0.5 * Math.pow((aDeg - 56) / 80, 2));   // Gauss peak ~56°, wide
+  const run  = aDeg > 130 ? 0.44 + 0.56 * Math.exp(-0.5 * Math.pow((aDeg - 130) / 30, 2)) : 1.0;
+  const nogo = Math.min(Math.max((aDeg - 22) / 10, 0), 1);       // no-go ramp <22°
+  return g * run * nogo;
+}
+function heelTarget(twaDeg, twsKn) {
+  return -Math.sign(twaDeg) * HEEL_MAX * Math.min(twsKn / HEEL_REF_TWS, 2.0) * heelShape(Math.abs(twaDeg));
+}
 
 // Apparent wind angle relative to the bow (radians, + = wind on starboard).
 // Combines the true wind with the boat's own motion, like the real thing.
@@ -1690,9 +1703,7 @@ function updateVisuals(dt) {
 
   // Heel: lean to leeward, driven by wind strength and point of sail. Greatest
   // on a beam reach, fading to nothing dead downwind or head-to-wind.
-  const heelMag = MAX_HEEL * (wind.tws / wind.maxTws) * currentEff * Math.sin(Math.abs(twaDeg * DEG));
-  const heelTarget = Math.sign(twaDeg) * heelMag; // wind on stbd -> heel to port (leeward)
-  heelAngle += (heelTarget - heelAngle) * (1 - Math.pow(0.08, dt));
+  heelAngle += (heelTarget(twaDeg, wind.tws) * DEG - heelAngle) * (1 - Math.pow(0.08, dt));
 
   // Belly the sail along its foot when powered up; flutter the leech when luffing.
   // The draft bows to LEEWARD, so its sign flips with the tack.
@@ -2135,7 +2146,7 @@ function placeReplayBoat(rb, s) {
   g.rotation.x = Math.atan2(waveHeight(s.x + fwdX * L, s.z + fwdZ * L, t) - waveHeight(s.x - fwdX * L, s.z - fwdZ * L, t), 2 * L);
   const twa = normAngle(wind.from - s.h) * 180 / Math.PI;
   const wroll = Math.atan2(waveHeight(s.x + rgtX * B, s.z + rgtZ * B, t) - waveHeight(s.x - rgtX * B, s.z - rgtZ * B, t), 2 * B);
-  const heelRad = s.hl !== null ? -s.hl * DEG : Math.sign(twa) * MAX_HEEL * (wind.tws / wind.maxTws) * Math.sin(Math.abs(twa * DEG)) * 0.8;
+  const heelRad = s.hl !== null ? -s.hl * DEG : heelTarget(twa, wind.tws) * DEG;
   g.rotation.z = wroll + heelRad;
   if (rb.mainPivot) {
     const side = twa >= 0 ? -1 : 1;
