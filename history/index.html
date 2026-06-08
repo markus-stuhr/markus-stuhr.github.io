@@ -6,10 +6,119 @@
 <title>Erdgeschichte — 4,6 Milliarden Jahre</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #06060f; }
-canvas { display: block; cursor: grab; user-select: none; -webkit-user-select: none; touch-action: none; }
-canvas.dragging { cursor: grabbing; }
 
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #06060f;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Stars: fixed behind everything */
+#stars {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Native scroll container */
+#scroller {
+  width: 100%; height: 100%;
+  overflow-x: scroll;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  position: relative;
+  z-index: 1;
+}
+#scroller::-webkit-scrollbar { display: none; }
+
+/* Wide content stage */
+#stage {
+  height: 100%;
+  position: relative;
+  /* width set by JS */
+}
+
+/* Timeline line */
+#tl-line {
+  position: absolute;
+  left: 0; right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-1px);
+  background: linear-gradient(to right,
+    transparent 0%,
+    rgba(90,130,255,.7) 1.5%,
+    rgba(130,180,255,.7) 98.5%,
+    transparent 100%
+  );
+  box-shadow: 0 0 14px rgba(100,150,255,.38);
+  pointer-events: none;
+}
+
+/* Eon color band */
+.eon-band {
+  position: absolute;
+  pointer-events: none;
+}
+
+.eon-label {
+  position: absolute;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Connecting stem */
+.stem {
+  position: absolute;
+  width: 0;
+  border-left: 1px dashed;
+  pointer-events: none;
+}
+
+/* Dot on the timeline */
+.dot {
+  position: absolute;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* Event card */
+.card {
+  position: absolute;
+  width: 158px;
+  border-radius: 7px;
+  border: 1px solid;
+  padding: 9px 10px 7px;
+  background: rgba(7,7,18,.91);
+}
+.card-title {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  margin-bottom: 4px;
+}
+.card-desc {
+  font-size: 9.5px;
+  color: rgba(200,215,245,.62);
+  line-height: 1.42;
+  margin-bottom: 5px;
+}
+.card-year {
+  font-family: 'Courier New', monospace;
+  font-size: 8px;
+  text-align: right;
+}
+
+/* Fixed header */
 #header {
   position: fixed;
   top: 0; left: 0; right: 0;
@@ -24,69 +133,51 @@ canvas.dragging { cursor: grabbing; }
   font-family: Georgia, 'Times New Roman', serif;
   font-size: 21px;
   font-weight: normal;
-  color: rgba(190, 210, 255, 0.92);
-  letter-spacing: 0.06em;
+  color: rgba(190,210,255,.92);
+  letter-spacing: .06em;
 }
 #subtitle {
-  font-family: system-ui, sans-serif;
   font-size: 10px;
-  color: rgba(150, 175, 225, 0.45);
-  letter-spacing: 0.14em;
+  color: rgba(150,175,225,.42);
+  letter-spacing: .14em;
   text-transform: uppercase;
   margin-top: 4px;
-}
-#progress {
-  font-family: 'Courier New', monospace;
-  font-size: 10px;
-  color: rgba(160, 190, 255, 0.4);
-  text-align: right;
-  line-height: 1.7;
 }
 #hint {
   position: fixed;
   bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
-  font-family: system-ui, sans-serif;
   font-size: 11px;
-  color: rgba(255,255,255,0.22);
+  color: rgba(255,255,255,.2);
   pointer-events: none;
-  letter-spacing: 0.07em;
+  letter-spacing: .07em;
   white-space: nowrap;
   transition: opacity 1.5s;
+  z-index: 10;
 }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+
+<canvas id="stars"></canvas>
+
+<div id="scroller">
+  <div id="stage"></div>
+</div>
 
 <div id="header">
   <div>
     <div id="title">Erdgeschichte</div>
     <div id="subtitle">4,6 Milliarden Jahre</div>
   </div>
-  <div id="progress"></div>
 </div>
-<div id="hint">← ziehen zum Navigieren →</div>
+<div id="hint">← Trackpad seitlich scrollen →</div>
 
 <script>
 'use strict';
 
-if (!CanvasRenderingContext2D.prototype.roundRect) {
-  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
-    this.moveTo(x+r, y); this.lineTo(x+w-r, y);
-    this.quadraticCurveTo(x+w, y, x+w, y+r); this.lineTo(x+w, y+h-r);
-    this.quadraticCurveTo(x+w, y+h, x+w-r, y+h); this.lineTo(x+r, y+h);
-    this.quadraticCurveTo(x, y+h, x, y+h-r); this.lineTo(x, y+r);
-    this.quadraticCurveTo(x, y, x+r, y); this.closePath(); return this;
-  };
-}
-
-const canvas = document.getElementById('c');
-const ctx    = canvas.getContext('2d');
-const progEl = document.getElementById('progress');
-
-// ─── DATA ─────────────────────────────────────────────────────────────
+// ── DATA ────────────────────────────────────────────────────────────────
 
 const EONS = [
   { name: 'Hadaikum',      start: 4600e6, end: 4000e6, hex: '#8b1a1a' },
@@ -97,81 +188,63 @@ const EONS = [
   { name: 'Känozoikum',    start:   66e6, end:      0, hex: '#0d2a50' },
 ];
 
-// t = years ago, s: 1 = above, -1 = below
+// s: 1 = above timeline, -1 = below
 const EVENTS = [
-  { t: 4600e6, label: 'Entstehung der Erde',       desc: 'Akkretion aus dem protosolaren Nebel',              hex: '#ff6b6b', s:  1 },
-  { t: 4530e6, label: 'Mondbildung',               desc: 'Kollision mit Protoplanet Theia',                   hex: '#ffa37a', s: -1 },
-  { t: 4400e6, label: 'Erste Ozeane',              desc: 'Flüssiges Wasser an der Oberfläche',                hex: '#48dbfb', s:  1 },
-  { t: 3800e6, label: 'Erstes Leben',              desc: 'Prokaryoten — Einzeller ohne Zellkern',             hex: '#1dd1a1', s: -1 },
-  { t: 2700e6, label: 'Stromatolithen',            desc: 'Erste sichtbare Lebensstrukturen aus Bakterien',    hex: '#26de81', s:  1 },
-  { t: 2400e6, label: 'Sauerstoffkatastrophe',     desc: 'Cyanobakterien erzeugen O₂ — vergiften Ur-Atm.',   hex: '#feca57', s: -1 },
-  { t: 2100e6, label: 'Erste Eukaryoten',          desc: 'Zellen mit Zellkern und Organellen',               hex: '#ff9ff3', s:  1 },
-  { t:  800e6, label: 'Erste Vielzeller',          desc: 'Komplexe mehrzellige Organismen entstehen',        hex: '#a29bfe', s: -1 },
-  { t:  700e6, label: 'Schneeball-Erde',           desc: 'Die Erde gefriert vollständig von Pol zu Pol',     hex: '#c8eeff', s:  1 },
-  { t:  541e6, label: 'Kambrische Explosion',      desc: 'Alle heutigen Tierstämme entstehen auf einmal',    hex: '#fd9644', s: -1 },
-  { t:  470e6, label: 'Erste Landpflanzen',        desc: 'Moose und Farne besiedeln das Festland',           hex: '#26de81', s:  1 },
-  { t:  375e6, label: 'Erste Landwirbeltiere',     desc: 'Tiktaalik — Fisch auf dem Weg ans Land',           hex: '#fd9644', s: -1 },
-  { t:  305e6, label: 'Karbonische Wälder',        desc: 'Riesige Kohlenwälder, erste Reptilien',            hex: '#2ecc71', s:  1 },
-  { t:  252e6, label: 'Perm-Extinktion',           desc: '96 % aller Arten sterben aus',                     hex: '#e74c3c', s: -1 },
-  { t:  230e6, label: 'Erste Dinosaurier',         desc: 'Eoraptor und frühe Saurischia erscheinen',         hex: '#2bcbba', s:  1 },
-  { t:  200e6, label: 'Trias-Extinktion',          desc: '50 % aller Arten sterben aus',                     hex: '#e74c3c', s: -1 },
-  { t:  150e6, label: 'Archaeopteryx',             desc: 'Übergang Dinosaurier → Vögel',                     hex: '#a29bfe', s:  1 },
-  { t:   66e6, label: 'K-Pg Extinktion',           desc: 'Asteroideneinschlag — Ende der Dinosaurier',       hex: '#e74c3c', s: -1 },
-  { t:   55e6, label: 'Erste Primaten',            desc: 'Unsere ältesten Vorfahren erscheinen',             hex: '#fd9644', s:  1 },
-  { t:    7e6, label: 'Erste Hominiden',           desc: 'Trennung von der Schimpansen-Linie',               hex: '#ffd32a', s: -1 },
-  { t:    2e6, label: 'Homo erectus',              desc: 'Erste Nutzung von Feuer, Steinwerkzeug',           hex: '#ffd32a', s:  1 },
-  { t: 300000, label: 'Homo sapiens',              desc: 'Moderner Mensch entsteht in Afrika',               hex: '#f9ca24', s: -1 },
-  { t:  70000, label: 'Toba-Katastrophe',          desc: 'Supervulkan bringt Menschheit fast zum Aussterben',hex: '#e74c3c', s:  1 },
-  { t:  40000, label: 'Höhlenmalerei',             desc: 'Erste figurative Kunst — Lascaux, Altamira',       hex: '#a29bfe', s: -1 },
-  { t:  12000, label: 'Landwirtschaft',            desc: 'Neolithische Revolution im Fruchtbaren Halbmond',  hex: '#26de81', s:  1 },
-  { t:   5000, label: 'Erste Schrift',             desc: 'Keilschrift in Mesopotamien',                      hex: '#a29bfe', s: -1 },
-  { t:   2500, label: 'Antike Hochkulturen',       desc: 'Griechenland, Rom, Persien, Han-Dynastie',         hex: '#fd9644', s:  1 },
-  { t:    520, label: 'Wissenschaftl. Revolution', desc: 'Kopernikus, Galilei, Newton',                      hex: '#48dbfb', s: -1 },
-  { t:     75, label: 'Raumfahrt',                 desc: 'Sputnik 1957 · Apollo 11 1969',                    hex: '#74b9ff', s:  1 },
-  { t:      0, label: 'Heute',                     desc: 'Gegenwart',                                        hex: '#ffffff', s: -1 },
+  { t: 4600e6, label: 'Entstehung der Erde',       desc: 'Akkretion aus dem protosolaren Nebel',               hex: '#ff6b6b', s:  1 },
+  { t: 4530e6, label: 'Mondbildung',               desc: 'Kollision mit Protoplanet Theia',                    hex: '#ffa37a', s: -1 },
+  { t: 4400e6, label: 'Erste Ozeane',              desc: 'Flüssiges Wasser an der Oberfläche',                 hex: '#48dbfb', s:  1 },
+  { t: 3800e6, label: 'Erstes Leben',              desc: 'Prokaryoten — Einzeller ohne Zellkern',              hex: '#1dd1a1', s: -1 },
+  { t: 2700e6, label: 'Stromatolithen',            desc: 'Erste sichtbare Lebensstrukturen',                   hex: '#26de81', s:  1 },
+  { t: 2400e6, label: 'Sauerstoffkatastrophe',     desc: 'Cyanobakterien erzeugen O₂ — vergiften Ur-Atm.',    hex: '#feca57', s: -1 },
+  { t: 2100e6, label: 'Erste Eukaryoten',          desc: 'Zellen mit Zellkern und Organellen',                hex: '#ff9ff3', s:  1 },
+  { t:  800e6, label: 'Erste Vielzeller',          desc: 'Komplexe mehrzellige Organismen entstehen',         hex: '#a29bfe', s: -1 },
+  { t:  700e6, label: 'Schneeball-Erde',           desc: 'Die Erde gefriert vollständig von Pol zu Pol',      hex: '#c8eeff', s:  1 },
+  { t:  541e6, label: 'Kambrische Explosion',      desc: 'Alle heutigen Tierstämme entstehen auf einmal',     hex: '#fd9644', s: -1 },
+  { t:  470e6, label: 'Erste Landpflanzen',        desc: 'Moose und Farne besiedeln das Festland',            hex: '#26de81', s:  1 },
+  { t:  375e6, label: 'Erste Landwirbeltiere',     desc: 'Tiktaalik — Fisch auf dem Weg ans Land',            hex: '#fd9644', s: -1 },
+  { t:  305e6, label: 'Karbonische Wälder',        desc: 'Riesige Kohlenwälder, erste Reptilien',             hex: '#2ecc71', s:  1 },
+  { t:  252e6, label: 'Perm-Extinktion',           desc: '96 % aller Arten sterben aus',                      hex: '#e74c3c', s: -1 },
+  { t:  230e6, label: 'Erste Dinosaurier',         desc: 'Eoraptor und frühe Saurischia erscheinen',          hex: '#2bcbba', s:  1 },
+  { t:  200e6, label: 'Trias-Extinktion',          desc: '50 % aller Arten sterben aus',                      hex: '#e74c3c', s: -1 },
+  { t:  150e6, label: 'Archaeopteryx',             desc: 'Übergang Dinosaurier → Vögel',                      hex: '#a29bfe', s:  1 },
+  { t:   66e6, label: 'K-Pg Extinktion',           desc: 'Asteroideneinschlag — Ende der Dinosaurier',        hex: '#e74c3c', s: -1 },
+  { t:   55e6, label: 'Erste Primaten',            desc: 'Unsere ältesten Vorfahren erscheinen',              hex: '#fd9644', s:  1 },
+  { t:    7e6, label: 'Erste Hominiden',           desc: 'Trennung von der Schimpansen-Linie',                hex: '#ffd32a', s: -1 },
+  { t:    2e6, label: 'Homo erectus',              desc: 'Erste Nutzung von Feuer, Steinwerkzeug',            hex: '#ffd32a', s:  1 },
+  { t: 300000, label: 'Homo sapiens',              desc: 'Moderner Mensch entsteht in Afrika',                hex: '#f9ca24', s: -1 },
+  { t:  70000, label: 'Toba-Katastrophe',          desc: 'Supervulkan bringt Menschheit fast zum Aussterben', hex: '#e74c3c', s:  1 },
+  { t:  40000, label: 'Höhlenmalerei',             desc: 'Erste figurative Kunst — Lascaux, Altamira',        hex: '#a29bfe', s: -1 },
+  { t:  12000, label: 'Landwirtschaft',            desc: 'Neolithische Revolution im Fruchtbaren Halbmond',   hex: '#26de81', s:  1 },
+  { t:   5000, label: 'Erste Schrift',             desc: 'Keilschrift in Mesopotamien',                       hex: '#a29bfe', s: -1 },
+  { t:   2500, label: 'Antike Hochkulturen',       desc: 'Griechenland, Rom, Persien, Han-Dynastie',          hex: '#fd9644', s:  1 },
+  { t:    520, label: 'Wissenschaftl. Revolution', desc: 'Kopernikus, Galilei, Newton',                       hex: '#48dbfb', s: -1 },
+  { t:     75, label: 'Raumfahrt',                 desc: 'Sputnik 1957 · Apollo 11 1969',                     hex: '#74b9ff', s:  1 },
+  { t:      0, label: 'Heute',                     desc: 'Gegenwart',                                         hex: '#ffffff', s: -1 },
 ];
 
-// ─── LAYOUT ───────────────────────────────────────────────────────────
+// ── LAYOUT CONSTANTS ───────────────────────────────────────────────────
 
-const SPACING  = 210;  // px between events
-const MARGIN_L = 260;  // left margin before first event
-const MARGIN_R = 260;  // right margin after last event
+const SPACING = 210;   // px between events
+const MARGIN  = 220;   // left/right margin
+const CARD_W  = 158;
+const CARD_H  = 65;
 
-function totalContentWidth() {
-  return MARGIN_L + (EVENTS.length - 1) * SPACING + MARGIN_R;
+function evX(i) { return MARGIN + i * SPACING; }
+function stageW() { return MARGIN + (EVENTS.length - 1) * SPACING + MARGIN; }
+
+// ── HELPERS ────────────────────────────────────────────────────────────
+
+function parseHex(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+function rgba(hex, a) {
+  const [r,g,b] = parseHex(hex);
+  return `rgba(${r},${g},${b},${a})`;
 }
 
-// screen x of event at index i
-function evX(i) {
-  return MARGIN_L + i * SPACING - scrollX;
-}
-
-// ─── SCROLL STATE ─────────────────────────────────────────────────────
-
-let scrollX = 0;
-
-function clampScroll() {
-  const maxScroll = Math.max(0, totalContentWidth() - canvas.width);
-  scrollX = Math.max(0, Math.min(maxScroll, scrollX));
-}
-
-// ─── HELPERS ─────────────────────────────────────────────────────────
-
-function rgb(hex) {
-  return { r: parseInt(hex.slice(1,3),16), g: parseInt(hex.slice(3,5),16), b: parseInt(hex.slice(5,7),16) };
-}
-
-function wrapText(ctx, text, maxW) {
-  const words = text.split(' ');
-  const lines = [];
-  let cur = '';
-  for (const w of words) {
-    const t = cur ? cur + ' ' + w : w;
-    if (cur && ctx.measureText(t).width > maxW) { lines.push(cur); cur = w; }
-    else cur = t;
-  }
-  if (cur) lines.push(cur);
-  return lines;
+function getEon(t) {
+  for (const e of EONS) if (t >= e.end && t <= e.start) return e;
+  return EONS[EONS.length - 1];
 }
 
 function fmt(y) {
@@ -182,273 +255,168 @@ function fmt(y) {
   return Math.round(y) + ' J. v. h.';
 }
 
-function getEon(t) {
-  for (const e of EONS) if (t >= e.end && t <= e.start) return e;
-  return EONS[EONS.length - 1];
-}
+// ── STARS ──────────────────────────────────────────────────────────────
 
-// ─── STARS ────────────────────────────────────────────────────────────
+(function initStars() {
+  const c = document.getElementById('stars');
+  const cx = c.getContext('2d');
+  let seed = 55555;
+  const rng = () => { seed = (seed*1664525+1013904223)>>>0; return seed/4294967296; };
+  const pts = Array.from({length:280}, () => [rng(), rng(), rng()*1.3+0.15, rng()*0.38+0.05]);
 
-let starCache = null;
-function getStars() {
-  if (starCache) return starCache;
-  let s = 98765;
-  const rng = () => { s = (s*1664525+1013904223)>>>0; return s/4294967296; };
-  starCache = Array.from({length:300}, () => ({rx:rng(),ry:rng(),r:rng()*1.2+0.15,a:rng()*0.35+0.05}));
-  return starCache;
-}
-
-// ─── DRAW ─────────────────────────────────────────────────────────────
-
-function draw() {
-  const W = canvas.width, H = canvas.height;
-  const TY = H / 2;
-
-  ctx.clearRect(0, 0, W, H);
-
-  ctx.fillStyle = '#06060f';
-  ctx.fillRect(0, 0, W, H);
-
-  for (const st of getStars()) {
-    ctx.beginPath();
-    ctx.arc(st.rx * W, st.ry * H, st.r, 0, Math.PI*2);
-    ctx.fillStyle = `rgba(255,255,255,${st.a})`;
-    ctx.fill();
-  }
-
-  drawEonBands(W, H, TY);
-  drawTimeline(W, TY);
-  drawEvents(W, H, TY);
-  updateUI(W);
-}
-
-function drawEonBands(W, H, TY) {
-  const bandH = H * 0.54;
-  const bandTop = TY - bandH / 2;
-
-  // Find eon groups: contiguous runs of same eon among events
-  let prevEon = null, groupStart = -1;
-  const groups = [];
-
-  for (let i = 0; i < EVENTS.length; i++) {
-    const eon = getEon(EVENTS[i].t);
-    if (eon !== prevEon) {
-      if (prevEon) groups.push({ eon: prevEon, from: groupStart, to: i - 1 });
-      prevEon = eon;
-      groupStart = i;
+  function drawStars() {
+    c.width  = window.innerWidth;
+    c.height = window.innerHeight;
+    cx.clearRect(0, 0, c.width, c.height);
+    for (const [rx, ry, r, a] of pts) {
+      cx.beginPath();
+      cx.arc(rx*c.width, ry*c.height, r, 0, Math.PI*2);
+      cx.fillStyle = `rgba(255,255,255,${a})`;
+      cx.fill();
     }
   }
-  if (prevEon) groups.push({ eon: prevEon, from: groupStart, to: EVENTS.length - 1 });
+  drawStars();
+  window.addEventListener('resize', drawStars);
+})();
 
+// ── BUILD STAGE ────────────────────────────────────────────────────────
+
+const stage = document.getElementById('stage');
+
+// Refs for y-repositioning on resize
+const refsAbove = [], refsBelow = [], refsDot = [], refsEon = [];
+
+function build() {
+  stage.innerHTML = '';
+  refsAbove.length = refsBelow.length = refsDot.length = refsEon.length = 0;
+
+  stage.style.width = stageW() + 'px';
+
+  // ── Timeline line
+  const line = document.createElement('div');
+  line.id = 'tl-line';
+  stage.appendChild(line);
+
+  // ── Eon bands (grouped by contiguous eon)
+  let prevEon = null, gStart = 0;
+  const groups = [];
+  for (let i = 0; i <= EVENTS.length; i++) {
+    const eon = i < EVENTS.length ? getEon(EVENTS[i].t) : null;
+    if (eon !== prevEon) {
+      if (prevEon) groups.push({ eon: prevEon, from: gStart, to: i - 1 });
+      prevEon = eon; gStart = i;
+    }
+  }
   for (const g of groups) {
     const x1 = evX(g.from) - SPACING / 2;
     const x2 = evX(g.to)   + SPACING / 2;
-    if (x1 > W + 4 || x2 < -4) continue;
+    const w  = x2 - x1;
+    const [r,gv,b] = parseHex(g.eon.hex);
 
-    const cx1 = Math.max(x1, 0), cx2 = Math.min(x2, W);
-    if (cx2 <= cx1) continue;
+    const band = document.createElement('div');
+    band.className = 'eon-band';
+    band.style.left  = x1 + 'px';
+    band.style.width = w  + 'px';
+    // vertical fade via a pseudo-gradient — we set it in reposition()
+    stage.appendChild(band);
 
-    const { r, b, g: gv } = rgb(g.eon.hex);
+    const lbl = document.createElement('div');
+    lbl.className = 'eon-label';
+    lbl.textContent = g.eon.name.toUpperCase();
+    lbl.style.left  = (x1 + w / 2) + 'px';
+    lbl.style.transform = 'translateX(-50%)';
+    lbl.style.color = rgba(g.eon.hex, 0.45);
+    stage.appendChild(lbl);
 
-    const vg = ctx.createLinearGradient(0, bandTop, 0, bandTop + bandH);
-    vg.addColorStop(0,    `rgba(${r},${gv},${b},0)`);
-    vg.addColorStop(0.1,  `rgba(${r},${gv},${b},0.24)`);
-    vg.addColorStop(0.9,  `rgba(${r},${gv},${b},0.24)`);
-    vg.addColorStop(1,    `rgba(${r},${gv},${b},0)`);
-    ctx.fillStyle = vg;
-    ctx.fillRect(cx1, bandTop, cx2 - cx1, bandH);
-
-    // Left boundary
-    if (x1 > 1 && x1 < W - 1) {
-      ctx.beginPath();
-      ctx.moveTo(x1, bandTop + bandH * 0.08);
-      ctx.lineTo(x1, bandTop + bandH * 0.92);
-      ctx.strokeStyle = `rgba(${r},${gv},${b},0.35)`;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-    }
-
-    // Eon label
-    const visW = cx2 - cx1;
-    if (visW > 60) {
-      ctx.save();
-      ctx.font = `bold ${Math.max(9, Math.min(12, visW / 8))}px system-ui`;
-      ctx.fillStyle = `rgba(${r},${gv},${b},0.45)`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
-      ctx.fillText(g.eon.name.toUpperCase(), cx1 + visW / 2, bandTop + 9);
-      ctx.restore();
-    }
+    refsEon.push({ band, lbl, hex: g.eon.hex, x1, w });
   }
-}
 
-function drawTimeline(W, TY) {
-  const lg = ctx.createLinearGradient(0, 0, W, 0);
-  lg.addColorStop(0,    'rgba(80,120,255,0)');
-  lg.addColorStop(0.03, 'rgba(90,130,255,0.7)');
-  lg.addColorStop(0.97, 'rgba(130,180,255,0.7)');
-  lg.addColorStop(1,    'rgba(130,180,255,0)');
-
-  ctx.save();
-  ctx.shadowColor = 'rgba(100,150,255,0.4)';
-  ctx.shadowBlur  = 12;
-  ctx.beginPath();
-  ctx.moveTo(0, TY);
-  ctx.lineTo(W, TY);
-  ctx.strokeStyle = lg;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawEvents(W, H, TY) {
-  const CW = 160, CH = 66;
-  const STEM = H * 0.13 + 16;
-
+  // ── Events
   for (let i = 0; i < EVENTS.length; i++) {
     const ev = EVENTS[i];
     const x  = evX(i);
-    if (x < -CW - 20 || x > W + CW + 20) continue;
+    const above = ev.s === 1;
 
-    const above    = ev.s === 1;
-    const stemEndY = above ? TY - STEM : TY + STEM;
-    const cardY    = above ? stemEndY - CH : stemEndY;
-    const { r, g, b } = rgb(ev.hex);
-
-    // Dot on timeline
-    ctx.save();
-    ctx.shadowColor = ev.hex;
-    ctx.shadowBlur  = 8;
-    ctx.beginPath();
-    ctx.arc(x, TY, 4, 0, Math.PI * 2);
-    ctx.fillStyle = ev.hex;
-    ctx.fill();
-    ctx.restore();
+    // Dot
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    dot.style.left       = x + 'px';
+    dot.style.background = ev.hex;
+    dot.style.boxShadow  = `0 0 8px ${ev.hex}`;
+    stage.appendChild(dot);
+    refsDot.push(dot);
 
     // Stem
-    ctx.save();
-    ctx.setLineDash([3, 4]);
-    ctx.beginPath();
-    ctx.moveTo(x, TY + (above ? -5 : 5));
-    ctx.lineTo(x, stemEndY);
-    ctx.strokeStyle = `rgba(${r},${g},${b},0.28)`;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
+    const stem = document.createElement('div');
+    stem.className = 'stem';
+    stem.style.left            = x + 'px';
+    stem.style.borderLeftColor = rgba(ev.hex, 0.3);
+    stage.appendChild(stem);
 
-    // Card shadow
-    ctx.save();
-    ctx.shadowColor = `rgba(${r},${g},${b},0.22)`;
-    ctx.shadowBlur  = 14;
-    ctx.beginPath();
-    ctx.roundRect(x - CW/2, cardY, CW, CH, 7);
-    ctx.fillStyle = 'rgba(7,7,18,0.9)';
-    ctx.fill();
-    ctx.restore();
+    // Card
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.left        = (x - CARD_W / 2) + 'px';
+    card.style.borderColor = rgba(ev.hex, 0.38);
+    card.style.boxShadow   = `0 0 16px ${rgba(ev.hex, 0.18)}`;
+    card.innerHTML =
+      `<div class="card-title" style="color:${ev.hex}">${ev.label}</div>` +
+      `<div class="card-desc">${ev.desc}</div>` +
+      `<div class="card-year" style="color:${rgba(ev.hex, 0.55)}">${fmt(ev.t)}</div>`;
+    stage.appendChild(card);
 
-    // Card border
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(x - CW/2, cardY, CW, CH, 7);
-    ctx.strokeStyle = `rgba(${r},${g},${b},0.4)`;
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.restore();
+    (above ? refsAbove : refsBelow).push({ stem, card });
+  }
 
-    // Text
-    ctx.save();
-    ctx.textAlign = 'center';
-    let ty = cardY + 9;
+  reposition();
+}
 
-    ctx.font = 'bold 11px system-ui';
-    ctx.fillStyle = ev.hex;
-    ctx.textBaseline = 'top';
-    for (const line of wrapText(ctx, ev.label, CW - 14)) {
-      ctx.fillText(line, x, ty); ty += 13;
-    }
-    ty += 2;
+// ── REPOSITION (on resize) ────────────────────────────────────────────
 
-    ctx.font = '9.5px system-ui';
-    ctx.fillStyle = 'rgba(200,215,245,0.6)';
-    for (const line of wrapText(ctx, ev.desc, CW - 14)) {
-      if (ty > cardY + CH - 13) break;
-      ctx.fillText(line, x, ty); ty += 11;
-    }
+function reposition() {
+  const H    = window.innerHeight;
+  const TY   = H / 2;
+  const STEM = Math.round(H * 0.13 + 14);
 
-    ctx.font = '8px "Courier New", monospace';
-    ctx.fillStyle = `rgba(${r},${g},${b},0.5)`;
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText(fmt(ev.t), x + CW/2 - 6, cardY + CH - 5);
-    ctx.restore();
+  // Dots
+  for (const dot of refsDot) {
+    dot.style.top = TY + 'px';
+  }
+
+  // Above events
+  for (const { stem, card } of refsAbove) {
+    stem.style.top    = (TY - STEM) + 'px';
+    stem.style.height = STEM + 'px';
+    card.style.top    = (TY - STEM - CARD_H) + 'px';
+  }
+
+  // Below events
+  for (const { stem, card } of refsBelow) {
+    stem.style.top    = TY + 'px';
+    stem.style.height = STEM + 'px';
+    card.style.top    = (TY + STEM) + 'px';
+  }
+
+  // Eon bands
+  const bandH = Math.round(H * 0.54);
+  for (const { band, lbl, hex } of refsEon) {
+    const [r,g,b] = parseHex(hex);
+    const top = TY - bandH / 2;
+    band.style.top    = top + 'px';
+    band.style.height = bandH + 'px';
+    band.style.background =
+      `linear-gradient(to bottom, transparent, rgba(${r},${g},${b},.23) 12%, rgba(${r},${g},${b},.23) 88%, transparent)`;
+
+    lbl.style.top = (top + 9) + 'px';
   }
 }
 
-function updateUI(W) {
-  // Which event is roughly in the center of the screen?
-  const centerX = scrollX + W / 2;
-  const idx = Math.round((centerX - MARGIN_L) / SPACING);
-  const i = Math.max(0, Math.min(EVENTS.length - 1, idx));
-  const ev = EVENTS[i];
-  const eon = getEon(ev.t);
-  const pct = Math.round(scrollX / Math.max(1, totalContentWidth() - W) * 100);
+// ── INIT ──────────────────────────────────────────────────────────────
 
-  progEl.innerHTML =
-    `<div>${fmt(ev.t)}</div>` +
-    `<div style="color:rgba(160,185,255,0.28);font-size:10px;margin-top:2px">${eon.name}</div>`;
-}
-
-// ─── INTERACTION ─────────────────────────────────────────────────────
-
-let drag = null;
-
-canvas.addEventListener('mousedown', e => {
-  drag = { sx: e.clientX, sScroll: scrollX };
-  canvas.classList.add('dragging');
-});
-window.addEventListener('mousemove', e => {
-  if (!drag) return;
-  scrollX = drag.sScroll - (e.clientX - drag.sx);
-  clampScroll(); draw();
-});
-window.addEventListener('mouseup', () => {
-  drag = null;
-  canvas.classList.remove('dragging');
-});
-
-// Touch
-let touch = null;
-canvas.addEventListener('touchstart', e => {
-  e.preventDefault();
-  touch = { sx: e.touches[0].clientX, sScroll: scrollX };
-}, { passive: false });
-canvas.addEventListener('touchmove', e => {
-  e.preventDefault();
-  if (!touch) return;
-  scrollX = touch.sScroll - (e.touches[0].clientX - touch.sx);
-  clampScroll(); draw();
-}, { passive: false });
-canvas.addEventListener('touchend', () => { touch = null; });
-
-// Keyboard arrow keys
-window.addEventListener('keydown', e => {
-  if (e.key === 'ArrowRight') { scrollX += 150; clampScroll(); draw(); }
-  if (e.key === 'ArrowLeft')  { scrollX -= 150; clampScroll(); draw(); }
-});
+build();
+window.addEventListener('resize', reposition);
 
 setTimeout(() => { document.getElementById('hint').style.opacity = '0'; }, 5000);
-
-// ─── INIT ─────────────────────────────────────────────────────────────
-
-function resize() {
-  canvas.width  = window.innerWidth;
-  canvas.height = window.innerHeight;
-  clampScroll();
-  draw();
-}
-window.addEventListener('resize', resize);
-resize();
 </script>
 </body>
 </html>
