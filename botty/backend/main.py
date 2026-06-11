@@ -19,7 +19,7 @@ app.add_middleware(
 JINA_API_KEY     = os.environ["JINA_API_KEY"]
 OPENROUTER_KEY   = os.environ["OPENROUTER_API_KEY"]
 EMBED_MODEL      = "jina-embeddings-v3"
-LLM_MODEL        = "google/gemini-2.0-flash-exp:free"
+LLM_MODEL        = "google/gemma-4-31b-it:free"
 DB_PATH          = os.environ.get("DB_PATH", "botty.db")
 TOP_K            = 4
 
