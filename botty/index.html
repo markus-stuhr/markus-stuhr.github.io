@@ -362,9 +362,9 @@ async function retrieve(query) {
 // ── LLM via OpenRouter ────────────────────────────────────────────────────────
 async function ask(question, context) {
   const system = context.length
-    ? 'Du bist ein hilfreicher Assistent. Beantworte die Frage ausschließlich auf Basis des folgenden Kontexts. Wenn der Kontext keine Antwort enthält, sage das ehrlich.\n\nKontext:\n' +
+    ? 'Du bist ein hilfreicher Assistent. Beantworte die Frage auf Basis des folgenden Kontexts. Wenn der Kontext keine ausreichende Antwort enthält, ergänze aus deinem eigenen Wissen und weise kurz darauf hin.\n\nKontext:\n' +
       context.map(c => `[${c.source}]\n${c.content}`).join('\n\n---\n\n')
-    : 'Du bist ein hilfreicher Assistent. Es sind noch keine Dokumente im System. Bitte den Nutzer, erst etwas einzulesen.';
+    : 'Du bist ein hilfreicher, freundlicher Assistent namens Botty. Antworte auf Fragen aus deinem allgemeinen Wissen. Wenn du nach Dokumenten oder Wissen aus einer Wissensdatenbank gefragt wirst, weise darauf hin, dass noch nichts hochgeladen wurde.';
 
   const res = await fetch(OR_URL, {
     method: 'POST',
