@@ -302,6 +302,26 @@
     color: rgba(255,255,255,0.3); font-size: 12px;
   }
 
+  /* 3D preview at bottom */
+  #pb-3d-wrap {
+    flex-shrink: 0;
+    height: 150px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    background: rgba(0,0,0,0.35);
+    position: relative;
+    overflow: hidden;
+  }
+  #pb-3d-label {
+    position: absolute;
+    bottom: 6px; left: 0; right: 0;
+    text-align: center;
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    pointer-events: none;
+    z-index: 1;
+  }
+  #pb-3d-canvas { display: block; }
+
   /* Toggle button */
   #btn-parts {
     background: rgba(255,255,255,0.08);
@@ -337,6 +357,10 @@
   <div id="pb-body">
     <div id="pb-cats"></div>
     <div id="pb-parts"><div id="pb-loading">Lade Teile…</div></div>
+  </div>
+  <div id="pb-3d-wrap">
+    <canvas id="pb-3d-canvas"></canvas>
+    <div id="pb-3d-label">—</div>
   </div>
 </div>
 
@@ -1210,6 +1234,7 @@ function animate() {
 
   controls.update();
   renderer.render(scene, camera);
+  tickPreview();
 }
 buildDemoHouse();
 
@@ -1223,7 +1248,11 @@ window.togglePartBrowser = function() {
   const btn   = document.getElementById('btn-parts');
   const open  = panel.classList.toggle('open');
   btn.classList.toggle('active', open);
-  if (open && !pbData) loadParts();
+  if (open) {
+    if (!pbData) loadParts();
+    // Defer init until panel is visible (needs layout width)
+    requestAnimationFrame(initPreview);
+  }
 };
 
 async function loadParts() {
@@ -1319,7 +1348,66 @@ window.pbSelectPart = function(type, w, d) {
   setType(type);
   setSize(w, d);
   renderParts();
+  updatePreview();
 };
+
+// ─── Part Browser 3D Preview ─────────────────────────────────────────────────
+let pvRenderer = null, pvScene, pvCamera, pvMesh, pvAngle = 0;
+
+function initPreview() {
+  if (pvRenderer) return;
+  const wrap   = document.getElementById('pb-3d-wrap');
+  const canvas = document.getElementById('pb-3d-canvas');
+  const W = wrap.clientWidth, H = 150;
+
+  pvRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  pvRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  pvRenderer.setSize(W, H);
+  pvRenderer.setClearColor(0x0a0a14);
+  pvRenderer.shadowMap.enabled = false;
+
+  pvScene = new THREE.Scene();
+  pvScene.add(new THREE.AmbientLight(0xffffff, 0.7));
+  const sun = new THREE.DirectionalLight(0xfff4d6, 2.0);
+  sun.position.set(4, 6, 3);
+  pvScene.add(sun);
+  const fill = new THREE.DirectionalLight(0x8899cc, 0.5);
+  fill.position.set(-3, 2, -4);
+  pvScene.add(fill);
+
+  pvCamera = new THREE.PerspectiveCamera(40, W / H, 0.1, 200);
+  updatePreview();
+}
+
+function updatePreview() {
+  if (!pvRenderer) return;
+  if (pvMesh) { pvScene.remove(pvMesh); pvMesh = null; }
+
+  pvMesh = createBrickMesh(currentW, currentD, currentColor, false, currentType);
+  pvScene.add(pvMesh);
+
+  // Auto-fit camera to brick bounding box
+  const box  = new THREE.Box3().setFromObject(pvMesh);
+  const size = box.getSize(new THREE.Vector3());
+  const ctr  = box.getCenter(new THREE.Vector3());
+  const maxS = Math.max(size.x, size.y, size.z);
+  const dist = maxS / Math.tan(THREE.MathUtils.degToRad(20));
+  pvCamera.position.set(ctr.x + dist * 0.6, ctr.y + dist * 0.5, ctr.z + dist * 0.8);
+  pvCamera.lookAt(ctr);
+
+  // Update label
+  const label = `${currentW}×${currentD} · ${currentType.charAt(0).toUpperCase() + currentType.slice(1)}`;
+  document.getElementById('pb-3d-label').textContent = label;
+
+  pvAngle = 0;
+}
+
+function tickPreview() {
+  if (!pvRenderer || !pvMesh) return;
+  pvAngle += 0.008;
+  pvMesh.rotation.y = pvAngle;
+  pvRenderer.render(pvScene, pvCamera);
+}
 
 animate();
 </script>
