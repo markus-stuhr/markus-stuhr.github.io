@@ -1456,7 +1456,7 @@ async function loadLDrawPreview(partId, token) {
       // Replace fallback mesh with real LDraw model
       if (pvMesh) pvScene.remove(pvMesh);
       pvMesh = group;
-      pvMesh.rotation.set(0, 0, 0);
+      pvMesh.rotation.set(Math.PI, 0, 0);
       pvScene.add(pvMesh);
       fitPreviewCamera();
       pvAngle = 0;
