@@ -1239,9 +1239,11 @@ function animate() {
 buildDemoHouse();
 
 // ─── Part Browser ─────────────────────────────────────────────────────────────
-let pbData      = null; // { categories: [...] }
-let pbActiveCat = 0;    // index into pbData.categories
-let pbSearchVal = '';
+let pbData        = null; // { categories: [...] }
+let pbActiveCat   = 0;    // index into pbData.categories
+let pbSearchVal   = '';
+let pbDeduped     = [];   // current deduped+filtered parts list
+let pbSelectedIdx = 0;    // selected index in pbDeduped
 
 window.togglePartBrowser = function() {
   const panel = document.getElementById('part-browser');
@@ -1277,13 +1279,17 @@ window.selectCat = function(i) {
   pbActiveCat = i;
   document.querySelectorAll('.pb-cat').forEach((el, j) =>
     el.classList.toggle('active', j === i));
+  // scroll active cat into view
+  document.querySelectorAll('.pb-cat')[i]?.scrollIntoView({ block: 'nearest' });
   pbSearchVal = '';
   document.getElementById('pb-search-input').value = '';
+  pbSelectedIdx = 0;
   renderParts();
 };
 
 window.pbFilter = function(val) {
   pbSearchVal = val.toLowerCase();
+  pbSelectedIdx = 0;
   renderParts();
 };
 
@@ -1309,47 +1315,84 @@ function studSvg(w, d) {
 }
 
 function renderParts() {
-  const cat   = pbData.categories[pbActiveCat];
-  const el    = document.getElementById('pb-parts');
+  const cat = pbData.categories[pbActiveCat];
+  const el  = document.getElementById('pb-parts');
 
-  // Deduplicate by w×d, keep one representative part
+  // Deduplicate by w×d
   const seen = new Map();
   for (const p of cat.parts) {
     const key = `${p.w}x${p.d}`;
     if (!seen.has(key)) seen.set(key, p);
   }
 
-  let items = [...seen.values()];
+  pbDeduped = [...seen.values()];
   if (pbSearchVal) {
-    items = items.filter(p =>
+    pbDeduped = pbDeduped.filter(p =>
       p.name.toLowerCase().includes(pbSearchVal) ||
       `${p.w}x${p.d}`.includes(pbSearchVal)
     );
   }
 
-  if (!items.length) {
+  if (!pbDeduped.length) {
     el.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);font-size:12px;">Keine Teile</div>';
     return;
   }
 
-  el.innerHTML = items.map(p => {
-    const isSel = currentType === p.type && currentW === p.w && currentD === p.d;
-    return `<div class="pb-part${isSel?' selected':''}" onclick="pbSelectPart('${p.type}',${p.w},${p.d})">
+  pbSelectedIdx = Math.max(0, Math.min(pbSelectedIdx, pbDeduped.length - 1));
+
+  el.innerHTML = pbDeduped.map((p, i) =>
+    `<div class="pb-part${i === pbSelectedIdx ? ' selected' : ''}" onclick="pbSelectByIdx(${i})">
       <div class="pb-preview">${studSvg(p.w, p.d)}</div>
       <div class="pb-info">
         <div class="pb-dim">${p.w}×${p.d}</div>
         <div class="pb-name">${p.name}</div>
       </div>
-    </div>`;
-  }).join('');
+    </div>`
+  ).join('');
+
+  // Apply currently selected part
+  const sel = pbDeduped[pbSelectedIdx];
+  if (sel) { setType(sel.type); setSize(sel.w, sel.d); updatePreview(); }
 }
 
-window.pbSelectPart = function(type, w, d) {
-  setType(type);
-  setSize(w, d);
+window.pbSelectByIdx = function(i) {
+  pbSelectedIdx = i;
   renderParts();
-  updatePreview();
+  document.querySelectorAll('.pb-part')[i]?.scrollIntoView({ block: 'nearest' });
 };
+
+window.pbSelectPart = function(type, w, d) {
+  const i = pbDeduped.findIndex(p => p.type === type && p.w === w && p.d === d);
+  pbSelectByIdx(i >= 0 ? i : 0);
+};
+
+// ─── Keyboard navigation ──────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const panel = document.getElementById('part-browser');
+  if (!panel.classList.contains('open')) return;
+  if (document.activeElement === document.getElementById('pb-search-input')) return;
+
+  const cats = pbData?.categories;
+  if (!cats) return;
+
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    pbSelectedIdx = Math.min(pbSelectedIdx + 1, pbDeduped.length - 1);
+    renderParts();
+    document.querySelectorAll('.pb-part')[pbSelectedIdx]?.scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    pbSelectedIdx = Math.max(pbSelectedIdx - 1, 0);
+    renderParts();
+    document.querySelectorAll('.pb-part')[pbSelectedIdx]?.scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    selectCat(Math.min(pbActiveCat + 1, cats.length - 1));
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    selectCat(Math.max(pbActiveCat - 1, 0));
+  }
+});
 
 // ─── Part Browser 3D Preview ─────────────────────────────────────────────────
 let pvRenderer = null, pvScene, pvCamera, pvMesh, pvAngle = 0;
