@@ -446,6 +446,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const STUD        = 1.0;   // 1 stud = 1 unit
@@ -1265,8 +1266,7 @@ window.togglePartBrowser = function() {
   btn.classList.toggle('active', open);
   if (open) {
     if (!pbData) loadParts();
-    // Defer init until panel is visible (needs layout width)
-    requestAnimationFrame(initPreview);
+    setTimeout(initPreview, 0);
   }
 };
 
@@ -1408,6 +1408,46 @@ document.addEventListener('keydown', e => {
 });
 
 // ─── Part Browser 3D Preview ─────────────────────────────────────────────────
+// ─── LDraw real-geometry preview ─────────────────────────────────────────────
+const LDRAW_CDN = 'https://cdn.jsdelivr.net/gh/gkjohnson/ldraw-parts-library@master/complete/ldraw/';
+let ldrawLoader = null, ldrawReady = false;
+let pvLoadToken = 0; // cancel stale loads
+
+async function ensureLDraw() {
+  if (ldrawReady) return true;
+  if (!ldrawLoader) {
+    ldrawLoader = new LDrawLoader();
+    ldrawLoader.setPartsLibraryPath(LDRAW_CDN);
+    try {
+      await ldrawLoader.preloadMaterials(LDRAW_CDN + 'LDConfig.ldr');
+      ldrawReady = true;
+    } catch(e) { return false; }
+  }
+  return ldrawReady;
+}
+
+async function loadLDrawPreview(partId, token) {
+  const ok = await ensureLDraw();
+  if (!ok || token !== pvLoadToken) return;
+
+  const url = LDRAW_CDN + 'parts/' + partId + '.dat';
+  ldrawLoader.load(url,
+    group => {
+      if (token !== pvLoadToken || !pvRenderer) return;
+      // Replace fallback mesh with real LDraw model
+      if (pvMesh) pvScene.remove(pvMesh);
+      pvMesh = group;
+      pvMesh.rotation.set(0, 0, 0);
+      pvScene.add(pvMesh);
+      fitPreviewCamera();
+      pvAngle = 0;
+    },
+    undefined,
+    () => { /* 404 → keep fallback */ }
+  );
+}
+
+// ─── Part Browser 3D Preview ─────────────────────────────────────────────────
 let pvRenderer = null, pvScene, pvCamera, pvMesh, pvAngle = 0;
 
 function initPreview() {
@@ -1431,18 +1471,12 @@ function initPreview() {
   fill.position.set(-3, 2, -4);
   pvScene.add(fill);
 
-  pvCamera = new THREE.PerspectiveCamera(40, W / H, 0.1, 200);
+  pvCamera = new THREE.PerspectiveCamera(40, W / H, 0.1, 2000);
   updatePreview();
 }
 
-function updatePreview() {
-  if (!pvRenderer) return;
-  if (pvMesh) { pvScene.remove(pvMesh); pvMesh = null; }
-
-  pvMesh = createBrickMesh(currentW, currentD, currentColor, false, currentType);
-  pvScene.add(pvMesh);
-
-  // Auto-fit camera to brick bounding box
+function fitPreviewCamera() {
+  if (!pvMesh) return;
   const box  = new THREE.Box3().setFromObject(pvMesh);
   const size = box.getSize(new THREE.Vector3());
   const ctr  = box.getCenter(new THREE.Vector3());
@@ -1450,12 +1484,29 @@ function updatePreview() {
   const dist = maxS / Math.tan(THREE.MathUtils.degToRad(20));
   pvCamera.position.set(ctr.x + dist * 0.6, ctr.y + dist * 0.5, ctr.z + dist * 0.8);
   pvCamera.lookAt(ctr);
+  pvCamera.far = dist * 10;
+  pvCamera.updateProjectionMatrix();
+}
 
-  // Update label
+function updatePreview() {
+  if (!pvRenderer) { initPreview(); return; }
+  if (pvMesh) { pvScene.remove(pvMesh); pvMesh = null; }
+
+  // Show generated fallback immediately
+  pvMesh = createBrickMesh(currentW, currentD, currentColor, false, currentType);
+  pvScene.add(pvMesh);
+  fitPreviewCamera();
+
   const label = `${currentW}×${currentD} · ${currentType.charAt(0).toUpperCase() + currentType.slice(1)}`;
   document.getElementById('pb-3d-label').textContent = label;
-
   pvAngle = 0;
+
+  // Try to load the real LDraw model asynchronously
+  const sel = pbDeduped[pbSelectedIdx];
+  if (sel?.id) {
+    pvLoadToken++;
+    loadLDrawPreview(sel.id, pvLoadToken);
+  }
 }
 
 function tickPreview() {
