@@ -802,7 +802,7 @@ window.toggleDayNight = function() {
   if (isNight) {
     scene.background = new THREE.Color(0x010204);
     scene.fog = new THREE.FogExp2(0x010204, 0.016);
-    ambient.intensity = 0.01;
+    ambient.intensity = 0.002;
     sun.intensity     = 0.0;
   } else {
     scene.background = new THREE.Color(0x1a1a2e);
