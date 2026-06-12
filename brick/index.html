@@ -742,12 +742,12 @@ function makeSlopeGeo(bw, bh, bd) {
   const blt = p(-bw/2, bh,   bd/2);
 
   const tris = [
-    fl, br, fr,   fl, bl, br,   // bottom
-    fl, fr, frt,  fl, frt, flt, // front
-    br, bl, blt,  br, blt, brt, // back
-    fl, flt, blt, fl, blt, bl,  // left
-    fr, br, brt,  fr, brt, frt, // right
-    flt, frt, brt, flt, brt, blt, // top slope
+    fl, fr, br,   fl, br, bl,     // bottom
+    fl, frt, fr,  fl, flt, frt,   // front
+    br, blt, bl,  br, brt, blt,   // back
+    fl, blt, flt, fl, bl, blt,    // left
+    fr, brt, br,  fr, frt, brt,   // right
+    flt, brt, frt, flt, blt, brt, // top slope
   ];
 
   const geo = new THREE.BufferGeometry();
