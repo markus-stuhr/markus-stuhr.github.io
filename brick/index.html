@@ -446,7 +446,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
+let LDrawLoader = null;
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const STUD        = 1.0;   // 1 stud = 1 unit
@@ -1416,9 +1416,13 @@ let pvLoadToken = 0; // cancel stale loads
 async function ensureLDraw() {
   if (ldrawReady) return true;
   if (!ldrawLoader) {
-    ldrawLoader = new LDrawLoader();
-    ldrawLoader.setPartsLibraryPath(LDRAW_CDN);
     try {
+      if (!LDrawLoader) {
+        const mod = await import('three/addons/loaders/LDrawLoader.js');
+        LDrawLoader = mod.LDrawLoader;
+      }
+      ldrawLoader = new LDrawLoader();
+      ldrawLoader.setPartsLibraryPath(LDRAW_CDN);
       await ldrawLoader.preloadMaterials(LDRAW_CDN + 'LDConfig.ldr');
       ldrawReady = true;
     } catch(e) { return false; }
