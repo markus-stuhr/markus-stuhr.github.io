@@ -185,13 +185,167 @@
     z-index: 100;
   }
   #brick-count span { color: #ffd700; font-weight: bold; }
+
+  /* ── Part Browser ─────────────────────────────────────────────────────── */
+  #part-browser {
+    position: fixed;
+    top: 0; left: 0;
+    width: 320px; height: 100vh;
+    background: rgba(10,10,18,0.96);
+    backdrop-filter: blur(16px);
+    border-right: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    flex-direction: column;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(.4,0,.2,1);
+  }
+  #part-browser.open { transform: translateX(0); }
+
+  #pb-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+  #pb-header h3 { font-size: 13px; font-weight: 600; flex: 1; }
+  #pb-close {
+    background: none; border: none; color: rgba(255,255,255,0.4);
+    cursor: pointer; font-size: 18px; line-height: 1; padding: 2px;
+  }
+  #pb-close:hover { color: #fff; }
+
+  #pb-search {
+    margin: 10px 14px 8px;
+    flex-shrink: 0;
+  }
+  #pb-search input {
+    width: 100%;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 12px;
+    color: #fff;
+    outline: none;
+  }
+  #pb-search input::placeholder { color: rgba(255,255,255,0.3); }
+  #pb-search input:focus { border-color: rgba(255,200,0,0.45); }
+
+  #pb-body {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* Category list */
+  #pb-cats {
+    width: 110px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    border-right: 1px solid rgba(255,255,255,0.07);
+    padding: 4px 0;
+  }
+  #pb-cats::-webkit-scrollbar { width: 3px; }
+  #pb-cats::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+  .pb-cat {
+    padding: 7px 10px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    cursor: pointer;
+    line-height: 1.3;
+    transition: background 0.1s, color 0.1s;
+  }
+  .pb-cat:hover { background: rgba(255,255,255,0.06); color: #fff; }
+  .pb-cat.active { background: rgba(255,200,0,0.15); color: #ffd700; }
+
+  /* Parts grid */
+  #pb-parts {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+  #pb-parts::-webkit-scrollbar { width: 3px; }
+  #pb-parts::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+  .pb-part {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background 0.1s;
+    margin-bottom: 2px;
+  }
+  .pb-part:hover { background: rgba(255,255,255,0.08); }
+  .pb-part.selected { background: rgba(255,200,0,0.15); }
+
+  /* Stud preview (SVG) */
+  .pb-preview {
+    flex-shrink: 0;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,0.04);
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .pb-preview svg { display: block; }
+
+  .pb-info { flex: 1; min-width: 0; }
+  .pb-dim { font-size: 12px; font-weight: 600; color: #fff; }
+  .pb-name {
+    font-size: 10px; color: rgba(255,255,255,0.4);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  #pb-loading {
+    padding: 24px; text-align: center;
+    color: rgba(255,255,255,0.3); font-size: 12px;
+  }
+
+  /* Toggle button */
+  #btn-parts {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #fff;
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+    user-select: none;
+    white-space: nowrap;
+  }
+  #btn-parts:hover { background: rgba(255,255,255,0.15); }
+  #btn-parts.active {
+    background: rgba(255,200,0,0.22);
+    border-color: rgba(255,200,0,0.55);
+    color: #ffd700;
+  }
 </style>
 </head>
 <body>
 
 <div id="canvas-container"></div>
 
+<!-- Part Browser Sidebar -->
+<div id="part-browser">
+  <div id="pb-header">
+    <h3>📦 Teile-Browser</h3>
+    <button id="pb-close" onclick="togglePartBrowser()">✕</button>
+  </div>
+  <div id="pb-search"><input type="text" id="pb-search-input" placeholder="Suchen…" oninput="pbFilter(this.value)"></div>
+  <div id="pb-body">
+    <div id="pb-cats"></div>
+    <div id="pb-parts"><div id="pb-loading">Lade Teile…</div></div>
+  </div>
+</div>
+
 <div id="toolbar">
+  <!-- Parts toggle -->
+  <button id="btn-parts" onclick="togglePartBrowser()">📦 Teile</button>
+
+  <div class="separator"></div>
+
   <!-- Day/Night toggle -->
   <button id="btn-daynight" onclick="toggleDayNight()" title="Tag/Nacht" style="background:none;border:none;cursor:pointer;font-size:20px;padding:2px 4px;line-height:1;user-select:none;">☀️</button>
 
@@ -931,7 +1085,8 @@ window.setType = function(t) {
 window.setSize = function(w, d) {
   currentW = w; currentD = d;
   document.querySelectorAll('#dd-size-menu .dd-item').forEach(b => b.classList.remove('selected'));
-  document.querySelector(`#dd-size-menu .dd-item[data-w="${w}"][data-d="${d}"]`).classList.add('selected');
+  const match = document.querySelector(`#dd-size-menu .dd-item[data-w="${w}"][data-d="${d}"]`);
+  if (match) match.classList.add('selected');
   document.getElementById('dd-size-value').textContent = `${w}×${d}`;
   document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('open'));
   updateGhost(currentW, currentD, currentColor, currentType);
@@ -990,6 +1145,117 @@ function animate() {
   renderer.render(scene, camera);
 }
 buildDemoHouse();
+
+// ─── Part Browser ─────────────────────────────────────────────────────────────
+let pbData      = null; // { categories: [...] }
+let pbActiveCat = 0;    // index into pbData.categories
+let pbSearchVal = '';
+
+window.togglePartBrowser = function() {
+  const panel = document.getElementById('part-browser');
+  const btn   = document.getElementById('btn-parts');
+  const open  = panel.classList.toggle('open');
+  btn.classList.toggle('active', open);
+  if (open && !pbData) loadParts();
+};
+
+async function loadParts() {
+  try {
+    const r = await fetch('data/parts.json');
+    pbData = await r.json();
+    renderCats();
+    selectCat(0);
+  } catch(e) {
+    document.getElementById('pb-loading').textContent = 'Fehler beim Laden';
+  }
+}
+
+function renderCats() {
+  const el = document.getElementById('pb-cats');
+  el.innerHTML = pbData.categories.map((c, i) =>
+    `<div class="pb-cat${i===0?' active':''}" onclick="selectCat(${i})">${c.label}</div>`
+  ).join('');
+}
+
+window.selectCat = function(i) {
+  pbActiveCat = i;
+  document.querySelectorAll('.pb-cat').forEach((el, j) =>
+    el.classList.toggle('active', j === i));
+  pbSearchVal = '';
+  document.getElementById('pb-search-input').value = '';
+  renderParts();
+};
+
+window.pbFilter = function(val) {
+  pbSearchVal = val.toLowerCase();
+  renderParts();
+};
+
+function studSvg(w, d) {
+  const S = 4, GAP = 1; // stud size + gap
+  const cols = Math.min(w, 8), rows = Math.min(d, 8);
+  const bw = cols * S + (cols - 1) * GAP, bh = rows * S + (rows - 1) * GAP;
+  const scale = Math.min(28 / bw, 28 / bh, 1);
+  const W = Math.round(bw * scale), H = Math.round(bh * scale);
+  const sr = Math.max(1, Math.round(S * scale / 2) - 1);
+  let dots = '';
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cx = Math.round((c * (S + GAP) + S / 2) * scale);
+      const cy = Math.round((r * (S + GAP) + S / 2) * scale);
+      dots += `<circle cx="${cx}" cy="${cy}" r="${sr}" fill="rgba(255,255,255,0.35)"/>`;
+    }
+  }
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    <rect width="${W}" height="${H}" rx="2" fill="rgba(255,255,255,0.12)"/>
+    ${dots}
+  </svg>`;
+}
+
+function renderParts() {
+  const cat   = pbData.categories[pbActiveCat];
+  const el    = document.getElementById('pb-parts');
+
+  // Deduplicate by w×d, keep one representative part
+  const seen = new Map();
+  for (const p of cat.parts) {
+    const key = `${p.w}x${p.d}`;
+    if (!seen.has(key)) seen.set(key, p);
+  }
+
+  let items = [...seen.values()];
+  if (pbSearchVal) {
+    items = items.filter(p =>
+      p.name.toLowerCase().includes(pbSearchVal) ||
+      `${p.w}x${p.d}`.includes(pbSearchVal)
+    );
+  }
+
+  if (!items.length) {
+    el.innerHTML = '<div style="padding:16px;text-align:center;color:rgba(255,255,255,0.3);font-size:12px;">Keine Teile</div>';
+    return;
+  }
+
+  el.innerHTML = items.map(p => {
+    const isSel = currentType === p.type && currentW === p.w && currentD === p.d;
+    return `<div class="pb-part${isSel?' selected':''}" onclick="pbSelectPart('${p.type}',${p.w},${p.d})">
+      <div class="pb-preview">${studSvg(p.w, p.d)}</div>
+      <div class="pb-info">
+        <div class="pb-dim">${p.w}×${p.d}</div>
+        <div class="pb-name">${p.name}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+window.pbSelectPart = function(type, w, d) {
+  // Map types we can actually render
+  const renderType = (type === 'tile') ? 'plate' : (type === 'brick' || type === 'plate') ? type : 'brick';
+  setType(renderType);
+  setSize(w, d);
+  renderParts(); // update selection highlight
+};
+
 animate();
 </script>
 </body>
