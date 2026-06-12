@@ -262,6 +262,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const STUD        = 1.0;   // 1 stud = 1 unit
@@ -371,23 +372,55 @@ controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
 controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
 
 // ─── Lighting ────────────────────────────────────────────────────────────────
-const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+renderer.shadowMap.type = THREE.VSMShadowMap; // smoother penumbra
+
+const ambient = new THREE.AmbientLight(0xffffff, 0.35);
 scene.add(ambient);
 
-const sun = new THREE.DirectionalLight(0xfff5e0, 1.8);
-sun.position.set(25, 40, 20);
+// Sun — warm directional, sharp shadows from above-right
+const sun = new THREE.DirectionalLight(0xfff4d6, 2.2);
+sun.position.set(28, 45, 18);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far  = 200;
-sun.shadow.camera.left = sun.shadow.camera.bottom = -50;
-sun.shadow.camera.right = sun.shadow.camera.top   =  50;
-sun.shadow.bias = -0.001;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far  = 180;
+sun.shadow.camera.left = sun.shadow.camera.bottom = -40;
+sun.shadow.camera.right = sun.shadow.camera.top   =  40;
+sun.shadow.bias         = -0.0005;
+sun.shadow.normalBias   = 0.02;
+sun.shadow.radius       = 2;
 scene.add(sun);
 
-const fill = new THREE.DirectionalLight(0xc8e0ff, 0.4);
-fill.position.set(-20, 10, -15);
-scene.add(fill);
+// Key light — cool blue from the left, casts secondary shadows
+const keyLight = new THREE.SpotLight(0x9bbeff, 1.4, 120, Math.PI / 5, 0.4, 1.2);
+keyLight.position.set(-30, 35, 10);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.bias       = -0.0008;
+keyLight.shadow.normalBias = 0.02;
+keyLight.shadow.radius     = 3;
+scene.add(keyLight);
+scene.add(keyLight.target); // target stays at origin
+
+// Rim light — warm accent from behind, no shadow (cheap fill)
+const rimLight = new THREE.SpotLight(0xffb347, 0.8, 100, Math.PI / 6, 0.6, 1.5);
+rimLight.position.set(5, 20, -35);
+scene.add(rimLight);
+scene.add(rimLight.target);
+
+// ─── Environment Map (for transmission / reflections) ────────────────────────
+{
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+  // Simple procedural room environment
+  const envScene = new THREE.Scene();
+  envScene.background = new THREE.Color(0xdde8f0);
+  const envAmbient = new THREE.AmbientLight(0xffffff, 1);
+  envScene.add(envAmbient);
+  const envTex = pmrem.fromScene(new RoomEnvironment()).texture;
+  scene.environment = envTex;
+  pmrem.dispose();
+}
 
 // ─── Baseplate ───────────────────────────────────────────────────────────────
 function buildBaseplate() {
@@ -450,6 +483,45 @@ function getStudGeo() {
   return new THREE.CylinderGeometry(STUD_R, STUD_R, STUD_H, 12);
 }
 
+function isTransColor(hex) {
+  // Match Trans- colors by hex — the ones in our palette that start with Trans
+  const transHexes = new Set([
+    '#FCFCFC','#C91A09','#0020A0','#F8F177','#84B68D','#F08F1C'
+  ]);
+  return transHexes.has(hex.toUpperCase()) || transHexes.has(hex);
+}
+
+function makeMat(color, isGhost) {
+  const col = new THREE.Color(color);
+  if (isGhost) {
+    return new THREE.MeshStandardMaterial({
+      color: col, roughness: 0.45, metalness: 0.05,
+      transparent: true, opacity: 0.4,
+    });
+  }
+  if (isTransColor(color)) {
+    // Physical glass-like material
+    return new THREE.MeshPhysicalMaterial({
+      color: col,
+      roughness: 0.05,
+      metalness: 0.0,
+      transmission: 0.88,   // light passes through
+      thickness: 0.8,       // refraction depth
+      ior: 1.46,            // Lego ABS refractive index
+      transparent: true,
+      opacity: 0.92,
+      envMapIntensity: 1.2,
+    });
+  }
+  // Standard ABS plastic
+  return new THREE.MeshStandardMaterial({
+    color: col,
+    roughness: 0.42,
+    metalness: 0.0,
+    envMapIntensity: 0.4,
+  });
+}
+
 function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   const group = new THREE.Group();
   group.userData.brickType = type;
@@ -458,29 +530,18 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   const bw = w * STUD - 0.01;
   const bd = d * STUD - 0.01;
   const bh = fullH - 0.01;
+  const trans = !isGhost && isTransColor(color);
 
-  const mat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(color),
-    roughness: 0.45,
-    metalness: 0.05,
-    transparent: isGhost,
-    opacity:     isGhost ? 0.45 : 1.0,
-  });
+  const mat     = makeMat(color, isGhost);
+  const studMat = makeMat(color, isGhost);
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat);
-  body.castShadow  = !isGhost;
+  body.castShadow    = !isGhost;
   body.receiveShadow = !isGhost;
+  if (trans) body.renderOrder = 1; // render after opaque
   body.position.y = bh / 2;
   group.add(body);
 
-  // Studs
-  const studMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color(color),
-    roughness: 0.4,
-    metalness: 0.05,
-    transparent: isGhost,
-    opacity:     isGhost ? 0.45 : 1.0,
-  });
   const sGeo = getStudGeo();
   for (let sx = 0; sx < w; sx++) {
     for (let sz = 0; sz < d; sz++) {
@@ -491,6 +552,7 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
         (sz - (d - 1) / 2) * STUD
       );
       stud.castShadow = !isGhost;
+      if (trans) stud.renderOrder = 1;
       group.add(stud);
     }
   }
