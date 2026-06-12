@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brick Builder – Markus Stuhr</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1a1a2e;
+    color: #fff;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #canvas-container {
+    position: fixed;
+    inset: 0;
+  }
+
+  /* Toolbar */
+  #toolbar {
+    position: fixed;
+    top: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 8px 12px;
+    z-index: 100;
+  }
+
+  .tool-btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #fff;
+    border-radius: 8px;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+  }
+  .tool-btn:hover { background: rgba(255,255,255,0.16); }
+  .tool-btn.active {
+    background: rgba(255,200,0,0.25);
+    border-color: rgba(255,200,0,0.6);
+    color: #ffd700;
+  }
+
+  .separator { width: 1px; height: 24px; background: rgba(255,255,255,0.15); }
+
+  /* Color Picker */
+  #color-strip {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+  }
+
+  .color-dot {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.1s, border-color 0.1s;
+    flex-shrink: 0;
+  }
+  .color-dot:hover { transform: scale(1.2); }
+  .color-dot.selected { border-color: #fff; transform: scale(1.15); }
+
+  /* Brick size selector */
+  #size-selector {
+    display: flex;
+    gap: 5px;
+  }
+  .size-btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #ccc;
+    border-radius: 6px;
+    padding: 4px 9px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+    user-select: none;
+  }
+  .size-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
+  .size-btn.active {
+    background: rgba(255,200,0,0.2);
+    border-color: rgba(255,200,0,0.5);
+    color: #ffd700;
+  }
+
+  /* Info overlay */
+  #info {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    z-index: 100;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* Brick count */
+  #brick-count {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    z-index: 100;
+  }
+  #brick-count span { color: #ffd700; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="toolbar">
+  <!-- Mode -->
+  <button class="tool-btn active" id="btn-place" onclick="setMode('place')">Platzieren</button>
+  <button class="tool-btn" id="btn-remove" onclick="setMode('remove')">Entfernen</button>
+
+  <div class="separator"></div>
+
+  <!-- Brick size -->
+  <div id="size-selector">
+    <button class="size-btn active" data-w="1" data-d="1" onclick="setSize(1,1)">1×1</button>
+    <button class="size-btn" data-w="1" data-d="2" onclick="setSize(1,2)">1×2</button>
+    <button class="size-btn" data-w="2" data-d="2" onclick="setSize(2,2)">2×2</button>
+    <button class="size-btn" data-w="1" data-d="4" onclick="setSize(1,4)">1×4</button>
+    <button class="size-btn" data-w="2" data-d="4" onclick="setSize(2,4)">2×4</button>
+  </div>
+
+  <div class="separator"></div>
+
+  <!-- Colors -->
+  <div id="color-strip"></div>
+</div>
+
+<div id="info">Linksklick: Brick setzen &nbsp;|&nbsp; Rechtsklick: Brick entfernen &nbsp;|&nbsp; Maus ziehen: Kamera &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; Ctrl+Z: Undo</div>
+<div id="brick-count">Steine: <span id="count">0</span></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.167.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.167.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const STUD   = 1.0;   // 1 stud = 1 unit
+const HEIGHT = 1.2;   // brick height (standard Lego ratio ≈ 9.6mm / 8mm)
+const PLATE_H = 0.4;  // plate height
+const STUD_R = 0.3;   // stud radius
+const STUD_H = 0.18;  // stud height
+const GRID   = 32;    // baseplate size in studs
+
+// ─── Colors ──────────────────────────────────────────────────────────────────
+const COLORS = [
+  { name: 'Rot',        hex: '#c91a09' },
+  { name: 'Blau',       hex: '#0055bf' },
+  { name: 'Gelb',       hex: '#f2cd37' },
+  { name: 'Grün',       hex: '#257a3e' },
+  { name: 'Orange',     hex: '#fe8a18' },
+  { name: 'Weiß',       hex: '#ffffff' },
+  { name: 'Schwarz',    hex: '#1b2a34' },
+  { name: 'Hellgrau',   hex: '#9c9c9c' },
+  { name: 'Dunkelgrau', hex: '#4b5320' },
+  { name: 'Braun',      hex: '#6b3f23' },
+  { name: 'Magenta',    hex: '#c870a0' },
+  { name: 'Cyan',       hex: '#00b0f0' },
+  { name: 'Sandgelb',   hex: '#dfc176' },
+  { name: 'Dunkelblau', hex: '#143044' },
+];
+
+// ─── State ───────────────────────────────────────────────────────────────────
+let mode         = 'place';
+let currentColor = COLORS[0].hex;
+let currentW     = 1;
+let currentD     = 1;
+let bricks       = [];  // { mesh, gridX, layer, w, d }
+let undoStack    = [];
+let ghostMesh    = null;
+let ghostValid   = false;
+
+// ─── Scene Setup ─────────────────────────────────────────────────────────────
+const container = document.getElementById('canvas-container');
+const renderer  = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+renderer.toneMapping       = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+scene.fog = new THREE.FogExp2(0x1a1a2e, 0.018);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(20, 22, 28);
+camera.lookAt(0, 0, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping     = true;
+controls.dampingFactor     = 0.08;
+controls.maxPolarAngle     = Math.PI / 2.05;
+controls.minDistance       = 5;
+controls.maxDistance       = 120;
+controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
+
+// ─── Lighting ────────────────────────────────────────────────────────────────
+const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(0xfff5e0, 1.8);
+sun.position.set(25, 40, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far  = 200;
+sun.shadow.camera.left = sun.shadow.camera.bottom = -50;
+sun.shadow.camera.right = sun.shadow.camera.top   =  50;
+sun.shadow.bias = -0.001;
+scene.add(sun);
+
+const fill = new THREE.DirectionalLight(0xc8e0ff, 0.4);
+fill.position.set(-20, 10, -15);
+scene.add(fill);
+
+// ─── Baseplate ───────────────────────────────────────────────────────────────
+function buildBaseplate() {
+  const group = new THREE.Group();
+
+  // Slab
+  const geo = new THREE.BoxGeometry(GRID * STUD, PLATE_H * 2, GRID * STUD);
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x257a3e,
+    roughness: 0.85,
+    metalness: 0.0,
+  });
+  const slab = new THREE.Mesh(geo, mat);
+  slab.receiveShadow = true;
+  slab.position.y = -PLATE_H;
+  group.add(slab);
+
+  // Studs on baseplate
+  const studGeo = new THREE.CylinderGeometry(STUD_R, STUD_R, STUD_H, 12);
+  const studMat = new THREE.MeshStandardMaterial({ color: 0x1e6633, roughness: 0.7 });
+  for (let x = 0; x < GRID; x++) {
+    for (let z = 0; z < GRID; z++) {
+      const s = new THREE.Mesh(studGeo, studMat);
+      s.position.set(
+        (x - GRID / 2 + 0.5) * STUD,
+        STUD_H / 2,
+        (z - GRID / 2 + 0.5) * STUD
+      );
+      s.receiveShadow = true;
+      group.add(s);
+    }
+  }
+
+  // Grid lines (subtle)
+  const lineMat = new THREE.LineBasicMaterial({ color: 0x1e6633, transparent: true, opacity: 0.3 });
+  for (let i = 0; i <= GRID; i++) {
+    const pos = (i - GRID / 2) * STUD;
+    const hLine = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-GRID / 2 * STUD, 0.02, pos),
+      new THREE.Vector3( GRID / 2 * STUD, 0.02, pos),
+    ]);
+    const vLine = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(pos, 0.02, -GRID / 2 * STUD),
+      new THREE.Vector3(pos, 0.02,  GRID / 2 * STUD),
+    ]);
+    group.add(new THREE.Line(hLine, lineMat));
+    group.add(new THREE.Line(vLine, lineMat));
+  }
+
+  scene.add(group);
+}
+buildBaseplate();
+
+// ─── Brick Geometry ──────────────────────────────────────────────────────────
+const studGeoCache = {};
+function getStudGeo() {
+  return new THREE.CylinderGeometry(STUD_R, STUD_R, STUD_H, 12);
+}
+
+function createBrickMesh(w, d, color, isGhost = false) {
+  const group = new THREE.Group();
+
+  const bw = w * STUD - 0.1;
+  const bd = d * STUD - 0.1;
+  const bh = HEIGHT - 0.05;
+
+  const mat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    roughness: 0.45,
+    metalness: 0.05,
+    transparent: isGhost,
+    opacity:     isGhost ? 0.45 : 1.0,
+  });
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat);
+  body.castShadow  = !isGhost;
+  body.receiveShadow = !isGhost;
+  body.position.y = bh / 2;
+  group.add(body);
+
+  // Studs
+  const studMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    roughness: 0.4,
+    metalness: 0.05,
+    transparent: isGhost,
+    opacity:     isGhost ? 0.45 : 1.0,
+  });
+  const sGeo = getStudGeo();
+  for (let sx = 0; sx < w; sx++) {
+    for (let sz = 0; sz < d; sz++) {
+      const stud = new THREE.Mesh(sGeo, studMat);
+      stud.position.set(
+        (sx - (w - 1) / 2) * STUD,
+        bh + STUD_H / 2,
+        (sz - (d - 1) / 2) * STUD
+      );
+      stud.castShadow = !isGhost;
+      group.add(stud);
+    }
+  }
+
+  return group;
+}
+
+// ─── Ghost Cursor ────────────────────────────────────────────────────────────
+function updateGhost(w, d, color) {
+  if (ghostMesh) { scene.remove(ghostMesh); ghostMesh = null; }
+  ghostMesh = createBrickMesh(w, d, color, true);
+  ghostMesh.visible = false;
+  scene.add(ghostMesh);
+}
+updateGhost(currentW, currentD, currentColor);
+
+// ─── Raycasting helpers ───────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse     = new THREE.Vector2();
+
+// Invisible floor plane for raycasting
+const floorPlanes = [];
+function getFloorPlane(y) {
+  if (!floorPlanes[y]) {
+    const geo = new THREE.PlaneGeometry(1000, 1000);
+    geo.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+    mesh.position.y = y;
+    mesh.userData.isFloor = true;
+    scene.add(mesh);
+    floorPlanes[y] = mesh;
+  }
+  return floorPlanes[y];
+}
+getFloorPlane(0); // always have layer 0
+
+function snapToGrid(pos, w, d) {
+  // Offset so brick center aligns to stud grid
+  const halfW = (w % 2 === 0) ? 0 : 0.5;
+  const halfD = (d % 2 === 0) ? 0 : 0.5;
+  return {
+    x: Math.round(pos.x - halfW) + halfW,
+    z: Math.round(pos.z - halfD) + halfD,
+  };
+}
+
+function getTopLayerAt(gx, gz, w, d) {
+  // Returns the Y (world) of the top of the highest brick occupying any stud under (gx,gz,w,d)
+  let maxY = 0;
+  for (const b of bricks) {
+    // Check overlap
+    if (rectsOverlap(gx, gz, w, d, b.gx, b.gz, b.w, b.d)) {
+      const top = b.mesh.position.y + HEIGHT;
+      if (top > maxY) maxY = top;
+    }
+  }
+  return maxY;
+}
+
+function rectsOverlap(ax, az, aw, ad, bx, bz, bw, bd) {
+  return !(ax + aw / 2 <= bx - bw / 2 ||
+           ax - aw / 2 >= bx + bw / 2 ||
+           az + ad / 2 <= bz - bd / 2 ||
+           az - ad / 2 >= bz + bd / 2);
+}
+
+function isOnBaseplate(gx, gz, w, d) {
+  const half = GRID / 2;
+  return (gx - w / 2 >= -half && gx + w / 2 <= half &&
+          gz - d / 2 >= -half && gz + d / 2 <= half);
+}
+
+// ─── Mouse tracking for ghost ────────────────────────────────────────────────
+let lastGhostX = null, lastGhostZ = null;
+
+function updateMousePos(e) {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+  mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+}
+
+function updateGhostFromMouse() {
+  if (mode !== 'place') {
+    if (ghostMesh) ghostMesh.visible = false;
+    return;
+  }
+  raycaster.setFromCamera(mouse, camera);
+
+  // Raycast against placed bricks + floor
+  const brickMeshes = bricks.map(b => b.mesh).flatMap(g => {
+    const arr = [];
+    g.traverse(c => { if (c.isMesh) arr.push(c); });
+    return arr;
+  });
+  const floorMesh = getFloorPlane(0);
+
+  const hits = raycaster.intersectObjects([floorMesh, ...brickMeshes], false);
+  if (!hits.length) { if (ghostMesh) ghostMesh.visible = false; return; }
+
+  const hit = hits[0];
+  let baseY = 0;
+  // If we hit a brick top face, figure out the layer
+  if (!hit.object.userData.isFloor) {
+    // find owning brick
+    for (const b of bricks) {
+      let found = false;
+      b.mesh.traverse(c => { if (c === hit.object) found = true; });
+      if (found) { baseY = b.mesh.position.y + HEIGHT; break; }
+    }
+    // make sure we only land on top
+    if (Math.abs(hit.normal.y) < 0.5) { if (ghostMesh) ghostMesh.visible = false; return; }
+  }
+
+  const snap = snapToGrid(hit.point, currentW, currentD);
+  const stackY = getTopLayerAt(snap.x, snap.z, currentW, currentD);
+  const y = Math.max(baseY, stackY);
+
+  if (!isOnBaseplate(snap.x, snap.z, currentW, currentD)) {
+    if (ghostMesh) ghostMesh.visible = false;
+    return;
+  }
+
+  lastGhostX = snap.x;
+  lastGhostZ = snap.z;
+  if (ghostMesh) {
+    ghostMesh.position.set(snap.x, y, snap.z);
+    ghostMesh.visible = true;
+    ghostValid = true;
+  }
+}
+
+// ─── Place / Remove ───────────────────────────────────────────────────────────
+function placeBrick() {
+  if (!ghostMesh || !ghostMesh.visible || !ghostValid) return;
+  const gx = lastGhostX, gz = lastGhostZ;
+  const y  = ghostMesh.position.y;
+
+  const mesh = createBrickMesh(currentW, currentD, currentColor, false);
+  mesh.position.set(gx, y, gz);
+  scene.add(mesh);
+
+  const entry = { mesh, gx, gz, w: currentW, d: currentD, color: currentColor };
+  bricks.push(entry);
+  undoStack.push({ type: 'place', entry });
+
+  updateCount();
+}
+
+function removeBrickAt(e) {
+  raycaster.setFromCamera(mouse, camera);
+  const brickMeshes = [];
+  const meshToBrick = new Map();
+  for (const b of bricks) {
+    b.mesh.traverse(c => {
+      if (c.isMesh) {
+        brickMeshes.push(c);
+        meshToBrick.set(c, b);
+      }
+    });
+  }
+  const hits = raycaster.intersectObjects(brickMeshes, false);
+  if (!hits.length) return;
+  const brick = meshToBrick.get(hits[0].object);
+  if (!brick) return;
+
+  scene.remove(brick.mesh);
+  bricks = bricks.filter(b => b !== brick);
+  undoStack.push({ type: 'remove', entry: brick });
+  updateCount();
+}
+
+function undoLast() {
+  if (!undoStack.length) return;
+  const action = undoStack.pop();
+  if (action.type === 'place') {
+    scene.remove(action.entry.mesh);
+    bricks = bricks.filter(b => b !== action.entry);
+  } else if (action.type === 'remove') {
+    scene.add(action.entry.mesh);
+    bricks.push(action.entry);
+  }
+  updateCount();
+}
+
+function updateCount() {
+  document.getElementById('count').textContent = bricks.length;
+}
+
+// ─── Events ──────────────────────────────────────────────────────────────────
+renderer.domElement.addEventListener('mousemove', e => {
+  updateMousePos(e);
+  updateGhostFromMouse();
+});
+
+renderer.domElement.addEventListener('click', e => {
+  if (e.button !== 0) return;
+  if (mode === 'place') placeBrick();
+});
+
+renderer.domElement.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  updateMousePos(e);
+  if (mode === 'place' || mode === 'remove') removeBrickAt(e);
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undoLast(); }
+});
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ─── UI wiring ───────────────────────────────────────────────────────────────
+window.setMode = function(m) {
+  mode = m;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + m).classList.add('active');
+  if (ghostMesh) ghostMesh.visible = (m === 'place');
+};
+
+window.setSize = function(w, d) {
+  currentW = w; currentD = d;
+  document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.size-btn[data-w="${w}"][data-d="${d}"]`).classList.add('active');
+  updateGhost(currentW, currentD, currentColor);
+};
+
+// Build color strip
+const strip = document.getElementById('color-strip');
+COLORS.forEach((c, i) => {
+  const dot = document.createElement('div');
+  dot.className = 'color-dot' + (i === 0 ? ' selected' : '');
+  dot.style.background = c.hex;
+  dot.title = c.name;
+  dot.onclick = () => {
+    currentColor = c.hex;
+    document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+    dot.classList.add('selected');
+    updateGhost(currentW, currentD, currentColor);
+  };
+  strip.appendChild(dot);
+});
+
+// ─── Render Loop ──────────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
