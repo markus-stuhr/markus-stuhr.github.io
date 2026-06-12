@@ -245,25 +245,6 @@
     <div class="dd-menu" id="dd-color-menu"></div>
   </div>
 
-  <div class="separator"></div>
-
-  <!-- Renderer dropdown -->
-  <div class="dd-wrap" id="dd-renderer">
-    <div class="dd-trigger" id="dd-renderer-trigger" onclick="toggleDD('dd-renderer')">
-      <span class="dd-label">RENDER</span>
-      <span class="dd-value" id="dd-renderer-value">Standard</span>
-      <span class="dd-arrow">▾</span>
-    </div>
-    <div class="dd-menu" id="dd-renderer-menu">
-      <div class="dd-item selected" data-r="standard" onclick="setRenderMode('standard')">Standard</div>
-      <div class="dd-item" data-r="pathtracer" onclick="setRenderMode('pathtracer')">Path Tracer</div>
-    </div>
-  </div>
-</div>
-
-<!-- PT sample counter -->
-<div id="pt-overlay" style="display:none;position:fixed;top:60px;right:16px;background:rgba(0,0,0,0.5);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:5px 12px;font-size:11px;color:rgba(255,255,255,0.5);z-index:100;">
-  Samples: <span id="pt-samples" style="color:#7dd8ff;font-weight:bold;">0</span>
 </div>
 
 <div id="info">Linksklick: Brick setzen &nbsp;|&nbsp; Rechtsklick: Brick entfernen &nbsp;|&nbsp; WASD: Kamera bewegen &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; Ctrl+Z/Y: Undo/Redo</div>
@@ -360,10 +341,6 @@ let redoStack    = [];
 let ghostMesh    = null;
 let ghostValid   = false;
 
-// ─── Renderer mode ───────────────────────────────────────────────────────────
-let renderMode   = 'standard';
-let pathTracer   = null;
-let ptDirty      = false; // scene changed → need BVH rebuild
 
 // ─── Scene Setup ─────────────────────────────────────────────────────────────
 const container = document.getElementById('canvas-container');
@@ -657,7 +634,6 @@ function placeBrick() {
   bricks.push(entry);
   undoStack.push({ action: 'place', entry });
   redoStack.length = 0;
-  ptDirty = true;
   updateCount();
 }
 
@@ -682,7 +658,6 @@ function removeBrickAt(e) {
   bricks = bricks.filter(b => b !== brick);
   undoStack.push({ action: 'remove', entry: brick });
   redoStack.length = 0;
-  ptDirty = true;
   updateCount();
 }
 
@@ -793,37 +768,6 @@ window.setSize = function(w, d) {
   updateGhost(currentW, currentD, currentColor, currentType);
 };
 
-window.setRenderMode = async function(mode) {
-  renderMode = mode;
-  document.querySelectorAll('#dd-renderer-menu .dd-item').forEach(b => b.classList.remove('selected'));
-  document.querySelector(`#dd-renderer-menu .dd-item[data-r="${mode}"]`).classList.add('selected');
-  document.getElementById('dd-renderer-value').textContent = mode === 'pathtracer' ? 'Path Tracer' : 'Standard';
-  document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('open'));
-
-  const overlay = document.getElementById('pt-overlay');
-  if (mode === 'pathtracer') {
-    overlay.style.display = 'block';
-    document.getElementById('pt-samples').textContent = '…';
-    if (!pathTracer) {
-      try {
-        const { WebGLPathTracer } = await import('https://cdn.jsdelivr.net/npm/three-gpu-pathtracer/+esm');
-        pathTracer = new WebGLPathTracer(renderer);
-        pathTracer.physicallyCorrectLights = true;
-        pathTracer.bounces = 5;
-        pathTracer.samplesPerFrame = 1;
-      } catch(e) {
-        console.error('Path Tracer konnte nicht geladen werden:', e);
-        document.getElementById('pt-samples').textContent = 'Fehler';
-        renderMode = 'standard';
-        return;
-      }
-    }
-    ptDirty = true;
-  } else {
-    overlay.style.display = 'none';
-    renderer.setRenderTarget(null);
-  }
-};
 
 // ─── Color dropdown ───────────────────────────────────────────────────────────
 const colorMenu = document.getElementById('dd-color-menu');
@@ -851,7 +795,6 @@ COLORS.forEach((c) => {
 
 // ─── Render Loop ──────────────────────────────────────────────────────────────
 const PAN_SPEED = 0.18;
-let prevCamMatrix = new THREE.Matrix4();
 
 function animate() {
   requestAnimationFrame(animate);
@@ -875,24 +818,7 @@ function animate() {
   }
 
   controls.update();
-
-  if (renderMode === 'pathtracer' && pathTracer) {
-    // Rebuild BVH if scene changed
-    if (ptDirty) {
-      pathTracer.setScene(scene, camera);
-      ptDirty = false;
-    }
-    // Reset accumulation if camera moved
-    const camMoved = !camera.matrixWorld.equals(prevCamMatrix);
-    if (camMoved) {
-      pathTracer.reset();
-      prevCamMatrix.copy(camera.matrixWorld);
-    }
-    pathTracer.renderSample();
-    document.getElementById('pt-samples').textContent = pathTracer.samples;
-  } else {
-    renderer.render(scene, camera);
-  }
+  renderer.render(scene, camera);
 }
 animate();
 </script>
