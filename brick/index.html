@@ -599,8 +599,8 @@ scene.add(sun);
 function buildBaseplate() {
   const group = new THREE.Group();
 
-  // Slab
-  const geo = new THREE.BoxGeometry(GRID * STUD, PLATE_H_VAL * 2, GRID * STUD);
+  // Infinite ground plane
+  const geo = new THREE.PlaneGeometry(2000, 2000);
   const mat = new THREE.MeshStandardMaterial({
     color: 0x257a3e,
     roughness: 0.85,
@@ -608,7 +608,8 @@ function buildBaseplate() {
   });
   const slab = new THREE.Mesh(geo, mat);
   slab.receiveShadow = true;
-  slab.position.y = -PLATE_H_VAL;
+  slab.rotation.x = -Math.PI / 2;
+  slab.position.y = 0;
   group.add(slab);
 
   // Studs on baseplate
