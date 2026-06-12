@@ -700,7 +700,38 @@ function buildDemoHouse() {
 
 // ─── Brick Geometry ──────────────────────────────────────────────────────────
 function typeHeight(type) {
-  return type === 'plate' ? PLATE_H_VAL : BRICK_H;
+  return (type === 'plate' || type === 'tile') ? PLATE_H_VAL : BRICK_H;
+}
+
+// Slope prism: front is low (PLATE_H_VAL), back is full height (bh)
+function makeSlopeGeo(bw, bh, bd) {
+  const lo = PLATE_H_VAL;
+  const p = (x, y, z) => [x, y, z];
+
+  const fl  = p(-bw/2, 0,   -bd/2);
+  const fr  = p( bw/2, 0,   -bd/2);
+  const br  = p( bw/2, 0,    bd/2);
+  const bl  = p(-bw/2, 0,    bd/2);
+  const flt = p(-bw/2, lo,  -bd/2);
+  const frt = p( bw/2, lo,  -bd/2);
+  const brt = p( bw/2, bh,   bd/2);
+  const blt = p(-bw/2, bh,   bd/2);
+
+  const tris = [
+    fl, br, fr,   fl, bl, br,   // bottom
+    fl, fr, frt,  fl, frt, flt, // front
+    br, bl, blt,  br, blt, brt, // back
+    fl, flt, blt, fl, blt, bl,  // left
+    fr, br, brt,  fr, brt, frt, // right
+    flt, frt, brt, flt, brt, blt, // top slope
+  ];
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(
+    new Float32Array(tris.flat()), 3
+  ));
+  geo.computeVertexNormals();
+  return geo;
 }
 
 function getStudGeo() {
@@ -757,39 +788,73 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   const bw = w * STUD - 0.01;
   const bd = d * STUD - 0.01;
   const bh = fullH - 0.01;
-  const trans = !isGhost && isTransColor(color);
+  const trans   = !isGhost && isTransColor(color);
+  const isLight = !isGhost && isLightColor(color);
 
   const mat     = makeMat(color, isGhost);
   const studMat = makeMat(color, isGhost);
 
-  const isLight = !isGhost && isLightColor(color);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat);
-  body.castShadow    = !isGhost && !isLight;
-  body.receiveShadow = !isGhost;
-  if (trans) body.renderOrder = 1; // render after opaque
-  body.position.y = bh / 2;
-  group.add(body);
+  function addMesh(geo, posY = 0) {
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow    = !isGhost && !isLight;
+    m.receiveShadow = !isGhost;
+    if (trans) m.renderOrder = 1;
+    m.position.y = posY;
+    group.add(m);
+    return m;
+  }
 
-  const sGeo = getStudGeo();
-  for (let sx = 0; sx < w; sx++) {
-    for (let sz = 0; sz < d; sz++) {
-      const stud = new THREE.Mesh(sGeo, studMat);
-      stud.position.set(
-        (sx - (w - 1) / 2) * STUD,
-        fullH - 0.01 + STUD_H / 2,
-        (sz - (d - 1) / 2) * STUD
-      );
-      stud.castShadow = !isGhost && !isLight;
-      if (trans) stud.renderOrder = 1;
-      group.add(stud);
+  function addStuds() {
+    const sGeo = getStudGeo();
+    for (let sx = 0; sx < w; sx++) {
+      for (let sz = 0; sz < d; sz++) {
+        const stud = new THREE.Mesh(sGeo, studMat);
+        stud.position.set(
+          (sx - (w - 1) / 2) * STUD,
+          fullH - 0.01 + STUD_H / 2,
+          (sz - (d - 1) / 2) * STUD
+        );
+        stud.castShadow = !isGhost && !isLight;
+        if (trans) stud.renderOrder = 1;
+        group.add(stud);
+      }
     }
   }
 
-  // Licht-Steine bekommen einen PointLight
+  if (type === 'tile') {
+    // Plate height, no studs
+    addMesh(new THREE.BoxGeometry(bw, bh, bd), bh / 2);
+
+  } else if (type === 'slope') {
+    // Ramp: front = low, back = full height
+    addMesh(makeSlopeGeo(bw, bh, bd));
+
+  } else if (type === 'wedge') {
+    // Same ramp, rotated 90° (tapers in X direction)
+    const m = addMesh(makeSlopeGeo(bd, bh, bw));
+    m.rotation.y = Math.PI / 2;
+
+  } else if (type === 'round') {
+    // Cylinder body + one center stud
+    const r = Math.min(bw, bd) / 2;
+    addMesh(new THREE.CylinderGeometry(r, r, bh, 16), bh / 2);
+    const stud = new THREE.Mesh(getStudGeo(), studMat);
+    stud.position.y = bh + STUD_H / 2;
+    stud.castShadow = !isGhost && !isLight;
+    if (trans) stud.renderOrder = 1;
+    group.add(stud);
+
+  } else {
+    // brick / plate / panel / bar → box + studs
+    addMesh(new THREE.BoxGeometry(bw, bh, bd), bh / 2);
+    addStuds();
+  }
+
+  // PointLight für Licht-Steine
   if (!isGhost && isLightColor(color)) {
     const lc = LIGHT_COLORS[color];
     const pt = new THREE.PointLight(lc.pointColor, 12, 56, 1.5);
-    pt.position.set(0, fullH * 0.5, 0); // inside brick → strahlt nach allen Seiten
+    pt.position.set(0, fullH * 0.5, 0);
     pt.castShadow = false;
     group.add(pt);
   }
@@ -1076,8 +1141,10 @@ window.setMode = function(m) {
 window.setType = function(t) {
   currentType = t;
   document.querySelectorAll('#dd-type-menu .dd-item').forEach(b => b.classList.remove('selected'));
-  document.querySelector(`#dd-type-menu .dd-item[data-type="${t}"]`).classList.add('selected');
-  document.getElementById('dd-type-value').textContent = t === 'brick' ? 'Brick' : 'Plate';
+  const match = document.querySelector(`#dd-type-menu .dd-item[data-type="${t}"]`);
+  if (match) match.classList.add('selected');
+  const label = t.charAt(0).toUpperCase() + t.slice(1);
+  document.getElementById('dd-type-value').textContent = label;
   document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('open'));
   updateGhost(currentW, currentD, currentColor, currentType);
 };
@@ -1249,11 +1316,9 @@ function renderParts() {
 }
 
 window.pbSelectPart = function(type, w, d) {
-  // Map types we can actually render
-  const renderType = (type === 'tile') ? 'plate' : (type === 'brick' || type === 'plate') ? type : 'brick';
-  setType(renderType);
+  setType(type);
   setSize(w, d);
-  renderParts(); // update selection highlight
+  renderParts();
 };
 
 animate();
