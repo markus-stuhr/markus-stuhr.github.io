@@ -806,7 +806,7 @@ window.setRenderMode = async function(mode) {
     document.getElementById('pt-samples').textContent = '…';
     if (!pathTracer) {
       try {
-        const { WebGLPathTracer } = await import('https://esm.sh/three-gpu-pathtracer@0.0.28?deps=three@0.167.0');
+        const { WebGLPathTracer } = await import('https://cdn.jsdelivr.net/npm/three-gpu-pathtracer/+esm');
         pathTracer = new WebGLPathTracer(renderer);
         pathTracer.physicallyCorrectLights = true;
         pathTracer.bounces = 5;
