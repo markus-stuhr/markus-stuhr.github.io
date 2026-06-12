@@ -28,14 +28,19 @@
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    gap: 8px;
-    align-items: center;
-    background: rgba(0,0,0,0.6);
+    flex-direction: column;
+    gap: 6px;
+    background: rgba(0,0,0,0.65);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 12px;
     padding: 8px 12px;
     z-index: 100;
+  }
+  .toolbar-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
   }
 
   .tool-btn {
@@ -80,16 +85,18 @@
   /* Brick size selector */
   #size-selector {
     display: flex;
-    gap: 5px;
+    gap: 4px;
+    flex-wrap: wrap;
+    max-width: 220px;
   }
   .size-btn {
     background: rgba(255,255,255,0.08);
     border: 1px solid rgba(255,255,255,0.15);
     color: #ccc;
     border-radius: 6px;
-    padding: 4px 9px;
+    padding: 3px 7px;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 11px;
     transition: background 0.15s;
     user-select: none;
   }
@@ -99,6 +106,55 @@
     border-color: rgba(255,200,0,0.5);
     color: #ffd700;
   }
+
+  /* Type selector (Brick / Plate) */
+  #type-selector { display: flex; gap: 5px; }
+  .type-btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #ccc;
+    border-radius: 6px;
+    padding: 4px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background 0.15s;
+    user-select: none;
+  }
+  .type-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
+  .type-btn.active {
+    background: rgba(100,200,255,0.2);
+    border-color: rgba(100,200,255,0.5);
+    color: #7dd8ff;
+  }
+
+  /* Color palette panel */
+  #color-panel {
+    position: fixed;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: none;
+    flex-wrap: wrap;
+    gap: 5px;
+    max-width: 420px;
+    z-index: 200;
+  }
+  #color-panel.open { display: flex; }
+  .cp-dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.1s, border-color 0.1s;
+    flex-shrink: 0;
+  }
+  .cp-dot:hover { transform: scale(1.25); }
+  .cp-dot.selected { border-color: #fff; }
 
   /* Info overlay */
   #info {
@@ -140,28 +196,41 @@
 <div id="canvas-container"></div>
 
 <div id="toolbar">
-  <!-- Mode -->
-  <button class="tool-btn active" id="btn-place" onclick="setMode('place')">Platzieren</button>
-  <button class="tool-btn" id="btn-remove" onclick="setMode('remove')">Entfernen</button>
-
-  <div class="separator"></div>
-
-  <!-- Brick size -->
-  <div id="size-selector">
-    <button class="size-btn active" data-w="1" data-d="1" onclick="setSize(1,1)">1×1</button>
-    <button class="size-btn" data-w="1" data-d="2" onclick="setSize(1,2)">1×2</button>
-    <button class="size-btn" data-w="2" data-d="2" onclick="setSize(2,2)">2×2</button>
-    <button class="size-btn" data-w="1" data-d="4" onclick="setSize(1,4)">1×4</button>
-    <button class="size-btn" data-w="2" data-d="4" onclick="setSize(2,4)">2×4</button>
+  <!-- Row 1: Mode + Type + Color -->
+  <div class="toolbar-row">
+    <button class="tool-btn active" id="btn-place" onclick="setMode('place')">Platzieren</button>
+    <button class="tool-btn" id="btn-remove" onclick="setMode('remove')">Entfernen</button>
+    <div class="separator"></div>
+    <div id="type-selector">
+      <button class="type-btn active" id="btn-brick" onclick="setType('brick')">Brick</button>
+      <button class="type-btn" id="btn-plate" onclick="setType('plate')">Plate</button>
+    </div>
+    <div class="separator"></div>
+    <div id="color-strip"></div>
   </div>
-
-  <div class="separator"></div>
-
-  <!-- Colors -->
-  <div id="color-strip"></div>
+  <!-- Row 2: Sizes -->
+  <div class="toolbar-row">
+    <div id="size-selector">
+      <button class="size-btn active" data-w="1" data-d="1" onclick="setSize(1,1)">1×1</button>
+      <button class="size-btn" data-w="1" data-d="2" onclick="setSize(1,2)">1×2</button>
+      <button class="size-btn" data-w="1" data-d="3" onclick="setSize(1,3)">1×3</button>
+      <button class="size-btn" data-w="1" data-d="4" onclick="setSize(1,4)">1×4</button>
+      <button class="size-btn" data-w="1" data-d="6" onclick="setSize(1,6)">1×6</button>
+      <button class="size-btn" data-w="1" data-d="8" onclick="setSize(1,8)">1×8</button>
+      <button class="size-btn" data-w="2" data-d="2" onclick="setSize(2,2)">2×2</button>
+      <button class="size-btn" data-w="2" data-d="3" onclick="setSize(2,3)">2×3</button>
+      <button class="size-btn" data-w="2" data-d="4" onclick="setSize(2,4)">2×4</button>
+      <button class="size-btn" data-w="2" data-d="6" onclick="setSize(2,6)">2×6</button>
+      <button class="size-btn" data-w="2" data-d="8" onclick="setSize(2,8)">2×8</button>
+      <button class="size-btn" data-w="4" data-d="4" onclick="setSize(4,4)">4×4</button>
+    </div>
+  </div>
 </div>
 
-<div id="info">Linksklick: Brick setzen &nbsp;|&nbsp; Rechtsklick: Brick entfernen &nbsp;|&nbsp; Maus ziehen: Kamera &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; Ctrl+Z: Undo</div>
+<!-- Full color palette panel -->
+<div id="color-panel"></div>
+
+<div id="info">Linksklick: Brick setzen &nbsp;|&nbsp; Rechtsklick: Brick entfernen &nbsp;|&nbsp; WASD: Kamera bewegen &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; Ctrl+Z/Y: Undo/Redo</div>
 <div id="brick-count">Steine: <span id="count">0</span></div>
 
 <script type="importmap">
@@ -178,29 +247,69 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
-const STUD   = 1.0;   // 1 stud = 1 unit
-const HEIGHT = 1.2;   // brick height (standard Lego ratio ≈ 9.6mm / 8mm)
-const PLATE_H = 0.4;  // plate height
-const STUD_R = 0.3;   // stud radius
-const STUD_H = 0.18;  // stud height
-const GRID   = 32;    // baseplate size in studs
+const STUD        = 1.0;   // 1 stud = 1 unit
+const BRICK_H     = 1.2;   // standard brick height
+const PLATE_H_VAL = 0.4;   // plate height (1/3 of brick)
+const STUD_R      = 0.3;   // stud radius
+const STUD_H      = 0.18;  // stud height
+const GRID        = 32;    // baseplate size in studs
 
-// ─── Colors ──────────────────────────────────────────────────────────────────
+// ─── Colors (Rebrickable palette) ────────────────────────────────────────────
 const COLORS = [
-  { name: 'Rot',        hex: '#c91a09' },
-  { name: 'Blau',       hex: '#0055bf' },
-  { name: 'Gelb',       hex: '#f2cd37' },
-  { name: 'Grün',       hex: '#257a3e' },
-  { name: 'Orange',     hex: '#fe8a18' },
-  { name: 'Weiß',       hex: '#ffffff' },
-  { name: 'Schwarz',    hex: '#1b2a34' },
-  { name: 'Hellgrau',   hex: '#9c9c9c' },
-  { name: 'Dunkelgrau', hex: '#4b5320' },
-  { name: 'Braun',      hex: '#6b3f23' },
-  { name: 'Magenta',    hex: '#c870a0' },
-  { name: 'Cyan',       hex: '#00b0f0' },
-  { name: 'Sandgelb',   hex: '#dfc176' },
-  { name: 'Dunkelblau', hex: '#143044' },
+  // Reds
+  { name: 'Red',              hex: '#B40000' },
+  { name: 'Dark Red',         hex: '#720E0F' },
+  { name: 'Coral',            hex: '#FF698F' },
+  { name: 'Salmon',           hex: '#FF9494' },
+  // Oranges & Yellows
+  { name: 'Orange',           hex: '#FE8A18' },
+  { name: 'Dark Orange',      hex: '#A95500' },
+  { name: 'Yellow',           hex: '#F2CD37' },
+  { name: 'Bright Light Yellow', hex: '#FFE001' },
+  { name: 'Tan',              hex: '#DFC176' },
+  { name: 'Dark Tan',         hex: '#958A73' },
+  // Greens
+  { name: 'Green',            hex: '#257A3E' },
+  { name: 'Dark Green',       hex: '#184632' },
+  { name: 'Bright Green',     hex: '#4B9F4A' },
+  { name: 'Lime',             hex: '#BBE90B' },
+  { name: 'Olive Green',      hex: '#9B9A5A' },
+  { name: 'Sand Green',       hex: '#A0BCAC' },
+  // Blues
+  { name: 'Blue',             hex: '#0055BF' },
+  { name: 'Dark Blue',        hex: '#003380' },
+  { name: 'Medium Blue',      hex: '#5A93DB' },
+  { name: 'Bright Light Blue',hex: '#9FC3E9' },
+  { name: 'Sky Blue',         hex: '#7DBFDD' },
+  { name: 'Dark Azure',       hex: '#078BC9' },
+  { name: 'Cyan',             hex: '#00B0F0' },
+  // Purples & Pinks
+  { name: 'Purple',           hex: '#8320B7' },
+  { name: 'Dark Purple',      hex: '#2E1A47' },
+  { name: 'Medium Lavender',  hex: '#AC78BA' },
+  { name: 'Lavender',         hex: '#E1D5ED' },
+  { name: 'Magenta',          hex: '#C870A0' },
+  { name: 'Pink',             hex: '#FC97AC' },
+  // Browns
+  { name: 'Brown',            hex: '#583927' },
+  { name: 'Dark Brown',       hex: '#352100' },
+  { name: 'Reddish Brown',    hex: '#82422A' },
+  // Grays & Whites
+  { name: 'White',            hex: '#FFFFFF' },
+  { name: 'Light Bluish Gray',hex: '#AFB5C7' },
+  { name: 'Dark Bluish Gray', hex: '#595D6B' },
+  { name: 'Light Gray',       hex: '#9C9C9C' },
+  { name: 'Dark Gray',        hex: '#6B5A5A' },
+  { name: 'Black',            hex: '#1B2A34' },
+  // Special
+  { name: 'Gold',             hex: '#DBAC34' },
+  { name: 'Silver',           hex: '#A5A9B4' },
+  { name: 'Trans-Clear',      hex: '#FCFCFC' },
+  { name: 'Trans-Red',        hex: '#C91A09' },
+  { name: 'Trans-Blue',       hex: '#0020A0' },
+  { name: 'Trans-Yellow',     hex: '#F8F177' },
+  { name: 'Trans-Green',      hex: '#84B68D' },
+  { name: 'Trans-Orange',     hex: '#F08F1C' },
 ];
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -208,8 +317,10 @@ let mode         = 'place';
 let currentColor = COLORS[0].hex;
 let currentW     = 1;
 let currentD     = 1;
-let bricks       = [];  // { mesh, gridX, layer, w, d }
+let currentType  = 'brick'; // 'brick' | 'plate'
+let bricks       = [];
 let undoStack    = [];
+let redoStack    = [];
 let ghostMesh    = null;
 let ghostValid   = false;
 
@@ -265,7 +376,7 @@ function buildBaseplate() {
   const group = new THREE.Group();
 
   // Slab
-  const geo = new THREE.BoxGeometry(GRID * STUD, PLATE_H * 2, GRID * STUD);
+  const geo = new THREE.BoxGeometry(GRID * STUD, PLATE_H_VAL * 2, GRID * STUD);
   const mat = new THREE.MeshStandardMaterial({
     color: 0x257a3e,
     roughness: 0.85,
@@ -273,7 +384,7 @@ function buildBaseplate() {
   });
   const slab = new THREE.Mesh(geo, mat);
   slab.receiveShadow = true;
-  slab.position.y = -PLATE_H;
+  slab.position.y = -PLATE_H_VAL;
   group.add(slab);
 
   // Studs on baseplate
@@ -313,17 +424,22 @@ function buildBaseplate() {
 buildBaseplate();
 
 // ─── Brick Geometry ──────────────────────────────────────────────────────────
-const studGeoCache = {};
+function typeHeight(type) {
+  return type === 'plate' ? PLATE_H_VAL : BRICK_H;
+}
+
 function getStudGeo() {
   return new THREE.CylinderGeometry(STUD_R, STUD_R, STUD_H, 12);
 }
 
-function createBrickMesh(w, d, color, isGhost = false) {
+function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   const group = new THREE.Group();
+  group.userData.brickType = type;
 
+  const fullH = typeHeight(type);
   const bw = w * STUD - 0.01;
   const bd = d * STUD - 0.01;
-  const bh = HEIGHT - 0.01;
+  const bh = fullH - 0.01;
 
   const mat = new THREE.MeshStandardMaterial({
     color: new THREE.Color(color),
@@ -353,7 +469,7 @@ function createBrickMesh(w, d, color, isGhost = false) {
       const stud = new THREE.Mesh(sGeo, studMat);
       stud.position.set(
         (sx - (w - 1) / 2) * STUD,
-        bh + STUD_H / 2,
+        fullH - 0.01 + STUD_H / 2,
         (sz - (d - 1) / 2) * STUD
       );
       stud.castShadow = !isGhost;
@@ -365,13 +481,13 @@ function createBrickMesh(w, d, color, isGhost = false) {
 }
 
 // ─── Ghost Cursor ────────────────────────────────────────────────────────────
-function updateGhost(w, d, color) {
+function updateGhost(w, d, color, type) {
   if (ghostMesh) { scene.remove(ghostMesh); ghostMesh = null; }
-  ghostMesh = createBrickMesh(w, d, color, true);
+  ghostMesh = createBrickMesh(w, d, color, true, type);
   ghostMesh.visible = false;
   scene.add(ghostMesh);
 }
-updateGhost(currentW, currentD, currentColor);
+updateGhost(currentW, currentD, currentColor, currentType);
 
 // ─── Raycasting helpers ───────────────────────────────────────────────────────
 const raycaster = new THREE.Raycaster();
@@ -404,12 +520,10 @@ function snapToGrid(pos, w, d) {
 }
 
 function getTopLayerAt(gx, gz, w, d) {
-  // Returns the Y (world) of the top of the highest brick occupying any stud under (gx,gz,w,d)
   let maxY = 0;
   for (const b of bricks) {
-    // Check overlap
     if (rectsOverlap(gx, gz, w, d, b.gx, b.gz, b.w, b.d)) {
-      const top = b.mesh.position.y + HEIGHT;
+      const top = b.mesh.position.y + typeHeight(b.type);
       if (top > maxY) maxY = top;
     }
   }
@@ -464,7 +578,7 @@ function updateGhostFromMouse() {
     for (const b of bricks) {
       let found = false;
       b.mesh.traverse(c => { if (c === hit.object) found = true; });
-      if (found) { baseY = b.mesh.position.y + HEIGHT; break; }
+      if (found) { baseY = b.mesh.position.y + typeHeight(b.type); break; }
     }
     // make sure we only land on top
     if (Math.abs(hit.normal.y) < 0.5) { if (ghostMesh) ghostMesh.visible = false; return; }
@@ -494,13 +608,14 @@ function placeBrick() {
   const gx = lastGhostX, gz = lastGhostZ;
   const y  = ghostMesh.position.y;
 
-  const mesh = createBrickMesh(currentW, currentD, currentColor, false);
+  const mesh = createBrickMesh(currentW, currentD, currentColor, false, currentType);
   mesh.position.set(gx, y, gz);
   scene.add(mesh);
 
-  const entry = { mesh, gx, gz, w: currentW, d: currentD, color: currentColor };
+  const entry = { mesh, gx, gz, w: currentW, d: currentD, color: currentColor, type: currentType };
   bricks.push(entry);
-  undoStack.push({ type: 'place', entry });
+  undoStack.push({ action: 'place', entry });
+  redoStack.length = 0;
 
   updateCount();
 }
@@ -524,20 +639,36 @@ function removeBrickAt(e) {
 
   scene.remove(brick.mesh);
   bricks = bricks.filter(b => b !== brick);
-  undoStack.push({ type: 'remove', entry: brick });
+  undoStack.push({ action: 'remove', entry: brick });
+  redoStack.length = 0;
   updateCount();
 }
 
 function undoLast() {
   if (!undoStack.length) return;
-  const action = undoStack.pop();
-  if (action.type === 'place') {
-    scene.remove(action.entry.mesh);
-    bricks = bricks.filter(b => b !== action.entry);
-  } else if (action.type === 'remove') {
-    scene.add(action.entry.mesh);
-    bricks.push(action.entry);
+  const cmd = undoStack.pop();
+  if (cmd.action === 'place') {
+    scene.remove(cmd.entry.mesh);
+    bricks = bricks.filter(b => b !== cmd.entry);
+  } else if (cmd.action === 'remove') {
+    scene.add(cmd.entry.mesh);
+    bricks.push(cmd.entry);
   }
+  redoStack.push(cmd);
+  updateCount();
+}
+
+function redoLast() {
+  if (!redoStack.length) return;
+  const cmd = redoStack.pop();
+  if (cmd.action === 'place') {
+    scene.add(cmd.entry.mesh);
+    bricks.push(cmd.entry);
+  } else if (cmd.action === 'remove') {
+    scene.remove(cmd.entry.mesh);
+    bricks = bricks.filter(b => b !== cmd.entry);
+  }
+  undoStack.push(cmd);
   updateCount();
 }
 
@@ -565,6 +696,7 @@ renderer.domElement.addEventListener('contextmenu', e => {
 const keys = {};
 document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undoLast(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'y') { e.preventDefault(); redoLast(); return; }
   if (['w','a','s','d','W','A','S','D'].includes(e.key)) { keys[e.key.toLowerCase()] = true; e.preventDefault(); }
 });
 document.addEventListener('keyup', e => {
@@ -589,23 +721,49 @@ window.setSize = function(w, d) {
   currentW = w; currentD = d;
   document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
   document.querySelector(`.size-btn[data-w="${w}"][data-d="${d}"]`).classList.add('active');
-  updateGhost(currentW, currentD, currentColor);
+  updateGhost(currentW, currentD, currentColor, currentType);
 };
 
-// Build color strip
+window.setType = function(t) {
+  currentType = t;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + t).classList.add('active');
+  updateGhost(currentW, currentD, currentColor, currentType);
+};
+
+// ─── Color palette ────────────────────────────────────────────────────────────
+// Swatch in toolbar shows current color, click opens full panel
 const strip = document.getElementById('color-strip');
-COLORS.forEach((c, i) => {
+const panel = document.getElementById('color-panel');
+
+const swatch = document.createElement('div');
+swatch.className = 'color-dot selected';
+swatch.style.background = currentColor;
+swatch.style.width = '26px';
+swatch.style.height = '26px';
+swatch.style.borderRadius = '6px';
+swatch.title = 'Farbe wählen';
+swatch.onclick = (e) => { e.stopPropagation(); panel.classList.toggle('open'); };
+strip.appendChild(swatch);
+
+COLORS.forEach((c) => {
   const dot = document.createElement('div');
-  dot.className = 'color-dot' + (i === 0 ? ' selected' : '');
+  dot.className = 'cp-dot' + (c.hex === currentColor ? ' selected' : '');
   dot.style.background = c.hex;
   dot.title = c.name;
   dot.onclick = () => {
     currentColor = c.hex;
-    document.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+    swatch.style.background = c.hex;
+    document.querySelectorAll('.cp-dot').forEach(d => d.classList.remove('selected'));
     dot.classList.add('selected');
-    updateGhost(currentW, currentD, currentColor);
+    updateGhost(currentW, currentD, currentColor, currentType);
+    panel.classList.remove('open');
   };
-  strip.appendChild(dot);
+  panel.appendChild(dot);
+});
+
+document.addEventListener('click', (e) => {
+  if (!panel.contains(e.target) && e.target !== swatch) panel.classList.remove('open');
 });
 
 // ─── Render Loop ──────────────────────────────────────────────────────────────
