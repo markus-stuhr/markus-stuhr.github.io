@@ -723,8 +723,12 @@ function buildDemoHouse() {
 }
 
 // ─── Brick Geometry ──────────────────────────────────────────────────────────
+const BAR_H = 0.14; // thin horizontal bar / fence rail
+
 function typeHeight(type) {
-  return (type === 'plate' || type === 'tile') ? PLATE_H_VAL : BRICK_H;
+  if (type === 'plate' || type === 'tile') return PLATE_H_VAL;
+  if (type === 'bar')                      return BAR_H;
+  return BRICK_H;
 }
 
 // Slope prism: front is low (PLATE_H_VAL), back is full height (bh)
@@ -846,8 +850,17 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   }
 
   if (type === 'tile') {
-    // Plate height, no studs
+    // Plate height, no studs — smooth flat tile
     addMesh(new THREE.BoxGeometry(bw, bh, bd), bh / 2);
+
+  } else if (type === 'bar') {
+    // Very thin horizontal slab — fence rail / bar
+    addMesh(new THREE.BoxGeometry(bw, bh, bd), bh / 2);
+
+  } else if (type === 'panel') {
+    // Full brick height, but very thin in depth — wall panel
+    const panelD = Math.min(bd, 0.22);
+    addMesh(new THREE.BoxGeometry(bw, bh, panelD), bh / 2);
 
   } else if (type === 'slope') {
     // Ramp: front = low, back = full height
