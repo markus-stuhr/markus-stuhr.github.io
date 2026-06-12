@@ -466,6 +466,84 @@ function buildBaseplate() {
 }
 buildBaseplate();
 
+// ─── Demo House ──────────────────────────────────────────────────────────────
+function buildDemoHouse() {
+  const WALL = '#82422A'; // Reddish Brown
+  const WIN  = '#LIGHT_O'; // Warm light window
+  const ROOF = '#720E0F';  // Dark Red
+
+  // House center (cx, cz) on baseplate; 8 studs wide, 6 studs deep, 4 bricks tall
+  const cx = 0, cz = 6, NW = 8, ND = 6, NL = 4;
+  const H = BRICK_H, PH = PLATE_H_VAL;
+
+  // Convert stud index → world coordinate (center of a 1×1 brick)
+  const wx = xi => cx + xi - NW / 2 + 0.5;
+  const wz = zi => cz + zi - ND / 2 + 0.5;
+
+  function addBrick(x, z, y, w, d, col, type = 'brick') {
+    const mesh = createBrickMesh(w, d, col, false, type);
+    mesh.position.set(x, y, z);
+    scene.add(mesh);
+    bricks.push({ mesh, gx: x, gz: z, w, d, color: col, type });
+  }
+
+  for (let l = 0; l < NL; l++) {
+    const y = l * H;
+
+    // ── Front wall (zi = 0) ──────────────────────────────────────────────────
+    const fz = wz(0);
+    if (l === 0) {
+      // Door gap at xi 3–4
+      addBrick(wx(0) + 0.5, fz, y, 2, 1, WALL);
+      addBrick(wx(2),       fz, y, 1, 1, WALL);
+      addBrick(wx(5),       fz, y, 1, 1, WALL);
+      addBrick(wx(6) + 0.5, fz, y, 2, 1, WALL);
+    } else if (l === 1) {
+      // Two glowing windows
+      addBrick(wx(0),       fz, y, 1, 1, WALL);
+      addBrick(wx(1) + 0.5, fz, y, 2, 1, WIN);
+      addBrick(wx(3) + 0.5, fz, y, 2, 1, WALL);
+      addBrick(wx(5) + 0.5, fz, y, 2, 1, WIN);
+      addBrick(wx(7),       fz, y, 1, 1, WALL);
+    } else {
+      for (let xi = 0; xi < NW; xi += 2)
+        addBrick(wx(xi) + 0.5, fz, y, 2, 1, WALL);
+    }
+
+    // ── Back wall (zi = ND − 1) ──────────────────────────────────────────────
+    const bkz = wz(ND - 1);
+    if (l === 1) {
+      addBrick(wx(0),       bkz, y, 1, 1, WALL);
+      addBrick(wx(1) + 0.5, bkz, y, 2, 1, WIN);
+      addBrick(wx(3) + 0.5, bkz, y, 2, 1, WALL);
+      addBrick(wx(5) + 0.5, bkz, y, 2, 1, WIN);
+      addBrick(wx(7),       bkz, y, 1, 1, WALL);
+    } else {
+      for (let xi = 0; xi < NW; xi += 2)
+        addBrick(wx(xi) + 0.5, bkz, y, 2, 1, WALL);
+    }
+
+    // ── Side walls (inner rows only; corners handled by front/back wall) ─────
+    for (let zi = 1; zi < ND - 1; zi++) {
+      addBrick(wx(0),      wz(zi), y, 1, 1, WALL);
+      addBrick(wx(NW - 1), wz(zi), y, 1, 1, WALL);
+    }
+  }
+
+  // ── Roof – 3 plate layers of dark red ────────────────────────────────────
+  const roofY = NL * H;
+  for (let p = 0; p < 3; p++)
+    for (let zi = 0; zi < ND; zi++)
+      addBrick(cx, wz(zi), roofY + p * PH, NW, 1, ROOF, 'plate');
+
+  // ── Chimney – 2×2, 3 bricks tall, slightly right of center ───────────────
+  const chimY = roofY + 3 * PH;
+  for (let cl = 0; cl < 3; cl++)
+    addBrick(2, wz(2), chimY + cl * H, 2, 2, WALL);
+
+  updateCount();
+}
+
 // ─── Brick Geometry ──────────────────────────────────────────────────────────
 function typeHeight(type) {
   return type === 'plate' ? PLATE_H_VAL : BRICK_H;
@@ -558,9 +636,7 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
     const lc = LIGHT_COLORS[color];
     const pt = new THREE.PointLight(lc.pointColor, 12, 56, 1.5);
     pt.position.set(0, fullH * 0.5, 0); // inside brick → strahlt nach allen Seiten
-    pt.castShadow = true;
-    pt.shadow.mapSize.set(512, 512);
-    pt.shadow.bias = -0.003;
+    pt.castShadow = false;
     group.add(pt);
   }
 
@@ -913,6 +989,7 @@ function animate() {
   controls.update();
   renderer.render(scene, camera);
 }
+buildDemoHouse();
 animate();
 </script>
 </body>
