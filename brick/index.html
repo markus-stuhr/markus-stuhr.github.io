@@ -530,8 +530,9 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   const mat     = makeMat(color, isGhost);
   const studMat = makeMat(color, isGhost);
 
+  const isLight = !isGhost && isLightColor(color);
   const body = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), mat);
-  body.castShadow    = !isGhost;
+  body.castShadow    = !isGhost && !isLight;
   body.receiveShadow = !isGhost;
   if (trans) body.renderOrder = 1; // render after opaque
   body.position.y = bh / 2;
@@ -546,7 +547,7 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
         fullH - 0.01 + STUD_H / 2,
         (sz - (d - 1) / 2) * STUD
       );
-      stud.castShadow = !isGhost;
+      stud.castShadow = !isGhost && !isLight;
       if (trans) stud.renderOrder = 1;
       group.add(stud);
     }
