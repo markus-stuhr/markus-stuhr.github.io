@@ -557,8 +557,10 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   if (!isGhost && isLightColor(color)) {
     const lc = LIGHT_COLORS[color];
     const pt = new THREE.PointLight(lc.pointColor, 12, 28, 1.5);
-    pt.position.set(0, fullH + 0.5, 0);
-    pt.castShadow = false;
+    pt.position.set(0, fullH * 0.5, 0); // inside brick → strahlt nach allen Seiten
+    pt.castShadow = true;
+    pt.shadow.mapSize.set(512, 512);
+    pt.shadow.bias = -0.003;
     group.add(pt);
   }
 
