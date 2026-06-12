@@ -319,6 +319,10 @@ const COLORS = [
   { name: 'Light Gray',       hex: '#9C9C9C' },
   { name: 'Dark Gray',        hex: '#6B5A5A' },
   { name: 'Black',            hex: '#1B2A34' },
+  // Light
+  { name: 'Licht (Weiß)',     hex: '#LIGHT_W', emissive: '#ffffff', emissiveColor: '#ffffff' },
+  { name: 'Licht (Warm)',     hex: '#LIGHT_O', emissive: '#ffaa33', emissiveColor: '#ffaa33' },
+  { name: 'Licht (Kalt)',     hex: '#LIGHT_B', emissive: '#aaccff', emissiveColor: '#aaccff' },
   // Special
   { name: 'Gold',             hex: '#DBAC34' },
   { name: 'Silver',           hex: '#A5A9B4' },
@@ -377,7 +381,7 @@ renderer.shadowMap.type = THREE.VSMShadowMap; // smoother penumbra
 const ambient = new THREE.AmbientLight(0xffffff, 0.35);
 scene.add(ambient);
 
-// Sun — warm directional, sharp shadows from above-right
+// Sun — warm directional, shadows
 const sun = new THREE.DirectionalLight(0xfff4d6, 2.2);
 sun.position.set(28, 45, 18);
 sun.castShadow = true;
@@ -390,23 +394,6 @@ sun.shadow.bias         = -0.0005;
 sun.shadow.normalBias   = 0.02;
 sun.shadow.radius       = 2;
 scene.add(sun);
-
-// Key light — cool blue from the left, casts secondary shadows
-const keyLight = new THREE.SpotLight(0x9bbeff, 1.4, 120, Math.PI / 5, 0.4, 1.2);
-keyLight.position.set(-30, 35, 10);
-keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(2048, 2048);
-keyLight.shadow.bias       = -0.0008;
-keyLight.shadow.normalBias = 0.02;
-keyLight.shadow.radius     = 3;
-scene.add(keyLight);
-scene.add(keyLight.target); // target stays at origin
-
-// Rim light — warm accent from behind, no shadow (cheap fill)
-const rimLight = new THREE.SpotLight(0xffb347, 0.8, 100, Math.PI / 6, 0.6, 1.5);
-rimLight.position.set(5, 20, -35);
-scene.add(rimLight);
-scene.add(rimLight.target);
 
 // ─── Environment Map (for transmission / reflections) ────────────────────────
 {
@@ -483,42 +470,45 @@ function getStudGeo() {
   return new THREE.CylinderGeometry(STUD_R, STUD_R, STUD_H, 12);
 }
 
-function isTransColor(hex) {
-  // Match Trans- colors by hex — the ones in our palette that start with Trans
-  const transHexes = new Set([
-    '#FCFCFC','#C91A09','#0020A0','#F8F177','#84B68D','#F08F1C'
-  ]);
-  return transHexes.has(hex.toUpperCase()) || transHexes.has(hex);
-}
+const LIGHT_COLORS = {
+  '#LIGHT_W': { color: '#ffffff', emissive: '#ffffff', pointColor: 0xffffff },
+  '#LIGHT_O': { color: '#ffcc77', emissive: '#ffaa33', pointColor: 0xffaa33 },
+  '#LIGHT_B': { color: '#cce0ff', emissive: '#aaccff', pointColor: 0xaaccff },
+};
+const TRANS_HEXES = new Set(['#FCFCFC','#C91A09','#0020A0','#F8F177','#84B68D','#F08F1C']);
+
+function isLightColor(hex) { return hex in LIGHT_COLORS; }
+function isTransColor(hex) { return TRANS_HEXES.has(hex.toUpperCase()) || TRANS_HEXES.has(hex); }
 
 function makeMat(color, isGhost) {
-  const col = new THREE.Color(color);
   if (isGhost) {
+    const c = isLightColor(color) ? LIGHT_COLORS[color].color : color;
     return new THREE.MeshStandardMaterial({
-      color: col, roughness: 0.45, metalness: 0.05,
+      color: new THREE.Color(c), roughness: 0.45, metalness: 0.05,
       transparent: true, opacity: 0.4,
     });
   }
-  if (isTransColor(color)) {
-    // Physical glass-like material
-    return new THREE.MeshPhysicalMaterial({
-      color: col,
-      roughness: 0.05,
+  if (isLightColor(color)) {
+    const lc = LIGHT_COLORS[color];
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color(lc.color),
+      emissive: new THREE.Color(lc.emissive),
+      emissiveIntensity: 2.5,
+      roughness: 0.3,
       metalness: 0.0,
-      transmission: 0.88,   // light passes through
-      thickness: 0.8,       // refraction depth
-      ior: 1.46,            // Lego ABS refractive index
-      transparent: true,
-      opacity: 0.92,
-      envMapIntensity: 1.2,
     });
   }
-  // Standard ABS plastic
+  if (isTransColor(color)) {
+    return new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(color),
+      roughness: 0.05, metalness: 0.0,
+      transmission: 0.88, thickness: 0.8, ior: 1.46,
+      transparent: true, opacity: 0.92,
+    });
+  }
   return new THREE.MeshStandardMaterial({
-    color: col,
-    roughness: 0.42,
-    metalness: 0.0,
-    envMapIntensity: 0.4,
+    color: new THREE.Color(color),
+    roughness: 0.42, metalness: 0.0,
   });
 }
 
@@ -555,6 +545,17 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
       if (trans) stud.renderOrder = 1;
       group.add(stud);
     }
+  }
+
+  // Licht-Steine bekommen einen PointLight
+  if (!isGhost && isLightColor(color)) {
+    const lc = LIGHT_COLORS[color];
+    const pt = new THREE.PointLight(lc.pointColor, 3.5, 18, 2);
+    pt.position.set(0, fullH + 0.5, 0);
+    pt.castShadow = true;
+    pt.shadow.mapSize.set(512, 512);
+    pt.shadow.bias = -0.002;
+    group.add(pt);
   }
 
   return group;
