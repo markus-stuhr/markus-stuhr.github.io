@@ -1104,8 +1104,16 @@ renderer.domElement.addEventListener('mousemove', e => {
   updateGhostFromMouse();
 });
 
-renderer.domElement.addEventListener('click', e => {
+let _mouseDownX = 0, _mouseDownY = 0;
+renderer.domElement.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
+  _mouseDownX = e.clientX;
+  _mouseDownY = e.clientY;
+});
+renderer.domElement.addEventListener('mouseup', e => {
+  if (e.button !== 0) return;
+  const dx = e.clientX - _mouseDownX, dy = e.clientY - _mouseDownY;
+  if (Math.sqrt(dx*dx + dy*dy) > 4) return; // war ein Drag
   if (mode === 'place') placeBrick();
 });
 
