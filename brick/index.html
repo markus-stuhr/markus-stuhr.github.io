@@ -321,8 +321,8 @@ function getStudGeo() {
 function createBrickMesh(w, d, color, isGhost = false) {
   const group = new THREE.Group();
 
-  const bw = w * STUD - 0.02;
-  const bd = d * STUD - 0.02;
+  const bw = w * STUD - 0.01;
+  const bd = d * STUD - 0.01;
   const bh = HEIGHT - 0.01;
 
   const mat = new THREE.MeshStandardMaterial({
