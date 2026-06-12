@@ -801,15 +801,19 @@ window.toggleDayNight = function() {
   isNight = !isNight;
   document.getElementById('btn-daynight').textContent = isNight ? '🌙' : '☀️';
   if (isNight) {
-    scene.background = new THREE.Color(0x010204);
-    scene.fog = new THREE.FogExp2(0x010204, 0.016);
-    ambient.intensity = 0.002;
-    sun.intensity     = 0.0;
+    scene.background = new THREE.Color(0x00010a);
+    scene.fog = new THREE.FogExp2(0x00010a, 0.016);
+    ambient.color.set(0x1a3a6b);
+    ambient.intensity = 0.06;
+    sun.color.set(0x2244aa);
+    sun.intensity = 0.12;
   } else {
     scene.background = new THREE.Color(0x1a1a2e);
     scene.fog = new THREE.FogExp2(0x1a1a2e, 0.018);
+    ambient.color.set(0xffffff);
     ambient.intensity = 0.35;
-    sun.intensity     = 2.2;
+    sun.color.set(0xfff4d6);
+    sun.intensity = 2.2;
   }
 };
 
