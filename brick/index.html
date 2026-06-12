@@ -258,6 +258,8 @@
   }
   .pb-cat:hover { background: rgba(255,255,255,0.06); color: #fff; }
   .pb-cat.active { background: rgba(255,200,0,0.15); color: #ffd700; }
+  #pb-cats.kb-focus { border-right-color: rgba(255,200,0,0.4); }
+  #pb-parts-list.kb-focus { outline: none; border-left: 1px solid rgba(255,200,0,0.4); margin-left: -1px; }
 
   /* Parts grid */
   #pb-parts {
@@ -1258,6 +1260,7 @@ let pbActiveCat   = 0;    // index into pbData.categories
 let pbSearchVal   = '';
 let pbDeduped     = [];   // current deduped+filtered parts list
 let pbSelectedIdx = 0;    // selected index in pbDeduped
+let pbFocusCol    = 'parts'; // 'cats' | 'parts' — welche Spalte per Tastatur aktiv ist
 
 window.togglePartBrowser = function() {
   const panel = document.getElementById('part-browser');
@@ -1330,6 +1333,8 @@ function studSvg(w, d) {
 function renderParts() {
   const cat = pbData.categories[pbActiveCat];
   const el  = document.getElementById('pb-parts');
+  document.getElementById('pb-cats').classList.toggle('kb-focus', pbFocusCol === 'cats');
+  document.getElementById('pb-parts')?.classList.toggle('kb-focus', pbFocusCol === 'parts');
 
   // Deduplicate by w×d
   const seen = new Map();
@@ -1390,20 +1395,30 @@ document.addEventListener('keydown', e => {
 
   if (e.key === 'ArrowRight') {
     e.preventDefault();
-    pbSelectedIdx = Math.min(pbSelectedIdx + 1, pbDeduped.length - 1);
+    pbFocusCol = 'parts';
     renderParts();
-    document.querySelectorAll('.pb-part')[pbSelectedIdx]?.scrollIntoView({ block: 'nearest' });
   } else if (e.key === 'ArrowLeft') {
     e.preventDefault();
-    pbSelectedIdx = Math.max(pbSelectedIdx - 1, 0);
+    pbFocusCol = 'cats';
     renderParts();
-    document.querySelectorAll('.pb-part')[pbSelectedIdx]?.scrollIntoView({ block: 'nearest' });
   } else if (e.key === 'ArrowDown') {
     e.preventDefault();
-    selectCat(Math.min(pbActiveCat + 1, cats.length - 1));
+    if (pbFocusCol === 'cats') {
+      selectCat(Math.min(pbActiveCat + 1, cats.length - 1));
+    } else {
+      pbSelectedIdx = Math.min(pbSelectedIdx + 1, pbDeduped.length - 1);
+      renderParts();
+      document.querySelectorAll('.pb-part')[pbSelectedIdx]?.scrollIntoView({ block: 'nearest' });
+    }
   } else if (e.key === 'ArrowUp') {
     e.preventDefault();
-    selectCat(Math.max(pbActiveCat - 1, 0));
+    if (pbFocusCol === 'cats') {
+      selectCat(Math.max(pbActiveCat - 1, 0));
+    } else {
+      pbSelectedIdx = Math.max(pbSelectedIdx - 1, 0);
+      renderParts();
+      document.querySelectorAll('.pb-part')[pbSelectedIdx]?.scrollIntoView({ block: 'nearest' });
+    }
   }
 });
 
