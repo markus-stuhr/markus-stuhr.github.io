@@ -28,133 +28,129 @@
     left: 50%;
     transform: translateX(-50%);
     display: flex;
-    flex-direction: column;
-    gap: 6px;
+    gap: 8px;
+    align-items: center;
     background: rgba(0,0,0,0.65);
     backdrop-filter: blur(10px);
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 12px;
-    padding: 8px 12px;
+    padding: 7px 12px;
     z-index: 100;
   }
-  .toolbar-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
 
+  .separator { width: 1px; height: 24px; background: rgba(255,255,255,0.12); }
+
+  /* Mode buttons */
   .tool-btn {
     background: rgba(255,255,255,0.08);
     border: 1px solid rgba(255,255,255,0.15);
     color: #fff;
     border-radius: 8px;
-    padding: 6px 14px;
+    padding: 5px 13px;
     cursor: pointer;
     font-size: 13px;
-    transition: background 0.15s, border-color 0.15s;
-    user-select: none;
-  }
-  .tool-btn:hover { background: rgba(255,255,255,0.16); }
-  .tool-btn.active {
-    background: rgba(255,200,0,0.25);
-    border-color: rgba(255,200,0,0.6);
-    color: #ffd700;
-  }
-
-  .separator { width: 1px; height: 24px; background: rgba(255,255,255,0.15); }
-
-  /* Color Picker */
-  #color-strip {
-    display: flex;
-    gap: 5px;
-    align-items: center;
-  }
-
-  .color-dot {
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: transform 0.1s, border-color 0.1s;
-    flex-shrink: 0;
-  }
-  .color-dot:hover { transform: scale(1.2); }
-  .color-dot.selected { border-color: #fff; transform: scale(1.15); }
-
-  /* Brick size selector */
-  #size-selector {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-    max-width: 220px;
-  }
-  .size-btn {
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.15);
-    color: #ccc;
-    border-radius: 6px;
-    padding: 3px 7px;
-    cursor: pointer;
-    font-size: 11px;
     transition: background 0.15s;
     user-select: none;
   }
-  .size-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
-  .size-btn.active {
-    background: rgba(255,200,0,0.2);
-    border-color: rgba(255,200,0,0.5);
+  .tool-btn:hover { background: rgba(255,255,255,0.15); }
+  .tool-btn.active {
+    background: rgba(255,200,0,0.22);
+    border-color: rgba(255,200,0,0.55);
     color: #ffd700;
   }
 
-  /* Type selector (Brick / Plate) */
-  #type-selector { display: flex; gap: 5px; }
-  .type-btn {
+  /* Custom dropdown */
+  .dd-wrap {
+    position: relative;
+    user-select: none;
+  }
+  .dd-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     background: rgba(255,255,255,0.08);
     border: 1px solid rgba(255,255,255,0.15);
-    color: #ccc;
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    transition: background 0.15s;
+    min-width: 90px;
+  }
+  .dd-trigger:hover { background: rgba(255,255,255,0.14); }
+  .dd-trigger .dd-label { font-size: 10px; color: rgba(255,255,255,0.45); margin-right: 2px; }
+  .dd-trigger .dd-value { flex: 1; }
+  .dd-trigger .dd-arrow { font-size: 9px; color: rgba(255,255,255,0.4); }
+
+  .dd-menu {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    background: rgba(15,15,25,0.97);
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 10px;
+    padding: 6px;
+    z-index: 300;
+    min-width: 130px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .dd-menu.open { display: block; }
+
+  /* Size grid dropdown */
+  .dd-menu.grid { display: none; grid-template-columns: repeat(3, 1fr); gap: 4px; min-width: 180px; }
+  .dd-menu.grid.open { display: grid; }
+
+  .dd-item {
+    padding: 6px 10px;
     border-radius: 6px;
-    padding: 4px 10px;
     cursor: pointer;
     font-size: 12px;
-    transition: background 0.15s;
-    user-select: none;
+    color: #ccc;
+    transition: background 0.1s, color 0.1s;
+    white-space: nowrap;
   }
-  .type-btn:hover { background: rgba(255,255,255,0.16); color: #fff; }
-  .type-btn.active {
-    background: rgba(100,200,255,0.2);
-    border-color: rgba(100,200,255,0.5);
-    color: #7dd8ff;
+  .dd-item:hover { background: rgba(255,255,255,0.1); color: #fff; }
+  .dd-item.selected { background: rgba(255,200,0,0.18); color: #ffd700; }
+
+  /* Color dropdown items */
+  .dd-color-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    color: #ccc;
+    transition: background 0.1s;
+    white-space: nowrap;
+  }
+  .dd-color-item:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .dd-color-item.selected { background: rgba(255,200,0,0.15); color: #ffd700; }
+  .dd-color-swatch {
+    width: 16px; height: 16px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    border: 1px solid rgba(255,255,255,0.15);
   }
 
-  /* Color palette panel */
-  #color-panel {
-    position: fixed;
-    bottom: 50px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.75);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px;
-    padding: 10px 12px;
-    display: none;
-    flex-wrap: wrap;
-    gap: 5px;
-    max-width: 420px;
-    z-index: 200;
-  }
-  #color-panel.open { display: flex; }
-  .cp-dot {
-    width: 20px; height: 20px;
-    border-radius: 50%;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: transform 0.1s, border-color 0.1s;
+  /* Color dropdown — scrollable */
+  #dd-color-menu { max-height: 320px; overflow-y: auto; min-width: 180px; }
+  #dd-color-menu::-webkit-scrollbar { width: 4px; }
+  #dd-color-menu::-webkit-scrollbar-track { background: transparent; }
+  #dd-color-menu::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+
+  /* Color trigger swatch */
+  #dd-color-trigger .color-preview {
+    width: 16px; height: 16px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.2);
     flex-shrink: 0;
   }
-  .cp-dot:hover { transform: scale(1.25); }
-  .cp-dot.selected { border-color: #fff; }
 
   /* Info overlay */
   #info {
@@ -196,39 +192,59 @@
 <div id="canvas-container"></div>
 
 <div id="toolbar">
-  <!-- Row 1: Mode + Type + Color -->
-  <div class="toolbar-row">
-    <button class="tool-btn active" id="btn-place" onclick="setMode('place')">Platzieren</button>
-    <button class="tool-btn" id="btn-remove" onclick="setMode('remove')">Entfernen</button>
-    <div class="separator"></div>
-    <div id="type-selector">
-      <button class="type-btn active" id="btn-brick" onclick="setType('brick')">Brick</button>
-      <button class="type-btn" id="btn-plate" onclick="setType('plate')">Plate</button>
+  <!-- Mode -->
+  <button class="tool-btn active" id="btn-place" onclick="setMode('place')">Platzieren</button>
+  <button class="tool-btn" id="btn-remove" onclick="setMode('remove')">Entfernen</button>
+
+  <div class="separator"></div>
+
+  <!-- Brick Type dropdown -->
+  <div class="dd-wrap" id="dd-type">
+    <div class="dd-trigger" id="dd-type-trigger" onclick="toggleDD('dd-type')">
+      <span class="dd-label">TYP</span>
+      <span class="dd-value" id="dd-type-value">Brick</span>
+      <span class="dd-arrow">▾</span>
     </div>
-    <div class="separator"></div>
-    <div id="color-strip"></div>
+    <div class="dd-menu" id="dd-type-menu">
+      <div class="dd-item selected" data-type="brick" onclick="setType('brick')">Brick</div>
+      <div class="dd-item" data-type="plate" onclick="setType('plate')">Plate</div>
+    </div>
   </div>
-  <!-- Row 2: Sizes -->
-  <div class="toolbar-row">
-    <div id="size-selector">
-      <button class="size-btn active" data-w="1" data-d="1" onclick="setSize(1,1)">1×1</button>
-      <button class="size-btn" data-w="1" data-d="2" onclick="setSize(1,2)">1×2</button>
-      <button class="size-btn" data-w="1" data-d="3" onclick="setSize(1,3)">1×3</button>
-      <button class="size-btn" data-w="1" data-d="4" onclick="setSize(1,4)">1×4</button>
-      <button class="size-btn" data-w="1" data-d="6" onclick="setSize(1,6)">1×6</button>
-      <button class="size-btn" data-w="1" data-d="8" onclick="setSize(1,8)">1×8</button>
-      <button class="size-btn" data-w="2" data-d="2" onclick="setSize(2,2)">2×2</button>
-      <button class="size-btn" data-w="2" data-d="3" onclick="setSize(2,3)">2×3</button>
-      <button class="size-btn" data-w="2" data-d="4" onclick="setSize(2,4)">2×4</button>
-      <button class="size-btn" data-w="2" data-d="6" onclick="setSize(2,6)">2×6</button>
-      <button class="size-btn" data-w="2" data-d="8" onclick="setSize(2,8)">2×8</button>
-      <button class="size-btn" data-w="4" data-d="4" onclick="setSize(4,4)">4×4</button>
+
+  <!-- Brick Size dropdown -->
+  <div class="dd-wrap" id="dd-size">
+    <div class="dd-trigger" id="dd-size-trigger" onclick="toggleDD('dd-size')">
+      <span class="dd-label">GRÖSSE</span>
+      <span class="dd-value" id="dd-size-value">1×1</span>
+      <span class="dd-arrow">▾</span>
     </div>
+    <div class="dd-menu grid" id="dd-size-menu">
+      <div class="dd-item selected" data-w="1" data-d="1" onclick="setSize(1,1)">1×1</div>
+      <div class="dd-item" data-w="1" data-d="2" onclick="setSize(1,2)">1×2</div>
+      <div class="dd-item" data-w="1" data-d="3" onclick="setSize(1,3)">1×3</div>
+      <div class="dd-item" data-w="1" data-d="4" onclick="setSize(1,4)">1×4</div>
+      <div class="dd-item" data-w="1" data-d="6" onclick="setSize(1,6)">1×6</div>
+      <div class="dd-item" data-w="1" data-d="8" onclick="setSize(1,8)">1×8</div>
+      <div class="dd-item" data-w="2" data-d="2" onclick="setSize(2,2)">2×2</div>
+      <div class="dd-item" data-w="2" data-d="3" onclick="setSize(2,3)">2×3</div>
+      <div class="dd-item" data-w="2" data-d="4" onclick="setSize(2,4)">2×4</div>
+      <div class="dd-item" data-w="2" data-d="6" onclick="setSize(2,6)">2×6</div>
+      <div class="dd-item" data-w="2" data-d="8" onclick="setSize(2,8)">2×8</div>
+      <div class="dd-item" data-w="4" data-d="4" onclick="setSize(4,4)">4×4</div>
+    </div>
+  </div>
+
+  <!-- Color dropdown -->
+  <div class="dd-wrap" id="dd-color">
+    <div class="dd-trigger" id="dd-color-trigger" onclick="toggleDD('dd-color')">
+      <span class="dd-label">FARBE</span>
+      <div class="color-preview" id="dd-color-preview"></div>
+      <span class="dd-value" id="dd-color-value">Red</span>
+      <span class="dd-arrow">▾</span>
+    </div>
+    <div class="dd-menu" id="dd-color-menu"></div>
   </div>
 </div>
-
-<!-- Full color palette panel -->
-<div id="color-panel"></div>
 
 <div id="info">Linksklick: Brick setzen &nbsp;|&nbsp; Rechtsklick: Brick entfernen &nbsp;|&nbsp; WASD: Kamera bewegen &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; Ctrl+Z/Y: Undo/Redo</div>
 <div id="brick-count">Steine: <span id="count">0</span></div>
@@ -709,6 +725,22 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// ─── Dropdown helper ─────────────────────────────────────────────────────────
+window.toggleDD = function(id) {
+  const wrap = document.getElementById(id);
+  const menu = wrap.querySelector('.dd-menu');
+  const isOpen = menu.classList.contains('open');
+  // close all
+  document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('open'));
+  if (!isOpen) menu.classList.add('open');
+};
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.dd-wrap')) {
+    document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('open'));
+  }
+});
+
 // ─── UI wiring ───────────────────────────────────────────────────────────────
 window.setMode = function(m) {
   mode = m;
@@ -717,53 +749,46 @@ window.setMode = function(m) {
   if (ghostMesh) ghostMesh.visible = (m === 'place');
 };
 
-window.setSize = function(w, d) {
-  currentW = w; currentD = d;
-  document.querySelectorAll('.size-btn').forEach(b => b.classList.remove('active'));
-  document.querySelector(`.size-btn[data-w="${w}"][data-d="${d}"]`).classList.add('active');
-  updateGhost(currentW, currentD, currentColor, currentType);
-};
-
 window.setType = function(t) {
   currentType = t;
-  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('btn-' + t).classList.add('active');
+  document.querySelectorAll('#dd-type-menu .dd-item').forEach(b => b.classList.remove('selected'));
+  document.querySelector(`#dd-type-menu .dd-item[data-type="${t}"]`).classList.add('selected');
+  document.getElementById('dd-type-value').textContent = t === 'brick' ? 'Brick' : 'Plate';
+  document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('open'));
   updateGhost(currentW, currentD, currentColor, currentType);
 };
 
-// ─── Color palette ────────────────────────────────────────────────────────────
-// Swatch in toolbar shows current color, click opens full panel
-const strip = document.getElementById('color-strip');
-const panel = document.getElementById('color-panel');
+window.setSize = function(w, d) {
+  currentW = w; currentD = d;
+  document.querySelectorAll('#dd-size-menu .dd-item').forEach(b => b.classList.remove('selected'));
+  document.querySelector(`#dd-size-menu .dd-item[data-w="${w}"][data-d="${d}"]`).classList.add('selected');
+  document.getElementById('dd-size-value').textContent = `${w}×${d}`;
+  document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('open'));
+  updateGhost(currentW, currentD, currentColor, currentType);
+};
 
-const swatch = document.createElement('div');
-swatch.className = 'color-dot selected';
-swatch.style.background = currentColor;
-swatch.style.width = '26px';
-swatch.style.height = '26px';
-swatch.style.borderRadius = '6px';
-swatch.title = 'Farbe wählen';
-swatch.onclick = (e) => { e.stopPropagation(); panel.classList.toggle('open'); };
-strip.appendChild(swatch);
+// ─── Color dropdown ───────────────────────────────────────────────────────────
+const colorMenu = document.getElementById('dd-color-menu');
+const colorPreview = document.getElementById('dd-color-preview');
+const colorValueEl = document.getElementById('dd-color-value');
+
+colorPreview.style.background = currentColor;
+colorValueEl.textContent = COLORS[0].name;
 
 COLORS.forEach((c) => {
-  const dot = document.createElement('div');
-  dot.className = 'cp-dot' + (c.hex === currentColor ? ' selected' : '');
-  dot.style.background = c.hex;
-  dot.title = c.name;
-  dot.onclick = () => {
+  const item = document.createElement('div');
+  item.className = 'dd-color-item' + (c.hex === currentColor ? ' selected' : '');
+  item.innerHTML = `<div class="dd-color-swatch" style="background:${c.hex}"></div>${c.name}`;
+  item.onclick = () => {
     currentColor = c.hex;
-    swatch.style.background = c.hex;
-    document.querySelectorAll('.cp-dot').forEach(d => d.classList.remove('selected'));
-    dot.classList.add('selected');
+    colorPreview.style.background = c.hex;
+    colorValueEl.textContent = c.name;
+    document.querySelectorAll('.dd-color-item').forEach(i => i.classList.remove('selected'));
+    item.classList.add('selected');
+    document.querySelectorAll('.dd-menu').forEach(m => m.classList.remove('open'));
     updateGhost(currentW, currentD, currentColor, currentType);
-    panel.classList.remove('open');
   };
-  panel.appendChild(dot);
-});
-
-document.addEventListener('click', (e) => {
-  if (!panel.contains(e.target) && e.target !== swatch) panel.classList.remove('open');
+  colorMenu.appendChild(item);
 });
 
 // ─── Render Loop ──────────────────────────────────────────────────────────────
