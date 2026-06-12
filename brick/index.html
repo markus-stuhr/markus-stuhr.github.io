@@ -192,6 +192,11 @@
 <div id="canvas-container"></div>
 
 <div id="toolbar">
+  <!-- Day/Night toggle -->
+  <button id="btn-daynight" onclick="toggleDayNight()" title="Tag/Nacht" style="background:none;border:none;cursor:pointer;font-size:20px;padding:2px 4px;line-height:1;user-select:none;">☀️</button>
+
+  <div class="separator"></div>
+
   <!-- Mode -->
   <button class="tool-btn active" id="btn-place" onclick="setMode('place')">Platzieren</button>
   <button class="tool-btn" id="btn-remove" onclick="setMode('remove')">Entfernen</button>
@@ -788,6 +793,24 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+// ─── Day / Night ─────────────────────────────────────────────────────────────
+let isNight = false;
+window.toggleDayNight = function() {
+  isNight = !isNight;
+  document.getElementById('btn-daynight').textContent = isNight ? '🌙' : '☀️';
+  if (isNight) {
+    scene.background = new THREE.Color(0x05080f);
+    scene.fog = new THREE.FogExp2(0x05080f, 0.014);
+    ambient.intensity = 0.04;
+    sun.intensity     = 0.0;
+  } else {
+    scene.background = new THREE.Color(0x1a1a2e);
+    scene.fog = new THREE.FogExp2(0x1a1a2e, 0.018);
+    ambient.intensity = 0.35;
+    sun.intensity     = 2.2;
+  }
+};
 
 // ─── Dropdown helper ─────────────────────────────────────────────────────────
 window.toggleDD = function(id) {
