@@ -498,8 +498,8 @@ function makeMat(color, isGhost) {
     return new THREE.MeshStandardMaterial({
       color: new THREE.Color(lc.color),
       emissive: new THREE.Color(lc.emissive),
-      emissiveIntensity: 2.5,
-      roughness: 0.3,
+      emissiveIntensity: 6.0,
+      roughness: 0.2,
       metalness: 0.0,
     });
   }
@@ -555,7 +555,7 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   // Licht-Steine bekommen einen PointLight
   if (!isGhost && isLightColor(color)) {
     const lc = LIGHT_COLORS[color];
-    const pt = new THREE.PointLight(lc.pointColor, 3.5, 18, 2);
+    const pt = new THREE.PointLight(lc.pointColor, 12, 28, 1.5);
     pt.position.set(0, fullH + 0.5, 0);
     pt.castShadow = true;
     pt.shadow.mapSize.set(512, 512);
@@ -800,9 +800,9 @@ window.toggleDayNight = function() {
   isNight = !isNight;
   document.getElementById('btn-daynight').textContent = isNight ? '🌙' : '☀️';
   if (isNight) {
-    scene.background = new THREE.Color(0x05080f);
-    scene.fog = new THREE.FogExp2(0x05080f, 0.014);
-    ambient.intensity = 0.04;
+    scene.background = new THREE.Color(0x010204);
+    scene.fog = new THREE.FogExp2(0x010204, 0.016);
+    ambient.intensity = 0.01;
     sun.intensity     = 0.0;
   } else {
     scene.background = new THREE.Color(0x1a1a2e);
