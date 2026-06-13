@@ -207,6 +207,14 @@ def auto_lod(tri_count):
         return 2
     return 3
 
+# ── Grouping ─────────────────────────────────────────────────────────────────
+# Druck/Deko-Varianten teilen eine Gussform. Token 'pr####' oder 'mia'/'mib'
+# abstreifen, aber Form-Buchstaben (a/b/c) und Assembly-Codes (c01) behalten.
+PRINT_SUFFIX = re.compile(r'(pr\d+|mi[ab])$')
+
+def group_key(pid):
+    return PRINT_SUFFIX.sub('', pid)
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def load_parts_index():
@@ -293,6 +301,7 @@ def main():
             'hasLDraw': has_ldraw,
             'triCount': tri_count,
             'lod': lod,
+            'group': group_key(pid),
         })
 
         if has_ldraw:

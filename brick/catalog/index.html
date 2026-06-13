@@ -199,6 +199,17 @@
     top: 4px;
     right: 4px;
   }
+  .card-variants {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    background: rgba(0,0,0,.55);
+    color: var(--text);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 10px;
+    font-weight: 700;
+  }
   .card-info {
     padding: 6px 8px;
     flex: 1;
@@ -279,6 +290,37 @@
   .lod-btn.active-lod2 { background: var(--lod2); color: #fff; border-color: var(--lod2); }
   .lod-btn.active-lod3 { background: var(--lod3); color: #fff; border-color: var(--lod3); }
   .lod-label { font-size: 10px; opacity: .7; }
+
+  #variants-section { margin-top: 14px; }
+  #variants-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    margin-bottom: 6px;
+  }
+  #variants-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .variant-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: background .1s;
+  }
+  .variant-row:hover { background: var(--surface2); }
+  .variant-row.active { background: var(--surface2); border-left: 2px solid var(--accent); }
+  .variant-id { color: var(--accent); font-family: ui-monospace, monospace; white-space: nowrap; }
+  .variant-name { color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   #save-overrides {
     margin: 12px 14px;
@@ -366,6 +408,10 @@
       <div class="lod-btn" data-lod="2">L2<br><span class="lod-label">Mid</span></div>
       <div class="lod-btn" data-lod="3">L3<br><span class="lod-label">Full</span></div>
     </div>
+    <div id="variants-section">
+      <div id="variants-title"></div>
+      <div id="variants-list"></div>
+    </div>
   </div>
   <button id="save-overrides">💾 Overrides speichern</button>
 </div>
@@ -385,13 +431,16 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 // ── State ──────────────────────────────────────────────────────────────────
 let catalog = null;
-let allParts = [];
+let allParts = [];          // alle 11.641 Parts (flach)
+let representatives = [];    // ein Part pro Gruppe (Druckvarianten zusammengefasst)
+let groupsMap = new Map();   // groupKey → [parts]
 let filteredParts = [];
 let activeCat = null;       // null = all
 let activeLodFilter = null; // null = all
 let activeFilter = 'all';
 let searchQ = '';
 let selectedPart = null;
+let selectedVariantId = null;
 let lodOverrides = {};      // partId → lod
 
 // ── Three.js for detail panel ─────────────────────────────────────────────
@@ -561,6 +610,7 @@ async function loadCatalog() {
   }
 
   allParts = catalog.parts;
+  buildGroups();
   setMsg('Initialisiere 3D …');
   initDetail();
   initThumbRenderer();
@@ -574,19 +624,43 @@ function setMsg(t) {
   document.getElementById('loading-msg').textContent = t;
 }
 
+// ── Grouping ────────────────────────────────────────────────────────────────
+// Parts mit gleichem `group`-Key (Druck/Deko-Varianten) zu einer Karte bündeln.
+function buildGroups() {
+  groupsMap = new Map();
+  for (const p of allParts) {
+    const k = p.group ?? p.id;
+    if (!groupsMap.has(k)) groupsMap.set(k, []);
+    groupsMap.get(k).push(p);
+  }
+  representatives = [];
+  for (const [key, members] of groupsMap) {
+    // Repräsentant: bevorzugt das unbedruckte Basis-Part mit Geometrie,
+    // sonst erstes Member mit Geometrie, sonst Basis-Part, sonst erstes.
+    const rep =
+      members.find(p => p.id === key && p.hasLDraw) ||
+      members.find(p => p.hasLDraw) ||
+      members.find(p => p.id === key) ||
+      members[0];
+    rep._variants = members;
+    rep._count = members.length;
+    representatives.push(rep);
+  }
+}
+
 // ── Sidebar ───────────────────────────────────────────────────────────────
 function buildSidebar() {
   const list = document.getElementById('cat-list');
   list.innerHTML = '';
 
-  // "All" entry
-  const allEl = makeCatItem(null, 'Alle Parts', allParts.length);
+  // "All" entry — Anzahl = Gruppen (Karten)
+  const allEl = makeCatItem(null, 'Alle Parts', representatives.length);
   list.appendChild(allEl);
 
-  // Per-category
+  // Per-category — gezählt nach Repräsentanten
   const cats = catalog.categories;
   for (const cat of cats) {
-    const count = allParts.filter(p => p.catId === cat.id).length;
+    const count = representatives.filter(p => p.catId === cat.id).length;
     list.appendChild(makeCatItem(cat.id, cat.label, count));
   }
 }
@@ -606,7 +680,7 @@ function makeCatItem(id, label, count) {
 
 // ── Filters ───────────────────────────────────────────────────────────────
 function applyFilters() {
-  let parts = allParts;
+  let parts = representatives;  // gruppiert: ein Repräsentant pro Gruppe
 
   if (activeCat !== null) {
     parts = parts.filter(p => p.catId === activeCat);
@@ -621,7 +695,11 @@ function applyFilters() {
   }
   if (searchQ) {
     const q = searchQ.toLowerCase();
-    parts = parts.filter(p => p.name.toLowerCase().includes(q) || p.id.includes(q));
+    // Treffer, wenn der Repräsentant ODER irgendeine Variante passt
+    parts = parts.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p._variants.some(v => v.id.includes(q) || v.name.toLowerCase().includes(q))
+    );
   }
 
   filteredParts = parts;
@@ -630,8 +708,10 @@ function applyFilters() {
   const catLabel = activeCat
     ? catalog.categories.find(c => c.id === activeCat)?.label ?? 'Unbekannt'
     : 'Alle Parts';
+  const variantTotal = parts.reduce((s, p) => s + p._count, 0);
   document.getElementById('toolbar-title').textContent = catLabel;
-  document.getElementById('part-count').textContent = `${parts.length} Parts`;
+  document.getElementById('part-count').textContent =
+    `${parts.length} Formen · ${variantTotal} Teile`;
 }
 
 // ── Grid ──────────────────────────────────────────────────────────────────
@@ -656,6 +736,7 @@ function renderGrid() {
       <div class="card-canvas-wrap">
         <img class="card-canvas" src="" alt="" style="opacity:0;transition:opacity .3s">
         <span class="card-lod lod-chip ${lodColor(lod)}">${lodLabel(lod)}</span>
+        ${part._count > 1 ? `<span class="card-variants" title="${part._count} Varianten (Drucke)">+${part._count - 1}</span>` : ''}
       </div>
       <div class="card-info">
         <div class="card-name">${part.name}</div>
@@ -691,6 +772,7 @@ function resizeDetailRenderer() {
 
 function selectPart(part) {
   selectedPart = part;
+  selectedVariantId = part.id;
   document.querySelectorAll('.part-card').forEach(c => c.classList.remove('selected'));
   const card = document.querySelector(`.part-card[data-id="${part.id}"]`);
   if (card) card.classList.add('selected');
@@ -713,6 +795,9 @@ function selectPart(part) {
     <div class="info-row"><span class="info-label">LOD (auto)</span><span class="info-val">${part.lod} ${lodLabel(part.lod)}</span></div>
   `;
 
+  // Varianten-Liste (Drucke teilen die Geometrie des Repräsentanten)
+  renderVariants(part);
+
   // LOD selector
   document.querySelectorAll('#lod-selector .lod-btn').forEach(btn => {
     const l = parseInt(btn.dataset.lod);
@@ -725,6 +810,46 @@ function selectPart(part) {
   } else {
     if (detailMesh) { detailScene.remove(detailMesh); detailMesh.geometry.dispose(); detailMesh = null; }
   }
+}
+
+function renderVariants(rep) {
+  const section = document.getElementById('variants-section');
+  const title = document.getElementById('variants-title');
+  const list = document.getElementById('variants-list');
+  const variants = rep._variants || [rep];
+
+  if (variants.length <= 1) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+  title.textContent = `${variants.length} Varianten (geteilte Geometrie)`;
+  list.innerHTML = '';
+
+  for (const v of variants) {
+    const row = document.createElement('div');
+    row.className = 'variant-row' + (v.id === selectedVariantId ? ' active' : '');
+    // Druck-Kürzel hervorheben (Teil hinter der Gruppen-ID)
+    const printSuffix = v.id.startsWith(rep.group) ? v.id.slice(rep.group.length) : '';
+    const label = printSuffix || '(Basis)';
+    row.innerHTML = `
+      <span class="variant-id">${v.id}</span>
+      <span class="variant-name" title="${v.name}">${v.name}</span>`;
+    row.addEventListener('click', () => selectVariant(rep, v));
+    list.appendChild(row);
+  }
+}
+
+// Variante anklicken: Name/ID im Panel aktualisieren (Geometrie = Repräsentant)
+function selectVariant(rep, variant) {
+  selectedVariantId = variant.id;
+  document.getElementById('detail-name').textContent = variant.name;
+  const rows = document.getElementById('detail-rows');
+  const first = rows.querySelector('.info-val');
+  if (first) first.textContent = variant.id;
+  document.querySelectorAll('.variant-row').forEach(r => {
+    r.classList.toggle('active', r.querySelector('.variant-id').textContent === variant.id);
+  });
 }
 
 function setLodOverride(partId, lod) {
