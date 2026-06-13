@@ -505,6 +505,8 @@ async function showDetailMesh(partId) {
 
   const mat = new THREE.MeshStandardMaterial({ color: 0xe3a020, side: THREE.DoubleSide });
   detailMesh = new THREE.Mesh(geo, mat);
+  detailMesh.rotation.set(Math.PI, 0, 0);  // LDraw Y zeigt nach unten → umdrehen
+  detailMesh.updateMatrixWorld(true);
   detailScene.add(detailMesh);
 
   // Fit camera
@@ -552,6 +554,8 @@ function renderThumb(geoData) {
 
   const mat = new THREE.MeshStandardMaterial({ color: 0xe3a020, side: THREE.DoubleSide });
   const mesh = new THREE.Mesh(geo, mat);
+  mesh.rotation.set(Math.PI, 0, 0);  // LDraw Y zeigt nach unten → umdrehen
+  mesh.updateMatrixWorld(true);
   thumbScene.add(mesh);
 
   const box = new THREE.Box3().setFromObject(mesh);
