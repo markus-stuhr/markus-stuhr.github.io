@@ -54,21 +54,32 @@ def base_id(pid):
     m = re.match(r'^(\d+)', pid)
     return m.group(1) if m else None
 
-def deduped_missing():
+PRINT_SUFFIX = re.compile(r'(pr\d+|mi[ab])$')
+
+def group_key(pid):
+    return PRINT_SUFFIX.sub('', pid)
+
+def group_representatives_missing():
+    """Ein Repräsentant pro Form-Gruppe (Druckvarianten gebündelt), der noch
+    keine .dat-Datei hat. So bekommt jede distinkte Form ein eigenes Modell –
+    nicht nur eine pro (w,d)-Maß."""
     data = json.load(open(DATA))
-    ids = set()
+    groups = {}
     for cat in data['categories']:
-        seen = {}
         for p in cat['parts']:
-            k = (p['w'], p['d'])
-            if k not in seen:
-                seen[k] = p['id']
-                ids.add(p['id'])
+            groups.setdefault(group_key(p['id']), []).append(p['id'])
     have = {f.stem for f in (LDRAW / 'parts').glob('*.dat')}
-    return sorted(ids - have)
+    targets = set()
+    for key, ids in groups.items():
+        # Schon ein Member mit .dat? Dann reicht das für die Gruppe.
+        if any(i in have for i in ids):
+            continue
+        # Repräsentant: Basis-Part (== key) bevorzugt, sonst erstes Member
+        targets.add(key if key in ids else ids[0])
+    return sorted(targets)
 
 # ── 1. Parts holen ────────────────────────────────────────────────────────────
-missing = deduped_missing()
+missing = group_representatives_missing()
 print(f'{len(missing)} fehlende Parts ...\n')
 
 direct = fallback = stillmissing = 0
