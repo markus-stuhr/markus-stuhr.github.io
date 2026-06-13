@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brick Catalog</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1a1e;
+    --surface: #26262c;
+    --surface2: #2f2f38;
+    --border: #3a3a45;
+    --accent: #e3a020;
+    --text: #e8e8f0;
+    --text2: #8888a8;
+    --lod1: #4e6d9c;
+    --lod2: #3e8f5e;
+    --lod3: #b85c38;
+    --card: 152px;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, sans-serif;
+    font-size: 13px;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    width: 220px;
+    min-width: 220px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #sidebar h1 {
+    padding: 16px 14px 12px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: .5px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #search-wrap {
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  #search {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    padding: 6px 10px;
+    font-size: 12px;
+    outline: none;
+  }
+  #search:focus { border-color: var(--accent); }
+
+  #cat-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .cat-item {
+    padding: 7px 14px;
+    cursor: pointer;
+    color: var(--text2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+    border-left: 3px solid transparent;
+    transition: color .1s, background .1s;
+  }
+  .cat-item:hover { background: var(--surface2); color: var(--text); }
+  .cat-item.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--surface2);
+  }
+  .cat-count { font-size: 11px; color: var(--text2); }
+
+  #lod-legend {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .lod-chip {
+    display: inline-block;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-right: 4px;
+    cursor: pointer;
+  }
+  .lod1 { background: var(--lod1); color: #fff; }
+  .lod2 { background: var(--lod2); color: #fff; }
+  .lod3 { background: var(--lod3); color: #fff; }
+
+  /* ── Main ── */
+  #main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #toolbar {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    flex-wrap: wrap;
+  }
+  #toolbar-title {
+    font-size: 14px;
+    font-weight: 600;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #part-count { color: var(--text2); font-size: 12px; }
+
+  .filter-chips { display: flex; gap: 6px; margin-left: auto; }
+  .filter-chip {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    cursor: pointer;
+    transition: all .1s;
+  }
+  .filter-chip.active { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Grid ── */
+  #grid-wrap {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--card), 1fr));
+    gap: 10px;
+  }
+
+  .part-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: border-color .12s, transform .12s;
+    display: flex;
+    flex-direction: column;
+  }
+  .part-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-2px);
+  }
+  .part-card.selected { border-color: var(--accent); }
+
+  .card-canvas-wrap {
+    position: relative;
+    height: 120px;
+    background: var(--surface2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .card-lod {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+  }
+  .card-info {
+    padding: 6px 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .card-name {
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--text);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .card-meta {
+    font-size: 10px;
+    color: var(--text2);
+    display: flex;
+    gap: 6px;
+  }
+  .no-ldraw { opacity: .45; }
+
+  /* ── Detail Panel ── */
+  #detail {
+    width: 280px;
+    min-width: 280px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width .2s;
+  }
+  #detail.hidden { width: 0; min-width: 0; border: none; }
+
+  #detail-canvas-wrap {
+    height: 220px;
+    background: var(--surface2);
+    position: relative;
+  }
+  #detail-canvas { display: block; width: 100%; height: 100%; }
+  #detail-info { padding: 14px; overflow-y: auto; flex: 1; }
+  #detail-info h2 { font-size: 13px; font-weight: 600; margin-bottom: 8px; line-height: 1.4; }
+
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    gap: 8px;
+  }
+  .info-label { color: var(--text2); white-space: nowrap; }
+  .info-val { color: var(--text); text-align: right; }
+
+  .lod-selector {
+    margin-top: 12px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .lod-btn {
+    flex: 1;
+    padding: 6px 4px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text2);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: center;
+    transition: all .1s;
+  }
+  .lod-btn.active-lod1 { background: var(--lod1); color: #fff; border-color: var(--lod1); }
+  .lod-btn.active-lod2 { background: var(--lod2); color: #fff; border-color: var(--lod2); }
+  .lod-btn.active-lod3 { background: var(--lod3); color: #fff; border-color: var(--lod3); }
+  .lod-label { font-size: 10px; opacity: .7; }
+
+  #save-overrides {
+    margin: 12px 14px;
+    padding: 8px;
+    background: var(--accent);
+    color: #111;
+    border: none;
+    border-radius: 6px;
+    font-weight: 700;
+    font-size: 12px;
+    cursor: pointer;
+    display: none;
+  }
+  #save-overrides.visible { display: block; }
+
+  /* Loading overlay */
+  #loading {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 100;
+  }
+  #loading h2 { font-size: 18px; color: var(--accent); }
+  #loading p  { color: var(--text2); font-size: 13px; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <h2>Brick Catalog</h2>
+  <p id="loading-msg">Lade Katalog …</p>
+</div>
+
+<div id="sidebar">
+  <h1>Brick Catalog</h1>
+  <div id="search-wrap">
+    <input id="search" type="search" placeholder="Part suchen …" autocomplete="off">
+  </div>
+  <div id="cat-list"></div>
+  <div id="lod-legend">
+    <div style="margin-bottom:6px;font-weight:600;color:var(--text)">LOD Filter</div>
+    <span class="lod-chip lod1" data-lod="1" title="Proxy — einfache Box-Geometrie">L1 Proxy</span>
+    <span class="lod-chip lod2" data-lod="2" title="Mid — vereinfachte Geometrie">L2 Mid</span>
+    <span class="lod-chip lod3" data-lod="3" title="Full — volle LDraw-Geometrie">L3 Full</span>
+  </div>
+</div>
+
+<div id="main">
+  <div id="toolbar">
+    <span id="toolbar-title">Alle Parts</span>
+    <span id="part-count"></span>
+    <div class="filter-chips">
+      <div class="filter-chip active" data-filter="all">Alle</div>
+      <div class="filter-chip" data-filter="ldraw">Nur LDraw</div>
+      <div class="filter-chip" data-filter="noldraw">Kein LDraw</div>
+    </div>
+  </div>
+  <div id="grid-wrap">
+    <div id="grid"></div>
+  </div>
+</div>
+
+<div id="detail" class="hidden">
+  <div id="detail-canvas-wrap">
+    <canvas id="detail-canvas"></canvas>
+  </div>
+  <div id="detail-info">
+    <h2 id="detail-name"></h2>
+    <div id="detail-rows"></div>
+    <div class="lod-selector" id="lod-selector">
+      <div class="lod-btn" data-lod="1">L1<br><span class="lod-label">Proxy</span></div>
+      <div class="lod-btn" data-lod="2">L2<br><span class="lod-label">Mid</span></div>
+      <div class="lod-btn" data-lod="3">L3<br><span class="lod-label">Full</span></div>
+    </div>
+  </div>
+  <button id="save-overrides">💾 Overrides speichern</button>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.167.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.167.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let catalog = null;
+let allParts = [];
+let filteredParts = [];
+let activeCat = null;       // null = all
+let activeLodFilter = null; // null = all
+let activeFilter = 'all';
+let searchQ = '';
+let selectedPart = null;
+let lodOverrides = {};      // partId → lod
+
+// ── Three.js for detail panel ─────────────────────────────────────────────
+let detailScene, detailCamera, detailRenderer, detailControls;
+let detailMesh = null;
+
+function initDetail() {
+  const canvas = document.getElementById('detail-canvas');
+  const wrap = document.getElementById('detail-canvas-wrap');
+
+  detailRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  detailRenderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // Size set later in resizeDetailRenderer() once the panel is visible
+
+  detailScene = new THREE.Scene();
+  detailScene.background = new THREE.Color(0x2f2f38);
+
+  detailCamera = new THREE.PerspectiveCamera(45, wrap.clientWidth / wrap.clientHeight, 0.1, 5000);
+  detailCamera.position.set(80, 80, 120);
+
+  detailControls = new OrbitControls(detailCamera, canvas);
+  detailControls.enableDamping = true;
+
+  const amb = new THREE.AmbientLight(0xffffff, 0.6);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.2);
+  dir.position.set(1, 2, 1.5);
+  detailScene.add(amb, dir);
+
+  (function loop() {
+    requestAnimationFrame(loop);
+    detailControls.update();
+    detailRenderer.render(detailScene, detailCamera);
+  })();
+}
+
+const GEO_CACHE = new Map();
+
+async function loadGeo(partId) {
+  if (GEO_CACHE.has(partId)) return GEO_CACHE.get(partId);
+  try {
+    const r = await fetch(`../catalog/geo/${partId}.json`);
+    if (!r.ok) { GEO_CACHE.set(partId, null); return null; }
+    const d = await r.json();
+    GEO_CACHE.set(partId, d);
+    return d;
+  } catch { GEO_CACHE.set(partId, null); return null; }
+}
+
+let detailToken = 0;
+async function showDetailMesh(partId) {
+  const token = ++detailToken;
+  if (detailMesh) { detailScene.remove(detailMesh); detailMesh.geometry.dispose(); detailMesh = null; }
+
+  const geoData = await loadGeo(partId);
+  if (token !== detailToken) return;
+  if (!geoData || !geoData.positions.length) return;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(geoData.positions, 3));
+  geo.setIndex(geoData.indices);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({ color: 0xe3a020, side: THREE.DoubleSide });
+  detailMesh = new THREE.Mesh(geo, mat);
+  detailScene.add(detailMesh);
+
+  // Fit camera
+  const box = new THREE.Box3().setFromObject(detailMesh);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3()).length();
+  detailMesh.position.sub(center);
+  const dist = size * 1.4;
+  detailCamera.position.set(dist, dist * 0.7, dist);
+  detailCamera.near = size / 100;
+  detailCamera.far = size * 10;
+  detailCamera.updateProjectionMatrix();
+  detailControls.target.set(0, 0, 0);
+  detailControls.update();
+}
+
+// ── Card thumbnails ───────────────────────────────────────────────────────
+// Offscreen renderer shared for all card thumbnails
+let thumbRenderer, thumbScene, thumbCamera;
+const THUMB_W = 152, THUMB_H = 120;
+
+function initThumbRenderer() {
+  thumbRenderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+  thumbRenderer.setSize(THUMB_W, THUMB_H);
+  thumbRenderer.setPixelRatio(1);
+
+  thumbScene = new THREE.Scene();
+  thumbScene.background = new THREE.Color(0x2f2f38);
+
+  thumbCamera = new THREE.PerspectiveCamera(45, THUMB_W / THUMB_H, 0.1, 5000);
+
+  const amb = new THREE.AmbientLight(0xffffff, 0.5);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+  dir.position.set(1, 2, 1.5);
+  thumbScene.add(amb, dir);
+}
+
+function renderThumb(geoData) {
+  if (!geoData || !geoData.positions.length) return null;
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(geoData.positions, 3));
+  geo.setIndex(geoData.indices);
+  geo.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({ color: 0xe3a020, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  thumbScene.add(mesh);
+
+  const box = new THREE.Box3().setFromObject(mesh);
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3()).length();
+  mesh.position.sub(center);
+  const dist = size * 1.4;
+  thumbCamera.position.set(dist * 0.8, dist * 0.6, dist);
+  thumbCamera.near = size / 100;
+  thumbCamera.far = size * 10;
+  thumbCamera.updateProjectionMatrix();
+  thumbCamera.lookAt(0, 0, 0);
+
+  thumbRenderer.render(thumbScene, thumbCamera);
+  const dataUrl = thumbRenderer.domElement.toDataURL();
+
+  thumbScene.remove(mesh);
+  geo.dispose();
+  mat.dispose();
+
+  return dataUrl;
+}
+
+// Lazy thumbnail loading with IntersectionObserver
+const thumbQueue = new Map(); // card el → partId
+const thumbObserver = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (e.isIntersecting && thumbQueue.has(e.target)) {
+      const partId = thumbQueue.get(e.target);
+      thumbQueue.delete(e.target);
+      thumbObserver.unobserve(e.target);
+      loadCardThumb(e.target, partId);
+    }
+  }
+}, { rootMargin: '200px' });
+
+async function loadCardThumb(cardEl, partId) {
+  const img = cardEl.querySelector('img.card-canvas');
+  if (!img) return;
+  const geoData = await loadGeo(partId);
+  if (!geoData || !geoData.positions.length) return;
+  const dataUrl = renderThumb(geoData);
+  if (dataUrl) img.src = dataUrl;
+}
+
+// ── Catalog loading ───────────────────────────────────────────────────────
+async function loadCatalog() {
+  setMsg('Lade catalog/index.json …');
+  try {
+    const r = await fetch('../catalog/index.json');
+    if (!r.ok) throw new Error('index.json nicht gefunden');
+    catalog = await r.json();
+  } catch (e) {
+    setMsg('⚠️ catalog/index.json fehlt — bitte bake_catalog.py ausführen.\n' + e.message);
+    return;
+  }
+
+  allParts = catalog.parts;
+  setMsg('Initialisiere 3D …');
+  initDetail();
+  initThumbRenderer();
+
+  buildSidebar();
+  applyFilters();
+  document.getElementById('loading').style.display = 'none';
+}
+
+function setMsg(t) {
+  document.getElementById('loading-msg').textContent = t;
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────
+function buildSidebar() {
+  const list = document.getElementById('cat-list');
+  list.innerHTML = '';
+
+  // "All" entry
+  const allEl = makeCatItem(null, 'Alle Parts', allParts.length);
+  list.appendChild(allEl);
+
+  // Per-category
+  const cats = catalog.categories;
+  for (const cat of cats) {
+    const count = allParts.filter(p => p.catId === cat.id).length;
+    list.appendChild(makeCatItem(cat.id, cat.label, count));
+  }
+}
+
+function makeCatItem(id, label, count) {
+  const el = document.createElement('div');
+  el.className = 'cat-item' + (id === activeCat ? ' active' : '');
+  el.innerHTML = `<span>${label}</span><span class="cat-count">${count}</span>`;
+  el.addEventListener('click', () => {
+    activeCat = id;
+    document.querySelectorAll('.cat-item').forEach(e => e.classList.remove('active'));
+    el.classList.add('active');
+    applyFilters();
+  });
+  return el;
+}
+
+// ── Filters ───────────────────────────────────────────────────────────────
+function applyFilters() {
+  let parts = allParts;
+
+  if (activeCat !== null) {
+    parts = parts.filter(p => p.catId === activeCat);
+  }
+  if (activeLodFilter !== null) {
+    parts = parts.filter(p => (lodOverrides[p.id] ?? p.lod) === activeLodFilter);
+  }
+  if (activeFilter === 'ldraw') {
+    parts = parts.filter(p => p.hasLDraw);
+  } else if (activeFilter === 'noldraw') {
+    parts = parts.filter(p => !p.hasLDraw);
+  }
+  if (searchQ) {
+    const q = searchQ.toLowerCase();
+    parts = parts.filter(p => p.name.toLowerCase().includes(q) || p.id.includes(q));
+  }
+
+  filteredParts = parts;
+  renderGrid();
+
+  const catLabel = activeCat
+    ? catalog.categories.find(c => c.id === activeCat)?.label ?? 'Unbekannt'
+    : 'Alle Parts';
+  document.getElementById('toolbar-title').textContent = catLabel;
+  document.getElementById('part-count').textContent = `${parts.length} Parts`;
+}
+
+// ── Grid ──────────────────────────────────────────────────────────────────
+function lodColor(lod) {
+  return lod === 1 ? 'lod1' : lod === 2 ? 'lod2' : 'lod3';
+}
+function lodLabel(lod) {
+  return lod === 1 ? 'L1' : lod === 2 ? 'L2' : 'L3';
+}
+
+function renderGrid() {
+  const grid = document.getElementById('grid');
+  // Diff: remove old cards, add new ones
+  grid.innerHTML = '';
+
+  for (const part of filteredParts) {
+    const lod = lodOverrides[part.id] ?? part.lod;
+    const card = document.createElement('div');
+    card.className = 'part-card' + (!part.hasLDraw ? ' no-ldraw' : '');
+    card.dataset.id = part.id;
+    card.innerHTML = `
+      <div class="card-canvas-wrap">
+        <img class="card-canvas" src="" alt="" style="opacity:0;transition:opacity .3s">
+        <span class="card-lod lod-chip ${lodColor(lod)}">${lodLabel(lod)}</span>
+      </div>
+      <div class="card-info">
+        <div class="card-name">${part.name}</div>
+        <div class="card-meta">
+          <span>${part.id}</span>
+          <span>${part.w}×${part.d}</span>
+          ${part.triCount ? `<span>${part.triCount}▲</span>` : ''}
+        </div>
+      </div>`;
+
+    card.addEventListener('click', () => selectPart(part));
+    grid.appendChild(card);
+
+    if (part.hasLDraw) {
+      const img = card.querySelector('img');
+      img.onload = () => { img.style.opacity = '1'; };
+      thumbQueue.set(card, part.id);
+      thumbObserver.observe(card);
+    }
+  }
+}
+
+// ── Detail Panel ──────────────────────────────────────────────────────────
+function resizeDetailRenderer() {
+  const wrap = document.getElementById('detail-canvas-wrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  if (w > 0 && h > 0) {
+    detailRenderer.setSize(w, h);
+    detailCamera.aspect = w / h;
+    detailCamera.updateProjectionMatrix();
+  }
+}
+
+function selectPart(part) {
+  selectedPart = part;
+  document.querySelectorAll('.part-card').forEach(c => c.classList.remove('selected'));
+  const card = document.querySelector(`.part-card[data-id="${part.id}"]`);
+  if (card) card.classList.add('selected');
+
+  const detail = document.getElementById('detail');
+  const wasHidden = detail.classList.contains('hidden');
+  detail.classList.remove('hidden');
+  if (wasHidden) setTimeout(resizeDetailRenderer, 50);
+
+  document.getElementById('detail-name').textContent = part.name;
+
+  const lod = lodOverrides[part.id] ?? part.lod;
+  const rows = document.getElementById('detail-rows');
+  rows.innerHTML = `
+    <div class="info-row"><span class="info-label">Part ID</span><span class="info-val">${part.id}</span></div>
+    <div class="info-row"><span class="info-label">Kategorie</span><span class="info-val">${part.catLabel}</span></div>
+    <div class="info-row"><span class="info-label">Größe</span><span class="info-val">${part.w} × ${part.d} Studs</span></div>
+    <div class="info-row"><span class="info-label">Triangles</span><span class="info-val">${part.triCount || '—'}</span></div>
+    <div class="info-row"><span class="info-label">LDraw</span><span class="info-val">${part.hasLDraw ? '✓ vorhanden' : '✗ fehlt'}</span></div>
+    <div class="info-row"><span class="info-label">LOD (auto)</span><span class="info-val">${part.lod} ${lodLabel(part.lod)}</span></div>
+  `;
+
+  // LOD selector
+  document.querySelectorAll('#lod-selector .lod-btn').forEach(btn => {
+    const l = parseInt(btn.dataset.lod);
+    btn.className = 'lod-btn' + (l === lod ? ` active-lod${l}` : '');
+    btn.onclick = () => setLodOverride(part.id, l);
+  });
+
+  if (part.hasLDraw) {
+    showDetailMesh(part.id);
+  } else {
+    if (detailMesh) { detailScene.remove(detailMesh); detailMesh.geometry.dispose(); detailMesh = null; }
+  }
+}
+
+function setLodOverride(partId, lod) {
+  lodOverrides[partId] = lod;
+  // Update LOD selector buttons
+  document.querySelectorAll('#lod-selector .lod-btn').forEach(btn => {
+    const l = parseInt(btn.dataset.lod);
+    btn.className = 'lod-btn' + (l === lod ? ` active-lod${l}` : '');
+  });
+  // Update card chip
+  const card = document.querySelector(`.part-card[data-id="${partId}"]`);
+  if (card) {
+    const chip = card.querySelector('.lod-chip');
+    chip.className = `lod-chip card-lod ${lodColor(lod)}`;
+    chip.textContent = lodLabel(lod);
+  }
+  document.getElementById('save-overrides').classList.add('visible');
+}
+
+// ── Save Overrides ────────────────────────────────────────────────────────
+document.getElementById('save-overrides').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify(lodOverrides, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'lod_overrides.json';
+  a.click();
+});
+
+// ── Event listeners ───────────────────────────────────────────────────────
+document.getElementById('search').addEventListener('input', e => {
+  searchQ = e.target.value.trim();
+  applyFilters();
+});
+
+document.querySelectorAll('.filter-chip[data-filter]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip[data-filter]').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    activeFilter = chip.dataset.filter;
+    applyFilters();
+  });
+});
+
+document.querySelectorAll('.lod-chip[data-lod]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const lod = parseInt(chip.dataset.lod);
+    activeLodFilter = activeLodFilter === lod ? null : lod;
+    document.querySelectorAll('.lod-chip[data-lod]').forEach(c => {
+      c.style.opacity = activeLodFilter && parseInt(c.dataset.lod) !== activeLodFilter ? '0.4' : '1';
+    });
+    applyFilters();
+  });
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────
+loadCatalog();
+</script>
+</body>
+</html>
