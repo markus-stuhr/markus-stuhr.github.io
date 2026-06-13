@@ -931,11 +931,22 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick', partId = 
 
 // ─── Katalog-Geometrie (echte LDraw-Bakes) ───────────────────────────────────
 const LDU = 1 / 20;  // LDraw-Einheit → Builder-Einheit (20 LDU = 1 Stud, 24 = Brick-H)
-const catalogGeoCache = new Map();  // partId → { geo: BufferGeometry|null, height }
+const STUD_H_PROTRUDE = 0.2;  // Stud-Überstand (4 LDU) — zählt nicht zur Stapelhöhe
+const catalogGeoCache = new Map();  // partId → { geo, height, fw, fd }
+
+// Stapelhöhe: Stud-Überstand (0.2) abziehen, wenn das Teil oben Studs hat
+// (erkennbar daran, dass die Höhe ohne Studs ein sauberes Plate-Vielfaches 0.4 ist)
+function stackHeight(bboxH) {
+  const noStud = bboxH - STUD_H_PROTRUDE;
+  if (noStud > 0.05 && Math.abs(noStud / PLATE_H_VAL - Math.round(noStud / PLATE_H_VAL)) < 0.08) {
+    return noStud;
+  }
+  return bboxH;
+}
 
 async function ensureCatalogGeo(partId) {
   if (catalogGeoCache.has(partId)) return catalogGeoCache.get(partId);
-  let entry = { geo: null, height: null };
+  let entry = { geo: null, height: null, fw: null, fd: null };
   try {
     const r = await fetch(`catalog/geo/${partId}.json`);
     if (r.ok) {
@@ -954,7 +965,11 @@ async function ensureCatalogGeo(partId) {
         const cz = (bb.min.z + bb.max.z) / 2;
         geo.translate(-cx, -bb.min.y, -cz);
         geo.computeVertexNormals();
-        entry = { geo, height: bb.max.y - bb.min.y };
+        // Footprint aus echter Geometrie ableiten (NICHT aus Rebrickable w/d) —
+        // löst den 90°-Achsen-Mismatch (LDraw-Orientierung ≠ w→X/d→Z-Konvention)
+        const fw = Math.max(1, Math.round((bb.max.x - bb.min.x) / STUD));
+        const fd = Math.max(1, Math.round((bb.max.z - bb.min.z) / STUD));
+        entry = { geo, height: stackHeight(bb.max.y - bb.min.y), fw, fd };
       }
     }
   } catch (e) { /* Fallback = parametrische Box */ }
@@ -1005,7 +1020,18 @@ getFloorPlane(0); // always have layer 0
 function rotFootprint(w, d, rot) {
   return (rot === 90 || rot === 270) ? [d, w] : [w, d];
 }
-function curFootprint() { return rotFootprint(currentW, currentD, currentRot); }
+// Basis-Footprint des aktuellen Teils: echte Geometrie-Maße (Katalog) oder w/d (parametrisch)
+function partFootprint() {
+  if (currentPartId) {
+    const c = catalogGeoCache.get(currentPartId);
+    if (c && c.geo) return [c.fw, c.fd];
+  }
+  return [currentW, currentD];
+}
+function curFootprint() {
+  const [w, d] = partFootprint();
+  return rotFootprint(w, d, currentRot);
+}
 
 function snapToGrid(pos, w, d) {
   // Offset so brick center aligns to stud grid
@@ -1113,7 +1139,8 @@ function placeBrick() {
   mesh.position.set(gx, y, gz);
   scene.add(mesh);
 
-  const entry = { mesh, gx, gz, w: currentW, d: currentD, color: currentColor,
+  const [fw, fd] = partFootprint();  // echter Footprint (Geometrie bei Katalog, w/d bei parametrisch)
+  const entry = { mesh, gx, gz, w: fw, d: fd, color: currentColor,
                   type: currentType, partId: currentPartId, rot: currentRot, height: currentHeight() };
   bricks.push(entry);
   undoStack.push({ action: 'place', entry });
