@@ -526,6 +526,7 @@ let currentColor = COLORS[0].hex;
 let currentW     = 1;
 let currentD     = 1;
 let currentType  = 'brick'; // 'brick' | 'plate'
+let currentPartId = null;   // null = parametrische Box; sonst Katalog-Teil (echte Geometrie)
 let bricks       = [];
 let undoStack    = [];
 let redoStack    = [];
@@ -812,7 +813,31 @@ function makeMat(color, isGhost) {
   });
 }
 
-function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
+function createBrickMesh(w, d, color, isGhost = false, type = 'brick', partId = null) {
+  // Katalog-Teil mit echter gebakter Geometrie → verwenden statt parametrischer Box
+  if (partId) {
+    const cached = catalogGeoCache.get(partId);
+    if (cached && cached.geo) {
+      const group = new THREE.Group();
+      group.userData.brickType = type;
+      const mat = makeMat(color, isGhost);
+      const m = new THREE.Mesh(cached.geo, mat);
+      m.castShadow    = !isGhost && !isLightColor(color);
+      m.receiveShadow = !isGhost;
+      if (!isGhost && isTransColor(color)) m.renderOrder = 1;
+      group.add(m);
+      if (!isGhost && isLightColor(color)) {
+        const lc = LIGHT_COLORS[color];
+        const pt = new THREE.PointLight(lc.pointColor, 12, 56, 1.5);
+        pt.position.set(0, (cached.height || BRICK_H) * 0.5, 0);
+        pt.castShadow = false;
+        group.add(pt);
+      }
+      return group;
+    }
+    // keine Geometrie vorhanden → Fallback unten (parametrische Box = L1-Proxy)
+  }
+
   const group = new THREE.Group();
   group.userData.brickType = type;
 
@@ -903,10 +928,52 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick') {
   return group;
 }
 
+// ─── Katalog-Geometrie (echte LDraw-Bakes) ───────────────────────────────────
+const LDU = 1 / 20;  // LDraw-Einheit → Builder-Einheit (20 LDU = 1 Stud, 24 = Brick-H)
+const catalogGeoCache = new Map();  // partId → { geo: BufferGeometry|null, height }
+
+async function ensureCatalogGeo(partId) {
+  if (catalogGeoCache.has(partId)) return catalogGeoCache.get(partId);
+  let entry = { geo: null, height: null };
+  try {
+    const r = await fetch(`catalog/geo/${partId}.json`);
+    if (r.ok) {
+      const d = await r.json();
+      if (d.positions && d.positions.length) {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(d.positions, 3));
+        geo.setIndex(d.indices);
+        // LDraw → Builder: uniform skalieren, dann 180° um X (Y/Z-Flip, wie Preview)
+        geo.scale(LDU, LDU, LDU);
+        geo.rotateX(Math.PI);
+        geo.computeBoundingBox();
+        const bb = geo.boundingBox;
+        // x/z auf Footprint-Mitte, Unterseite auf y=0 (Origin unten-zentriert)
+        const cx = (bb.min.x + bb.max.x) / 2;
+        const cz = (bb.min.z + bb.max.z) / 2;
+        geo.translate(-cx, -bb.min.y, -cz);
+        geo.computeVertexNormals();
+        entry = { geo, height: bb.max.y - bb.min.y };
+      }
+    }
+  } catch (e) { /* Fallback = parametrische Box */ }
+  catalogGeoCache.set(partId, entry);
+  return entry;
+}
+
+// Höhe des aktuell gewählten Teils (echte bbox-Höhe oder Typ-Konstante)
+function currentHeight() {
+  if (currentPartId) {
+    const c = catalogGeoCache.get(currentPartId);
+    if (c && c.geo) return c.height;
+  }
+  return typeHeight(currentType);
+}
+
 // ─── Ghost Cursor ────────────────────────────────────────────────────────────
 function updateGhost(w, d, color, type) {
   if (ghostMesh) { scene.remove(ghostMesh); ghostMesh = null; }
-  ghostMesh = createBrickMesh(w, d, color, true, type);
+  ghostMesh = createBrickMesh(w, d, color, true, type, currentPartId);
   ghostMesh.visible = false;
   scene.add(ghostMesh);
 }
@@ -946,7 +1013,7 @@ function getTopLayerAt(gx, gz, w, d) {
   let maxY = 0;
   for (const b of bricks) {
     if (rectsOverlap(gx, gz, w, d, b.gx, b.gz, b.w, b.d)) {
-      const top = b.mesh.position.y + typeHeight(b.type);
+      const top = b.mesh.position.y + (b.height ?? typeHeight(b.type));
       if (top > maxY) maxY = top;
     }
   }
@@ -1031,11 +1098,12 @@ function placeBrick() {
   const gx = lastGhostX, gz = lastGhostZ;
   const y  = ghostMesh.position.y;
 
-  const mesh = createBrickMesh(currentW, currentD, currentColor, false, currentType);
+  const mesh = createBrickMesh(currentW, currentD, currentColor, false, currentType, currentPartId);
   mesh.position.set(gx, y, gz);
   scene.add(mesh);
 
-  const entry = { mesh, gx, gz, w: currentW, d: currentD, color: currentColor, type: currentType };
+  const entry = { mesh, gx, gz, w: currentW, d: currentD, color: currentColor,
+                  type: currentType, partId: currentPartId, height: currentHeight() };
   bricks.push(entry);
   undoStack.push({ action: 'place', entry });
   redoStack.length = 0;
@@ -1189,6 +1257,7 @@ window.setMode = function(m) {
 
 window.setType = function(t) {
   currentType = t;
+  currentPartId = null;  // manuelle Auswahl → parametrische Box
   document.querySelectorAll('#dd-type-menu .dd-item').forEach(b => b.classList.remove('selected'));
   const match = document.querySelector(`#dd-type-menu .dd-item[data-type="${t}"]`);
   if (match) match.classList.add('selected');
@@ -1200,6 +1269,7 @@ window.setType = function(t) {
 
 window.setSize = function(w, d) {
   currentW = w; currentD = d;
+  currentPartId = null;  // manuelle Auswahl → parametrische Box
   document.querySelectorAll('#dd-size-menu .dd-item').forEach(b => b.classList.remove('selected'));
   const match = document.querySelector(`#dd-size-menu .dd-item[data-w="${w}"][data-d="${d}"]`);
   if (match) match.classList.add('selected');
@@ -1379,7 +1449,16 @@ function renderParts() {
 
   // Apply currently selected part
   const sel = pbDeduped[pbSelectedIdx];
-  if (sel) { setType(sel.type); setSize(sel.w, sel.d); updatePreview(); }
+  if (sel) {
+    setType(sel.type);
+    setSize(sel.w, sel.d);          // setzt currentPartId = null
+    currentPartId = sel.id;          // ... danach echtes Katalog-Teil aktivieren
+    ensureCatalogGeo(sel.id).then(() => {
+      // nur refreshen, wenn dieses Teil noch ausgewählt ist
+      if (currentPartId === sel.id) updateGhost(currentW, currentD, currentColor, currentType);
+    });
+    updatePreview();
+  }
 }
 
 window.pbSelectByIdx = function(i) {
