@@ -955,7 +955,7 @@ async function ensureCatalogGeo(partId) {
     if (r.ok) {
       const d = await r.json();
       if (d.positions && d.positions.length) {
-        const geo = new THREE.BufferGeometry();
+        let geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(d.positions, 3));
         geo.setIndex(d.indices);
         // LDraw → Builder: uniform skalieren, dann 180° um X (Y/Z-Flip, wie Preview)
@@ -967,6 +967,10 @@ async function ensureCatalogGeo(partId) {
         const cx = (bb.min.x + bb.max.x) / 2;
         const cz = (bb.min.z + bb.max.z) / 2;
         geo.translate(-cx, -bb.min.y, -cz);
+        // Flache (per-Face) Normalen: Vertices entmergen, dann berechnen — sonst
+        // mittelt computeVertexNormals über harte Kanten/inkonsistentes Winding
+        // → "wildes" Licht auf LEGO-Teilen.
+        geo = geo.toNonIndexed();
         geo.computeVertexNormals();
         // Footprint aus echter Geometrie ableiten (NICHT aus Rebrickable w/d) —
         // löst den 90°-Achsen-Mismatch (LDraw-Orientierung ≠ w→X/d→Z-Konvention)
@@ -1659,8 +1663,10 @@ function updatePreview() {
   if (!pvRenderer) { initPreview(); return; }
   if (pvMesh) { pvScene.remove(pvMesh); pvMesh = null; }
 
-  // Show generated fallback immediately
-  pvMesh = createBrickMesh(currentW, currentD, currentColor, false, currentType);
+  // Sofort anzeigen (parametrische Box, falls Geometrie noch nicht geladen)
+  const sel = pbDeduped[pbSelectedIdx];
+  const pid = sel?.id || currentPartId;
+  pvMesh = createBrickMesh(currentW, currentD, currentColor, false, currentType, pid);
   pvScene.add(pvMesh);
   fitPreviewCamera();
 
@@ -1668,11 +1674,18 @@ function updatePreview() {
   document.getElementById('pb-3d-label').textContent = label;
   pvAngle = 0;
 
-  // Try to load the real LDraw model asynchronously
-  const sel = pbDeduped[pbSelectedIdx];
-  if (sel?.id) {
-    pvLoadToken++;
-    loadLDrawPreview(sel.id, pvLoadToken);
+  // Echte gebakte Geometrie nachladen → Vorschau aktualisieren (gleicher Pfad
+  // wie beim Platzieren, inkl. Flat-Normalen → kein "wildes" Licht)
+  if (pid) {
+    const tok = ++pvLoadToken;
+    ensureCatalogGeo(pid).then(() => {
+      if (tok !== pvLoadToken || !pvRenderer) return;
+      if (pvMesh) pvScene.remove(pvMesh);
+      pvMesh = createBrickMesh(currentW, currentD, currentColor, false, currentType, pid);
+      pvScene.add(pvMesh);
+      fitPreviewCamera();
+      pvAngle = 0;
+    });
   }
 }
 
