@@ -380,6 +380,7 @@
   <!-- Mode -->
   <button class="tool-btn active" id="btn-place" onclick="setMode('place')">Platzieren</button>
   <button class="tool-btn" id="btn-remove" onclick="setMode('remove')">Entfernen</button>
+  <button class="tool-btn" id="btn-clear" onclick="clearAll()">🗑 Alles löschen</button>
 
   <div class="separator"></div>
 
@@ -1302,6 +1303,16 @@ window.setMode = function(m) {
   document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('btn-' + m).classList.add('active');
   if (ghostMesh) ghostMesh.visible = (m === 'place');
+};
+
+window.clearAll = function() {
+  if (!bricks.length) return;
+  if (!confirm(`Alle ${bricks.length} Steine löschen?`)) return;
+  for (const b of bricks) scene.remove(b.mesh);
+  bricks = [];
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateCount();
 };
 
 window.setType = function(t) {
