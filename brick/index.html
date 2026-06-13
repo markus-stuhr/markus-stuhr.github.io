@@ -721,9 +721,11 @@ function buildDemoHouse() {
       addBrick(cx, wz(zi), roofY + p * PH, NW, 1, ROOF, 'plate');
 
   // ── Chimney – 2×2, 3 bricks tall, slightly right of center ───────────────
+  // 2×2 (gerade Maße) braucht ganzzahlige x/z-Mitte, damit die Studs aufs
+  // Halbzahl-Raster fallen (Mitte ±0.5). cz=6 ist die Hausmitte (ganzzahlig).
   const chimY = roofY + 3 * PH;
   for (let cl = 0; cl < 3; cl++)
-    addBrick(2, wz(2), chimY + cl * H, 2, 2, WALL);
+    addBrick(2, cz, chimY + cl * H, 2, 2, WALL);
 
   updateCount();
 }
