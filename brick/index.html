@@ -546,7 +546,7 @@ container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1a2e);
-scene.fog = new THREE.FogExp2(0x1a1a2e, 0.018);
+scene.fog = new THREE.FogExp2(0x1a1a2e, 0.008);
 
 const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
 camera.position.set(20, 22, 28);
@@ -1146,7 +1146,7 @@ window.toggleDayNight = function() {
   document.getElementById('btn-daynight').textContent = isNight ? '🌙' : '☀️';
   if (isNight) {
     scene.background = new THREE.Color(0x00010a);
-    scene.fog = new THREE.FogExp2(0x00010a, 0.016);
+    scene.fog = new THREE.FogExp2(0x00010a, 0.007);
     ambient.color.set(0x0a1a3a);
     ambient.intensity = 0.012;
     sun.color.set(0x1a2d66);
@@ -1154,7 +1154,7 @@ window.toggleDayNight = function() {
     scene.environmentIntensity = 0.0;
   } else {
     scene.background = new THREE.Color(0x1a1a2e);
-    scene.fog = new THREE.FogExp2(0x1a1a2e, 0.018);
+    scene.fog = new THREE.FogExp2(0x1a1a2e, 0.008);
     ambient.color.set(0xffffff);
     ambient.intensity = 0.35;
     sun.color.set(0xfff4d6);
