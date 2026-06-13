@@ -432,7 +432,7 @@
 
 </div>
 
-<div id="info">Linksklick: Brick setzen &nbsp;|&nbsp; Rechtsklick: Brick entfernen &nbsp;|&nbsp; WASD: Kamera bewegen &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; Ctrl+Z/Y: Undo/Redo</div>
+<div id="info">Linksklick: Brick setzen &nbsp;|&nbsp; Rechtsklick: Brick entfernen &nbsp;|&nbsp; WASD: Kamera bewegen &nbsp;|&nbsp; Scroll: Zoom &nbsp;|&nbsp; R: Drehen &nbsp;|&nbsp; Ctrl+Z/Y: Undo/Redo</div>
 <div id="brick-count">Steine: <span id="count">0</span></div>
 
 <script type="importmap">
@@ -527,6 +527,7 @@ let currentW     = 1;
 let currentD     = 1;
 let currentType  = 'brick'; // 'brick' | 'plate'
 let currentPartId = null;   // null = parametrische Box; sonst Katalog-Teil (echte Geometrie)
+let currentRot   = 0;       // Y-Rotation in Grad: 0 | 90 | 180 | 270
 let bricks       = [];
 let undoStack    = [];
 let redoStack    = [];
@@ -974,6 +975,7 @@ function currentHeight() {
 function updateGhost(w, d, color, type) {
   if (ghostMesh) { scene.remove(ghostMesh); ghostMesh = null; }
   ghostMesh = createBrickMesh(w, d, color, true, type, currentPartId);
+  ghostMesh.rotation.y = THREE.MathUtils.degToRad(currentRot);
   ghostMesh.visible = false;
   scene.add(ghostMesh);
 }
@@ -999,6 +1001,12 @@ function getFloorPlane(y) {
 }
 getFloorPlane(0); // always have layer 0
 
+// Effektiver Footprint (w,d nach Rotation getauscht bei 90°/270°)
+function rotFootprint(w, d, rot) {
+  return (rot === 90 || rot === 270) ? [d, w] : [w, d];
+}
+function curFootprint() { return rotFootprint(currentW, currentD, currentRot); }
+
 function snapToGrid(pos, w, d) {
   // Offset so brick center aligns to stud grid
   const halfW = (w % 2 === 0) ? 0 : 0.5;
@@ -1012,7 +1020,8 @@ function snapToGrid(pos, w, d) {
 function getTopLayerAt(gx, gz, w, d) {
   let maxY = 0;
   for (const b of bricks) {
-    if (rectsOverlap(gx, gz, w, d, b.gx, b.gz, b.w, b.d)) {
+    const [bw, bd] = rotFootprint(b.w, b.d, b.rot || 0);
+    if (rectsOverlap(gx, gz, w, d, b.gx, b.gz, bw, bd)) {
       const top = b.mesh.position.y + (b.height ?? typeHeight(b.type));
       if (top > maxY) maxY = top;
     }
@@ -1074,11 +1083,12 @@ function updateGhostFromMouse() {
     if (Math.abs(hit.normal.y) < 0.5) { if (ghostMesh) ghostMesh.visible = false; return; }
   }
 
-  const snap = snapToGrid(hit.point, currentW, currentD);
-  const stackY = getTopLayerAt(snap.x, snap.z, currentW, currentD);
+  const [ew, ed] = curFootprint();
+  const snap = snapToGrid(hit.point, ew, ed);
+  const stackY = getTopLayerAt(snap.x, snap.z, ew, ed);
   const y = Math.max(baseY, stackY);
 
-  if (!isOnBaseplate(snap.x, snap.z, currentW, currentD)) {
+  if (!isOnBaseplate(snap.x, snap.z, ew, ed)) {
     if (ghostMesh) ghostMesh.visible = false;
     return;
   }
@@ -1099,11 +1109,12 @@ function placeBrick() {
   const y  = ghostMesh.position.y;
 
   const mesh = createBrickMesh(currentW, currentD, currentColor, false, currentType, currentPartId);
+  mesh.rotation.y = THREE.MathUtils.degToRad(currentRot);
   mesh.position.set(gx, y, gz);
   scene.add(mesh);
 
   const entry = { mesh, gx, gz, w: currentW, d: currentD, color: currentColor,
-                  type: currentType, partId: currentPartId, height: currentHeight() };
+                  type: currentType, partId: currentPartId, rot: currentRot, height: currentHeight() };
   bricks.push(entry);
   undoStack.push({ action: 'place', entry });
   redoStack.length = 0;
@@ -1189,6 +1200,15 @@ renderer.domElement.addEventListener('contextmenu', e => {
   e.preventDefault();
   updateMousePos(e);
   if (mode === 'place' || mode === 'remove') removeBrickAt(e);
+});
+
+// R = Teil um 90° drehen (Ghost dreht sofort, Footprint folgt im nächsten Frame)
+document.addEventListener('keydown', e => {
+  if (e.key !== 'r' && e.key !== 'R') return;
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  e.preventDefault();
+  currentRot = (currentRot + 90) % 360;
+  if (ghostMesh) ghostMesh.rotation.y = THREE.MathUtils.degToRad(currentRot);
 });
 
 const keys = {};
