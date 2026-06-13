@@ -564,7 +564,7 @@ controls.mouseButtons.MIDDLE = THREE.MOUSE.DOLLY;
 // ─── Lighting ────────────────────────────────────────────────────────────────
 renderer.shadowMap.type = THREE.VSMShadowMap; // smoother penumbra
 
-const ambient = new THREE.AmbientLight(0xffffff, 0.15);
+const ambient = new THREE.AmbientLight(0xffffff, 0.05);
 scene.add(ambient);
 
 // Sun — warm directional, shadows
@@ -1156,7 +1156,7 @@ window.toggleDayNight = function() {
     scene.background = new THREE.Color(0x1a1a2e);
     scene.fog = new THREE.FogExp2(0x1a1a2e, 0.008);
     ambient.color.set(0xffffff);
-    ambient.intensity = 0.15;
+    ambient.intensity = 0.05;
     sun.color.set(0xfff4d6);
     sun.intensity = 2.2;
     scene.environmentIntensity = 1.0;
