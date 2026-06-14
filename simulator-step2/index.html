@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sailing Simulator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #info {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: rgba(255,255,255,0.4);
+      font-family: monospace;
+      font-size: 12px;
+      letter-spacing: 1px;
+      pointer-events: none;
+    }
+    #hud {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      padding: 22px 30px;
+      font-family: monospace;
+      color: rgba(255,255,255,0.85);
+      pointer-events: none;
+      gap: 20px;
+    }
+    .panel {
+      background: rgba(8, 22, 40, 0.55);
+      border: 1px solid rgba(120,170,220,0.25);
+      border-radius: 10px;
+      padding: 12px 16px;
+      backdrop-filter: blur(4px);
+    }
+    .panel .label {
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: rgba(150,190,230,0.6);
+      text-transform: uppercase;
+      margin-bottom: 3px;
+    }
+    .panel .value { font-size: 22px; font-weight: bold; }
+    .panel .value small { font-size: 12px; font-weight: normal; opacity: 0.6; }
+    #wind { display: flex; align-items: center; gap: 14px; }
+    #windCompass {
+      position: relative;
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      border: 1px solid rgba(120,170,220,0.3);
+      flex-shrink: 0;
+    }
+    /* small boat marker (points up = bow) */
+    #windCompass::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 0; height: 0;
+      transform: translate(-50%, -50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 16px solid rgba(212,180,131,0.9);
+      margin-top: -8px;
+    }
+    #windArrow {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 2px; height: 28px;
+      background: linear-gradient(to bottom, #5fd0ff, rgba(95,208,255,0.1));
+      transform-origin: 50% 100%;
+      transform: translate(-50%, -100%);
+    }
+    #windArrow::before {
+      content: '';
+      position: absolute;
+      top: -2px; left: 50%;
+      transform: translateX(-50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-bottom: 8px solid #5fd0ff;
+    }
+    #markArrow { transition: none; color: #66ff99; }
+    #race {
+      position: fixed;
+      top: 42px; left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      font-family: monospace;
+      color: rgba(255,255,255,0.9);
+      pointer-events: none;
+    }
+    #raceTime { font-size: 34px; font-weight: bold; letter-spacing: 2px; }
+    #raceBest { font-size: 12px; color: rgba(150,190,230,0.7); letter-spacing: 1px; margin-top: 2px; }
+    #raceMsg {
+      margin-top: 8px; font-size: 13px; letter-spacing: 1px;
+      color: #66ff99; min-height: 18px;
+    }
+    #minimap {
+      position: fixed;
+      top: 18px; left: 18px;
+      width: 150px; height: 150px;
+      border-radius: 50%;
+      background: rgba(8, 22, 40, 0.55);
+      border: 1px solid rgba(120,170,220,0.3);
+      backdrop-filter: blur(4px);
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div id="info">← → / A D steuern &nbsp;·&nbsp; Geschwindigkeit kommt vom Wind &nbsp;·&nbsp; R = Neustart</div>
+<div id="hud">
+  <div id="wind">
+    <div id="windCompass"><div id="windArrow"></div></div>
+    <div class="panel">
+      <div class="label">True Wind</div>
+      <div class="value"><span id="tws">0</span><small> kn</small> &nbsp; <span id="twd">0°</span></div>
+    </div>
+  </div>
+  <div class="panel" id="markPanel">
+    <div class="label">Nächste Marke <span id="markNum">1/4</span></div>
+    <div class="value"><span id="markDist">—</span><small> m</small> &nbsp;<span id="markArrow" style="display:inline-block">↑</span></div>
+  </div>
+  <div class="panel" style="text-align:right">
+    <div class="label">Bootsgeschwindigkeit</div>
+    <div class="value"><span id="sog">0.0</span><small> kn</small></div>
+  </div>
+</div>
+<div id="race">
+  <div id="raceTime">00:00.0</div>
+  <div id="raceBest">Best —</div>
+  <div id="raceMsg">Steuere durch die Marken in der Reihenfolge</div>
+</div>
+<canvas id="minimap" width="150" height="150"></canvas>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// --- Scene ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x9fc6ea); // daytime sky
+scene.fog = new THREE.FogExp2(0xbcd6ee, 0.0045);
+
+// --- Camera ---
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+camera.position.set(0, 8, 20);
+camera.lookAt(0, 0, 0);
+
+// --- Renderer ---
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(devicePixelRatio);
+document.body.appendChild(renderer.domElement);
+
+// --- Lights ---
+const sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
+sun.position.set(50, 70, 30);
+scene.add(sun);
+// Daylight ambient: bright sky above, sea-tinted bounce below
+scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x2a5a86, 1.1));
+
+// --- Water texture (procedural, tileable) ---
+function makeWaterTexture() {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#3f86c4';
+  ctx.fillRect(0, 0, S, S);
+  // soft lighter/darker patches; draw wrapped copies so the tile seams match
+  for (let i = 0; i < 140; i++) {
+    const x = Math.random() * S, y = Math.random() * S;
+    const r = 12 + Math.random() * 40;
+    const light = Math.random() > 0.5;
+    for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
+      const g = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, r);
+      const a = 0.07 + Math.random() * 0.07;
+      g.addColorStop(0, light ? `rgba(150,205,240,${a})` : `rgba(20,70,120,${a})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x + dx, y + dy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+// --- Ocean (follows the boat; texture & waves live in world space so motion shows) ---
+const OCEAN_SIZE = 600;
+const OCEAN_SEGS = 120;
+const TILE = 28; // world units per texture tile
+const oceanGeo = new THREE.PlaneGeometry(OCEAN_SIZE, OCEAN_SIZE, OCEAN_SEGS, OCEAN_SEGS);
+oceanGeo.rotateX(-Math.PI / 2);
+
+const waterTex = makeWaterTexture();
+waterTex.repeat.set(OCEAN_SIZE / TILE, OCEAN_SIZE / TILE);
+
+const oceanMat = new THREE.MeshPhongMaterial({
+  color: 0xffffff,        // white so the texture shows at full daytime brightness
+  map: waterTex,
+  specular: 0x99c4e8,
+  shininess: 90,
+  side: THREE.FrontSide,
+  transparent: true,   // let the submerged hull/keel show through faintly
+  opacity: 0.88,
+});
+
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.renderOrder = -1; // draw before other transparent objects (e.g. wind disc)
+scene.add(ocean);
+
+// Cache local x/z; waves are computed from WORLD coords (local + ocean offset)
+const posAttr = oceanGeo.attributes.position;
+const baseX = new Float32Array(posAttr.count);
+const baseZ = new Float32Array(posAttr.count);
+for (let i = 0; i < posAttr.count; i++) {
+  baseX[i] = posAttr.getX(i);
+  baseZ[i] = posAttr.getZ(i);
+}
+
+function waveHeight(x, z, t) {
+  return Math.sin(x * 0.08 + t * 0.9) * 0.5
+    + Math.sin(z * 0.12 + t * 0.7) * 0.35
+    + Math.sin((x + z) * 0.05 + t * 1.1) * 0.25;
+}
+
+function animateWaves(t) {
+  const ox = ocean.position.x, oz = ocean.position.z;
+  for (let i = 0; i < posAttr.count; i++) {
+    posAttr.setY(i, waveHeight(baseX[i] + ox, baseZ[i] + oz, t));
+  }
+  posAttr.needsUpdate = true;
+  oceanGeo.computeVertexNormals();
+  // Slide the texture so it stays put in world space -> visible motion past the boat
+  waterTex.offset.set(ox / TILE, -oz / TILE);
+}
+
+// --- Boat ---
+const boatGroup = new THREE.Group();
+
+// Hull — lofted from cross-section "stations" running bow (−z) to stern (+z)
+function buildHull() {
+  const NS = 18, NA = 12;          // stations along length, arc points per section
+  const zBow = -2.15, zStern = 1.95; // LOA ~4.1, long and sleek
+  const maxBeam = 0.46;              // narrow racing hull
+
+  const halfBeam = (s) => {
+    let b = s < 0.5
+      ? maxBeam * Math.pow(s / 0.5, 0.6)                  // fine, almost plumb bow
+      : maxBeam * (1 - 0.18 * ((s - 0.5) / 0.5));         // carry beam aft to a wide transom
+    return Math.max(0.03, b);
+  };
+  const depth  = (s) => 0.4 * (0.65 + 0.35 * Math.min(s / 0.25, 1)); // shallow canoe body
+  const deckY  = (s) => 0.30 + 0.16 * Math.pow(1 - s, 2) + 0.03 * s; // low, nearly flat sheer
+
+  const pos = [];
+  const idx = (i, j) => i * (NA + 1) + j;
+  for (let i = 0; i < NS; i++) {
+    const s = i / (NS - 1);
+    const z = zBow + (zStern - zBow) * s;
+    const hb = halfBeam(s), dp = depth(s), dy = deckY(s);
+    for (let j = 0; j <= NA; j++) {
+      const a = (Math.PI * j) / NA;     // 0 = starboard deck edge, PI = port deck edge
+      pos.push(hb * Math.cos(a), dy - dp * Math.sin(a), z);
+    }
+  }
+
+  const faces = [];
+  // hull skin
+  for (let i = 0; i < NS - 1; i++)
+    for (let j = 0; j < NA; j++) {
+      const a = idx(i, j), b = idx(i + 1, j), c = idx(i + 1, j + 1), d = idx(i, j + 1);
+      faces.push(a, b, d, b, c, d);
+    }
+  // deck: span the two deck edges (j=0 starboard, j=NA port) along the length
+  for (let i = 0; i < NS - 1; i++) {
+    const a = idx(i, 0), b = idx(i, NA), c = idx(i + 1, NA), d = idx(i + 1, 0);
+    faces.push(a, b, c, a, c, d);
+  }
+  // transom cap at the stern (last station ring), fan from its centroid
+  const last = NS - 1;
+  let cx = 0, cy = 0, cz = 0;
+  for (let j = 0; j <= NA; j++) { cx += pos[idx(last, j) * 3]; cy += pos[idx(last, j) * 3 + 1]; cz += pos[idx(last, j) * 3 + 2]; }
+  cx /= (NA + 1); cy /= (NA + 1); cz /= (NA + 1);
+  const cI = pos.length / 3; pos.push(cx, cy, cz);
+  for (let j = 0; j < NA; j++) faces.push(cI, idx(last, j + 1), idx(last, j));
+  faces.push(cI, idx(last, 0), idx(last, NA)); // close across the deck edge
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(faces);
+  g.computeVertexNormals();
+  return g;
+}
+const hullMat = new THREE.MeshPhongMaterial({ color: 0xc9a468, flatShading: false, side: THREE.DoubleSide });
+const hull = new THREE.Mesh(buildHull(), hullMat);
+boatGroup.add(hull);
+
+// Low, flat coachroof for a sleek racing look
+const cabin = new THREE.Mesh(
+  new THREE.BoxGeometry(0.42, 0.16, 1.1),
+  new THREE.MeshPhongMaterial({ color: 0xb89a62 })
+);
+cabin.position.set(0, 0.40, -0.5);
+boatGroup.add(cabin);
+
+// Deep, thin fin keel under the midship (draft ~0.22 x LOA)
+const keel = new THREE.Mesh(
+  new THREE.BoxGeometry(0.07, 0.9, 0.45),
+  new THREE.MeshPhongMaterial({ color: 0x4a4a4a })
+);
+keel.position.set(0, -0.42, 0.15);
+boatGroup.add(keel);
+// Torpedo ballast bulb at the keel foot
+const bulb = new THREE.Mesh(
+  new THREE.CapsuleGeometry(0.1, 0.75, 5, 10),
+  new THREE.MeshPhongMaterial({ color: 0x333333 })
+);
+bulb.rotation.x = Math.PI / 2;
+bulb.position.set(0, -0.86, 0.15);
+boatGroup.add(bulb);
+
+// Mast — tall fractional rig (height ~1.57 x LOA), stepped slightly forward
+const MAST_Z = -0.15;
+const mastGeo = new THREE.CylinderGeometry(0.035, 0.05, 6.1, 8);
+const mastMat = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+const mast = new THREE.Mesh(mastGeo, mastMat);
+mast.position.set(0, 3.35, MAST_Z);
+boatGroup.add(mast);
+
+// Sail — mounted on a pivot at the mast so it can be trimmed (swing around y)
+const sailPivot = new THREE.Group();
+sailPivot.position.set(0, 0, MAST_Z);
+boatGroup.add(sailPivot);
+
+// Mainsail: luff up the mast (x=0,z=0), foot running aft to the clew.
+// Lives in the y-z plane so rotating the pivot swings the boom out to leeward.
+const sailGeo = new THREE.PlaneGeometry(1, 1, 6, 6); // subdivided so we can belly/luff it
+const sailMat = new THREE.MeshPhongMaterial({
+  color: 0xf5f0e8,
+  side: THREE.DoubleSide,
+  specular: 0x333333,
+  shininess: 20,
+});
+const sail = new THREE.Mesh(sailGeo, sailMat);
+sailPivot.add(sail);
+
+// Boom: a real spar from the gooseneck at the mast aft to the clew. The sail's
+// foot sits along it, and it swings out with the sailPivot when trimmed.
+const BOOM_Y = 0.9, BOOM_LEN = 2.55;
+const boomGeo = new THREE.CylinderGeometry(0.055, 0.055, BOOM_LEN, 10);
+boomGeo.rotateX(Math.PI / 2);            // lay the spar along z
+boomGeo.translate(0, BOOM_Y, BOOM_LEN / 2); // gooseneck at the mast (z≈0) -> clew aft
+const boom = new THREE.Mesh(boomGeo, new THREE.MeshPhongMaterial({ color: 0xcccccc }));
+sailPivot.add(boom);
+// Gooseneck fitting where the boom meets the mast
+const gooseneck = new THREE.Mesh(
+  new THREE.SphereGeometry(0.09, 8, 8),
+  new THREE.MeshPhongMaterial({ color: 0x888888 })
+);
+gooseneck.position.set(0, BOOM_Y, 0.02);
+sailPivot.add(gooseneck);
+
+// Shape the flat plane into a triangular sail in the y-z plane.
+// We map the unit plane's (x,y) corners to sail (z,y): tack, head, clew.
+// Tack and clew sit on the boom so the foot runs right along the spar.
+const TACK = new THREE.Vector3(0, BOOM_Y, 0);
+const HEAD = new THREE.Vector3(0, 6.0, 0);           // head near the masthead (tall rig)
+const CLEW = new THREE.Vector3(0, BOOM_Y, BOOM_LEN); // clew at the boom end, aft (+z)
+const sailPos = sailGeo.attributes.position;
+const sailBase = new Float32Array(sailPos.count * 3);
+for (let i = 0; i < sailPos.count; i++) {
+  // plane local coords in [-0.5, 0.5]
+  const u = sailPos.getX(i) + 0.5; // 0..1 along foot (mast -> clew)
+  const v = sailPos.getY(i) + 0.5; // 0..1 up the luff (tack -> head)
+  // Triangle: at the mast (u=0) the sail spans tack->head; at the clew (u=1) it pinches to CLEW
+  const mastPt = new THREE.Vector3().lerpVectors(TACK, HEAD, v);
+  const p = new THREE.Vector3().lerpVectors(mastPt, CLEW, u);
+  sailPos.setXYZ(i, p.x, p.y, p.z);
+  sailBase[i * 3] = p.x; sailBase[i * 3 + 1] = p.y; sailBase[i * 3 + 2] = p.z;
+}
+sailGeo.computeVertexNormals();
+
+// --- Jib (foresail): forestay from the bow to near the masthead ---
+const jibPivot = new THREE.Group();
+jibPivot.position.set(0, 0.32, -2.0);     // tack at the bow
+boatGroup.add(jibPivot);
+const JIB_TACK = new THREE.Vector3(0, 0, 0);
+const JIB_HEAD = new THREE.Vector3(0, 5.5, 1.85 + MAST_Z); // up to the mast, near the top
+const JIB_CLEW = new THREE.Vector3(0, 0.85, 1.55);          // sheets aft to the side deck
+const jibGeo = new THREE.PlaneGeometry(1, 1, 5, 5);
+const jibPos = jibGeo.attributes.position;
+const jibBase = new Float32Array(jibPos.count * 3);
+for (let i = 0; i < jibPos.count; i++) {
+  const u = jibPos.getX(i) + 0.5; // 0 = luff (forestay), 1 = clew
+  const v = jibPos.getY(i) + 0.5; // 0 = tack, 1 = head
+  const luffPt = new THREE.Vector3().lerpVectors(JIB_TACK, JIB_HEAD, v);
+  const p = new THREE.Vector3().lerpVectors(luffPt, JIB_CLEW, u);
+  jibPos.setXYZ(i, p.x, p.y, p.z);
+  jibBase[i * 3] = p.x; jibBase[i * 3 + 1] = p.y; jibBase[i * 3 + 2] = p.z;
+}
+jibGeo.computeVertexNormals();
+const jib = new THREE.Mesh(jibGeo, new THREE.MeshPhongMaterial({
+  color: 0xf0ebe0, side: THREE.DoubleSide, specular: 0x333333, shininess: 20,
+}));
+jibPivot.add(jib);
+const jibAxis = JIB_HEAD.clone().normalize(); // forestay axis: jib swings around it
+
+// --- Masthead pennant (Verklicker) — a little streamer that flies with the wind ---
+const pennantPivot = new THREE.Group();
+pennantPivot.position.set(0, 6.25, MAST_Z);
+boatGroup.add(pennantPivot);
+const pennGeo = new THREE.BufferGeometry();
+pennGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+  0, 0.12, 0,
+  0, -0.12, 0,
+  0, 0, 0.9, // streamer trails aft (+z) at rest
+]), 3));
+pennGeo.setIndex([0, 1, 2, 2, 1, 0]);
+pennGeo.computeVertexNormals();
+const pennMat = new THREE.MeshBasicMaterial({ color: 0xff5544, side: THREE.DoubleSide });
+const pennant = new THREE.Mesh(pennGeo, pennMat);
+pennantPivot.add(pennant);
+
+// --- Rudder at the stern (turns with the helm) ---
+const rudderPivot = new THREE.Group();
+rudderPivot.position.set(0, 0, 1.7); // at the transom (stern is toward +z)
+boatGroup.add(rudderPivot);
+// Spade blade: tall and thin, hanging straight down just behind the transom
+const rudderGeo = new THREE.BoxGeometry(0.05, 0.8, 0.32);
+rudderGeo.translate(0, -0.45, 0.08);
+const rudder = new THREE.Mesh(rudderGeo, new THREE.MeshPhongMaterial({ color: 0x5b4a32 }));
+rudderPivot.add(rudder);
+// Tiller poking forward over the deck so the helm motion reads from above
+const tillerGeo = new THREE.BoxGeometry(0.04, 0.04, 0.6);
+tillerGeo.translate(0, 0.12, -0.3);
+const tiller = new THREE.Mesh(tillerGeo, new THREE.MeshPhongMaterial({ color: 0x8a6a3a }));
+rudderPivot.add(tiller);
+
+boatGroup.position.set(0, 0.3, 0);
+// Apply heading (Y) before pitch (X) and roll (Z) so wave tilt stays in the hull frame
+boatGroup.rotation.order = 'YXZ';
+scene.add(boatGroup);
+
+// --- Soft transparent shadow on the water under the boat ---
+function makeShadowTexture() {
+  const S = 128;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, 'rgba(0,20,40,0.55)');
+  g.addColorStop(0.55, 'rgba(0,20,40,0.32)');
+  g.addColorStop(1, 'rgba(0,20,40,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, S, S);
+  return new THREE.CanvasTexture(c);
+}
+const shadowGeo = new THREE.PlaneGeometry(1, 1);
+shadowGeo.rotateX(-Math.PI / 2);                 // lie flat on the water (XZ plane)
+const boatShadow = new THREE.Mesh(shadowGeo, new THREE.MeshBasicMaterial({
+  map: makeShadowTexture(), transparent: true, depthWrite: false, opacity: 0.7,
+}));
+boatShadow.scale.set(2.0, 1, 6.0);               // roughly the hull footprint (a bit larger)
+scene.add(boatShadow);
+
+// --- Wind disc: just the coloured polar ring + a wind needle ---
+const windRing = new THREE.Group();
+const RING_R = 3.4;
+// Wind needle: separate group that rotates to the wind. The coloured ring is
+// boat-fixed (red at the bow); this needle swings round to show where the wind
+// comes from. Course is good when the needle sits over green.
+const windNeedle = new THREE.Group();
+const windMarkerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, side: THREE.DoubleSide, depthWrite: false });
+const markGeo = new THREE.BufferGeometry();
+markGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
+  -0.45, 0, -RING_R - 0.05,
+   0.45, 0, -RING_R - 0.05,
+   0,    0, -RING_R + 0.7,   // tip points inward toward the boat
+]), 3));
+markGeo.setIndex([0, 1, 2, 2, 1, 0]);
+const windMarkerMesh = new THREE.Mesh(markGeo, windMarkerMat);
+windMarkerMesh.renderOrder = 5; // draw on top of the coloured ring
+windNeedle.add(windMarkerMesh);
+scene.add(windNeedle);
+
+// Continuous polar band fixed to the BOAT: colour by sail efficiency at each
+// angle from the bow — red (no-go) at the bow (local -z), through yellow, to
+// green abeam (fastest). The needle above then reads the wind against it.
+{
+  const seg = 120;
+  const g = new THREE.RingGeometry(RING_R - 0.55, RING_R - 0.08, seg, 1);
+  const pos = g.attributes.position;
+  const cRed = new THREE.Color(0xff3b2f), cYel = new THREE.Color(0xffd23b), cGrn = new THREE.Color(0x2fdd5e);
+  const tmp = new THREE.Color();
+  const colors = [];
+  for (let i = 0; i < pos.count; i++) {
+    const phi = Math.atan2(pos.getY(i), pos.getX(i));   // from +x toward +y
+    let diff = phi - Math.PI / 2;                        // relative to wind source
+    diff = Math.atan2(Math.sin(diff), Math.cos(diff));   // wrap to -PI..PI
+    const twa = Math.abs(diff) * 180 / Math.PI;          // 0 (into wind) .. 180 (downwind)
+    const eff = sailEfficiency(twa);                     // 0..1 from the polar
+    if (eff < 0.5) tmp.copy(cRed).lerp(cYel, eff / 0.5);
+    else tmp.copy(cYel).lerp(cGrn, (eff - 0.5) / 0.5);
+    colors.push(tmp.r, tmp.g, tmp.b);
+  }
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.rotateX(-Math.PI / 2);
+  const polar = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    vertexColors: true, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false,
+  }));
+  windRing.add(polar);
+}
+
+scene.add(windRing);
+
+// --- Horizon stars ---
+const starGeo = new THREE.BufferGeometry();
+const starVerts = [];
+for (let i = 0; i < 800; i++) {
+  const theta = Math.random() * Math.PI * 2;
+  const phi = Math.random() * Math.PI * 0.45;
+  const r = 200;
+  starVerts.push(
+    r * Math.sin(phi) * Math.cos(theta),
+    r * Math.cos(phi) + 10,
+    r * Math.sin(phi) * Math.sin(theta)
+  );
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(starVerts), 3));
+const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.6, sizeAttenuation: true });
+const stars = new THREE.Points(starGeo, starMat);
+stars.visible = false; // daytime
+scene.add(stars);
+
+// --- Islands (fixed world positions, for orientation) ---
+function makeIsland(x, z, scale) {
+  const g = new THREE.Group();
+  // beach / base
+  const beach = new THREE.Mesh(
+    new THREE.CylinderGeometry(8 * scale, 9 * scale, 1.2, 16),
+    new THREE.MeshPhongMaterial({ color: 0x6b6a4a })
+  );
+  beach.position.y = 0.2;
+  g.add(beach);
+  // hill
+  const hill = new THREE.Mesh(
+    new THREE.ConeGeometry(6 * scale, 7 * scale, 16),
+    new THREE.MeshPhongMaterial({ color: 0x33402c, flatShading: true })
+  );
+  hill.position.y = 0.2 + 3.5 * scale;
+  g.add(hill);
+  g.position.set(x, 0, z);
+  scene.add(g);
+  return g;
+}
+[
+  [210, -110, 2.4], [-190, -60, 1.6], [70, -340, 3.0],
+  [-260, -300, 2.0], [260, -260, 1.8], [-60, 90, 1.4],
+].forEach(([x, z, s]) => makeIsland(x, z, s));
+
+// --- Regatta course: rounding marks in order ---
+const COURSE = [
+  { x: 10,   z: -100 },
+  { x: 120,  z: -200 },
+  { x: -120, z: -210 },
+  { x: 0,    z: -20  }, // finish near the start
+];
+const MARK_RADIUS = 11; // how close you must get to round a mark
+
+const buoys = [];
+COURSE.forEach((m) => {
+  const grp = new THREE.Group();
+  const buoy = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.9, 1.2, 2.4, 12),
+    new THREE.MeshPhongMaterial({ color: 0xff7700, emissive: 0x331100 })
+  );
+  buoy.position.y = 1.0;
+  grp.add(buoy);
+  const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(0.7, 12, 12),
+    new THREE.MeshPhongMaterial({ color: 0xffaa33, emissive: 0x442200 })
+  );
+  ball.position.y = 2.4;
+  grp.add(ball);
+  // light beam so the next mark is findable from a distance
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.5, 0.5, 60, 8, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0x66ff99, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false })
+  );
+  beam.position.y = 30;
+  beam.visible = false;
+  grp.add(beam);
+  grp.position.set(m.x, 0, m.z);
+  scene.add(grp);
+  buoys.push({ grp, buoy, ball, beam });
+});
+
+// --- Wind ---
+const wind = {
+  from: Math.PI * 0.25,  // direction wind blows FROM (radians, same convention as heading)
+  tws: 14,               // true wind speed in knots
+  maxTws: 25,
+};
+
+// --- Boat state & input ---
+const boat = {
+  heading: 0,      // radians, 0 = facing -Z
+  speed: 0,        // current forward speed (world units/s)
+  maxSpeed: 12,    // hull speed at ideal point of sail & full wind
+  rudder: 0,       // current rudder deflection (radians, + = turn to port)
+  maxRudder: 0.6,  // ~35°
+};
+
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  keys[e.code] = true;
+  if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyR') restartRace();
+});
+
+function restartRace() {
+  race.state = 'pre';
+  race.nextMark = 0;
+  race.time = 0;
+  boat.heading = 0;
+  boat.speed = 0;
+  boatGroup.position.set(0, 0.3, 0);
+  elRaceMsg.textContent = 'Steuere durch die Marken in der Reihenfolge';
+}
+
+// Normalize radians to [-PI, PI]
+function normAngle(a) {
+  while (a > Math.PI) a -= Math.PI * 2;
+  while (a < -Math.PI) a += Math.PI * 2;
+  return a;
+}
+
+// Sail efficiency vs. true wind angle (|TWA| in degrees). Simplified polar:
+// 0–30° = no-go (in irons), peak on a reach ~90–110°, tapers downwind.
+function sailEfficiency(twaDeg) {
+  const a = Math.abs(twaDeg);
+  if (a < 30) return 0;
+  if (a < 50) return ((a - 30) / 20) * 0.65;          // ramp out of the no-go zone
+  if (a <= 110) return 0.65 + ((a - 50) / 60) * 0.35; // build to full power on the reach
+  return 1.0 - ((a - 110) / 70) * 0.35;               // ease off running downwind
+}
+
+let twaDeg = 0;   // exposed for HUD
+let currentEff = 0; // exposed for sail visuals
+
+function updateBoat(dt) {
+  const left = keys['ArrowLeft'] || keys['KeyA'];
+  const right = keys['ArrowRight'] || keys['KeyD'];
+
+  // Keys move the rudder; it self-centres when released.
+  let rudderTarget = 0;
+  if (left)  rudderTarget -= boat.maxRudder;
+  if (right) rudderTarget += boat.maxRudder;
+  boat.rudder += (rudderTarget - boat.rudder) * (1 - Math.pow(0.02, dt)); // eases like a tiller
+
+  // The rudder only bites when the boat has way on. Bow turns with the helm,
+  // scaled by speed (a little authority even when nearly stopped).
+  const speedNorm = Math.min(Math.abs(boat.speed) / boat.maxSpeed, 1);
+  const steerage = 0.35 + 0.65 * speedNorm;
+  boat.heading += boat.rudder * 1.3 * steerage * dt;
+  boat.heading = normAngle(boat.heading);
+
+  // True wind angle = angle between bow and the direction the wind comes from
+  twaDeg = normAngle(wind.from - boat.heading) * 180 / Math.PI;
+
+  // Target speed from point of sail and wind strength
+  const eff = sailEfficiency(twaDeg);
+  currentEff = eff;
+  const target = boat.maxSpeed * (wind.tws / wind.maxTws) * eff;
+
+  // Ease toward target: quicker to pick up, slower to coast down
+  const responsiveness = target > boat.speed ? 0.8 : 1.4;
+  boat.speed += (target - boat.speed) * responsiveness * dt;
+
+  // Move along heading (0 = -Z). The hull must face the SAME direction it
+  // travels, so the mesh yaw is -heading (Three.js Y-rotation is mirrored
+  // in x relative to our movement convention).
+  boatGroup.position.x += Math.sin(boat.heading) * boat.speed * dt;
+  boatGroup.position.z -= Math.cos(boat.heading) * boat.speed * dt;
+  boatGroup.rotation.y = -boat.heading;
+}
+
+// --- HUD ---
+const elTws = document.getElementById('tws');
+const elTwd = document.getElementById('twd');
+const elSog = document.getElementById('sog');
+const elArrow = document.getElementById('windArrow');
+
+function updateHUD() {
+  elTws.textContent = wind.tws.toFixed(0);
+  // TWD relative to boat: 0° = wind on the bow, +stbd / -port
+  const rel = Math.round(twaDeg);
+  elTwd.textContent = (rel >= 0 ? '+' : '') + rel + '°';
+  // Boat speed: convert world units/s to a knots-ish readout
+  elSog.textContent = (Math.abs(boat.speed) * 1.4).toFixed(1);
+  // Arrow points toward the wind source; boat marker points up (bow)
+  elArrow.style.transform = `translate(-50%, -100%) rotate(${twaDeg}deg)`;
+}
+
+// --- Regatta race logic ---
+const elRaceTime = document.getElementById('raceTime');
+const elRaceBest = document.getElementById('raceBest');
+const elRaceMsg = document.getElementById('raceMsg');
+const elMarkNum = document.getElementById('markNum');
+const elMarkDist = document.getElementById('markDist');
+const elMarkArrow = document.getElementById('markArrow');
+
+const race = {
+  state: 'pre',     // 'pre' | 'racing' | 'done'
+  nextMark: 0,
+  time: 0,
+};
+let bestTime = parseFloat(localStorage.getItem('sim_best_time')) || null;
+
+function fmtTime(s) {
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(1).padStart(4, '0');
+  return `${String(m).padStart(2, '0')}:${sec}`;
+}
+
+function updateRace(dt) {
+  if (race.state === 'racing') race.time += dt;
+
+  if (race.state !== 'done') {
+    const mark = COURSE[race.nextMark];
+    const dx = mark.x - boatGroup.position.x;
+    const dz = mark.z - boatGroup.position.z;
+    const dist = Math.hypot(dx, dz);
+
+    // Reached the current mark?
+    if (dist < MARK_RADIUS) {
+      if (race.state === 'pre') { race.state = 'racing'; race.time = 0; }
+      race.nextMark++;
+      if (race.nextMark >= COURSE.length) {
+        race.state = 'done';
+        elRaceMsg.textContent = '🏁 Zieldurchgang!';
+        if (bestTime === null || race.time < bestTime) {
+          bestTime = race.time;
+          localStorage.setItem('sim_best_time', String(bestTime));
+          elRaceMsg.textContent = '🏁 Neue Bestzeit!';
+        }
+      } else {
+        elRaceMsg.textContent = race.state === 'racing'
+          ? `Marke ${race.nextMark} von ${COURSE.length}`
+          : elRaceMsg.textContent;
+      }
+    }
+
+    // Distance + bearing arrow to the next mark (relative to boat heading)
+    if (race.state !== 'done') {
+      elMarkNum.textContent = `${race.nextMark + 1}/${COURSE.length}`;
+      elMarkDist.textContent = Math.round(dist);
+      const bearing = Math.atan2(dx, -dz);         // world bearing to mark (0 = -z)
+      const rel = normAngle(bearing - boat.heading); // relative to bow
+      elMarkArrow.style.transform = `rotate(${rel * 180 / Math.PI}deg)`;
+    } else {
+      elMarkDist.textContent = '—';
+    }
+  }
+
+  // Highlight only the next mark: show its beam, pulse its colour.
+  buoys.forEach((b, i) => {
+    const active = i === race.nextMark && race.state !== 'done';
+    b.beam.visible = active;
+    const emis = active ? (0.4 + 0.3 * Math.sin(t * 4)) : 0.1;
+    b.ball.material.emissive.setRGB(emis * 0.5, emis, emis * 0.6);
+  });
+
+  elRaceTime.textContent = fmtTime(race.time);
+  elRaceBest.textContent = bestTime !== null ? `Best ${fmtTime(bestTime)}` : 'Best —';
+}
+
+// --- Sail / pennant / wake visuals ---
+const DEG = Math.PI / 180;
+let sailAngle = 0; // smoothed boom angle
+let heelAngle = 0; // smoothed heel (lean to leeward)
+const MAX_HEEL = 32 * DEG;
+
+// Apparent wind angle relative to the bow (radians, + = wind on starboard).
+// Combines the true wind with the boat's own motion, like the real thing.
+function apparentWindAngle() {
+  const twa = twaDeg * DEG;
+  const boatKn = Math.abs(boat.speed) * 1.4;     // same knots scale as the HUD
+  const ax = wind.tws * Math.sin(twa);            // athwartships component
+  const ay = wind.tws * Math.cos(twa) + boatKn;   // fore-aft component (boat adds headwind)
+  return Math.atan2(ax, ay);
+}
+
+function updateVisuals(dt) {
+  // Textbook trim: ease the boom until the sail is at its optimal angle of
+  // attack to the APPARENT wind (just shy of luffing), then hold.
+  const AOA = 15 * DEG;            // optimal angle of attack of the sail
+  const awa = apparentWindAngle();
+  let boomMag = Math.min(Math.max(Math.abs(awa) - AOA, 0), 85 * DEG);
+  // Boom eases to leeward (away from the wind). Wind on starboard (twaDeg>0)
+  // -> boom swings to port, which is a negative pivot rotation (clew to -x).
+  const side = twaDeg >= 0 ? -1 : 1;
+  let targetAngle = side * boomMag;
+
+  const luffing = currentEff <= 0.02; // in irons / pinching
+  if (luffing) {
+    // Sail can't fill: sit near centreline and shiver
+    targetAngle = Math.sin(t * 14) * 6 * DEG;
+  }
+  sailAngle += (targetAngle - sailAngle) * (1 - Math.pow(0.02, dt));
+  sailPivot.rotation.y = sailAngle;
+  // Jib swings around the forestay, trimmed a touch tighter than the main
+  jibPivot.quaternion.setFromAxisAngle(jibAxis, -sailAngle * 0.85);
+
+  // Heel: lean to leeward, driven by wind strength and point of sail. Greatest
+  // on a beam reach, fading to nothing dead downwind or head-to-wind.
+  const heelMag = MAX_HEEL * (wind.tws / wind.maxTws) * currentEff * Math.sin(Math.abs(twaDeg * DEG));
+  const heelTarget = Math.sign(twaDeg) * heelMag; // wind on stbd -> heel to port (leeward)
+  heelAngle += (heelTarget - heelAngle) * (1 - Math.pow(0.08, dt));
+
+  // Belly the sail along its foot when powered up; flutter the leech when luffing.
+  // The draft bows to LEEWARD, so its sign flips with the tack.
+  const lee = twaDeg >= 0 ? -1 : 1; // local -x is to leeward when wind is on starboard
+  const headY = 6.0, footY = 0.9;
+  for (let i = 0; i < sailPos.count; i++) {
+    const u = (i % 7) / 6;          // 0 at mast, 1 at clew (plane was 6 segments wide)
+    const bx = sailBase[i * 3];
+    const by = sailBase[i * 3 + 1];
+    const bz = sailBase[i * 3 + 2];
+    const vNorm = (by - footY) / (headY - footY); // 0 at foot, 1 at head
+    const vTaper = 1 - 0.55 * vNorm;               // draft eases off toward the head
+    let bulge;
+    if (luffing) {
+      bulge = Math.sin(t * 18 + by * 2 + bz) * 0.18 * u; // ripple, strongest at the leech
+    } else {
+      bulge = Math.sin(u * Math.PI) * 0.45 * currentEff * vTaper * lee; // fullest mid-foot, to leeward
+    }
+    sailPos.setX(i, bx + bulge);
+  }
+  sailPos.needsUpdate = true;
+  sailGeo.computeVertexNormals();
+
+  // Masthead pennant streams downwind: the tip points away from the wind source.
+  // Target = -twaDeg so it lines up opposite the wind-from marker on the disc.
+  const pennantTarget = -twaDeg * DEG;
+  let pd = pennantTarget - pennantPivot.rotation.y;
+  pd = Math.atan2(Math.sin(pd), Math.cos(pd)); // shortest way round (avoid 360° spins)
+  pennantPivot.rotation.y += pd * (1 - Math.pow(0.05, dt));
+
+  // Rudder swings with the helm (mirrors the deflection at the stern).
+  rudderPivot.rotation.y = boat.rudder;
+}
+
+// --- Minimap (heading-up: boat centred and pointing up, marks around it) ---
+const mmCanvas = document.getElementById('minimap');
+const mmCtx = mmCanvas.getContext('2d');
+const MM = 150, MMC = MM / 2, MM_RANGE = 230, mmScale = (MMC - 14) / MM_RANGE;
+(function initMinimap() {
+  const dpr = window.devicePixelRatio || 1;
+  mmCanvas.width = MM * dpr;
+  mmCanvas.height = MM * dpr;
+  mmCtx.scale(dpr, dpr);
+})();
+
+function drawMinimap() {
+  mmCtx.clearRect(0, 0, MM, MM);
+  const bx = boatGroup.position.x, bz = boatGroup.position.z, h = boat.heading;
+  const sinH = Math.sin(h), cosH = Math.cos(h);
+  // world point -> map coords (bow = up, starboard = right)
+  const toMap = (wx, wz) => {
+    const dx = wx - bx, dz = wz - bz;
+    const fwd = dx * sinH - dz * cosH;   // forward of the boat
+    const stb = dx * cosH + dz * sinH;   // to starboard
+    return { x: MMC + stb * mmScale, y: MMC - fwd * mmScale };
+  };
+
+  // faint range rings
+  mmCtx.strokeStyle = 'rgba(120,170,220,0.18)';
+  mmCtx.lineWidth = 1;
+  for (const rr of [0.5, 1]) {
+    mmCtx.beginPath();
+    mmCtx.arc(MMC, MMC, (MMC - 14) * rr, 0, Math.PI * 2);
+    mmCtx.stroke();
+  }
+
+  // wind-from marker on the rim (cyan), bearing = twaDeg relative to the bow
+  {
+    const a = twaDeg * Math.PI / 180;
+    const r = MMC - 6;
+    mmCtx.fillStyle = '#33e0ff';
+    mmCtx.beginPath();
+    mmCtx.arc(MMC + Math.sin(a) * r, MMC - Math.cos(a) * r, 3, 0, Math.PI * 2);
+    mmCtx.fill();
+  }
+
+  // buoys: rounded = dim, next = green (larger), upcoming = orange; clamp to rim
+  COURSE.forEach((m, i) => {
+    let p = toMap(m.x, m.z);
+    const ddx = p.x - MMC, ddy = p.y - MMC, d = Math.hypot(ddx, ddy), rMax = MMC - 10;
+    if (d > rMax) { p.x = MMC + ddx / d * rMax; p.y = MMC + ddy / d * rMax; }
+    const next = i === race.nextMark && race.state !== 'done';
+    mmCtx.fillStyle = i < race.nextMark ? 'rgba(120,150,180,0.5)'
+      : next ? '#33ff88' : '#ff9933';
+    mmCtx.beginPath();
+    mmCtx.arc(p.x, p.y, next ? 5 : 3.5, 0, Math.PI * 2);
+    mmCtx.fill();
+    if (next) { // ring around the next mark
+      mmCtx.strokeStyle = 'rgba(80,255,140,0.7)';
+      mmCtx.lineWidth = 1.5;
+      mmCtx.beginPath();
+      mmCtx.arc(p.x, p.y, 8, 0, Math.PI * 2);
+      mmCtx.stroke();
+    }
+  });
+
+  // boat at centre, pointing up
+  mmCtx.fillStyle = '#ffffff';
+  mmCtx.beginPath();
+  mmCtx.moveTo(MMC, MMC - 8);
+  mmCtx.lineTo(MMC + 5, MMC + 6);
+  mmCtx.lineTo(MMC, MMC + 3);
+  mmCtx.lineTo(MMC - 5, MMC + 6);
+  mmCtx.closePath();
+  mmCtx.fill();
+}
+
+// --- Camera (chase) ---
+const CAM_BACK = 16;
+const CAM_HEIGHT = 7;
+
+// --- Resize ---
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// --- Animate ---
+const clock = new THREE.Clock();
+let t = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  t += dt;
+
+  updateBoat(dt);
+
+  // Ocean & stars follow the boat so the sea is effectively infinite
+  ocean.position.x = boatGroup.position.x;
+  ocean.position.z = boatGroup.position.z;
+  stars.position.x = boatGroup.position.x;
+  stars.position.z = boatGroup.position.z;
+
+  animateWaves(t);
+  updateVisuals(dt);
+  updateRace(dt);
+  updateHUD();
+  drawMinimap();
+
+  // Sit the boat on the actual wave surface: sample the wave at the hull
+  // centre (float height) and fore/aft + port/stbd (pitch & roll).
+  {
+    const bx = boatGroup.position.x, bz = boatGroup.position.z;
+    const h = boat.heading;
+    const fwdX = Math.sin(h), fwdZ = -Math.cos(h); // bow direction
+    const rgtX = Math.cos(h), rgtZ = Math.sin(h);  // starboard direction
+    const L = 1.9, B = 0.46;                        // half length / half beam
+
+    const hC = waveHeight(bx, bz, t);
+    const hF = waveHeight(bx + fwdX * L, bz + fwdZ * L, t);
+    const hA = waveHeight(bx - fwdX * L, bz - fwdZ * L, t);
+    const hR = waveHeight(bx + rgtX * B, bz + rgtZ * B, t);
+    const hL = waveHeight(bx - rgtX * B, bz - rgtZ * B, t);
+
+    boatGroup.position.y = hC - 0.06;               // waterline partway up the hull
+    boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L); // bow up when the sea ahead is higher
+    boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle; // wave roll + wind heel
+
+    // Polar ring is fixed to the boat (red at the bow); the needle shows the wind.
+    windRing.position.set(bx, hC + 0.82, bz); // just under the boom
+    windRing.rotation.y = boatGroup.rotation.y;     // ring turns with the boat
+    windNeedle.position.set(bx, hC + 0.84, bz);
+    windNeedle.rotation.y = -wind.from;             // needle points to the wind source
+
+    // Soft shadow on the water: flat, aligned with the hull, nudged away from the sun
+    boatShadow.position.set(bx - 0.5, hC + 0.04, bz - 0.3);
+    boatShadow.rotation.y = boatGroup.rotation.y;
+  }
+
+  // Chase camera locked directly astern: snaps with the boat's heading.
+  camera.position.set(
+    boatGroup.position.x - Math.sin(boat.heading) * CAM_BACK,
+    boatGroup.position.y + CAM_HEIGHT,
+    boatGroup.position.z + Math.cos(boat.heading) * CAM_BACK
+  );
+  camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5, boatGroup.position.z);
+
+  renderer.render(scene, camera);
+}
+
+animate();
+</script>
+</body>
+</html>
