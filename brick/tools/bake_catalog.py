@@ -60,24 +60,33 @@ SEARCH_DIRS = [
     LDRAW / 'parts',
     LDRAW / 'parts' / 's',
     LDRAW / 'p',
+    LDRAW / 'p' / '48',
 ]
 
 def find_dat(name):
-    """Find a .dat file by (possibly path-prefixed) name."""
+    """Find a .dat file by (possibly path-prefixed) name.
+
+    Subdir-bewusst: '48\\x' → p/48/x (hi-res Primitive für runde Teile),
+    's\\x' → parts/s/x. Die 48er-Version MUSS bevorzugt werden, weil derselbe
+    Basisname auch in p/ existiert (niedrigere Auflösung).
+    """
     name_clean = name.replace('\\', '/').lower()
-    # direct name
-    base = Path(name_clean).name
-    sub  = Path(name_clean).parent.name  # 's' or ''
+    base   = Path(name_clean).name
+    parent = Path(name_clean).parent.name  # '48', 's', 'p' oder ''
+
+    if parent == '48':
+        cand = LDRAW / 'p' / '48' / base
+        if cand.exists():
+            return cand
+    if parent == 's':
+        cand = LDRAW / 'parts' / 's' / base
+        if cand.exists():
+            return cand
 
     for d in SEARCH_DIRS:
-        candidate = d / base
-        if candidate.exists():
-            return candidate
-        # also try with subdir prefix
-        if sub == 's':
-            candidate2 = LDRAW / 'parts' / 's' / base
-            if candidate2.exists():
-                return candidate2
+        cand = d / base
+        if cand.exists():
+            return cand
     return None
 
 def parse_matrix_line(parts):
