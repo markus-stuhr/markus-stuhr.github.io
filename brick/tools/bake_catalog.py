@@ -117,27 +117,39 @@ def collect_triangles(path, matrix=None, visited=None, invert=False):
         return []
 
     triangles = []
+    invert_next = False    # gilt NUR fürs unmittelbar folgende Sub-File (LDraw-Spec)
+    winding_cw  = False    # BFC-Zertifizierung dieses Files (Default CCW)
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
-        if not line or line.startswith('0'):
-            # Check for BFC INVERTNEXT
-            if 'BFC' in line and 'INVERTNEXT' in line:
-                invert = not invert  # will flip for next sub-file
+        if not line:
+            continue
+        if line.startswith('0'):
+            # Meta/BFC-Kommandos
+            toks = line.split()
+            if 'BFC' in toks:
+                if 'INVERTNEXT' in toks:
+                    invert_next = True
+                if 'CW' in toks:
+                    winding_cw = True
+                elif 'CCW' in toks:
+                    winding_cw = False
             continue
 
         parts_l = line.split()
         ltype = parts_l[0]
 
         if ltype == '1':
-            # Sub-file reference
+            # Sub-file reference — INVERTNEXT + negative Determinante wirken hier
             if len(parts_l) < 15:
+                invert_next = False
                 continue
             local_m, fname = parse_matrix_line(parts_l)
             combined = mat_mul(matrix, local_m)
-            sub_invert = invert
+            sub_invert = invert ^ invert_next
             if mat_determinant3(local_m) < 0:
                 sub_invert = not sub_invert
+            invert_next = False  # Einmal-Flag verbraucht
 
             sub_path = find_dat(fname)
             if sub_path:
@@ -145,31 +157,35 @@ def collect_triangles(path, matrix=None, visited=None, invert=False):
                 triangles.extend(sub_tris)
 
         elif ltype == '3':
-            # Triangle
+            # Triangle — Winding = akkumulierter Invert XOR File-CW-Zertifizierung
+            invert_next = False
             if len(parts_l) < 11:
                 continue
             v0 = mat_apply(matrix, float(parts_l[2]), float(parts_l[3]), float(parts_l[4]))
             v1 = mat_apply(matrix, float(parts_l[5]), float(parts_l[6]), float(parts_l[7]))
             v2 = mat_apply(matrix, float(parts_l[8]), float(parts_l[9]), float(parts_l[10]))
-            if invert:
+            if invert ^ winding_cw:
                 triangles.append((v0, v2, v1))
             else:
                 triangles.append((v0, v1, v2))
 
         elif ltype == '4':
             # Quad → 2 triangles
+            invert_next = False
             if len(parts_l) < 14:
                 continue
             v0 = mat_apply(matrix, float(parts_l[2]),  float(parts_l[3]),  float(parts_l[4]))
             v1 = mat_apply(matrix, float(parts_l[5]),  float(parts_l[6]),  float(parts_l[7]))
             v2 = mat_apply(matrix, float(parts_l[8]),  float(parts_l[9]),  float(parts_l[10]))
             v3 = mat_apply(matrix, float(parts_l[11]), float(parts_l[12]), float(parts_l[13]))
-            if invert:
+            if invert ^ winding_cw:
                 triangles.append((v0, v2, v1))
                 triangles.append((v0, v3, v2))
             else:
                 triangles.append((v0, v1, v2))
                 triangles.append((v0, v2, v3))
+        else:
+            invert_next = False  # type 2/5 (Linien) heben ein offenes INVERTNEXT auf
 
     return triangles
 

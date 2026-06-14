@@ -825,9 +825,10 @@ function createBrickMesh(w, d, color, isGhost = false, type = 'brick', partId = 
       const group = new THREE.Group();
       group.userData.brickType = type;
       const mat = makeMat(color, isGhost);
-      // DoubleSide: gebakte LDraw-Geometrie hat teils inkonsistentes Winding
-      // (BFC) — FrontSide würde Flächen wegcullen → "skelettartig". DoubleSide
-      // rendert alle Flächen; THREE spiegelt die Normale pro Fragment → korrekt.
+      // DoubleSide: robust gegen Teile unbekannter BFC-Zertifizierung — nie
+      // skelettartig. (Baker liefert nach BFC-Fix korrektes Winding, sodass
+      // FrontSide auch ginge; DoubleSide bleibt die sichere Wahl für beliebige
+      // importierte Modelle.)
       mat.side = THREE.DoubleSide;
       const m = new THREE.Mesh(cached.geo, mat);
       m.castShadow    = !isGhost && !isLightColor(color);
