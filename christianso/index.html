@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Das Geheimnis von Christiansø — Prolog</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #07090d; color: #e8e2d0;
+    font-family: 'Courier New', monospace; overflow: hidden; user-select: none; -webkit-user-select: none; }
+  #game { display: flex; flex-direction: column; height: 100%; width: 100%; }
+  #stageWrap { position: relative; flex: 1 1 auto; background: #000; overflow: hidden; }
+  canvas#scene { position: absolute; image-rendering: pixelated; image-rendering: crisp-edges;
+    left: 50%; top: 50%; transform: translate(-50%, -50%); cursor: pointer; }
+
+  #caption { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%);
+    max-width: 90%; text-align: center; font-size: 16px; color: #f4e9c8;
+    text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+    pointer-events: none; line-height: 1.3; display: none; }
+
+  #dialog { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(8,6,4,.88);
+    border-top: 2px solid #5a4020; padding: 6px 10px; display: none; }
+  #dialog .npcsay { color: #f4e9c8; font-size: 15px; margin-bottom: 6px; min-height: 1px; }
+  .dline { color: #8fd6ff; padding: 4px 6px; cursor: pointer; font-size: 15px; }
+  .dline:hover { background: #2a3d4d; color: #fff; }
+
+  #sentence { height: 30px; line-height: 30px; text-align: center; font-size: 16px;
+    background: #140f0a; color: #f0d890; border-top: 2px solid #3a2f22;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 8px; }
+
+  #ui { display: flex; height: 132px; background: #140f0a; border-top: 2px solid #3a2f22; }
+  #verbs { display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr);
+    gap: 4px; padding: 6px; width: 48%; }
+  .verb { background: #2a2018; color: #d8c8a0; border: 1px solid #4a3a28; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center; font-size: 15px; cursor: pointer; }
+  .verb:hover { background: #4a3618; color: #fff; }
+  .verb.active { background: #6b4a1e; color: #fff; border-color: #f0d890; }
+  #inv { width: 52%; padding: 6px; display: grid; grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 58px; gap: 4px; overflow-y: auto; border-left: 2px solid #3a2f22; align-content: start; }
+  .invItem { background: #2a2018; border: 1px solid #4a3a28; border-radius: 3px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-size: 10px; text-align: center; padding: 2px; color: #d8c8a0; }
+  .invItem:hover { background: #4a3618; color: #fff; }
+  .invItem.sel { outline: 2px solid #f0d890; outline-offset: -2px; }
+  .invIcon { width: 26px; height: 26px; border-radius: 3px; margin-bottom: 3px; }
+
+  #overlay { position: absolute; inset: 0; background: #07090d; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 24px; z-index: 5; }
+  #overlay h1 { font-size: 26px; color: #f0d890; margin-bottom: 12px; letter-spacing: 1px; }
+  #overlay p { font-size: 15px; color: #b8ad95; max-width: 460px; margin-bottom: 8px; line-height: 1.5; }
+  #overlay button { margin-top: 18px; background: #6b4a1e; color: #fff; border: 1px solid #f0d890;
+    border-radius: 4px; padding: 10px 22px; font-family: inherit; font-size: 16px; cursor: pointer; }
+  #overlay button:hover { background: #8a611f; }
+  .hint { font-size: 13px; color: #6f6552; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div id="game">
+  <div id="stageWrap">
+    <canvas id="scene" width="320" height="180"></canvas>
+    <div id="caption"></div>
+    <div id="dialog"><div class="npcsay"></div><div class="dopts"></div></div>
+    <div id="overlay">
+      <h1>Das Geheimnis von Christiansø</h1>
+      <p><b>Prolog — Gudhjem</b></p>
+      <p>Mads Møller will mit der Fähre nach Christiansø. Aber erst braucht er ein Ticket …</p>
+      <p class="hint">Wähle ein Verb, dann klicke ein Objekt oder eine Person.<br>Ohne Verb läuft Mads einfach zum angeklickten Punkt.</p>
+      <button id="startBtn">Los geht's</button>
+    </div>
+  </div>
+  <div id="sentence">Gehe zu</div>
+  <div id="ui">
+    <div id="verbs"></div>
+    <div id="inv"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+//============================================================================
+// Christiansø Adventure — Engine v0.1 (Vertical Slice: Gudhjem-Prolog)
+// Vanilla JS. Hybrid-Rendering: Szene auf Canvas (320x180, pixelated),
+// UI (Verben/Inventar/Dialog) als DOM. Daten-getriebene Räume/Hotspots/Items.
+//============================================================================
+
+const VW = 320, VH = 180;          // virtuelle Auflösung
+const WALK_TOP = 138, WALK_BOT = 168;  // begehbares Band (Boden)
+
+const cv = document.getElementById('scene');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+
+const elCaption = document.getElementById('caption');
+const elSentence = document.getElementById('sentence');
+const elVerbs = document.getElementById('verbs');
+const elInv = document.getElementById('inv');
+const elDialog = document.getElementById('dialog');
+const elDsay = elDialog.querySelector('.npcsay');
+const elDopts = elDialog.querySelector('.dopts');
+const elOverlay = document.getElementById('overlay');
+
+const VERBS = ['Gib','Nimm','Benutze','Öffne','Schau an','Drücke','Schließe','Ziehe','Rede mit'];
+const TWO_OBJ = { 'Benutze': 'mit', 'Gib': 'an' };
+
+//---------------------------------------------------------------------------
+// Spielzustand
+//---------------------------------------------------------------------------
+const state = {
+  room: 'harbor',
+  verb: 'Gehe zu',
+  obj1: null,                 // erstes Objekt bei Zwei-Objekt-Verben
+  inv: ['schein'],
+  flags: { boughtHerring: false, hasChange: false, hasTicket: false },
+  mode: 'title',              // 'title' | 'play' | 'dialog' | 'cutscene'
+  player: { x: 64, y: 156, tx: 64, ty: 156, scale: 1, onArrive: null, facing: 1 },
+};
+
+//---------------------------------------------------------------------------
+// Items
+//---------------------------------------------------------------------------
+const ITEMS = {
+  schein:     { name: '500-Kronen-Schein', color: '#2e8b57',
+                look: 'Ein knisternder 500-Kronen-Schein. Viel zu groß, um damit eine Fährfahrt zu bezahlen.' },
+  hering:     { name: 'Magnet-Hering', color: '#7fa7c4',
+                look: 'Ein kitschiger Kühlschrankmagnet in Heringsform. "Hilsen fra Bornholm". Wunderschön hässlich. Und magnetisch.' },
+  wechselgeld:{ name: 'Wechselgeld', color: '#d4af37',
+                look: 'Eine Handvoll Münzen. Genau richtig für ein Fährticket.' },
+  ticket:     { name: 'Fährticket', color: '#e0d5b8',
+                look: 'Ein Ticket nach Christiansø. Einfache Fahrt — Rückfahrt: ungewiss.' },
+};
+
+//---------------------------------------------------------------------------
+// Hilfen
+//---------------------------------------------------------------------------
+let capTimer = null;
+function say(text, who) {
+  const full = who ? `${who}: „${text}"` : text;
+  elCaption.textContent = full;
+  elCaption.style.display = 'block';
+  if (capTimer) clearTimeout(capTimer);
+  if (state.mode !== 'dialog') {
+    const dur = Math.max(1800, Math.min(6000, full.length * 55));
+    capTimer = setTimeout(() => { elCaption.style.display = 'none'; }, dur);
+  }
+}
+function hasItem(id) { return state.inv.includes(id); }
+function addItem(id) { if (!hasItem(id)) state.inv.push(id); renderInv(); }
+function removeItem(id) { state.inv = state.inv.filter(i => i !== id); renderInv(); }
+
+//---------------------------------------------------------------------------
+// Puzzle-Aktionen (von Dialog UND Geben-Verb aus erreichbar)
+//---------------------------------------------------------------------------
+function buyHerring() {
+  if (state.flags.boughtHerring || !hasItem('schein')) return;
+  state.flags.boughtHerring = true;
+  state.flags.hasChange = true;
+  removeItem('schein');
+  addItem('hering');
+  addItem('wechselgeld');
+  say('Ein Auge fürs Schöne! Der magnetische Hering — mein Bestseller. Hier ist Ihr Wechselgeld.', 'Bodil');
+}
+function buyTicket() {
+  if (!state.flags.hasChange || state.flags.hasTicket) return;
+  state.flags.hasTicket = true;
+  removeItem('wechselgeld');
+  addItem('ticket');
+  say('40 Kroner, passend, sehr schön. Die Fähre legt gleich ab — beeil dich, Junge!', 'Aksel');
+}
+function board() {
+  if (!state.flags.hasTicket) { say('Erst ein Ticket. So einfach komme ich hier nicht weg.'); return; }
+  runCrossing();
+}
+
+//---------------------------------------------------------------------------
+// Dialoge (dynamisch nach Flags aufgebaut)
+//---------------------------------------------------------------------------
+const DIALOGS = {
+  bodil: () => {
+    const o = [];
+    o.push({ t: 'Was haben Sie denn so?', run: () =>
+      reopen('Souvenirs vom Feinsten! Der magnetische Hering ist der Renner. Magnetisch! Nur… 500 Kronen.', 'bodil') });
+    if (!state.flags.boughtHerring && hasItem('schein'))
+      o.push({ t: 'Ich nehme den magnetischen Hering. (500 Kr)', run: () => { buyHerring(); closeDialog(); } });
+    o.push({ t: '(Gehen)', run: closeDialog });
+    return o;
+  },
+  aksel: () => {
+    const o = [];
+    if (state.flags.hasTicket) {
+      o.push({ t: 'Wann legen wir ab?', run: () =>
+        reopen('Sobald du an Bord bist! Worauf wartest du?', 'aksel') });
+    } else if (state.flags.hasChange) {
+      o.push({ t: 'Ein Ticket nach Christiansø, bitte.', run: () => { buyTicket(); closeDialog(); } });
+    } else {
+      o.push({ t: 'Ein Ticket nach Christiansø, bitte.', run: () =>
+        reopen('Gern — 40 Kroner. Aber pass auf: für so einen großen Schein hab ich keinen Øre Wechselgeld!', 'aksel') });
+      o.push({ t: 'Wo bekomme ich Wechselgeld?', run: () =>
+        reopen('Der Souvenirstand am Kai nimmt deinen großen Schein bestimmt nur zu gern.', 'aksel') });
+    }
+    o.push({ t: '(Gehen)', run: closeDialog });
+    return o;
+  },
+};
+let curNpc = null;
+function openDialog(npc) {
+  curNpc = npc;
+  state.mode = 'dialog';
+  elDsay.textContent = '';
+  renderDialog();
+  elDialog.style.display = 'block';
+  elCaption.style.display = 'none';
+}
+function reopen(line, npc) { elDsay.textContent = `${npcName(npc)}: „${line}"`; renderDialog(); }
+function renderDialog() {
+  elDopts.innerHTML = '';
+  DIALOGS[curNpc]().forEach(opt => {
+    const d = document.createElement('div');
+    d.className = 'dline';
+    d.textContent = '• ' + opt.t;
+    d.onclick = opt.run;
+    elDopts.appendChild(d);
+  });
+}
+function closeDialog() {
+  elDialog.style.display = 'none';
+  curNpc = null;
+  if (state.mode === 'dialog') state.mode = 'play';
+}
+function npcName(n) { return n === 'bodil' ? 'Bodil' : n === 'aksel' ? 'Aksel' : ''; }
+
+//---------------------------------------------------------------------------
+// Räume
+//---------------------------------------------------------------------------
+const ROOMS = {
+  harbor: {
+    draw: drawHarbor,
+    hotspots: [
+      { id: 'ferry', name: 'Fähre', rect: [0, 96, 86, 60], walk: { x: 78, y: 162 },
+        look: 'Die kleine Christiansø-Fähre. Sie schaukelt einladend. Ohne Ticket komme ich da nicht rauf.',
+        onUse: board },
+      { id: 'booth', name: 'Billettluge', rect: [104, 104, 44, 44], walk: { x: 126, y: 160 },
+        look: 'Die Fährkasse. Ein handgeschriebenes Schild: „Bin im Røgeri. — Der Fährmann."',
+        onOpen: () => say('Geschlossen. Der Fährmann ist im Røgeri.') },
+      { id: 'bodil', name: 'Bodil', npc: true, rect: [196, 100, 30, 56], walk: { x: 206, y: 162 },
+        look: 'Bodil, die Souvenirhändlerin. Strahlt jeden potenziellen Käufer an wie eine Leuchtboje.',
+        talk: () => openDialog('bodil') },
+      { id: 'stand', name: 'Souvenirstand', rect: [226, 104, 64, 40], walk: { x: 250, y: 162 },
+        look: 'Ein Stand voller Krimskrams. In der Mitte thront ein magnetischer Souvenir-Hering.',
+        onUse: () => openDialog('bodil') },
+      { id: 'toRoegeri', name: 'Weg zum Røgeri', rect: [290, 70, 30, 100], walk: { x: 300, y: 158 },
+        look: 'Eine Gasse führt hoch zum Røgeri, wo die Schornsteine rauchen.',
+        exit: { room: 'roegeri', x: 40, y: 158 } },
+    ],
+  },
+  roegeri: {
+    draw: drawRoegeri,
+    hotspots: [
+      { id: 'toHarbor', name: 'Weg zum Hafen', rect: [0, 70, 34, 100], walk: { x: 26, y: 158 },
+        look: 'Zurück hinunter zum Hafen und zur Fähre.',
+        exit: { room: 'harbor', x: 296, y: 158 } },
+      { id: 'aksel', name: 'Aksel', npc: true, rect: [150, 98, 32, 58], walk: { x: 162, y: 162 },
+        look: 'Skipper Aksel, der Fährmann. Genießt sein „Sol over Gudhjem", als hinge sein Leben daran.',
+        talk: () => openDialog('aksel') },
+      { id: 'plate', name: 'Sol over Gudhjem', rect: [150, 124, 26, 12], walk: { x: 150, y: 162 },
+        look: 'Geräucherter Hering mit rohem Eigelb auf Roggenbrot. Bornholmer Nationalheiligtum.' },
+      { id: 'chimney', name: 'Räucherschornsteine', rect: [40, 40, 80, 60], walk: { x: 90, y: 158 },
+        look: 'Die berühmten weißen Schornsteine. Es riecht köstlich nach Rauch und Hering.' },
+    ],
+  },
+};
+function room() { return ROOMS[state.room]; }
+
+//---------------------------------------------------------------------------
+// Zwei-Objekt-Kombinationen (Benutze … mit …, Gib … an …)
+//---------------------------------------------------------------------------
+function combine(verb, a, b) {
+  const ids = [a.id, b.id];
+  const has = id => ids.includes(id);
+  // Gib Schein an Bodil/Stand  → Hering kaufen
+  if (verb === 'Gib' && has('schein') && (has('bodil') || has('stand'))) {
+    if (!state.flags.boughtHerring) { buyHerring(); return true; }
+  }
+  // Gib Wechselgeld an Aksel  → Ticket
+  if (verb === 'Gib' && has('wechselgeld') && has('aksel')) {
+    if (state.flags.hasChange && !state.flags.hasTicket) { buyTicket(); return true; }
+  }
+  // Gib/Benutze Ticket an/mit Fähre  → einsteigen
+  if (has('ticket') && has('ferry')) { board(); return true; }
+  // Späßchen
+  if (has('hering') && has('ferry')) { say('Der Magnet-Hering klebt kurz am Rumpf. Dann fällt er ab. Wie alles in meinem Leben.'); return true; }
+  if (has('hering') && (has('booth'))) { say('Der Hering klebt an der Blechluge. Sehr dekorativ, aber öffnet sie nicht.'); return true; }
+  return false;
+}
+
+//---------------------------------------------------------------------------
+// Interaktion ausführen
+//---------------------------------------------------------------------------
+function targetLook(t) {
+  if (t.type === 'item') return ITEMS[t.id].look;
+  return t.hs.look || 'Nichts Besonderes.';
+}
+function perform(verb, t) {
+  switch (verb) {
+    case 'Schau an': say(targetLook(t)); break;
+    case 'Rede mit':
+      if (t.type === 'hotspot' && t.hs.talk) t.hs.talk();
+      else say('Das hat mir nichts zu sagen.');
+      break;
+    case 'Nimm':
+      if (t.type === 'item') say('Hab ich schon.');
+      else say('Das lässt sich nicht einfach einstecken.');
+      break;
+    case 'Öffne':
+      if (t.type === 'hotspot' && t.hs.onOpen) t.hs.onOpen();
+      else say('Das kann ich nicht öffnen.');
+      break;
+    case 'Schließe': say('Muss ich nicht schließen.'); break;
+    case 'Drücke': say('Ich drücke dagegen. Es passiert nichts Spannendes.'); break;
+    case 'Ziehe': say('Ich ziehe daran. Es bleibt, wo es ist.'); break;
+    case 'Benutze':
+      if (t.type === 'hotspot' && t.hs.onUse) { t.hs.onUse(); }
+      else { say('Das müsste ich mit etwas benutzen.'); }
+      break;
+    default: // 'Gehe zu'
+      if (t.type === 'hotspot' && t.hs.exit) doExit(t.hs.exit);
+      else if (t.type === 'hotspot' && t.hs.npc) {/* nur hinlaufen */}
+      break;
+  }
+}
+
+function resolveTarget(t) {
+  // t: {type:'hotspot'|'item', id, name, hs?, walk?}
+  const v = state.verb;
+  // Zwei-Objekt-Verb: erstes Objekt merken
+  if (TWO_OBJ[v] && !state.obj1) {
+    state.obj1 = t;
+    renderInv();
+    updateSentence(null);
+    return;
+  }
+  // Zwei-Objekt-Verb: zweites Objekt → kombinieren
+  if (TWO_OBJ[v] && state.obj1) {
+    const a = state.obj1, b = t;
+    walkThen(b, () => {
+      if (!combine(v, a, b)) say('Das ergibt keinen Sinn.');
+    });
+    resetVerb();
+    return;
+  }
+  // Ein-Objekt
+  walkThen(t, () => perform(v, t));
+  resetVerb();
+}
+
+function walkThen(t, cb) {
+  // Items: keine Bewegung nötig. Hotspots: zum walk-Punkt laufen.
+  if (t.type === 'hotspot' && t.walk) moveTo(t.walk.x, t.walk.y, cb);
+  else cb();
+}
+
+function doExit(ex) {
+  // erst hinlaufen ist bereits passiert; Raum wechseln
+  state.room = ex.room;
+  state.player.x = state.player.tx = ex.x;
+  state.player.y = state.player.ty = ex.y;
+  state.player.onArrive = null;
+  elCaption.style.display = 'none';
+}
+
+//---------------------------------------------------------------------------
+// Bewegung
+//---------------------------------------------------------------------------
+function moveTo(x, y, cb) {
+  const p = state.player;
+  p.tx = clamp(x, 8, VW - 8);
+  p.ty = clamp(y, WALK_TOP, WALK_BOT);
+  p.onArrive = cb || null;
+  if (x > p.x) p.facing = 1; else if (x < p.x) p.facing = -1;
+}
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+//---------------------------------------------------------------------------
+// Verben / Sentence / Inventar
+//---------------------------------------------------------------------------
+function renderVerbs() {
+  elVerbs.innerHTML = '';
+  VERBS.forEach(v => {
+    const d = document.createElement('div');
+    d.className = 'verb' + (state.verb === v ? ' active' : '');
+    d.textContent = v;
+    d.onclick = () => { state.verb = v; state.obj1 = null; renderVerbs(); renderInv(); updateSentence(null); };
+    elVerbs.appendChild(d);
+  });
+}
+function resetVerb() { state.verb = 'Gehe zu'; state.obj1 = null; renderVerbs(); renderInv(); updateSentence(null); }
+
+function renderInv() {
+  elInv.innerHTML = '';
+  state.inv.forEach(id => {
+    const it = ITEMS[id];
+    const d = document.createElement('div');
+    d.className = 'invItem' + (state.obj1 && state.obj1.type === 'item' && state.obj1.id === id ? ' sel' : '');
+    const ic = document.createElement('div');
+    ic.className = 'invIcon';
+    ic.style.background = it.color;
+    d.appendChild(ic);
+    const lbl = document.createElement('div');
+    lbl.textContent = it.name;
+    d.appendChild(lbl);
+    d.onclick = () => { if (state.mode === 'play') resolveTarget({ type: 'item', id, name: it.name }); };
+    d.onmouseenter = () => updateSentence({ name: it.name });
+    d.onmouseleave = () => updateSentence(null);
+    elInv.appendChild(d);
+  });
+}
+
+function updateSentence(hover) {
+  const v = state.verb;
+  let s = v;
+  if (TWO_OBJ[v] && state.obj1) {
+    s = `${v} ${state.obj1.name} ${TWO_OBJ[v]}`;
+    if (hover) s += ' ' + hover.name;
+  } else if (hover) {
+    s = `${v} ${hover.name}`;
+  }
+  elSentence.textContent = s;
+}
+
+//---------------------------------------------------------------------------
+// Maus / Hit-Test
+//---------------------------------------------------------------------------
+let scale = 1, offX = 0, offY = 0;
+function resize() {
+  const wrap = document.getElementById('stageWrap');
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  scale = Math.max(1, Math.floor(Math.min(w / VW, h / VH)));
+  if (scale * VH > h || scale * VW > w) scale = Math.min(w / VW, h / VH);
+  cv.style.width = (VW * scale) + 'px';
+  cv.style.height = (VH * scale) + 'px';
+  const r = cv.getBoundingClientRect();
+  offX = r.left; offY = r.top;
+}
+window.addEventListener('resize', resize);
+
+function toVirtual(e) {
+  const r = cv.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+  const cy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+  return { x: cx / scale, y: cy / scale };
+}
+function hotspotAt(x, y) {
+  for (const hs of room().hotspots) {
+    const [rx, ry, rw, rh] = hs.rect;
+    if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) return hs;
+  }
+  return null;
+}
+
+cv.addEventListener('mousemove', e => {
+  if (state.mode !== 'play') return;
+  const p = toVirtual(e);
+  const hs = hotspotAt(p.x, p.y);
+  updateSentence(hs ? { name: hs.name } : null);
+});
+cv.addEventListener('click', e => {
+  if (state.mode !== 'play') return;
+  const p = toVirtual(e);
+  const hs = hotspotAt(p.x, p.y);
+  if (hs) {
+    resolveTarget({ type: 'hotspot', id: hs.id, name: hs.name, hs, walk: hs.walk });
+  } else {
+    // leerer Boden → laufen (Verb zurücksetzen)
+    moveTo(p.x, p.y, null);
+    if (state.verb !== 'Gehe zu') resetVerb();
+  }
+});
+
+//---------------------------------------------------------------------------
+// Rendering der Räume (Platzhalter-Pixelgrafik)
+//---------------------------------------------------------------------------
+function rect(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x | 0, y | 0, w | 0, h | 0); }
+function label(t, x, y, c) { ctx.fillStyle = c || '#000'; ctx.font = '6px "Courier New", monospace';
+  ctx.textAlign = 'center'; ctx.fillText(t, x, y); ctx.textAlign = 'left'; }
+
+function drawWater(t) {
+  rect(0, 92, VW, 50, '#2b6a8a');
+  for (let i = 0; i < 7; i++) {
+    const yy = 100 + i * 6;
+    ctx.fillStyle = i % 2 ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.08)';
+    const off = (t * 8 + i * 13) % 24;
+    for (let x = -24 + off; x < VW; x += 24) ctx.fillRect(x, yy, 12, 2);
+  }
+}
+function drawPerson(x, y, sc, c, facing) {
+  const w = 9 * sc, h = 22 * sc, hs = 7 * sc;
+  rect(x - w / 2, y - h * 0.42, w * 0.42, h * 0.42, c.legs);
+  rect(x + w * 0.06, y - h * 0.42, w * 0.42, h * 0.42, c.legs);
+  rect(x - w / 2, y - h, w, h * 0.6, c.body);
+  rect(x - hs / 2, y - h - hs * 0.85, hs, hs, c.skin);
+  rect(x - hs / 2, y - h - hs * 0.85, hs, hs * 0.4, c.hair);
+  // Blickrichtung: kleine Nase
+  rect(x + facing * (hs * 0.4), y - h - hs * 0.35, sc, sc, c.skin);
+}
+
+function drawHarbor(t) {
+  rect(0, 0, VW, 96, '#9ec6e0');                 // Himmel
+  rect(0, 0, VW, 40, '#b7d8ec');
+  drawWater(t);
+  rect(0, 140, VW, 40, '#6b5436');               // Kai
+  rect(0, 138, VW, 4, '#8a6f48');
+  for (let x = 0; x < VW; x += 16) rect(x, 142, 1, 30, '#5a4630'); // Planken
+  // Häuser hinten
+  const houses = [['#c95b4a', 150], ['#e2b04a', 170], ['#5a86a8', 158], ['#cf7d4d', 162]];
+  let hx = 120;
+  for (const [c, top] of houses) { rect(hx, top - 60, 34, 60 - (top - 110), c); rect(hx - 2, top - 64, 38, 6, '#3a2a22'); hx += 40; }
+  // Fähre
+  rect(8, 118, 78, 26, '#34536b');               // Rumpf
+  rect(14, 104, 50, 16, '#dfe6ea');              // Aufbau
+  rect(30, 96, 4, 10, '#888');                   // Mast
+  rect(8, 140, 78, 4, '#22323f');
+  label('FÄHRE', 47, 134, '#fff');
+  // Billettluge
+  rect(106, 108, 40, 40, '#7a5a36'); rect(110, 112, 32, 18, '#243b46'); rect(104, 104, 44, 6, '#5a3f24');
+  label('KASSE', 126, 145, '#f0e0b0');
+  // Souvenirstand + Sonnenschirm
+  rect(230, 112, 56, 28, '#8a6f48'); rect(232, 114, 52, 8, '#c0392b');
+  for (let i = 0; i < 5; i++) rect(236 + i * 10, 122, 6, 6, ['#d4af37','#7fa7c4','#c0392b','#2e8b57','#dfe6ea'][i]);
+  rect(256, 96, 3, 18, '#6b4f2a'); rect(238, 90, 40, 8, '#c0392b'); // Schirm
+  label('SOUVENIRS', 258, 150, '#f0e0b0');
+  // Bodil
+  drawPerson(206, 156, 1, { legs: '#3a2f50', body: '#b0476b', skin: '#e8c0a0', hair: '#caa', }, -1);
+  // Gasse zum Røgeri
+  rect(292, 96, 28, 46, '#6b5e44'); rect(296, 96, 20, 46, '#7c6e50');
+  rect(294, 96, 24, 8, '#3a2a22'); label('→ RØGERI', 306, 112, '#f0e0b0');
+}
+
+function drawRoegeri(t) {
+  rect(0, 0, VW, 110, '#caa882');                // warme Wand
+  rect(0, 0, VW, 60, '#b89a72');
+  rect(0, 140, VW, 40, '#5a4326');               // Boden
+  rect(0, 138, VW, 4, '#7a5f3a');
+  // Schornsteine
+  for (let i = 0; i < 3; i++) {
+    const sx = 48 + i * 30;
+    rect(sx, 44, 22, 60, '#e8e2d6'); rect(sx, 44, 22, 6, '#cfc7b6');
+    // Rauch
+    for (let s = 0; s < 4; s++) {
+      const yy = 40 - s * 9 - ((t * 10 + i * 7) % 9);
+      ctx.fillStyle = 'rgba(230,230,220,' + (0.5 - s * 0.1) + ')';
+      ctx.fillRect(sx + 4 + Math.sin((t + i + s) * 1.5) * 3, yy, 12, 7);
+    }
+  }
+  label('RØGERI', 79, 118, '#5a4326');
+  // Tisch + Teller
+  rect(146, 132, 40, 8, '#8a6f48'); rect(150, 128, 4, 6, '#6b5436'); rect(178, 128, 4, 6, '#6b5436');
+  rect(150, 124, 24, 8, '#caa'); rect(156, 125, 6, 5, '#e8a83a'); // Eigelb auf Brot
+  label('SOL OVER GUDHJEM', 163, 150, '#5a4326');
+  // Aksel sitzt
+  drawPerson(162, 156, 1, { legs: '#2f3f50', body: '#3a6ea5', skin: '#e0b890', hair: '#ddd' }, -1);
+  // Tür zum Hafen
+  rect(2, 96, 30, 46, '#5a4326'); rect(6, 100, 22, 42, '#3a2a18');
+  label('← HAFEN', 18, 92, '#5a4326');
+}
+
+//---------------------------------------------------------------------------
+// Cutscene: Überfahrt
+//---------------------------------------------------------------------------
+let crossT = 0, crossCaps = [], crossCapIdx = 0, crossCapTimer = 0;
+function runCrossing() {
+  closeDialog();
+  state.mode = 'cutscene';
+  elCaption.style.display = 'none';
+  crossT = 0; crossCapIdx = 0; crossCapTimer = 0;
+  crossCaps = [
+    'Die Fähre tuckert aus dem Hafen von Gudhjem.',
+    'Möwen kreisen. Bornholm wird kleiner.',
+    'Ein alter Mitfahrer murmelt: „Auf Christiansø… da gehen nachts die Lichter aus. Und wieder an."',
+    'Am Horizont taucht eine winzige Festungsinsel auf.',
+    'Christiansø.',
+  ];
+}
+function drawCrossing(dt) {
+  crossT += dt;
+  // Himmel + Meer
+  rect(0, 0, VW, 100, '#bcd9ec'); rect(0, 0, VW, 46, '#cfe6f2');
+  rect(0, 100, VW, 80, '#2b6a8a');
+  drawWaterBand(crossT);
+  // Insel taucht auf (ab Hälfte)
+  const prog = Math.min(1, crossT / 14);
+  if (prog > 0.45) {
+    const ix = 230, iy = 96, sz = (prog - 0.45) * 90;
+    rect(ix - sz, iy - sz * 0.5, sz * 2, sz * 0.5, '#6b7a5a');
+    rect(ix - 6, iy - sz * 0.5 - 14, 5, 14, '#888');  // Turm
+    rect(ix + 6, iy - sz * 0.5 - 10, 5, 10, '#888');
+  }
+  // Boot fährt nach rechts durchs Bild
+  const bx = -40 + prog * (VW + 20);
+  rect(bx, 118, 60, 22, '#34536b'); rect(bx + 6, 106, 38, 14, '#dfe6ea'); rect(bx + 18, 98, 3, 9, '#888');
+  rect(bx, 138, 60, 4, '#22323f');
+  drawPerson(bx + 30, 122, 0.8, { legs: '#553', body: '#a33', skin: '#e8c0a0', hair: '#642' }, 1);
+  // Möwen
+  for (let i = 0; i < 4; i++) {
+    const gx = (crossT * 18 + i * 80) % (VW + 40) - 20, gy = 26 + i * 9 + Math.sin(crossT * 2 + i) * 3;
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath();
+    ctx.moveTo(gx, gy); ctx.lineTo(gx + 4, gy - 3); ctx.lineTo(gx + 8, gy); ctx.stroke();
+  }
+  // Untertitel
+  crossCapTimer += dt;
+  if (crossCapIdx < crossCaps.length && crossCapTimer > 2.6) { crossCapTimer = 0; crossCapIdx++; }
+  const cap = crossCaps[Math.min(crossCapIdx, crossCaps.length - 1)];
+  elCaption.textContent = cap; elCaption.style.display = 'block';
+  if (crossT > 15) endProlog();
+}
+function drawWaterBand(t) {
+  for (let i = 0; i < 12; i++) {
+    const yy = 104 + i * 6;
+    ctx.fillStyle = i % 2 ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.08)';
+    const off = (t * 14 + i * 13) % 24;
+    for (let x = -24 + off; x < VW; x += 24) ctx.fillRect(x, yy, 12, 2);
+  }
+}
+
+function endProlog() {
+  state.mode = 'end';
+  elCaption.style.display = 'none';
+  elOverlay.innerHTML =
+    '<h1>Ankunft auf Christiansø</h1>' +
+    '<p><b>Prolog abgeschlossen.</b></p>' +
+    '<p>Die Fähre legt wieder ab. Mads steht allein im Hafen — und sein Abenteuer beginnt.</p>' +
+    '<p class="hint">🎣 Engine-Test erfolgreich: Räume, Laufen, Verben, Inventar, Puzzle-Logik, Dialoge & Cutscene laufen.<br>Der Magnet-Hering ist im Gepäck — sein großer Auftritt kommt erst in Akt 3.</p>' +
+    '<button id="againBtn">Nochmal von vorn</button>';
+  elOverlay.style.display = 'flex';
+  document.getElementById('againBtn').onclick = () => location.reload();
+}
+
+//---------------------------------------------------------------------------
+// Haupt-Loop
+//---------------------------------------------------------------------------
+let last = 0;
+function loop(ts) {
+  const dt = Math.min(0.05, (ts - last) / 1000 || 0); last = ts;
+  ctx.clearRect(0, 0, VW, VH);
+  const t = ts / 1000;
+
+  if (state.mode === 'cutscene') {
+    drawCrossing(dt);
+  } else if (state.mode !== 'title' && state.mode !== 'end') {
+    // Raum
+    room().draw(t);
+    // Spieler bewegen
+    const p = state.player;
+    const dx = p.tx - p.x, dy = p.ty - p.y;
+    const dist = Math.hypot(dx, dy);
+    const spd = 60 * dt;
+    if (dist > 1) {
+      p.x += dx / dist * Math.min(spd, dist);
+      p.y += dy / dist * Math.min(spd, dist);
+    } else if (p.onArrive) {
+      const cb = p.onArrive; p.onArrive = null; cb();
+    }
+    p.scale = 0.85 + (clamp(p.y, WALK_TOP, WALK_BOT) - WALK_TOP) / (WALK_BOT - WALK_TOP) * 0.3;
+    drawPerson(p.x, p.y, p.scale, { legs: '#3a3550', body: '#b5482f', skin: '#e8c0a0', hair: '#5a3a22' }, p.facing);
+  }
+  requestAnimationFrame(loop);
+}
+
+//---------------------------------------------------------------------------
+// Start
+//---------------------------------------------------------------------------
+document.getElementById('startBtn').onclick = () => {
+  elOverlay.style.display = 'none';
+  state.mode = 'play';
+  resize();
+};
+renderVerbs();
+renderInv();
+resize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
