@@ -103,6 +103,7 @@ const elOverlay = document.getElementById('overlay');
 
 const VERBS = ['Gib','Nimm','Benutze','Öffne','Schau an','Drücke','Schließe','Ziehe','Rede mit'];
 const TWO_OBJ = { 'Benutze': 'mit', 'Gib': 'an' };
+const DEBUG_HS = false;  // Hotspot-Rechtecke einzeichnen (zum Ausrichten); für Release auf false
 
 //---------------------------------------------------------------------------
 // Spielzustand
@@ -269,38 +270,39 @@ const ROOMS = {
   harbor: {
     draw: drawHarbor,
     bg: 'art/gudhjem_harbor.png',
+    overlay: drawHarborOverlay,
     hotspots: [
-      { id: 'ferry', name: 'Fähre', rect: [0, 96, 86, 60], walk: { x: 78, y: 162 }, dv: 'Benutze',
+      { id: 'ferry', name: 'Fähre', rect: [0, 100, 132, 78], walk: { x: 118, y: 170 }, dv: 'Benutze',
         look: 'Die kleine Christiansø-Fähre. Sie schaukelt einladend. Ohne Ticket komme ich da nicht rauf.',
         onUse: board },
-      { id: 'booth', name: 'Billettluge', rect: [104, 104, 44, 44], walk: { x: 126, y: 160 },
-        look: 'Die Fährkasse. Ein handgeschriebenes Schild: „Bin im Røgeri. — Der Fährmann."',
-        onOpen: () => say('Geschlossen. Der Fährmann ist im Røgeri.') },
-      { id: 'gull', name: 'Möwe', rect: [108, 92, 44, 14], walk: { x: 126, y: 160 }, dv: 'Nimm',
+      { id: 'kasse', name: 'Billettluge', rect: [152, 96, 68, 58], walk: { x: 186, y: 168 },
+        look: 'Die Fährkasse mit Tafeln und Klappfenster. Ein Schild: „Bin in der Räucherei. — Der Fährmann."',
+        onOpen: () => say('Das Klappfenster ist zu. Der Fährmann sitzt in der Räucherei.') },
+      { id: 'gull', name: 'Möwe', rect: [156, 74, 60, 16], walk: { x: 186, y: 168 }, dv: 'Nimm',
         look: () => state.flags.gullDistracted
-          ? 'Das verlassene Möwennest auf dem Kassendach. Ein Ei liegt noch darin… falls ich es noch nicht habe.'
-          : 'Eine fette Möwe thront auf dem Kassendach und bewacht ihr Nest. Sie mustert mich angriffslustig. In dem Nest: ein Ei.',
+          ? 'Das verlassene Möwennest auf dem Dach der Kasse. Ein Ei liegt noch darin… falls ich es noch nicht habe.'
+          : 'Eine fette Möwe thront auf dem Dach der Kasse und bewacht ihr Nest. Sie mustert mich angriffslustig. In dem Nest: ein Ei.',
         onTake: takeEgg },
-      { id: 'bottle', name: 'Flaschenpost', rect: [40, 150, 20, 14], walk: { x: 52, y: 162 },
-        look: 'Eine echte Flaschenpost! Mein Herz klopft. Ich entrolle den Zettel: „Einkaufsliste: Hering, Roggenbrot, Schnaps." …Na großartig.',
-        onTake: () => say('Die alte Flasche lasse ich liegen. Eine Einkaufsliste brauche ich wirklich nicht.') },
-      { id: 'bodil', name: 'Bodil', npc: true, rect: [196, 100, 30, 56], walk: { x: 206, y: 162 },
-        look: 'Bodil, die Souvenirhändlerin. Strahlt jeden potenziellen Käufer an wie eine Leuchtboje.',
-        talk: () => openDialog('bodil') },
-      { id: 'stand', name: 'Souvenirstand', rect: [226, 104, 64, 40], walk: { x: 250, y: 162 }, dv: 'Benutze',
-        look: 'Ein Stand voller Krimskrams. In der Mitte thront ein magnetischer Souvenir-Hering.',
-        onUse: () => openDialog('bodil') },
-      { id: 'toRoegeri', name: 'Weg zum Røgeri', rect: [290, 70, 30, 100], walk: { x: 300, y: 158 },
-        look: 'Eine Gasse führt hoch zum Røgeri, wo die Schornsteine rauchen.',
-        exit: { room: 'roegeri', x: 40, y: 158 } },
+      { id: 'crate', name: 'Holzkiste', rect: [284, 150, 34, 28], walk: { x: 286, y: 172 }, dv: 'Schau an',
+        look: 'Eine alte Holzkiste. Aufschrift: „VORSICHT — GEHEIM". Ich hebe gespannt den Deckel… leer. Bis auf eine tote Spinne.',
+        onTake: () => say('Viel zu schwer. Und leer. Lohnt nicht.') },
+      { id: 'doorShop', name: 'Tür zum Souvenirladen', rect: [248, 52, 30, 40], walk: { x: 258, y: 140 },
+        door: { room: 'souvenir', x: 158, y: 165 },
+        look: 'Ganz hinten, die Treppe hoch: ein Lädchen. Über der Tür ein verblasstes Schild „Souvenirer".' },
+      { id: 'doorSmoke', name: 'Tür zur Räucherei', rect: [298, 100, 20, 54], walk: { x: 300, y: 172 },
+        door: { room: 'roegeri', x: 30, y: 158 },
+        look: 'Das Häuschen mit dem rußigen Räucherofen davor. Hier wird geräuchert — und hier steckt der Fährmann.' },
+      { id: 'doorLocked', name: 'Tür', rect: [230, 62, 24, 42], walk: { x: 240, y: 150 },
+        locked: true,
+        look: 'Eine schlichte Holztür am gelben Haus. Ich klopfe. Nichts rührt sich. Hier macht niemand auf.' },
     ],
   },
   roegeri: {
     draw: drawRoegeri,
     hotspots: [
-      { id: 'toHarbor', name: 'Weg zum Hafen', rect: [0, 70, 34, 100], walk: { x: 26, y: 158 },
-        look: 'Zurück hinunter zum Hafen und zur Fähre.',
-        exit: { room: 'harbor', x: 296, y: 158 } },
+      { id: 'toHarbor', name: 'Tür nach draußen', rect: [0, 70, 34, 100], walk: { x: 26, y: 158 },
+        look: 'Zurück hinaus auf den Kai.',
+        exit: { room: 'harbor', x: 290, y: 170 } },
       { id: 'aksel', name: 'Aksel', npc: true, rect: [150, 98, 32, 58], walk: { x: 162, y: 162 },
         look: 'Skipper Aksel, der Fährmann. Genießt sein „Sol over Gudhjem", als hinge sein Leben daran.',
         talk: () => openDialog('aksel') },
@@ -315,6 +317,20 @@ const ROOMS = {
           else say('Einen Hering hab ich schon. Mehr brauche ich nicht.'); } },
       { id: 'chimney', name: 'Räucherschornsteine', rect: [40, 40, 80, 60], walk: { x: 90, y: 158 },
         look: 'Die berühmten weißen Schornsteine. Es riecht köstlich nach Rauch und Hering.' },
+    ],
+  },
+  souvenir: {
+    draw: drawSouvenir,
+    hotspots: [
+      { id: 'toHarborS', name: 'Tür nach draußen', rect: [0, 70, 34, 100], walk: { x: 26, y: 158 },
+        look: 'Zurück hinaus auf den Kai.',
+        exit: { room: 'harbor', x: 262, y: 150 } },
+      { id: 'bodil', name: 'Bodil', npc: true, rect: [150, 96, 30, 60], walk: { x: 164, y: 162 },
+        look: 'Bodil, die Souvenirhändlerin. Strahlt jeden potenziellen Käufer an wie eine Leuchtboje.',
+        talk: () => openDialog('bodil') },
+      { id: 'shelf', name: 'Souvenir-Regal', rect: [118, 86, 124, 46], walk: { x: 200, y: 162 }, dv: 'Schau an',
+        look: 'Regale voller Trolle, Schneekugeln, Klippen in Plastik — und mittendrin der magnetische Hering.',
+        onUse: () => openDialog('bodil') },
     ],
   },
 };
@@ -335,8 +351,8 @@ function preloadBackgrounds() {
 function combine(verb, a, b) {
   const ids = [a.id, b.id];
   const has = id => ids.includes(id);
-  // Gib Schein an Bodil/Stand  → Hering kaufen
-  if (verb === 'Gib' && has('schein') && (has('bodil') || has('stand'))) {
+  // Gib Schein an Bodil/Regal  → Hering kaufen
+  if (verb === 'Gib' && has('schein') && (has('bodil') || has('shelf'))) {
     if (!state.flags.boughtHerring) { buyHerring(); return true; }
   }
   // Benutze Räucherhering mit Möwe  → ablenken
@@ -355,7 +371,7 @@ function combine(verb, a, b) {
   // Späßchen
   if (has('hering') && has('ferry')) { say('Der Magnet-Hering klebt kurz am Rumpf. Dann fällt er ab. Wie alles in meinem Leben.'); return true; }
   if (has('hering') && has('gull')) { say('Die Möwe beäugt den Magnet-Hering, schnaubt verächtlich und bleibt sitzen. Eine Kunstkennerin.'); return true; }
-  if (has('hering') && has('booth')) { say('Der Hering klebt an der Blechluge. Sehr dekorativ, aber öffnet sie nicht.'); return true; }
+  if (has('hering') && has('kasse')) { say('Der Hering klebt an der Blechluge. Sehr dekorativ, aber öffnet sie nicht.'); return true; }
   if (has('raeucherhering') && has('aksel')) { say('„Untersteh dich, mir mein Frühstück zu klauen!", knurrt Aksel.'); return true; }
   return false;
 }
@@ -381,6 +397,12 @@ function perform(verb, t) {
       else say('Das lässt sich nicht einfach einstecken.');
       break;
     case 'Öffne':
+      if (t.type === 'hotspot' && t.hs.locked) { say('Ich rüttle an der Tür. Abgeschlossen — hier macht niemand auf.'); break; }
+      if (t.type === 'hotspot' && t.hs.door) {
+        if (!state.flags['open_' + t.hs.id]) { state.flags['open_' + t.hs.id] = true; say('Die Tür schwingt knarrend auf.'); }
+        else say('Die Tür steht bereits offen.');
+        break;
+      }
       if (t.type === 'hotspot' && t.hs.onOpen) t.hs.onOpen();
       else say('Das kann ich nicht öffnen.');
       break;
@@ -392,7 +414,12 @@ function perform(verb, t) {
       else { say('Das müsste ich mit etwas benutzen.'); }
       break;
     default: // 'Gehe zu'
-      if (t.type === 'hotspot' && t.hs.exit) doExit(t.hs.exit);
+      if (t.type === 'hotspot' && t.hs.locked) say('Abgeschlossen. Da komme ich nicht rein.');
+      else if (t.type === 'hotspot' && t.hs.door) {
+        if (state.flags['open_' + t.hs.id]) doExit(t.hs.door);
+        else say('Die Tür ist zu. Ich sollte sie erst öffnen.');
+      }
+      else if (t.type === 'hotspot' && t.hs.exit) doExit(t.hs.exit);
       else if (t.type === 'hotspot' && t.hs.npc) {/* nur hinlaufen */}
       break;
   }
@@ -466,6 +493,7 @@ function resetVerb() { state.verb = 'Gehe zu'; state.obj1 = null; renderVerbs();
 
 // Passendes Standard-Verb eines Hotspots (für Hover-Highlight & Rechtsklick)
 function defaultVerb(hs) {
+  if (hs.door || hs.locked) return state.flags['open_' + hs.id] ? 'Gehe zu' : 'Öffne';
   return hs.dv || (hs.npc ? 'Rede mit' : hs.exit ? 'Gehe zu' : 'Schau an');
 }
 function highlightVerb(name) {
@@ -691,6 +719,38 @@ function drawRoegeri(t) {
   label('← HAFEN', 18, 92, '#5a4326');
 }
 
+// Dynamische Objekte über dem Hafen-Foto (Möwe / Ei auf dem Kassendach)
+function drawHarborOverlay(t) {
+  const gx = 186, gy = 80;
+  if (!state.flags.gullDistracted) drawGull(gx, gy + Math.sin(t * 3) * 0.8);
+  else if (!hasItem('ei') && !state.flags.gaveEgg) { rect(gx - 4, gy - 1, 9, 5, '#efe7d2'); rect(gx - 6, gy + 3, 13, 2, '#5a4326'); }
+}
+
+// Souvenirladen (Platzhalter-Interieur, bis es ein echtes Bild gibt)
+function drawSouvenir(t) {
+  rect(0, 0, VW, 142, '#7a5a48'); rect(0, 0, VW, 70, '#8a6a54');     // Wand
+  rect(0, 140, VW, 40, '#4a382a');                                    // Boden
+  rect(0, 138, VW, 4, '#5f4836');
+  rect(2, 96, 30, 46, '#3a2a1e'); rect(6, 100, 22, 42, '#241810');    // Tür nach draußen
+  label('← KAI', 17, 92, '#e8d8b0');
+  // Regal mit Krimskrams
+  rect(116, 84, 128, 50, '#9a7a52'); rect(116, 84, 128, 4, '#7a5e3e');
+  for (let r = 0; r < 2; r++) for (let i = 0; i < 8; i++)
+    rect(122 + i * 15, 92 + r * 22, 10, 12, ['#d4af37','#7fa7c4','#c0392b','#2e8b57','#b56bb0','#e08a3a','#dfe6ea','#6bbf8a'][(i + r) % 8]);
+  label('SOUVENIRER', 180, 128, '#e8d8b0');
+  rect(118, 132, 6, 10, '#caa05a');                                   // Magnet-Hering hervorgehoben
+}
+
+function drawDebugHotspots(rm) {
+  ctx.strokeStyle = 'rgba(255,0,255,0.9)';
+  ctx.lineWidth = 0.5;
+  for (const hs of rm.hotspots) {
+    const [rx, ry, rw, rh] = hs.rect;
+    ctx.strokeRect(rx + 0.25, ry + 0.25, rw, rh);
+    label(hs.id, rx + rw / 2, ry - 1, '#ff0');
+  }
+}
+
 //---------------------------------------------------------------------------
 // Cutscene: Überfahrt
 //---------------------------------------------------------------------------
@@ -774,10 +834,11 @@ function loop(ts) {
   if (state.mode === 'cutscene') {
     drawCrossing(dt);
   } else if (state.mode !== 'title' && state.mode !== 'end') {
-    // Raum: echtes Hintergrundbild, sonst prozedurale Platzhalter
+    // Raum: echtes Hintergrundbild (+ Overlay für dynamische Objekte), sonst prozedural
     const rm = room();
-    if (rm.bg && IMG[state.room]) ctx.drawImage(IMG[state.room], 0, 0, VW, VH);
+    if (rm.bg && IMG[state.room]) { ctx.drawImage(IMG[state.room], 0, 0, VW, VH); if (rm.overlay) rm.overlay(t); }
     else rm.draw(t);
+    if (DEBUG_HS) drawDebugHotspots(rm);
     // Spieler bewegen
     const p = state.player;
     const dx = p.tx - p.x, dy = p.ty - p.y;
