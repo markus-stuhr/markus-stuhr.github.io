@@ -268,6 +268,7 @@ function npcName(n) { return n === 'bodil' ? 'Bodil' : n === 'aksel' ? 'Aksel' :
 const ROOMS = {
   harbor: {
     draw: drawHarbor,
+    bg: 'art/gudhjem_harbor.png',
     hotspots: [
       { id: 'ferry', name: 'Fähre', rect: [0, 96, 86, 60], walk: { x: 78, y: 162 }, dv: 'Benutze',
         look: 'Die kleine Christiansø-Fähre. Sie schaukelt einladend. Ohne Ticket komme ich da nicht rauf.',
@@ -318,6 +319,15 @@ const ROOMS = {
   },
 };
 function room() { return ROOMS[state.room]; }
+
+// Hintergrund-Bilder vorladen (Räume ohne bg zeichnen prozedural als Fallback)
+const IMG = {};
+function preloadBackgrounds() {
+  for (const id in ROOMS) {
+    const r = ROOMS[id];
+    if (r.bg) { const im = new Image(); im.onload = () => { IMG[id] = im; }; im.src = r.bg; }
+  }
+}
 
 //---------------------------------------------------------------------------
 // Zwei-Objekt-Kombinationen (Benutze … mit …, Gib … an …)
@@ -764,8 +774,10 @@ function loop(ts) {
   if (state.mode === 'cutscene') {
     drawCrossing(dt);
   } else if (state.mode !== 'title' && state.mode !== 'end') {
-    // Raum
-    room().draw(t);
+    // Raum: echtes Hintergrundbild, sonst prozedurale Platzhalter
+    const rm = room();
+    if (rm.bg && IMG[state.room]) ctx.drawImage(IMG[state.room], 0, 0, VW, VH);
+    else rm.draw(t);
     // Spieler bewegen
     const p = state.player;
     const dx = p.tx - p.x, dy = p.ty - p.y;
@@ -791,6 +803,7 @@ document.getElementById('startBtn').onclick = () => {
   state.mode = 'play';
   resize();
 };
+preloadBackgrounds();
 renderVerbs();
 renderInv();
 resize();
