@@ -35,6 +35,8 @@
     display: flex; align-items: center; justify-content: center; font-size: 15px; cursor: pointer; }
   .verb:hover { background: #4a3618; color: #fff; }
   .verb.active { background: #6b4a1e; color: #fff; border-color: #f0d890; }
+  .verb.hl { background: #c9a227; color: #1a1208; border-color: #f5dd6b; }
+  .verb.hl.active { background: #d8b53a; color: #1a1208; }
   #inv { width: 52%; padding: 6px; display: grid; grid-template-columns: repeat(4, 1fr);
     grid-auto-rows: 58px; gap: 4px; overflow-y: auto; border-left: 2px solid #3a2f22; align-content: start; }
   .invItem { background: #2a2018; border: 1px solid #4a3a28; border-radius: 3px; cursor: pointer;
@@ -267,13 +269,13 @@ const ROOMS = {
   harbor: {
     draw: drawHarbor,
     hotspots: [
-      { id: 'ferry', name: 'Fähre', rect: [0, 96, 86, 60], walk: { x: 78, y: 162 },
+      { id: 'ferry', name: 'Fähre', rect: [0, 96, 86, 60], walk: { x: 78, y: 162 }, dv: 'Benutze',
         look: 'Die kleine Christiansø-Fähre. Sie schaukelt einladend. Ohne Ticket komme ich da nicht rauf.',
         onUse: board },
       { id: 'booth', name: 'Billettluge', rect: [104, 104, 44, 44], walk: { x: 126, y: 160 },
         look: 'Die Fährkasse. Ein handgeschriebenes Schild: „Bin im Røgeri. — Der Fährmann."',
         onOpen: () => say('Geschlossen. Der Fährmann ist im Røgeri.') },
-      { id: 'gull', name: 'Möwe', rect: [108, 92, 44, 14], walk: { x: 126, y: 160 },
+      { id: 'gull', name: 'Möwe', rect: [108, 92, 44, 14], walk: { x: 126, y: 160 }, dv: 'Nimm',
         look: () => state.flags.gullDistracted
           ? 'Das verlassene Möwennest auf dem Kassendach. Ein Ei liegt noch darin… falls ich es noch nicht habe.'
           : 'Eine fette Möwe thront auf dem Kassendach und bewacht ihr Nest. Sie mustert mich angriffslustig. In dem Nest: ein Ei.',
@@ -284,7 +286,7 @@ const ROOMS = {
       { id: 'bodil', name: 'Bodil', npc: true, rect: [196, 100, 30, 56], walk: { x: 206, y: 162 },
         look: 'Bodil, die Souvenirhändlerin. Strahlt jeden potenziellen Käufer an wie eine Leuchtboje.',
         talk: () => openDialog('bodil') },
-      { id: 'stand', name: 'Souvenirstand', rect: [226, 104, 64, 40], walk: { x: 250, y: 162 },
+      { id: 'stand', name: 'Souvenirstand', rect: [226, 104, 64, 40], walk: { x: 250, y: 162 }, dv: 'Benutze',
         look: 'Ein Stand voller Krimskrams. In der Mitte thront ein magnetischer Souvenir-Hering.',
         onUse: () => openDialog('bodil') },
       { id: 'toRoegeri', name: 'Weg zum Røgeri', rect: [290, 70, 30, 100], walk: { x: 300, y: 158 },
@@ -305,7 +307,7 @@ const ROOMS = {
         look: () => state.flags.gaveEgg
           ? 'Aksels Sol over Gudhjem — jetzt mit glänzendem Eigelb obendrauf. Vollständig.'
           : 'Geräucherter Hering auf Roggenbrot. Aber das rohe Eigelb obendrauf fehlt — so ist es kein echtes „Sol over Gudhjem".' },
-      { id: 'rack', name: 'Räucherhaken', rect: [198, 92, 44, 42], walk: { x: 208, y: 160 },
+      { id: 'rack', name: 'Räucherhaken', rect: [198, 92, 44, 42], walk: { x: 208, y: 160 }, dv: 'Nimm',
         look: 'Ein Haken voller goldbraun geräucherter Heringe. Der Duft ist betörend — und unwiderstehlich fischig.',
         onTake: () => { if (!hasItem('raeucherhering')) { addItem('raeucherhering');
             say('Ich schnappe mir einen Räucherhering vom Haken. Aksel schaut kurz, brummt aber nur.'); }
@@ -452,6 +454,18 @@ function renderVerbs() {
 }
 function resetVerb() { state.verb = 'Gehe zu'; state.obj1 = null; renderVerbs(); renderInv(); updateSentence(null); }
 
+// Passendes Standard-Verb eines Hotspots (für Hover-Highlight & Rechtsklick)
+function defaultVerb(hs) {
+  return hs.dv || (hs.npc ? 'Rede mit' : hs.exit ? 'Gehe zu' : 'Schau an');
+}
+function highlightVerb(name) {
+  [...elVerbs.children].forEach(el => el.classList.toggle('hl', !!name && el.textContent === name));
+}
+// Rechtsklick: Standard-Verb direkt am Ziel ausführen (ohne Zwei-Objekt-Auswahl)
+function execDefault(t, verb) {
+  walkThen(t, () => perform(verb, t));
+}
+
 function renderInv() {
   elInv.innerHTML = '';
   state.inv.forEach(id => {
@@ -466,8 +480,9 @@ function renderInv() {
     lbl.textContent = it.name;
     d.appendChild(lbl);
     d.onclick = () => { if (state.mode === 'play') resolveTarget({ type: 'item', id, name: it.name }); };
-    d.onmouseenter = () => updateSentence({ name: it.name });
-    d.onmouseleave = () => updateSentence(null);
+    d.oncontextmenu = (e) => { e.preventDefault(); if (state.mode === 'play') perform('Schau an', { type: 'item', id, name: it.name }); };
+    d.onmouseenter = () => { updateSentence({ name: it.name }); highlightVerb('Schau an'); };
+    d.onmouseleave = () => { updateSentence(null); highlightVerb(null); };
     elInv.appendChild(d);
   });
 }
@@ -507,11 +522,16 @@ function toVirtual(e) {
   return { x: cx / scale, y: cy / scale };
 }
 function hotspotAt(x, y) {
+  // bei Überlappung den kleinsten (spezifischsten) Hotspot wählen
+  let best = null, bestArea = Infinity;
   for (const hs of room().hotspots) {
     const [rx, ry, rw, rh] = hs.rect;
-    if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) return hs;
+    if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) {
+      const a = rw * rh;
+      if (a < bestArea) { bestArea = a; best = hs; }
+    }
   }
-  return null;
+  return best;
 }
 
 cv.addEventListener('mousemove', e => {
@@ -519,7 +539,9 @@ cv.addEventListener('mousemove', e => {
   const p = toVirtual(e);
   const hs = hotspotAt(p.x, p.y);
   updateSentence(hs ? { name: hs.name } : null);
+  highlightVerb(hs ? defaultVerb(hs) : null);   // passendes Verb gelb hinterlegen
 });
+cv.addEventListener('mouseleave', () => { updateSentence(null); highlightVerb(null); });
 cv.addEventListener('click', e => {
   if (state.mode !== 'play') return;
   const p = toVirtual(e);
@@ -531,6 +553,15 @@ cv.addEventListener('click', e => {
     moveTo(p.x, p.y, null);
     if (state.verb !== 'Gehe zu') resetVerb();
   }
+});
+// Rechtsklick = markiertes Standard-Verb direkt ausführen
+cv.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (state.mode !== 'play') return;
+  const p = toVirtual(e);
+  const hs = hotspotAt(p.x, p.y);
+  if (!hs) return;
+  execDefault({ type: 'hotspot', id: hs.id, name: hs.name, hs, walk: hs.walk }, defaultVerb(hs));
 });
 
 //---------------------------------------------------------------------------
