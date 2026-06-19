@@ -554,15 +554,19 @@ cv.addEventListener('click', e => {
     if (state.verb !== 'Gehe zu') resetVerb();
   }
 });
-// Rechtsklick = markiertes Standard-Verb direkt ausführen
-cv.addEventListener('contextmenu', e => {
+// Rechtsklick = markiertes Standard-Verb direkt ausführen.
+// Auf mousedown (Taste 2) statt contextmenu, da manche eingebetteten
+// Preview-Umgebungen das contextmenu-Event abfangen.
+function rightAction(e) {
   e.preventDefault();
   if (state.mode !== 'play') return;
   const p = toVirtual(e);
   const hs = hotspotAt(p.x, p.y);
   if (!hs) return;
   execDefault({ type: 'hotspot', id: hs.id, name: hs.name, hs, walk: hs.walk }, defaultVerb(hs));
-});
+}
+cv.addEventListener('mousedown', e => { if (e.button === 2) rightAction(e); });
+cv.addEventListener('contextmenu', e => e.preventDefault());   // natives Menü unterdrücken
 
 //---------------------------------------------------------------------------
 // Rendering der Räume (Platzhalter-Pixelgrafik)
