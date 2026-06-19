@@ -110,7 +110,7 @@ const state = {
   verb: 'Gehe zu',
   obj1: null,                 // erstes Objekt bei Zwei-Objekt-Verben
   inv: ['schein'],
-  flags: { boughtHerring: false, hasChange: false, hasTicket: false },
+  flags: { boughtHerring: false, hasChange: false, gullDistracted: false, gaveEgg: false, hasTicket: false },
   mode: 'title',              // 'title' | 'play' | 'dialog' | 'cutscene'
   player: { x: 64, y: 156, tx: 64, ty: 156, scale: 1, onArrive: null, facing: 1 },
 };
@@ -127,6 +127,10 @@ const ITEMS = {
                 look: 'Eine Handvoll Münzen. Genau richtig für ein Fährticket.' },
   ticket:     { name: 'Fährticket', color: '#e0d5b8',
                 look: 'Ein Ticket nach Christiansø. Einfache Fahrt — Rückfahrt: ungewiss.' },
+  raeucherhering: { name: 'Räucherhering', color: '#b8843a',
+                look: 'Ein echter, goldbraun geräucherter Hering vom Haken. Riecht streng genug, um eine Möwe um den Verstand zu bringen.' },
+  ei:         { name: 'Möwen-Ei', color: '#efe7d2',
+                look: 'Ein noch warmes Möwen-Ei. Genau die „Sonne", die Aksels Frühstück fehlt.' },
 };
 
 //---------------------------------------------------------------------------
@@ -160,11 +164,29 @@ function buyHerring() {
   say('Ein Auge fürs Schöne! Der magnetische Hering — mein Bestseller. Hier ist Ihr Wechselgeld.', 'Bodil');
 }
 function buyTicket() {
-  if (!state.flags.hasChange || state.flags.hasTicket) return;
+  if (!state.flags.hasChange || !state.flags.gaveEgg || state.flags.hasTicket) return;
   state.flags.hasTicket = true;
   removeItem('wechselgeld');
   addItem('ticket');
   say('40 Kroner, passend, sehr schön. Die Fähre legt gleich ab — beeil dich, Junge!', 'Aksel');
+}
+function giveEgg() {
+  if (!hasItem('ei') || state.flags.gaveEgg) return;
+  state.flags.gaveEgg = true;
+  removeItem('ei');
+  say('Aaah — die Sonne über Gudhjem! Jetzt ist es ein anständiges Frühstück. Also gut, dein Ticket sollst du haben.', 'Aksel');
+}
+function lureGull() {
+  if (state.flags.gullDistracted || !hasItem('raeucherhering')) return;
+  state.flags.gullDistracted = true;
+  removeItem('raeucherhering');
+  say('Die Möwe stürzt sich gierig auf den Hering und segelt damit davon. Das Nest ist frei!');
+}
+function takeEgg() {
+  if (!state.flags.gullDistracted) { say('Die Möwe verteidigt ihr Nest mit dem Schnabel. Autsch. So komme ich nicht ran.'); return; }
+  if (hasItem('ei') || state.flags.gaveEgg) { say('Das Nest ist leer. War ja klar.'); return; }
+  addItem('ei');
+  say('Ich angle das Ei aus dem verlassenen Nest. Pscht.');
 }
 function board() {
   if (!state.flags.hasTicket) { say('Erst ein Ticket. So einfach komme ich hier nicht weg.'); return; }
@@ -178,9 +200,12 @@ const DIALOGS = {
   bodil: () => {
     const o = [];
     o.push({ t: 'Was haben Sie denn so?', run: () =>
-      reopen('Souvenirs vom Feinsten! Der magnetische Hering ist der Renner. Magnetisch! Nur… 500 Kronen.', 'bodil') });
+      reopen('Souvenirs vom Feinsten, junger Mann! Trolle, Postkarten, eine Klippe in einer Schneekugel. Aber der magnetische Hering — DAS ist Kunst. Und magnetisch! Nur… 500 Kronen.', 'bodil') });
     if (!state.flags.boughtHerring && hasItem('schein'))
       o.push({ t: 'Ich nehme den magnetischen Hering. (500 Kr)', run: () => { buyHerring(); closeDialog(); } });
+    if (state.flags.boughtHerring)
+      o.push({ t: 'Diese Möwe auf dem Kassendach…', run: () =>
+        reopen('Die fette Plage! Sitzt da auf ihrem Nest und faucht jeden an. Geh ihr bloß nicht zu nah — außer du hast was Fischiges, das mag sie lieber als alles andere.', 'bodil') });
     o.push({ t: '(Gehen)', run: closeDialog });
     return o;
   },
@@ -189,13 +214,20 @@ const DIALOGS = {
     if (state.flags.hasTicket) {
       o.push({ t: 'Wann legen wir ab?', run: () =>
         reopen('Sobald du an Bord bist! Worauf wartest du?', 'aksel') });
-    } else if (state.flags.hasChange) {
-      o.push({ t: 'Ein Ticket nach Christiansø, bitte.', run: () => { buyTicket(); closeDialog(); } });
-    } else {
+    } else if (!state.flags.hasChange) {
       o.push({ t: 'Ein Ticket nach Christiansø, bitte.', run: () =>
         reopen('Gern — 40 Kroner. Aber pass auf: für so einen großen Schein hab ich keinen Øre Wechselgeld!', 'aksel') });
       o.push({ t: 'Wo bekomme ich Wechselgeld?', run: () =>
         reopen('Der Souvenirstand am Kai nimmt deinen großen Schein bestimmt nur zu gern.', 'aksel') });
+    } else if (!state.flags.gaveEgg) {
+      o.push({ t: 'Ich hätte das passende Geld — also: ein Ticket?', run: () =>
+        reopen('Geduld, Junge! Erst esse ich mein Sol over Gudhjem in Ruhe zu Ende. Bloß… die Sonne fehlt — das rohe Eigelb! Bring mir ein Ei, dann legen wir ab.', 'aksel') });
+      o.push({ t: 'Woher soll ich ein Ei nehmen?', run: () =>
+        reopen('Auf dem Kassendach am Kai nistet eine fette Möwe. Mutig genug? Aber pass auf ihren Schnabel auf — die rückt ihr Nest nur für etwas Fischiges.', 'aksel') });
+      if (hasItem('ei'))
+        o.push({ t: 'Hier — ein frisches Ei. Die „Sonne".', run: () => { giveEgg(); closeDialog(); } });
+    } else {
+      o.push({ t: 'So, jetzt aber das Ticket!', run: () => { buyTicket(); closeDialog(); } });
     }
     o.push({ t: '(Gehen)', run: closeDialog });
     return o;
@@ -241,6 +273,14 @@ const ROOMS = {
       { id: 'booth', name: 'Billettluge', rect: [104, 104, 44, 44], walk: { x: 126, y: 160 },
         look: 'Die Fährkasse. Ein handgeschriebenes Schild: „Bin im Røgeri. — Der Fährmann."',
         onOpen: () => say('Geschlossen. Der Fährmann ist im Røgeri.') },
+      { id: 'gull', name: 'Möwe', rect: [108, 92, 44, 14], walk: { x: 126, y: 160 },
+        look: () => state.flags.gullDistracted
+          ? 'Das verlassene Möwennest auf dem Kassendach. Ein Ei liegt noch darin… falls ich es noch nicht habe.'
+          : 'Eine fette Möwe thront auf dem Kassendach und bewacht ihr Nest. Sie mustert mich angriffslustig. In dem Nest: ein Ei.',
+        onTake: takeEgg },
+      { id: 'bottle', name: 'Flaschenpost', rect: [40, 150, 20, 14], walk: { x: 52, y: 162 },
+        look: 'Eine echte Flaschenpost! Mein Herz klopft. Ich entrolle den Zettel: „Einkaufsliste: Hering, Roggenbrot, Schnaps." …Na großartig.',
+        onTake: () => say('Die alte Flasche lasse ich liegen. Eine Einkaufsliste brauche ich wirklich nicht.') },
       { id: 'bodil', name: 'Bodil', npc: true, rect: [196, 100, 30, 56], walk: { x: 206, y: 162 },
         look: 'Bodil, die Souvenirhändlerin. Strahlt jeden potenziellen Käufer an wie eine Leuchtboje.',
         talk: () => openDialog('bodil') },
@@ -262,7 +302,14 @@ const ROOMS = {
         look: 'Skipper Aksel, der Fährmann. Genießt sein „Sol over Gudhjem", als hinge sein Leben daran.',
         talk: () => openDialog('aksel') },
       { id: 'plate', name: 'Sol over Gudhjem', rect: [150, 124, 26, 12], walk: { x: 150, y: 162 },
-        look: 'Geräucherter Hering mit rohem Eigelb auf Roggenbrot. Bornholmer Nationalheiligtum.' },
+        look: () => state.flags.gaveEgg
+          ? 'Aksels Sol over Gudhjem — jetzt mit glänzendem Eigelb obendrauf. Vollständig.'
+          : 'Geräucherter Hering auf Roggenbrot. Aber das rohe Eigelb obendrauf fehlt — so ist es kein echtes „Sol over Gudhjem".' },
+      { id: 'rack', name: 'Räucherhaken', rect: [198, 92, 44, 42], walk: { x: 208, y: 160 },
+        look: 'Ein Haken voller goldbraun geräucherter Heringe. Der Duft ist betörend — und unwiderstehlich fischig.',
+        onTake: () => { if (!hasItem('raeucherhering')) { addItem('raeucherhering');
+            say('Ich schnappe mir einen Räucherhering vom Haken. Aksel schaut kurz, brummt aber nur.'); }
+          else say('Einen Hering hab ich schon. Mehr brauche ich nicht.'); } },
       { id: 'chimney', name: 'Räucherschornsteine', rect: [40, 40, 80, 60], walk: { x: 90, y: 158 },
         look: 'Die berühmten weißen Schornsteine. Es riecht köstlich nach Rauch und Hering.' },
     ],
@@ -280,15 +327,24 @@ function combine(verb, a, b) {
   if (verb === 'Gib' && has('schein') && (has('bodil') || has('stand'))) {
     if (!state.flags.boughtHerring) { buyHerring(); return true; }
   }
-  // Gib Wechselgeld an Aksel  → Ticket
+  // Benutze Räucherhering mit Möwe  → ablenken
+  if (verb === 'Benutze' && has('raeucherhering') && has('gull')) { lureGull(); return true; }
+  // Gib Ei an Aksel  → Sol vervollständigen
+  if (verb === 'Gib' && has('ei') && has('aksel')) {
+    if (!state.flags.gaveEgg) { giveEgg(); return true; }
+  }
+  // Gib Wechselgeld an Aksel  → Ticket (nur wenn das Ei schon übergeben ist)
   if (verb === 'Gib' && has('wechselgeld') && has('aksel')) {
-    if (state.flags.hasChange && !state.flags.hasTicket) { buyTicket(); return true; }
+    if (state.flags.gaveEgg && !state.flags.hasTicket) { buyTicket(); return true; }
+    if (!state.flags.gaveEgg) { say('„Erst die Sonne, dann das Geschäft!", brummt Aksel. Er will sein Ei.'); return true; }
   }
   // Gib/Benutze Ticket an/mit Fähre  → einsteigen
   if (has('ticket') && has('ferry')) { board(); return true; }
   // Späßchen
   if (has('hering') && has('ferry')) { say('Der Magnet-Hering klebt kurz am Rumpf. Dann fällt er ab. Wie alles in meinem Leben.'); return true; }
-  if (has('hering') && (has('booth'))) { say('Der Hering klebt an der Blechluge. Sehr dekorativ, aber öffnet sie nicht.'); return true; }
+  if (has('hering') && has('gull')) { say('Die Möwe beäugt den Magnet-Hering, schnaubt verächtlich und bleibt sitzen. Eine Kunstkennerin.'); return true; }
+  if (has('hering') && has('booth')) { say('Der Hering klebt an der Blechluge. Sehr dekorativ, aber öffnet sie nicht.'); return true; }
+  if (has('raeucherhering') && has('aksel')) { say('„Untersteh dich, mir mein Frühstück zu klauen!", knurrt Aksel.'); return true; }
   return false;
 }
 
@@ -297,7 +353,8 @@ function combine(verb, a, b) {
 //---------------------------------------------------------------------------
 function targetLook(t) {
   if (t.type === 'item') return ITEMS[t.id].look;
-  return t.hs.look || 'Nichts Besonderes.';
+  const l = t.hs.look;
+  return (typeof l === 'function' ? l() : l) || 'Nichts Besonderes.';
 }
 function perform(verb, t) {
   switch (verb) {
@@ -308,6 +365,7 @@ function perform(verb, t) {
       break;
     case 'Nimm':
       if (t.type === 'item') say('Hab ich schon.');
+      else if (t.hs && t.hs.onTake) t.hs.onTake();
       else say('Das lässt sich nicht einfach einstecken.');
       break;
     case 'Öffne':
@@ -501,6 +559,14 @@ function drawPerson(x, y, sc, c, facing) {
   // Blickrichtung: kleine Nase
   rect(x + facing * (hs * 0.4), y - h - hs * 0.35, sc, sc, c.skin);
 }
+function drawGull(x, y) {
+  rect(x - 5, y - 3, 10, 6, '#f4f4f4');   // Körper
+  rect(x - 8, y - 4, 4, 3, '#e2e2e2');    // Flügel
+  rect(x + 4, y - 4, 4, 3, '#e2e2e2');
+  rect(x - 2, y - 6, 4, 4, '#f4f4f4');    // Kopf
+  rect(x + 1, y - 5, 3, 2, '#e8a83a');    // Schnabel
+  rect(x - 1, y - 5, 1, 1, '#000');       // Auge
+}
 
 function drawHarbor(t) {
   rect(0, 0, VW, 96, '#9ec6e0');                 // Himmel
@@ -522,6 +588,15 @@ function drawHarbor(t) {
   // Billettluge
   rect(106, 108, 40, 40, '#7a5a36'); rect(110, 112, 32, 18, '#243b46'); rect(104, 104, 44, 6, '#5a3f24');
   label('KASSE', 126, 145, '#f0e0b0');
+  // Möwe / Nest auf dem Kassendach
+  rect(116, 100, 20, 5, '#5a4326');                      // Nest
+  if (!state.flags.gullDistracted) {
+    drawGull(126, 97 + Math.sin(t * 3) * 0.6);           // wachende Möwe
+  } else if (!hasItem('ei') && !state.flags.gaveEgg) {
+    rect(122, 98, 7, 4, '#efe7d2');                       // freiliegendes Ei
+  }
+  // Flaschenpost am Kai (kleine falsche Spur)
+  rect(46, 153, 11, 4, '#3a6b4a'); rect(55, 152, 3, 5, '#2a4a36');
   // Souvenirstand + Sonnenschirm
   rect(230, 112, 56, 28, '#8a6f48'); rect(232, 114, 52, 8, '#c0392b');
   for (let i = 0; i < 5; i++) rect(236 + i * 10, 122, 6, 6, ['#d4af37','#7fa7c4','#c0392b','#2e8b57','#dfe6ea'][i]);
@@ -551,6 +626,15 @@ function drawRoegeri(t) {
     }
   }
   label('RØGERI', 79, 118, '#5a4326');
+  // Räucherhaken mit Heringen
+  rect(198, 94, 44, 3, '#6b5436');
+  for (let i = 0; i < 4; i++) {
+    const hx = 204 + i * 10;
+    rect(hx, 97, 1, 8, '#4a3a26');                 // Schnur
+    rect(hx - 3, 105, 8, 13, '#b8843a');           // Hering
+    rect(hx - 3, 105, 8, 3, '#caa05a');
+  }
+  label('RÄUCHERHERINGE', 218, 126, '#5a4326');
   // Tisch + Teller
   rect(146, 132, 40, 8, '#8a6f48'); rect(150, 128, 4, 6, '#6b5436'); rect(178, 128, 4, 6, '#6b5436');
   rect(150, 124, 24, 8, '#caa'); rect(156, 125, 6, 5, '#e8a83a'); // Eigelb auf Brot
