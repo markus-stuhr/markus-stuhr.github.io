@@ -272,27 +272,27 @@ const ROOMS = {
     bg: 'art/gudhjem_harbor.png',
     overlay: drawHarborOverlay,
     hotspots: [
-      { id: 'ferry', name: 'Fähre', rect: [0, 100, 132, 78], walk: { x: 118, y: 170 }, dv: 'Benutze',
+      { id: 'ferry', name: 'Fähre', rect: [0, 100, 132, 78], walk: { x: 118, y: 170 }, dv: 'Benutze', color: [229, 0, 0],
         look: 'Die kleine Christiansø-Fähre. Sie schaukelt einladend. Ohne Ticket komme ich da nicht rauf.',
         onUse: board },
-      { id: 'kasse', name: 'Billettluge', rect: [152, 96, 68, 58], walk: { x: 186, y: 168 },
+      { id: 'kasse', name: 'Billettluge', rect: [152, 96, 68, 58], walk: { x: 186, y: 168 }, color: [0, 200, 0],
         look: 'Die Fährkasse mit Tafeln und Klappfenster. Ein Schild: „Bin in der Räucherei. — Der Fährmann."',
         onOpen: () => say('Das Klappfenster ist zu. Der Fährmann sitzt in der Räucherei.') },
-      { id: 'gull', name: 'Möwe', rect: [156, 74, 60, 16], walk: { x: 186, y: 168 }, dv: 'Nimm',
+      { id: 'gull', name: 'Möwe', rect: [156, 74, 60, 16], walk: { x: 186, y: 168 }, dv: 'Nimm', color: [255, 224, 0],
         look: () => state.flags.gullDistracted
           ? 'Das verlassene Möwennest auf dem Dach der Kasse. Ein Ei liegt noch darin… falls ich es noch nicht habe.'
           : 'Eine fette Möwe thront auf dem Dach der Kasse und bewacht ihr Nest. Sie mustert mich angriffslustig. In dem Nest: ein Ei.',
         onTake: takeEgg },
-      { id: 'crate', name: 'Holzkiste', rect: [284, 150, 34, 28], walk: { x: 286, y: 172 }, dv: 'Schau an',
+      { id: 'crate', name: 'Holzkiste', rect: [284, 150, 34, 28], walk: { x: 286, y: 172 }, dv: 'Schau an', color: [255, 128, 0],
         look: 'Eine alte Holzkiste. Aufschrift: „VORSICHT — GEHEIM". Ich hebe gespannt den Deckel… leer. Bis auf eine tote Spinne.',
         onTake: () => say('Viel zu schwer. Und leer. Lohnt nicht.') },
-      { id: 'doorShop', name: 'Tür zum Souvenirladen', rect: [248, 52, 30, 40], walk: { x: 258, y: 140 },
+      { id: 'doorShop', name: 'Tür zum Souvenirladen', rect: [248, 52, 30, 40], walk: { x: 258, y: 140 }, color: [16, 64, 255],
         door: { room: 'souvenir', x: 158, y: 165 },
         look: 'Ganz hinten, die Treppe hoch: ein Lädchen. Über der Tür ein verblasstes Schild „Souvenirer".' },
-      { id: 'doorSmoke', name: 'Tür zur Räucherei', rect: [298, 100, 20, 54], walk: { x: 300, y: 172 },
+      { id: 'doorSmoke', name: 'Tür zur Räucherei', rect: [298, 100, 20, 54], walk: { x: 300, y: 172 }, color: [255, 0, 220],
         door: { room: 'roegeri', x: 30, y: 158 },
         look: 'Das Häuschen mit dem rußigen Räucherofen davor. Hier wird geräuchert — und hier steckt der Fährmann.' },
-      { id: 'doorLocked', name: 'Tür', rect: [230, 62, 24, 42], walk: { x: 240, y: 150 },
+      { id: 'doorLocked', name: 'Tür', rect: [230, 62, 24, 42], walk: { x: 240, y: 150 }, color: [0, 224, 224],
         locked: true,
         look: 'Eine schlichte Holztür am gelben Haus. Ich klopfe. Nichts rührt sich. Hier macht niemand auf.' },
     ],
@@ -338,10 +338,60 @@ function room() { return ROOMS[state.room]; }
 
 // Hintergrund-Bilder vorladen (Räume ohne bg zeichnen prozedural als Fallback)
 const IMG = {};
+const MASK = {};   // roomId -> { hot:{data,w,h}, walk:{data,w,h} }  (optionale Masken)
 function preloadBackgrounds() {
   for (const id in ROOMS) {
     const r = ROOMS[id];
     if (r.bg) { const im = new Image(); im.onload = () => { IMG[id] = im; }; im.src = r.bg; }
+    if (r.masks) {
+      if (r.masks.walk) loadMask(id, 'walk', r.masks.walk);
+      if (r.masks.hotspots) loadMask(id, 'hot', r.masks.hotspots);
+    }
+  }
+}
+function loadMask(roomId, kind, src) {
+  const im = new Image();
+  im.onload = () => {
+    const c = document.createElement('canvas'); c.width = im.width; c.height = im.height;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(im, 0, 0);
+    (MASK[roomId] = MASK[roomId] || {})[kind] = { data: g.getImageData(0, 0, im.width, im.height).data, w: im.width, h: im.height };
+    if (kind === 'hot') deriveWalkPoints(roomId);
+  };
+  im.src = src;
+}
+function samplePixel(m, x, y) {
+  const px = Math.floor(x * m.w / VW), py = Math.floor(y * m.h / VH);
+  if (px < 0 || py < 0 || px >= m.w || py >= m.h) return [0, 0, 0];
+  const i = (py * m.w + px) * 4;
+  return [m.data[i], m.data[i + 1], m.data[i + 2]];
+}
+function colorDist(a, b) { return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]); }
+function walkable(x, y) {
+  const m = MASK[state.room];
+  if (m && m.walk) return samplePixel(m.walk, x, y).reduce((s, v) => s + v, 0) > 300; // hell = begehbar
+  return y >= WALK_TOP && y <= WALK_BOT;                                              // Fallback: Lauf-Band
+}
+function nearestWalkable(x, y) {
+  if (walkable(x, y)) return { x, y };
+  for (let r = 3; r <= 48; r += 3)
+    for (let a = 0; a < 360; a += 24) {
+      const nx = x + Math.cos(a * Math.PI / 180) * r, ny = y + Math.sin(a * Math.PI / 180) * r;
+      if (walkable(nx, ny)) return { x: nx, y: ny };
+    }
+  return { x, y };
+}
+// Stand-Punkt jedes Hotspots aus seiner Maskenregion ableiten (Unterkante, auf begehbar gezogen)
+function deriveWalkPoints(roomId) {
+  const m = MASK[roomId]; if (!m || !m.hot) return;
+  for (const hs of ROOMS[roomId].hotspots) {
+    if (!hs.color) continue;
+    let minX = 1e9, maxX = -1e9, maxY = -1e9, cnt = 0;
+    for (let y = 0; y < VH; y += 1) for (let x = 0; x < VW; x += 1) {
+      if (colorDist(samplePixel(m.hot, x, y), hs.color) < 90) {
+        if (x < minX) minX = x; if (x > maxX) maxX = x; if (y > maxY) maxY = y; cnt++;
+      }
+    }
+    if (cnt > 0) { const p = nearestWalkable((minX + maxX) / 2, Math.min(VH - 2, maxY + 6)); hs.walk = { x: Math.round(p.x), y: Math.round(p.y) }; }
   }
 }
 
@@ -560,9 +610,25 @@ function toVirtual(e) {
   return { x: cx / scale, y: cy / scale };
 }
 function hotspotAt(x, y) {
-  // bei Überlappung den kleinsten (spezifischsten) Hotspot wählen
+  const rm = room(), m = MASK[state.room];
+  // 1) Hotspot-Maske (farbkodiert) hat Vorrang, wenn vorhanden
+  if (m && m.hot) {
+    const c = samplePixel(m.hot, x, y);
+    if (c[0] + c[1] + c[2] > 60) {   // nicht (nahezu) schwarz = kein Hintergrund
+      let best = null, bestD = 1e9;
+      for (const hs of rm.hotspots) {
+        if (!hs.color) continue;
+        const d = colorDist(c, hs.color);
+        if (d < bestD) { bestD = d; best = hs; }
+      }
+      if (best && bestD < 150) return best;
+    }
+    return null;
+  }
+  // 2) Fallback: kleinster (spezifischster) Rechteck-Hotspot
   let best = null, bestArea = Infinity;
-  for (const hs of room().hotspots) {
+  for (const hs of rm.hotspots) {
+    if (!hs.rect) continue;
     const [rx, ry, rw, rh] = hs.rect;
     if (x >= rx && x <= rx + rw && y >= ry && y <= ry + rh) {
       const a = rw * rh;
@@ -587,8 +653,9 @@ cv.addEventListener('click', e => {
   if (hs) {
     resolveTarget({ type: 'hotspot', id: hs.id, name: hs.name, hs, walk: hs.walk });
   } else {
-    // leerer Boden → laufen (Verb zurücksetzen)
-    moveTo(p.x, p.y, null);
+    // leerer Boden → zum nächstgelegenen begehbaren Punkt laufen
+    const w = nearestWalkable(p.x, p.y);
+    moveTo(w.x, w.y, null);
     if (state.verb !== 'Gehe zu') resetVerb();
   }
 });
