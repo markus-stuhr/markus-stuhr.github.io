@@ -134,7 +134,7 @@ const state = {
   mode: 'title',              // 'title' | 'play' | 'dialog' | 'cutscene'
   showWalk: false,           // Settings: Walk-Maske statt Bild anzeigen
   showHotspots: false,       // Settings: Hotspot-Flächen einzeichnen
-  player: { x: 64, y: 156, tx: 64, ty: 156, scale: 1, onArrive: null, facing: 1 },
+  player: { x: 170, y: 170, tx: 170, ty: 170, scale: 1, onArrive: null, facing: 1 },
 };
 
 //---------------------------------------------------------------------------
@@ -539,8 +539,9 @@ function walkThen(t, cb) {
 function doExit(ex) {
   // erst hinlaufen ist bereits passiert; Raum wechseln
   state.room = ex.room;
-  state.player.x = state.player.tx = ex.x;
-  state.player.y = state.player.ty = ex.y;
+  const w = nearestWalkable(ex.x, ex.y);   // Einstiegspunkt auf begehbare Fläche ziehen
+  state.player.x = state.player.tx = w.x;
+  state.player.y = state.player.ty = w.y;
   state.player.onArrive = null;
   elCaption.style.display = 'none';
 }
@@ -971,7 +972,7 @@ function loop(ts) {
     } else if (p.onArrive) {
       const cb = p.onArrive; p.onArrive = null; cb();
     }
-    p.scale = 0.85 + (clamp(p.y, WALK_TOP, WALK_BOT) - WALK_TOP) / (WALK_BOT - WALK_TOP) * 0.3;
+    p.scale = 0.6 + (clamp(p.y, 70, 180) - 70) / 110 * 0.6;   // Tiefe: hinten klein, vorne groß
     drawPerson(p.x, p.y, p.scale, { legs: '#3a3550', body: '#b5482f', skin: '#e8c0a0', hair: '#5a3a22' }, p.facing);
     if (!state.showWalk) drawOcclusion(p.x, p.y, p.scale);   // Walk-Behind über den Spieler
   }
@@ -984,6 +985,8 @@ function loop(ts) {
 document.getElementById('startBtn').onclick = () => {
   elOverlay.style.display = 'none';
   state.mode = 'play';
+  const w = nearestWalkable(state.player.x, state.player.y);   // Start auf begehbare Fläche
+  state.player.x = state.player.tx = w.x; state.player.y = state.player.ty = w.y;
   resize();
 };
 // Settings-Zahnrad
