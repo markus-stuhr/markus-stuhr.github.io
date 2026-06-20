@@ -658,6 +658,8 @@ function hotspotAt(x, y) {
     }
     return null;
   }
+  // Maskenbasierter Raum, aber Hotspot-Maske noch nicht da → keine Hotspots (nur Laufen)
+  if (rm.masks) return null;
   // 2) Fallback: kleinster (spezifischster) Rechteck-Hotspot
   let best = null, bestArea = Infinity;
   for (const hs of rm.hotspots) {
