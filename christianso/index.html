@@ -628,7 +628,8 @@ function moveTo(x, y, cb) {
   const ty = (m && m.walk) ? clamp(y, 0, VH - 1) : clamp(y, WALK_TOP, WALK_BOT);
   if (NAV[state.room]) {
     const path = findPath(p.x, p.y, tx, ty);
-    p.path = (path && path.length) ? path : [{ x: tx, y: ty }];
+    if (!path || !path.length) return;   // kein begehbarer Weg → Mads bleibt stehen (kein Direkt-Lauf)
+    p.path = path;
     p.pathI = 0; p.onArrive = cb || null;
     const end = p.path[p.path.length - 1];
     p.tx = end.x; p.ty = end.y;   // Direkt-Ziel = Pfadende, sonst läuft er danach zurück
