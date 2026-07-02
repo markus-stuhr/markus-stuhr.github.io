@@ -1101,11 +1101,20 @@ function drawVortex() {
   ctx.stroke();
 }
 
-/* ---- 20. Gravitation — Partikelwolke zwischen 3 Attraktoren ---- */
+/* ---- 20. Gravitation — Attraktoren sammeln Moleküle ein, Nachschub von außen ---- */
 const gravP = [];
+const gravGlow = [0, 0, 0];
+function gravSpawn(p) {
+  /* neues Molekül rückt von einem zufälligen Rand nach */
+  const side = Math.floor(Math.random() * 4);
+  if (side === 0)      { p.x = Math.random(); p.y = 0;    p.vx = 0; p.vy = 0.003; }
+  else if (side === 1) { p.x = Math.random(); p.y = 1;    p.vx = 0; p.vy = -0.003; }
+  else if (side === 2) { p.x = 0; p.y = Math.random();    p.vx = 0.003; p.vy = 0; }
+  else                 { p.x = 1; p.y = Math.random();    p.vx = -0.003; p.vy = 0; }
+  p.m = 0.4 + Math.random() * 1.2;   /* individuelle "Masse" — sonst kollabieren alle auf dieselbe Bahn */
+}
 (function initGrav() {
   for (let i = 0; i < 420; i++) {
-    /* individuelle "Masse" — sonst kollabieren alle auf dieselbe Bahn */
     gravP.push({ x: Math.random(), y: Math.random(), vx: 0, vy: 0, m: 0.4 + Math.random() * 1.2 });
   }
 })();
@@ -1134,19 +1143,35 @@ function drawGravity() {
     p.x += p.vx; p.y += p.vy;
     if (p.x < 0 || p.x > 1) { p.vx *= -0.8; p.x = Math.max(0, Math.min(1, p.x)); }
     if (p.y < 0 || p.y > 1) { p.vy *= -0.8; p.y = Math.max(0, Math.min(1, p.y)); }
+    /* Einsammeln: nah genug an einer Kugel → verschluckt, Nachschub vom Rand */
+    let eaten = false;
+    for (let ai = 0; ai < 3; ai++) {
+      const a = attr[ai];
+      const dx = a.x - p.x, dy = a.y - p.y;
+      const cr = 0.028 + a.s * 0.032;
+      if (dx * dx + dy * dy < cr * cr) {
+        gravGlow[ai] = Math.min(1, gravGlow[ai] + 0.2);
+        gravSpawn(p);
+        eaten = true;
+        break;
+      }
+    }
+    if (eaten) continue;
     const sp = Math.min(1, Math.hypot(p.vx, p.vy) * 120);
     ctx.fillStyle = `hsla(${hue + sp * 50} 90% ${50 + sp * 38}% / ${0.55 + sp * 0.45})`;
     const s = 2 + sp * 3;
     ctx.fillRect(p.x * W - s / 2, p.y * H - s / 2, s, s);
   }
-  /* Attraktoren als glühende Kerne */
-  for (const a of attr) {
-    const r = 4 + a.s * 28;
+  /* Attraktoren als glühende Kerne — blitzen beim Einsammeln auf */
+  for (let ai = 0; ai < 3; ai++) {
+    const a = attr[ai];
+    const r = 4 + a.s * 28 + gravGlow[ai] * 22;
     const g = ctx.createRadialGradient(a.x * W, a.y * H, 0, a.x * W, a.y * H, r);
-    g.addColorStop(0, `hsla(${a.hue} 90% 70% / ${0.5 + a.s * 0.5})`);
+    g.addColorStop(0, `hsla(${a.hue} 90% ${70 + gravGlow[ai] * 25}% / ${0.5 + a.s * 0.5})`);
     g.addColorStop(1, 'transparent');
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(a.x * W, a.y * H, r, 0, Math.PI * 2); ctx.fill();
+    gravGlow[ai] *= 0.93;
   }
 }
 
