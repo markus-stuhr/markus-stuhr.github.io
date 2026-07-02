@@ -784,6 +784,152 @@ function drawTunnel() {
   }
 }
 
+/* ---- 11. Orbits — Kreise für einzelne Frequenzbänder ---- */
+function drawOrbits() {
+  const bands = 8;
+  const t = performance.now() / 1000;
+  for (let i = 0; i < bands; i++) {
+    /* logarithmische Bandaufteilung: links Sub-Bass, rechts Höhen */
+    const lo = Math.floor(Math.pow(i / bands, 1.8) * 400) + 1;
+    const hi = Math.floor(Math.pow((i + 1) / bands, 1.8) * 400) + 2;
+    let v = energy(lo, hi) * (1 + i * 0.35);   /* Höhen sind leiser → anheben */
+    v = Math.min(1, v);
+    const x = (i + 0.5) / bands * W;
+    const y = H / 2 + Math.sin(t * (0.6 + i * 0.25) + i * 2) * H * 0.12;
+    const rMax = Math.min(W / bands * 0.75, H * 0.3);
+    const r = rMax * (0.12 + v * 0.88);
+    const hue = i / bands * 300;
+    /* Glow */
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r * 1.6);
+    g.addColorStop(0, `hsla(${hue} 95% 65% / ${0.25 + v * 0.5})`);
+    g.addColorStop(0.6, `hsla(${hue} 95% 55% / ${0.12 + v * 0.25})`);
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r * 1.6, 0, Math.PI * 2); ctx.fill();
+    /* Kern + Ring */
+    ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${hue} 95% ${55 + v * 30}% / 0.9)`;
+    ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.strokeStyle = `hsla(${hue} 95% 70% / ${0.4 + v * 0.6})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    /* Beat: Schockring um alle Kreise */
+    if (beatPulse > 0.2) {
+      ctx.beginPath(); ctx.arc(x, y, r + (1 - beatPulse) * rMax * 0.8, 0, Math.PI * 2);
+      ctx.strokeStyle = `hsla(${hue} 95% 75% / ${beatPulse * 0.5})`;
+      ctx.lineWidth = 2 * beatPulse + 0.5;
+      ctx.stroke();
+    }
+  }
+}
+
+/* ---- 12. Echo-Welle — Waveform zieht eine Spur hinter sich her ---- */
+const waveHist = [];
+function drawEchoWave() {
+  const bass = energy(1, 12);
+  /* aktuelle Waveform (runtergerechnet) in die Historie schieben */
+  const n = 96;
+  const snap = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    snap[i] = timeData[Math.floor(i / (n - 1) * (timeData.length - 1))] / 128 - 1;
+  }
+  waveHist.unshift(snap);
+  if (waveHist.length > 26) waveHist.pop();
+  /* von hinten (alt, klein, blass) nach vorn (neu, groß, hell) */
+  for (let h = waveHist.length - 1; h >= 0; h--) {
+    const t = waveHist.length > 1 ? h / (waveHist.length - 1) : 0;   /* 0 = neueste */
+    const w = waveHist[h];
+    const yBase = H * 0.7 - t * H * 0.42;
+    const amp = H * 0.22 * (1 - t * 0.55) * (1 + bass * 0.4);
+    const span = W * (1 - t * 0.45);
+    ctx.strokeStyle = `hsla(${160 + t * 130} 90% ${62 - t * 30}% / ${(1 - t) * 0.95 + 0.05})`;
+    ctx.lineWidth = 2.5 - t * 1.7;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = W / 2 + (i / (n - 1) - 0.5) * span;
+      const y = yBase + w[i] * amp;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  }
+}
+
+/* ---- 13. Spektrogramm-Wasserfall ---- */
+const specW = 240, specH = 128;
+const specCv = document.createElement('canvas');
+specCv.width = specW; specCv.height = specH;
+const sctx = specCv.getContext('2d');
+function drawSpectrogram() {
+  /* alles 2px nach links schieben, rechts neue Spalte anfügen */
+  sctx.drawImage(specCv, -2, 0);
+  for (let y = 0; y < specH; y++) {
+    const fi = 1 - y / specH;   /* oben = hohe Frequenzen */
+    const bin = Math.floor(Math.pow(fi, 2.2) * analyser.frequencyBinCount * 0.6);
+    const v = freqData[bin] / 255;
+    sctx.fillStyle = v < 0.02
+      ? '#0a0a12'
+      : `hsl(${260 - v * 260} 90% ${v * 58}%)`;
+    sctx.fillRect(specW - 2, y, 2, 1);
+  }
+  ctx.drawImage(specCv, 0, 0, W, H);
+}
+
+/* ---- 14. Lissajous — XY-Oszilloskop mit Neon-Spur ---- */
+let lisOff = 256, lisHue = 0;
+function drawLissajous() {
+  const bass = energy(1, 12), mids = energy(12, 80);
+  /* Versatz zwischen X- und Y-Signal wandert mit den Mitten → Figur morpht */
+  const target = 128 + Math.floor(mids * 700);
+  lisOff += (target - lisOff) * 0.04;
+  const off = Math.floor(lisOff);
+  const cx = W / 2, cy = H / 2, S = Math.min(W, H) * 0.42;
+  lisHue = (lisHue + 0.8 + bass * 4) % 360;
+  ctx.strokeStyle = `hsla(${lisHue} 95% 60% / 0.55)`;
+  ctx.lineWidth = 1.5 + bass * 3;
+  ctx.beginPath();
+  for (let i = 0; i < timeData.length - off; i += 2) {
+    const x = cx + (timeData[i] / 128 - 1) * S;
+    const y = cy + (timeData[i + off] / 128 - 1) * S;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.stroke();
+}
+
+/* ---- 15. Galaxie ---- */
+const gal = [];
+let galRot = 0;
+(function initGalaxy() {
+  for (let i = 0; i < 420; i++) {
+    const r = Math.pow(Math.random(), 0.7);
+    gal.push({
+      r,
+      ang: r * 4.5 + (i % 3) * Math.PI * 2 / 3 + (Math.random() - 0.5) * 0.5,
+    });
+  }
+})();
+function drawGalaxy() {
+  const bass = energy(1, 12);
+  galRot += 0.002 + bass * 0.015;
+  const f = Math.min(W, H);
+  for (const p of gal) {
+    /* jeder Stern hängt an einem Frequenz-Bin — innen Bass, außen Höhen */
+    const v = freqData[Math.floor(p.r * 320) + 1] / 255;
+    const ang = p.ang + galRot * (1.6 - p.r);   /* innen rotiert schneller */
+    const R = p.r * f * 0.46 * (1 + bass * 0.12);
+    const x = W / 2 + Math.cos(ang) * R;
+    const y = H / 2 + Math.sin(ang) * R * 0.62;   /* elliptisch geneigt */
+    const s = 1 + v * 5 * (1 - p.r * 0.4);
+    ctx.fillStyle = `hsla(${40 + p.r * 220} 90% ${45 + v * 40}% / ${0.3 + v * 0.7})`;
+    ctx.fillRect(x - s / 2, y - s / 2, s, s);
+  }
+  /* Galaxienkern */
+  ctx.beginPath();
+  ctx.arc(W / 2, H / 2, 8 + bass * 26 + beatPulse * 10, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(255,220,150,${0.25 + bass * 0.5})`;
+  ctx.fill();
+}
+
 /* ---- Modus-Verwaltung ---- */
 const modes = [
   { name: 'Spektrum', fn: drawBars,          fade: 1.0  },
@@ -796,6 +942,11 @@ const modes = [
   { name: 'Kaleidoskop', fn: drawKaleido,    fade: 0.14 },
   { name: 'Blitzgewitter', fn: drawLightning, fade: 0.3 },
   { name: 'Tunnel', fn: drawTunnel,          fade: 0.28 },
+  { name: 'Orbits', fn: drawOrbits,          fade: 0.3  },
+  { name: 'Echo-Welle', fn: drawEchoWave,    fade: 0.5  },
+  { name: 'Spektrogramm', fn: drawSpectrogram, fade: 1.0 },
+  { name: 'Lissajous', fn: drawLissajous,    fade: 0.08 },
+  { name: 'Galaxie', fn: drawGalaxy,         fade: 0.25 },
 ];
 let mode = 0;
 let labelTimer = null;
