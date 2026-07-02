@@ -6,3 +6,9 @@ simulator/GPS Tracks/
 
 # macOS cruft
 .DS_Store
+
+# Lokale Claude-Code-Konfiguration
+.claude/
+
+# Lokale Archiv-Artefakte
+*.zip
