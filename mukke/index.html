@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>MUKKE — Player &amp; Visualizer</title>
+<style>
+  :root {
+    --bg: #0a0a12;
+    --panel: #14141f;
+    --panel2: #1c1c2b;
+    --border: #2e2e45;
+    --accent: #00e878;
+    --accent2: #ffd23f;
+    --text: #c8c8dc;
+    --dim: #6a6a85;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Courier New", monospace;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ---- Visualizer canvas ---- */
+  #vizWrap { flex: 1; position: relative; min-height: 0; }
+  #viz { width: 100%; height: 100%; display: block; cursor: pointer; }
+  #vizLabel {
+    position: absolute; top: 10px; left: 12px;
+    font-size: 11px; letter-spacing: 2px; color: var(--dim);
+    text-transform: uppercase; pointer-events: none;
+    transition: opacity 1s; opacity: 0;
+  }
+  #trackTitle {
+    position: absolute; top: 10px; right: 12px; max-width: 60%;
+    font-size: 12px; color: var(--accent); text-align: right;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    pointer-events: none; text-shadow: 0 0 8px rgba(0,232,120,.5);
+  }
+
+  /* ---- Empty state / drop hint ---- */
+  #emptyState {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; padding: 20px; pointer-events: none;
+  }
+  #emptyState h1 {
+    font-size: clamp(28px, 7vw, 52px); letter-spacing: 8px; color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,232,120,.4);
+  }
+  #emptyState p { color: var(--dim); font-size: 13px; line-height: 1.7; }
+  #emptyState .btn { pointer-events: auto; }
+
+  #dropOverlay {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,232,120,.08);
+    border: 3px dashed var(--accent);
+    font-size: 22px; letter-spacing: 4px; color: var(--accent);
+    pointer-events: none;
+  }
+  body.dragging #dropOverlay { display: flex; }
+
+  /* ---- Controls ---- */
+  #controls {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 8px 10px;
+    display: flex; flex-direction: column; gap: 6px;
+    flex-shrink: 0;
+  }
+  #seekRow { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--dim); }
+  #seek { flex: 1; }
+  #btnRow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+
+  .btn {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px 14px;
+    cursor: pointer;
+    border-radius: 3px;
+    line-height: 1;
+    touch-action: manipulation;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { color: var(--accent); border-color: var(--accent); font-weight: bold; min-width: 52px; }
+  .btn.small { font-size: 11px; padding: 6px 10px; }
+
+  #volWrap { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+  #vol { width: 90px; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    height: 18px; background: transparent; cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 4px; background: var(--border); border-radius: 2px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 14px; height: 14px; margin-top: -5px;
+    background: var(--accent); border-radius: 50%;
+  }
+  input[type=range]::-moz-range-track { height: 4px; background: var(--border); border-radius: 2px; }
+  input[type=range]::-moz-range-thumb { width: 14px; height: 14px; background: var(--accent); border: none; border-radius: 50%; }
+
+  /* ---- Playlist ---- */
+  #playlist {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    max-height: 30vh; overflow-y: auto;
+    display: none; flex-shrink: 0;
+  }
+  #playlist.open { display: block; }
+  .plItem {
+    padding: 8px 12px; font-size: 12px; cursor: pointer;
+    display: flex; gap: 8px; align-items: center;
+    border-bottom: 1px solid rgba(46,46,69,.4);
+    white-space: nowrap; overflow: hidden;
+  }
+  .plItem:hover { background: var(--panel2); }
+  .plItem.active { color: var(--accent); background: var(--panel2); }
+  .plItem .num { color: var(--dim); min-width: 24px; }
+  .plItem .name { overflow: hidden; text-overflow: ellipsis; flex: 1; }
+  .plItem .del { color: var(--dim); padding: 2px 6px; }
+  .plItem .del:hover { color: #ff5566; }
+
+  #fileInput { display: none; }
+
+  @media (max-width: 600px) {
+    .btn { padding: 10px 12px; }
+    #vol { width: 60px; }
+    #trackTitle { font-size: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="vizWrap">
+  <canvas id="viz"></canvas>
+  <div id="vizLabel"></div>
+  <div id="trackTitle"></div>
+  <div id="emptyState">
+    <h1>MUKKE</h1>
+    <p>Musikdateien hier reinziehen<br>oder unten „+ Dateien“ drücken.<br><br>MP3 · OGG · WAV · FLAC · M4A/AAC · OPUS</p>
+    <button class="btn primary" onclick="document.getElementById('fileInput').click()">+ Dateien laden</button>
+  </div>
+</div>
+
+<div id="controls">
+  <div id="seekRow">
+    <span id="tCur">0:00</span>
+    <input type="range" id="seek" min="0" max="1000" value="0">
+    <span id="tDur">0:00</span>
+  </div>
+  <div id="btnRow">
+    <button class="btn" id="btnPrev" title="Zurück">|◀</button>
+    <button class="btn primary" id="btnPlay" title="Play/Pause">▶</button>
+    <button class="btn" id="btnNext" title="Weiter">▶|</button>
+    <button class="btn small" id="btnShuffle" title="Shuffle">🔀</button>
+    <button class="btn small" id="btnViz" title="Visualisierung wechseln (auch: Klick auf die Anzeige)">VIZ</button>
+    <button class="btn small" id="btnList" title="Playlist ein/aus">LISTE</button>
+    <button class="btn small" onclick="document.getElementById('fileInput').click()">+ Dateien</button>
+    <div id="volWrap">
+      <span style="font-size:11px;color:var(--dim)">VOL</span>
+      <input type="range" id="vol" min="0" max="100" value="80">
+    </div>
+  </div>
+</div>
+
+<div id="playlist"></div>
+
+<div id="dropOverlay">DROP IT</div>
+<input type="file" id="fileInput" accept="audio/*,.mp3,.ogg,.oga,.wav,.flac,.m4a,.aac,.opus,.webm" multiple>
+<audio id="audio"></audio>
+
+<script>
+"use strict";
+
+/* ================= Audio-Setup ================= */
+const audio = document.getElementById('audio');
+let actx = null, analyser = null, freqData = null, timeData = null;
+
+function ensureAudioGraph() {
+  if (actx) { if (actx.state === 'suspended') actx.resume(); return; }
+  actx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = actx.createMediaElementSource(audio);
+  analyser = actx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.82;
+  src.connect(analyser);
+  analyser.connect(actx.destination);
+  freqData = new Uint8Array(analyser.frequencyBinCount);
+  timeData = new Uint8Array(analyser.fftSize);
+}
+
+/* ================= Playlist ================= */
+let tracks = [];      // {name, url}
+let current = -1;
+let shuffle = false;
+
+const playlistEl = document.getElementById('playlist');
+const trackTitleEl = document.getElementById('trackTitle');
+const emptyState = document.getElementById('emptyState');
+
+function addFiles(fileList) {
+  const files = Array.from(fileList).filter(f =>
+    f.type.startsWith('audio/') || /\.(mp3|ogg|oga|wav|flac|m4a|aac|opus|webm)$/i.test(f.name));
+  if (!files.length) return;
+  const startEmpty = tracks.length === 0;
+  for (const f of files) {
+    tracks.push({ name: f.name.replace(/\.[^.]+$/, ''), url: URL.createObjectURL(f) });
+  }
+  renderPlaylist();
+  emptyState.style.display = 'none';
+  if (startEmpty) playTrack(0);
+}
+
+function renderPlaylist() {
+  playlistEl.innerHTML = '';
+  tracks.forEach((t, i) => {
+    const div = document.createElement('div');
+    div.className = 'plItem' + (i === current ? ' active' : '');
+    div.innerHTML = `<span class="num">${String(i+1).padStart(2,'0')}</span><span class="name"></span><span class="del">✕</span>`;
+    div.querySelector('.name').textContent = t.name;
+    div.querySelector('.name').parentElement.addEventListener('click', e => {
+      if (e.target.classList.contains('del')) { removeTrack(i); }
+      else playTrack(i);
+    });
+    playlistEl.appendChild(div);
+  });
+}
+
+function removeTrack(i) {
+  URL.revokeObjectURL(tracks[i].url);
+  tracks.splice(i, 1);
+  if (i === current) {
+    current = -1;
+    audio.pause();
+    if (tracks.length) playTrack(Math.min(i, tracks.length - 1));
+    else { audio.removeAttribute('src'); audio.load(); trackTitleEl.textContent = ''; emptyState.style.display = ''; updatePlayBtn(); }
+  } else if (i < current) current--;
+  renderPlaylist();
+}
+
+function playTrack(i) {
+  if (i < 0 || i >= tracks.length) return;
+  ensureAudioGraph();
+  current = i;
+  audio.src = tracks[i].url;
+  audio.play().catch(()=>{});
+  trackTitleEl.textContent = tracks[i].name;
+  document.title = tracks[i].name + ' — MUKKE';
+  renderPlaylist();
+}
+
+function nextTrack() {
+  if (!tracks.length) return;
+  if (shuffle && tracks.length > 1) {
+    let n; do { n = Math.floor(Math.random() * tracks.length); } while (n === current);
+    playTrack(n);
+  } else playTrack((current + 1) % tracks.length);
+}
+function prevTrack() {
+  if (!tracks.length) return;
+  if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+  playTrack((current - 1 + tracks.length) % tracks.length);
+}
+
+audio.addEventListener('ended', nextTrack);
+
+/* ================= Controls ================= */
+const btnPlay = document.getElementById('btnPlay');
+const seek = document.getElementById('seek');
+const tCur = document.getElementById('tCur');
+const tDur = document.getElementById('tDur');
+let seeking = false;
+
+function fmt(s) {
+  if (!isFinite(s)) return '0:00';
+  s = Math.floor(s);
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+function updatePlayBtn() { btnPlay.textContent = (audio.paused ? '▶' : '❚❚'); }
+
+btnPlay.addEventListener('click', () => {
+  if (!tracks.length) { document.getElementById('fileInput').click(); return; }
+  ensureAudioGraph();
+  if (current < 0) { playTrack(0); return; }
+  if (audio.paused) audio.play().catch(()=>{}); else audio.pause();
+});
+audio.addEventListener('play', updatePlayBtn);
+audio.addEventListener('pause', updatePlayBtn);
+
+document.getElementById('btnNext').addEventListener('click', nextTrack);
+document.getElementById('btnPrev').addEventListener('click', prevTrack);
+document.getElementById('btnShuffle').addEventListener('click', function() {
+  shuffle = !shuffle;
+  this.style.color = shuffle ? 'var(--accent)' : '';
+  this.style.borderColor = shuffle ? 'var(--accent)' : '';
+});
+document.getElementById('btnList').addEventListener('click', () => playlistEl.classList.toggle('open'));
+
+seek.addEventListener('input', () => { seeking = true; });
+seek.addEventListener('change', () => {
+  if (audio.duration) audio.currentTime = seek.value / 1000 * audio.duration;
+  seeking = false;
+});
+audio.addEventListener('timeupdate', () => {
+  tCur.textContent = fmt(audio.currentTime);
+  tDur.textContent = fmt(audio.duration);
+  if (!seeking && audio.duration) seek.value = audio.currentTime / audio.duration * 1000;
+});
+
+const vol = document.getElementById('vol');
+vol.addEventListener('input', () => { audio.volume = vol.value / 100; });
+audio.volume = 0.8;
+
+document.getElementById('fileInput').addEventListener('change', e => {
+  addFiles(e.target.files);
+  e.target.value = '';
+});
+
+/* Drag & Drop */
+let dragCount = 0;
+window.addEventListener('dragenter', e => { e.preventDefault(); dragCount++; document.body.classList.add('dragging'); });
+window.addEventListener('dragleave', e => { e.preventDefault(); if (--dragCount <= 0) { dragCount = 0; document.body.classList.remove('dragging'); } });
+window.addEventListener('dragover', e => e.preventDefault());
+window.addEventListener('drop', e => {
+  e.preventDefault();
+  dragCount = 0;
+  document.body.classList.remove('dragging');
+  if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+});
+
+/* Keyboard */
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+  if (e.code === 'Space') { e.preventDefault(); btnPlay.click(); }
+  else if (e.key === 'v' || e.key === 'V') nextViz();
+  else if (e.key === 'ArrowRight') audio.currentTime = Math.min((audio.currentTime||0) + 5, audio.duration||0);
+  else if (e.key === 'ArrowLeft') audio.currentTime = Math.max((audio.currentTime||0) - 5, 0);
+  else if (e.key === 'n') nextTrack();
+  else if (e.key === 'p') prevTrack();
+});
+
+/* ================= Visualizer ================= */
+const canvas = document.getElementById('viz');
+const ctx = canvas.getContext('2d');
+const vizLabel = document.getElementById('vizLabel');
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const r = canvas.parentElement.getBoundingClientRect();
+  W = Math.floor(r.width); H = Math.floor(r.height);
+  canvas.width = W * DPR; canvas.height = H * DPR;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* Hilfswerte: Bass-Energie & Gesamtenergie */
+function energy(lo, hi) {
+  let s = 0;
+  for (let i = lo; i < hi; i++) s += freqData[i];
+  return s / ((hi - lo) * 255);
+}
+
+/* ---- 1. Spektrum-Balken (Winamp-Klassiker) ---- */
+const peaks = [];
+function drawBars() {
+  const n = Math.min(64, Math.floor(W / 12));
+  const binCount = analyser ? analyser.frequencyBinCount : 1024;
+  const barW = W / n;
+  if (peaks.length !== n) { peaks.length = 0; for (let i = 0; i < n; i++) peaks.push(0); }
+  for (let i = 0; i < n; i++) {
+    /* logarithmische Bin-Verteilung — Bässe links breit, Höhen rechts */
+    const f0 = Math.floor(Math.pow(i / n, 1.6) * binCount * 0.7);
+    const f1 = Math.max(f0 + 1, Math.floor(Math.pow((i + 1) / n, 1.6) * binCount * 0.7));
+    let v = 0;
+    for (let j = f0; j < f1; j++) v = Math.max(v, freqData[j]);
+    v /= 255;
+    const h = v * (H - 30);
+    const x = i * barW;
+    /* Segmente wie beim Original */
+    const seg = 6;
+    const nSeg = Math.floor(h / seg);
+    for (let s = 0; s < nSeg; s++) {
+      const yy = H - 10 - s * seg;
+      const frac = s * seg / (H - 30);
+      ctx.fillStyle = frac > 0.75 ? '#ff3b4d' : frac > 0.5 ? '#ffd23f' : '#00e878';
+      ctx.fillRect(x + 1, yy - seg + 1, barW - 2, seg - 2);
+    }
+    /* Peak-Kappe */
+    if (h > peaks[i]) peaks[i] = h; else peaks[i] = Math.max(0, peaks[i] - H * 0.004);
+    ctx.fillStyle = '#e8e8ff';
+    ctx.fillRect(x + 1, H - 12 - peaks[i], barW - 2, 3);
+  }
+}
+
+/* ---- 2. Oszilloskop ---- */
+function drawScope() {
+  const mid = H / 2;
+  ctx.strokeStyle = 'rgba(0,232,120,0.15)';
+  ctx.lineWidth = 8;
+  scopePath(mid);
+  ctx.strokeStyle = '#00e878';
+  ctx.lineWidth = 2;
+  scopePath(mid);
+}
+function scopePath(mid) {
+  ctx.beginPath();
+  const n = timeData.length;
+  for (let i = 0; i < n; i++) {
+    const x = i / (n - 1) * W;
+    const y = mid + (timeData[i] - 128) / 128 * H * 0.42;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+/* ---- 3. Kreis-Spektrum ---- */
+let circRot = 0;
+function drawCircle() {
+  const cx = W / 2, cy = H / 2;
+  const base = Math.min(W, H) * 0.18;
+  const bass = energy(1, 12);
+  circRot += 0.002 + bass * 0.01;
+  const n = 128;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(circRot);
+  for (let i = 0; i < n; i++) {
+    const v = freqData[Math.floor(Math.pow(i / n, 1.4) * analyser.frequencyBinCount * 0.6)] / 255;
+    const a = i / n * Math.PI * 2;
+    const r0 = base * (1 + bass * 0.4);
+    const r1 = r0 + v * Math.min(W, H) * 0.3;
+    const hue = 140 - v * 140 + 360; /* grün → gelb → rot */
+    ctx.strokeStyle = `hsl(${(hue + i / n * 40) % 360} 90% ${45 + v * 25}%)`;
+    ctx.lineWidth = Math.PI * 2 * r0 / n * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+    ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+    ctx.stroke();
+  }
+  ctx.restore();
+  /* Puls-Kern */
+  ctx.beginPath();
+  ctx.arc(cx, cy, base * 0.55 * (1 + bass * 0.5), 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(0,232,120,${0.15 + bass * 0.5})`;
+  ctx.fill();
+}
+
+/* ---- 4. Partikel ---- */
+const parts = [];
+function drawParticles() {
+  const bass = energy(1, 12);
+  const mids = energy(12, 80);
+  /* nachschieben */
+  const want = 4 + Math.floor(bass * 30);
+  for (let k = 0; k < want && parts.length < 500; k++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 0.5 + bass * 8 + Math.random() * 2;
+    parts.push({
+      x: W / 2, y: H / 2,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: 1, size: 2 + bass * 8 + Math.random() * 3,
+      hue: bass > 0.55 ? 0 + Math.random() * 40 : 140 + Math.random() * 60
+    });
+  }
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vx *= 1.01; p.vy *= 1.01;
+    p.life -= 0.012;
+    if (p.life <= 0 || p.x < -20 || p.x > W + 20 || p.y < -20 || p.y > H + 20) { parts.splice(i, 1); continue; }
+    ctx.fillStyle = `hsla(${p.hue} 90% 60% / ${p.life})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  /* Kern pulsiert mit Mitten */
+  ctx.beginPath();
+  ctx.arc(W / 2, H / 2, 10 + mids * 60 + bass * 40, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(255,210,63,${0.2 + mids * 0.6})`;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+}
+
+/* ---- 5. Sternenflug ---- */
+const stars = [];
+function initStars() {
+  stars.length = 0;
+  for (let i = 0; i < 300; i++) {
+    stars.push({ x: (Math.random() - 0.5), y: (Math.random() - 0.5), z: Math.random() });
+  }
+}
+initStars();
+function drawStars() {
+  const bass = energy(1, 12);
+  const speed = 0.004 + bass * 0.05;
+  const f = Math.min(W, H);
+  for (const s of stars) {
+    s.z -= speed;
+    if (s.z <= 0.02) { s.x = Math.random() - 0.5; s.y = Math.random() - 0.5; s.z = 1; }
+    const px = W / 2 + s.x / s.z * f;
+    const py = H / 2 + s.y / s.z * f;
+    if (px < 0 || px > W || py < 0 || py > H) continue;
+    const sz = (1 - s.z) * (2 + bass * 5);
+    const b = Math.min(1, (1 - s.z) * 1.5);
+    ctx.fillStyle = bass > 0.5
+      ? `rgba(255,${Math.floor(210 - bass * 100)},80,${b})`
+      : `rgba(${Math.floor(120 + b * 135)},255,${Math.floor(160 + b * 95)},${b})`;
+    ctx.fillRect(px - sz / 2, py - sz / 2, sz, sz);
+  }
+}
+
+/* ---- Modus-Verwaltung ---- */
+const modes = [
+  { name: 'Spektrum', fn: drawBars,      fade: 1.0  },
+  { name: 'Oszilloskop', fn: drawScope,  fade: 0.35 },
+  { name: 'Kreis', fn: drawCircle,       fade: 0.25 },
+  { name: 'Partikel', fn: drawParticles, fade: 0.18 },
+  { name: 'Sternenflug', fn: drawStars,  fade: 0.4  },
+];
+let mode = 0;
+let labelTimer = null;
+
+function showLabel() {
+  vizLabel.textContent = '♪ ' + modes[mode].name;
+  vizLabel.style.opacity = 1;
+  clearTimeout(labelTimer);
+  labelTimer = setTimeout(() => vizLabel.style.opacity = 0, 1800);
+}
+function nextViz() {
+  mode = (mode + 1) % modes.length;
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 0, W, H);
+  showLabel();
+}
+canvas.addEventListener('click', nextViz);
+document.getElementById('btnViz').addEventListener('click', nextViz);
+showLabel();
+
+/* ---- Render-Loop ---- */
+function loop() {
+  requestAnimationFrame(loop);
+  if (analyser) {
+    analyser.getByteFrequencyData(freqData);
+    analyser.getByteTimeDomainData(timeData);
+  }
+  /* Fade statt hartem Clear → Nachleuchten */
+  ctx.fillStyle = `rgba(10,10,18,${modes[mode].fade})`;
+  ctx.fillRect(0, 0, W, H);
+  if (analyser) modes[mode].fn();
+}
+loop();
+</script>
+</body>
+</html>
