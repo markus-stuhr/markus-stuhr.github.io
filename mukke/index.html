@@ -342,6 +342,23 @@ window.addEventListener('drop', e => {
   if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
 });
 
+/* Default-Tracks — Dateien, die mit im mukke/-Ordner liegen */
+const DEFAULT_TRACKS = [];
+(function loadDefaults() {
+  if (!DEFAULT_TRACKS.length) return;
+  for (const f of DEFAULT_TRACKS) {
+    tracks.push({ name: f.replace(/\.[^.]+$/, ''), url: encodeURI(f) });
+  }
+  emptyState.style.display = 'none';
+  /* Track 0 vorbereiten, aber nicht abspielen (Autoplay-Policy) —
+     erster Klick auf ▶ startet ihn */
+  current = 0;
+  audio.src = tracks[0].url;
+  trackTitleEl.textContent = tracks[0].name;
+  document.title = tracks[0].name + ' — MUKKE';
+  renderPlaylist();
+})();
+
 /* Keyboard */
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
