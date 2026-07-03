@@ -32,10 +32,11 @@
   #viz { width: 100%; height: 100%; display: block; cursor: pointer; }
   #vizLabel {
     position: absolute; top: 10px; left: 12px;
-    font-size: 11px; letter-spacing: 2px; color: var(--dim);
+    font-size: 12px; letter-spacing: 2px; color: var(--accent2);
     text-transform: uppercase; pointer-events: none;
-    transition: opacity 1s; opacity: 0;
+    text-shadow: 0 0 8px rgba(255,210,63,.4);
   }
+  #vizLabel .idx { color: var(--text); }
   #trackTitle {
     position: absolute; top: 10px; right: 12px; max-width: 60%;
     font-size: 12px; color: var(--accent); text-align: right;
@@ -1175,6 +1176,171 @@ function drawGravity() {
   }
 }
 
+/* ---- 21. Matrix-Regen ---- */
+const mxCols = [];
+const MX_CHARS = 'アイウエオカキクケコサシスセソ0123456789ΦΨΩΣΔ';
+function drawMatrix() {
+  const fs = Math.max(12, Math.floor(W / 60));
+  const nC = Math.ceil(W / fs);
+  if (mxCols.length !== nC) {
+    mxCols.length = 0;
+    for (let i = 0; i < nC; i++) mxCols.push({ y: Math.random() * H });
+  }
+  ctx.font = fs + 'px monospace';
+  for (let i = 0; i < nC; i++) {
+    const c = mxCols[i];
+    /* jede Spalte hängt an ihrem Frequenzband — laute Bänder regnen schneller */
+    const v = freqData[Math.floor(Math.pow(i / nC, 1.5) * analyser.frequencyBinCount * 0.6)] / 255;
+    c.y += 1.5 + v * 15 + beatPulse * 5;
+    if (c.y > H + fs * 3) c.y = -Math.random() * H * 0.4;
+    ctx.fillStyle = `rgba(210,255,225,${0.65 + v * 0.35})`;
+    ctx.fillText(MX_CHARS[Math.floor(Math.random() * MX_CHARS.length)], i * fs, c.y);
+    ctx.fillStyle = `rgba(0,232,120,${0.3 + v * 0.55})`;
+    ctx.fillText(MX_CHARS[Math.floor(Math.random() * MX_CHARS.length)], i * fs, c.y - fs);
+  }
+}
+
+/* ---- 22. Aurora ---- */
+let aurT = 0;
+function drawAurora() {
+  const eb = [energy(1, 12), energy(12, 80), Math.min(1, energy(80, 400) * 2)];
+  aurT += 0.004 + eb[1] * 0.02;
+  const step = Math.max(6, Math.floor(W / 110));
+  for (let s = 0; s < 3; s++) {
+    const e = eb[s];
+    const hue = 120 + s * 65 + e * 40;
+    for (let x = 0; x <= W; x += step) {
+      const u = x / W;
+      const yBase = H * (0.18 + s * 0.14)
+        + Math.sin(u * 6 + aurT * (1 + s * 0.4) + s * 2) * H * 0.08
+        + Math.sin(u * 2.3 - aurT * 0.7 + s) * H * 0.1;
+      const len = H * (0.12 + e * 0.38) * (0.6 + 0.4 * Math.sin(u * 9 + aurT * 2 + s * 4));
+      const g = ctx.createLinearGradient(0, yBase, 0, yBase + len);
+      g.addColorStop(0, `hsla(${hue} 90% 60% / ${0.06 + e * 0.3})`);
+      g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g;
+      ctx.fillRect(x, yBase, step, len);
+    }
+  }
+}
+
+/* ---- 23. Lavalampe ---- */
+const blobs = [];
+(function initBlobs() {
+  for (let i = 0; i < 7; i++) {
+    blobs.push({ r: 0.09 + Math.random() * 0.07, s1: 0.13 + Math.random() * 0.2, s2: 0.11 + Math.random() * 0.2, ph: Math.random() * 7 });
+  }
+})();
+function drawLava() {
+  const bass = energy(1, 12), mids = energy(12, 80);
+  const t = performance.now() / 1000;
+  ctx.globalCompositeOperation = 'lighter';
+  blobs.forEach((b, i) => {
+    const x = (0.5 + Math.sin(t * b.s1 + b.ph) * 0.36) * W;
+    const y = (0.5 + Math.sin(t * b.s2 + b.ph * 2.3) * 0.36) * H;
+    const r = (b.r + bass * 0.09 + (i % 3 === 0 ? beatPulse * 0.05 : 0)) * Math.min(W, H);
+    const hue = 15 + i * 14 + mids * 70;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `hsla(${hue} 95% 55% / 0.5)`);
+    g.addColorStop(0.7, `hsla(${hue + 20} 95% 45% / 0.18)`);
+    g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  });
+  ctx.globalCompositeOperation = 'source-over';
+}
+
+/* ---- 24. DNA-Helix ---- */
+let helixT = 0;
+function drawHelix() {
+  const bass = energy(1, 12);
+  helixT += 0.02 + bass * 0.06;
+  const n = 56;
+  for (let i = 0; i < n; i++) {
+    const x = (i + 0.5) / n * W;
+    const ph = i * 0.3 + helixT;
+    const v = freqData[Math.floor(Math.pow(i / n, 1.5) * analyser.frequencyBinCount * 0.5)] / 255;
+    const amp = H * (0.14 + v * 0.2 + bass * 0.05);
+    const y1 = H / 2 + Math.sin(ph) * amp;
+    const y2 = H / 2 - Math.sin(ph) * amp;
+    const d1 = (Math.cos(ph) + 1) / 2;   /* Tiefe → Größe/Helligkeit */
+    /* Sprosse */
+    ctx.strokeStyle = `hsla(${150 + v * 150} 85% 55% / ${0.1 + v * 0.55})`;
+    ctx.lineWidth = 1 + v * 2;
+    ctx.beginPath(); ctx.moveTo(x, y1); ctx.lineTo(x, y2); ctx.stroke();
+    /* Strang-Perlen */
+    ctx.fillStyle = `hsla(${150 + v * 150} 90% ${45 + d1 * 35}% / 0.9)`;
+    ctx.beginPath(); ctx.arc(x, y1, 2 + d1 * 4 + v * 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `hsla(${330 - v * 100} 90% ${45 + (1 - d1) * 35}% / 0.9)`;
+    ctx.beginPath(); ctx.arc(x, y2, 2 + (1 - d1) * 4 + v * 3, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+/* ---- 25. Regentropfen — Wellenringe auf den Beat ---- */
+const rip = [];
+function drawRipples() {
+  const total = energy(1, 200), bass = energy(1, 12);
+  if (beatHit && rip.length < 80) {
+    rip.push({ x: Math.random() * W, y: H * (0.2 + Math.random() * 0.6), r: 0,
+               max: Math.min(W, H) * (0.25 + bass * 0.4), hue: 165 + Math.random() * 90 });
+  }
+  if (Math.random() < 0.03 + total * 0.1 && rip.length < 80) {
+    rip.push({ x: Math.random() * W, y: H * (0.2 + Math.random() * 0.6), r: 0,
+               max: Math.min(W, H) * (0.1 + total * 0.25), hue: 165 + Math.random() * 90 });
+  }
+  for (let i = rip.length - 1; i >= 0; i--) {
+    const p = rip[i];
+    p.r += 1.5 + total * 4;
+    const t = p.r / p.max;
+    if (t >= 1) { rip.splice(i, 1); continue; }
+    ctx.strokeStyle = `hsla(${p.hue} 90% 60% / ${(1 - t) * 0.8})`;
+    ctx.lineWidth = 2.5 * (1 - t) + 0.5;
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y, p.r, p.r * 0.45, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+/* ---- 26. Würfel — 3D-Drahtgitter ---- */
+const cubeV = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]];
+const cubeE = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+let cubeRX = 0.4, cubeRY = 0;
+function cubeProject(p, rx, ry, size) {
+  let [x, y, z] = p;
+  let c = Math.cos(ry), s = Math.sin(ry);
+  [x, z] = [x * c + z * s, -x * s + z * c];
+  c = Math.cos(rx); s = Math.sin(rx);
+  [y, z] = [y * c - z * s, y * s + z * c];
+  const pers = 3 / (3 + z);
+  return [W / 2 + x * size * pers, H / 2 + y * size * pers, z];
+}
+function drawCube() {
+  const bass = energy(1, 12), mids = energy(12, 80);
+  cubeRX += 0.007 + mids * 0.03;
+  cubeRY += 0.011 + bass * 0.05 + beatPulse * 0.04;
+  /* innerer Würfel pulsiert mit dem Bass, äußerer dreht gegenläufig */
+  const sets = [
+    { size: Math.min(W, H) * (0.16 + bass * 0.1 + beatPulse * 0.05), rx: cubeRX, ry: cubeRY, hue: 140 + bass * 80 },
+    { size: Math.min(W, H) * (0.3 + mids * 0.08), rx: -cubeRX * 0.6, ry: -cubeRY * 0.6, hue: 260 + mids * 60 },
+  ];
+  for (const st of sets) {
+    const pts = cubeV.map(p => cubeProject(p, st.rx, st.ry, st.size));
+    for (const [a, b] of cubeE) {
+      const zm = (pts[a][2] + pts[b][2]) / 2;   /* vordere Kanten heller */
+      ctx.strokeStyle = `hsla(${st.hue} 90% ${55 + zm * 18}% / ${0.55 + zm * 0.3})`;
+      ctx.lineWidth = 1.5 + (1 - zm) + bass * 2;
+      ctx.beginPath();
+      ctx.moveTo(pts[a][0], pts[a][1]);
+      ctx.lineTo(pts[b][0], pts[b][1]);
+      ctx.stroke();
+    }
+    for (const p of pts) {
+      ctx.fillStyle = `hsla(${st.hue} 90% 75% / ${0.6 + p[2] * 0.3})`;
+      ctx.fillRect(p[0] - 2, p[1] - 2, 4, 4);
+    }
+  }
+}
+
 /* ---- Modus-Verwaltung ---- */
 const modes = [
   { name: 'Spektrum', fn: drawBars,          fade: 1.0  },
@@ -1197,15 +1363,20 @@ const modes = [
   { name: 'Schwarm', fn: drawSwarm,          fade: 0.2  },
   { name: 'Strudel', fn: drawVortex,         fade: 0.2  },
   { name: 'Gravitation', fn: drawGravity,    fade: 0.15 },
+  { name: 'Matrix', fn: drawMatrix,          fade: 0.12 },
+  { name: 'Aurora', fn: drawAurora,          fade: 0.3  },
+  { name: 'Lavalampe', fn: drawLava,         fade: 0.25 },
+  { name: 'DNA-Helix', fn: drawHelix,        fade: 0.3  },
+  { name: 'Regentropfen', fn: drawRipples,   fade: 0.15 },
+  { name: 'Würfel', fn: drawCube,            fade: 0.2  },
 ];
 let mode = 0;
-let labelTimer = null;
 
 function showLabel() {
-  vizLabel.textContent = '♪ ' + modes[mode].name;
-  vizLabel.style.opacity = 1;
-  clearTimeout(labelTimer);
-  labelTimer = setTimeout(() => vizLabel.style.opacity = 0, 1800);
+  vizLabel.innerHTML = '<span class="idx"></span> ';
+  vizLabel.querySelector('.idx').textContent =
+    String(mode + 1).padStart(2, '0') + '/' + modes.length;
+  vizLabel.append(modes[mode].name);
 }
 function nextViz() {
   mode = (mode + 1) % modes.length;
