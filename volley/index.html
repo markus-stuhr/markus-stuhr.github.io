@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Blob Volley</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #7ec8e3; }
+  body { font-family: 'Courier New', monospace; touch-action: none; }
+  #game { display: block; width: 100vw; height: 100vh; }
+
+  #menu {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 24px;
+    background: rgba(10, 40, 70, 0.55); z-index: 10;
+  }
+  #menu h1 {
+    color: #fff; font-size: clamp(36px, 8vw, 72px); letter-spacing: 4px;
+    text-shadow: 3px 3px 0 #1a5276;
+  }
+  .btn {
+    font-family: inherit; font-size: clamp(18px, 4vw, 28px); font-weight: bold;
+    padding: 14px 38px; border: 4px solid #fff; border-radius: 12px;
+    background: #e74c3c; color: #fff; cursor: pointer;
+    text-shadow: 2px 2px 0 rgba(0,0,0,0.3);
+  }
+  .btn:nth-of-type(2) { background: #27ae60; }
+  .btn:active { transform: scale(0.95); }
+  #menu p { color: #d6eaf8; font-size: clamp(12px, 2.5vw, 16px); text-align: center; line-height: 1.6; }
+  .hidden { display: none !important; }
+
+  .touchbtn {
+    position: fixed; bottom: 16px; z-index: 5;
+    width: 72px; height: 72px; border-radius: 50%;
+    background: rgba(255,255,255,0.25); border: 3px solid rgba(255,255,255,0.6);
+    color: #fff; font-size: 30px; display: flex; align-items: center; justify-content: center;
+    user-select: none; -webkit-user-select: none;
+  }
+  #tLeft  { left: 16px; }
+  #tRight { left: 104px; }
+  #tJump  { right: 16px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="menu">
+  <h1>BLOB VOLLEY</h1>
+  <button class="btn" id="btn1p">1 SPIELER</button>
+  <button class="btn" id="btn2p">2 SPIELER</button>
+  <p>
+    Spieler 1: <b>A / D</b> bewegen, <b>W</b> springen<br>
+    Spieler 2: <b>Pfeiltasten</b><br>
+    Max. 3 Berührungen pro Seite &middot; 15 Punkte gewinnen
+  </p>
+</div>
+
+<div id="tLeft"  class="touchbtn hidden">&#9664;</div>
+<div id="tRight" class="touchbtn hidden">&#9654;</div>
+<div id="tJump"  class="touchbtn hidden">&#9650;</div>
+
+<script>
+'use strict';
+
+// ---------- Virtuelles Spielfeld ----------
+const W = 1000, H = 600;
+const FLOOR = 540;
+const HORIZON = 424, SHORE = 498;
+const NET_W = 12, NET_TOP = 300;
+const GRAV_BALL = 0.22, GRAV_BLOB = 0.85;
+const BALL_R = 20, HIT_SPEED = 13, MAX_BALL_SPEED = 17;
+const BLOB_SPEED = 6.5, JUMP_V = -15.5;
+const WIN_SCORE = 15;
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let scale = 1, offX = 0, offY = 0;
+
+function resize() {
+  canvas.width = window.innerWidth * devicePixelRatio;
+  canvas.height = window.innerHeight * devicePixelRatio;
+  scale = Math.min(canvas.width / W, canvas.height / H);
+  offX = (canvas.width - W * scale) / 2;
+  offY = (canvas.height - H * scale) / 2;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ---------- Sound ----------
+let audioCtx = null;
+function initAudio() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    startAmbience();
+  } catch (e) {}
+}
+function tone(freq, dur, type, vol, slideTo) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t);
+  if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t + dur);
+  g.gain.setValueAtTime(vol || 0.08, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function noiseBurst(dur, freq, q, vol, attack) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const len = Math.ceil(audioCtx.sampleRate * dur);
+  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource(); src.buffer = buf;
+  const f = audioCtx.createBiquadFilter();
+  f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.linearRampToValueAtTime(vol, t + (attack || 0.05));
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination);
+  src.start(t);
+}
+function startAmbience() {
+  // Meeresrauschen: geloopter Noise durch Tiefpass, Lautstärke schwankt wie Brandung
+  const sr = audioCtx.sampleRate;
+  const buf = audioCtx.createBuffer(1, sr * 3, sr);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf; src.loop = true;
+  const f = audioCtx.createBiquadFilter();
+  f.type = 'lowpass'; f.frequency.value = 420;
+  const g = audioCtx.createGain(); g.gain.value = 0.02;
+  const lfo = audioCtx.createOscillator(); lfo.frequency.value = 0.09;
+  const lfoG = audioCtx.createGain(); lfoG.gain.value = 0.012;
+  lfo.connect(lfoG); lfoG.connect(g.gain);
+  src.connect(f); f.connect(g); g.connect(audioCtx.destination);
+  src.start(); lfo.start();
+}
+function sndHit(speed) {
+  const f = 150 + Math.min(speed || 10, 17) * 7;
+  tone(f, 0.09, 'sine', 0.14, f * 0.4);
+  noiseBurst(0.05, 2500, 1.2, 0.03, 0.005);
+}
+const sndWall = () => tone(130, 0.05, 'triangle', 0.05, 90);
+const sndLand = () => tone(85, 0.05, 'sine', 0.05, 55);
+function sndPoint() {
+  [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, 0.16, 'triangle', 0.09), i * 85));
+  noiseBurst(1.0, 1100, 0.8, 0.09, 0.12);   // Jubel
+}
+function sndFault() {
+  tone(330, 0.14, 'triangle', 0.07, 300);
+  setTimeout(() => tone(200, 0.22, 'triangle', 0.07, 160), 130);
+}
+function sndWin() {
+  [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => tone(f, 0.22, 'triangle', 0.1), i * 120));
+  noiseBurst(1.8, 1100, 0.8, 0.12, 0.15);
+}
+
+// ---------- Spielobjekte ----------
+function makeBlob(side) {
+  return {
+    side,                              // 0 = links, 1 = rechts
+    x: side === 0 ? W * 0.25 : W * 0.75,
+    y: FLOOR, vx: 0, vy: 0,
+    onGround: true, touching: false,
+    sx: 1, sy: 1,                      // Squash & Stretch
+    color: side === 0 ? '#e74c3c' : '#27ae60',
+    dark:  side === 0 ? '#b03a2e' : '#1e8449'
+  };
+}
+// Kollisionskreise des Blobs (unten groß, oben klein)
+function blobCircles(b) {
+  return [
+    { x: b.x, y: b.y - 40, r: 40 },
+    { x: b.x, y: b.y - 78, r: 28 }
+  ];
+}
+
+const ball = { x: 0, y: 0, vx: 0, vy: 0, rot: 0 };
+let blobs = [makeBlob(0), makeBlob(1)];
+let score = [0, 0];
+let server = 0;
+let touches = 0, touchSide = -1;
+let state = 'menu';        // menu | serve | play | point | win
+let stateTimer = 0;
+let message = '', winner = -1;
+let mode = 1;              // 1 = gegen Computer, 2 = zwei Spieler
+let aiErr = 0;
+let gt = 0;                // globale Zeit in Frames (für Animationen)
+
+// ---------- Partikel & Trail ----------
+const particles = [];
+function spawnParticles(x, y, n, colors, speed, grav, life) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = (0.3 + Math.random()) * speed;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - speed * 0.4,
+      life, maxLife: life, grav,
+      size: 2 + Math.random() * 3,
+      color: colors[(Math.random() * colors.length) | 0]
+    });
+  }
+}
+function sandPuff(x, y) {
+  spawnParticles(x, y, 9, ['#e8d0a0', '#d9bd88', '#f2e2b8'], 2.2, 0.12, 28);
+}
+function hitSpark(x, y) {
+  spawnParticles(x, y, 8, ['#fff', '#ffe9a0', '#ffd24d'], 3.2, 0.05, 18);
+}
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.vy += p.grav * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.life -= dt;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+const trail = [];
+
+// ---------- Szenen-Deko (einmalig ausgewürfelt) ----------
+const speckles = [];
+for (let i = 0; i < 130; i++) {
+  speckles.push({
+    x: Math.random() * (W + 400) - 200,
+    y: SHORE + 14 + Math.random() * (H - SHORE - 10),
+    s: 1 + Math.random() * 2,
+    c: ['rgba(180,140,90,0.35)', 'rgba(255,255,255,0.4)', 'rgba(160,120,80,0.28)'][i % 3]
+  });
+}
+const shells = [];
+for (let i = 0; i < 7; i++) {
+  shells.push({
+    x: Math.random() * (W - 100) + 50,
+    y: FLOOR + 20 + Math.random() * 35,
+    r: 4 + Math.random() * 3,
+    a: Math.random() * Math.PI,
+    c: ['#f6e7d7', '#eeb8b0', '#e8d6ef'][i % 3]
+  });
+}
+const clouds = [
+  { x: 150, y: 90,  s: 1.0, sp: 0.10 },
+  { x: 520, y: 60,  s: 0.75, sp: 0.16 },
+  { x: 820, y: 130, s: 0.55, sp: 0.22 },
+  { x: 330, y: 160, s: 0.45, sp: 0.28 }
+];
+const birds = [
+  { x: -60,  y: 110, sp: 0.55, ph: 0 },
+  { x: -260, y: 70,  sp: 0.45, ph: 2 },
+  { x: -420, y: 150, sp: 0.65, ph: 4 }
+];
+
+function setupServe() {
+  blobs = [makeBlob(0), makeBlob(1)];
+  ball.x = server === 0 ? W * 0.25 : W * 0.75;
+  ball.y = 350; ball.vx = 0; ball.vy = 0;
+  touches = 0; touchSide = -1;
+  trail.length = 0;
+  aiErr = (Math.random() - 0.5) * 50;
+  state = 'serve';
+}
+
+function startGame(m) {
+  mode = m;
+  score = [0, 0]; server = 0; winner = -1; message = '';
+  document.getElementById('menu').classList.add('hidden');
+  const touch = ('ontouchstart' in window) && m === 1;
+  for (const id of ['tLeft', 'tRight', 'tJump'])
+    document.getElementById(id).classList.toggle('hidden', !touch);
+  setupServe();
+}
+
+function givePoint(side, msg) {
+  score[side]++;
+  server = side;
+  message = msg;
+  if (score[side] >= WIN_SCORE && score[side] - score[1 - side] >= 2) {
+    winner = side; state = 'win'; sndWin();
+  } else {
+    state = 'point'; stateTimer = 75;
+  }
+}
+
+// ---------- Eingabe ----------
+const keys = {};
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  initAudio();
+  if (state === 'win' && (e.code === 'Space' || e.code === 'Enter')) backToMenu();
+  if (e.code === 'Escape' && state !== 'menu') backToMenu();
+  if (state === 'menu') {
+    if (e.code === 'Digit1') startGame(1);
+    if (e.code === 'Digit2') startGame(2);
+  }
+  if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+function backToMenu() {
+  state = 'menu';
+  document.getElementById('menu').classList.remove('hidden');
+  for (const id of ['tLeft', 'tRight', 'tJump'])
+    document.getElementById(id).classList.add('hidden');
+}
+
+document.getElementById('btn1p').addEventListener('click', () => { initAudio(); startGame(1); });
+document.getElementById('btn2p').addEventListener('click', () => { initAudio(); startGame(2); });
+canvas.addEventListener('pointerdown', () => {
+  initAudio();
+  if (state === 'win') backToMenu();
+});
+
+// Touch-Buttons (nur 1-Spieler-Modus)
+const touchState = { left: false, right: false, jump: false };
+function bindTouch(id, prop) {
+  const el = document.getElementById(id);
+  const on  = e => { e.preventDefault(); touchState[prop] = true; initAudio(); };
+  const off = e => { e.preventDefault(); touchState[prop] = false; };
+  el.addEventListener('touchstart', on); el.addEventListener('touchend', off);
+  el.addEventListener('touchcancel', off);
+  el.addEventListener('mousedown', on);  el.addEventListener('mouseup', off);
+}
+bindTouch('tLeft', 'left'); bindTouch('tRight', 'right'); bindTouch('tJump', 'jump');
+
+// ---------- Physik ----------
+function moveBlob(b, left, right, jump, dt) {
+  b.vx = (right ? BLOB_SPEED : 0) - (left ? BLOB_SPEED : 0);
+  if (jump && b.onGround) {
+    b.vy = JUMP_V; b.onGround = false;
+    b.sx = 0.8; b.sy = 1.28;                       // Absprung: strecken
+  }
+  b.vy += GRAV_BLOB * dt;
+  b.x += b.vx * dt;
+  b.y += b.vy * dt;
+  if (b.y >= FLOOR) {
+    if (!b.onGround) {                             // Landung: stauchen
+      b.sx = 1.3; b.sy = 0.72;
+      sandPuff(b.x, FLOOR);
+      sndLand();
+    }
+    b.y = FLOOR; b.vy = 0; b.onGround = true;
+  }
+  // Squash & Stretch federt zurück
+  b.sx += (1 - b.sx) * 0.16 * dt;
+  b.sy += (1 - b.sy) * 0.16 * dt;
+  // Blobs bleiben auf ihrer Seite
+  const rl = 40;
+  if (b.side === 0) b.x = Math.max(rl, Math.min(W / 2 - NET_W / 2 - rl, b.x));
+  else              b.x = Math.max(W / 2 + NET_W / 2 + rl, Math.min(W - rl, b.x));
+}
+
+function ballBlobCollision(b) {
+  let hit = false;
+  for (const c of blobCircles(b)) {
+    const dx = ball.x - c.x, dy = ball.y - c.y;
+    const dist = Math.hypot(dx, dy), minD = c.r + BALL_R;
+    if (dist < minD && dist > 0.001) {
+      const nx = dx / dist, ny = dy / dist;
+      ball.x = c.x + nx * (minD + 0.5);
+      ball.y = c.y + ny * (minD + 0.5);
+      ball.vx = nx * HIT_SPEED + b.vx * 0.35;
+      ball.vy = ny * HIT_SPEED + b.vy * 0.25;
+      const sp = Math.hypot(ball.vx, ball.vy);
+      if (sp > MAX_BALL_SPEED) { ball.vx *= MAX_BALL_SPEED / sp; ball.vy *= MAX_BALL_SPEED / sp; }
+      if (!b.touching) hitSpark(c.x + nx * c.r, c.y + ny * c.r);
+      hit = true;
+    }
+  }
+  if (hit && !b.touching) {
+    sndHit(Math.hypot(ball.vx, ball.vy));
+    b.sx = 1.12; b.sy = 0.88;                      // kleiner Impuls beim Schlag
+    if (state === 'serve') state = 'play';
+    if (touchSide === b.side) touches++;
+    else { touchSide = b.side; touches = 1; }
+    if (touches > 3) {
+      sndFault();
+      givePoint(1 - b.side, (b.side === 0 ? 'Spieler 1' : (mode === 1 ? 'Computer' : 'Spieler 2')) + ': zu viele Berührungen!');
+    }
+  }
+  b.touching = hit;
+}
+
+function updateBall(dt) {
+  ball.vy += GRAV_BALL * dt;
+  if (ball.vy > 16) ball.vy = 16;
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+  ball.rot += ball.vx * 0.015 * dt;
+
+  trail.push({ x: ball.x, y: ball.y });
+  if (trail.length > 12) trail.shift();
+
+  // Wände & Decke
+  if (ball.x < BALL_R)      { ball.x = BALL_R;      ball.vx = Math.abs(ball.vx); sndWall(); }
+  if (ball.x > W - BALL_R)  { ball.x = W - BALL_R;  ball.vx = -Math.abs(ball.vx); sndWall(); }
+  if (ball.y < BALL_R)      { ball.y = BALL_R;      ball.vy = Math.abs(ball.vy) * 0.9; }
+
+  // Netz (Rechteck-Kollision über nächstgelegenen Punkt)
+  const nx1 = W / 2 - NET_W / 2, nx2 = W / 2 + NET_W / 2;
+  const cx = Math.max(nx1, Math.min(nx2, ball.x));
+  const cy = Math.max(NET_TOP, Math.min(FLOOR, ball.y));
+  const dx = ball.x - cx, dy = ball.y - cy;
+  const d = Math.hypot(dx, dy);
+  if (d < BALL_R) {
+    if (d > 0.001) {
+      const nX = dx / d, nY = dy / d;
+      ball.x = cx + nX * (BALL_R + 0.5);
+      ball.y = cy + nY * (BALL_R + 0.5);
+      const dot = ball.vx * nX + ball.vy * nY;
+      if (dot < 0) {
+        ball.vx -= 2 * dot * nX;
+        ball.vy -= 2 * dot * nY;
+        ball.vx *= 0.85; ball.vy *= 0.85;
+      }
+      sndWall();
+    }
+  }
+
+  // Boden = Punkt
+  if (ball.y > FLOOR - BALL_R) {
+    const landedLeft = ball.x < W / 2;
+    sandPuff(ball.x, FLOOR);
+    sndPoint();
+    givePoint(landedLeft ? 1 : 0, landedLeft ? 'Punkt rechts!' : 'Punkt links!');
+    ball.y = FLOOR - BALL_R;
+  }
+}
+
+// ---------- Computer-Gegner ----------
+function predictLandingX() {
+  let x = ball.x, y = ball.y, vx = ball.vx, vy = ball.vy;
+  for (let i = 0; i < 400; i++) {
+    vy += GRAV_BALL; if (vy > 16) vy = 16;
+    x += vx; y += vy;
+    if (x < BALL_R)     { x = BALL_R;     vx = Math.abs(vx); }
+    if (x > W - BALL_R) { x = W - BALL_R; vx = -Math.abs(vx); }
+    if (y < BALL_R)     { y = BALL_R;     vy = Math.abs(vy) * 0.9; }
+    if (y > NET_TOP - BALL_R && Math.abs(x - W / 2) < BALL_R + NET_W / 2) {
+      vx = -vx;
+      x = x < W / 2 ? W / 2 - BALL_R - NET_W / 2 : W / 2 + BALL_R + NET_W / 2;
+    }
+    if (y >= FLOOR - 110) return x;
+  }
+  return x;
+}
+
+function updateAI(b, dt) {
+  let targetX, wantJump = false;
+  if (state === 'serve' && server === 1) {
+    targetX = ball.x + 6;
+    if (Math.abs(b.x - ball.x) < 25) wantJump = true;
+  } else {
+    const px = predictLandingX();
+    if (px > W / 2) {
+      targetX = px + 22 + aiErr * 0.3;  // leicht hinter dem Ball stehen → Schlag nach links
+    } else {
+      targetX = W * 0.72 + aiErr;       // Grundposition
+    }
+    const distX = Math.abs(ball.x - b.x);
+    if (ball.x > W / 2 - 40 && distX < 110 && ball.vy > -2 && ball.y > 180 && ball.y < b.y - 60) {
+      wantJump = true;
+    }
+  }
+  const dx = targetX - b.x;
+  moveBlob(b, dx < -6, dx > 6, wantJump, dt);
+}
+
+// ---------- Update ----------
+function update(dt) {
+  gt += dt;
+  updateParticles(dt);
+  for (const c of clouds) { c.x += c.sp * dt; if (c.x > W + 120) c.x = -120; }
+  for (const bd of birds) {
+    bd.x += bd.sp * dt;
+    if (bd.x > W + 100) { bd.x = -100 - Math.random() * 300; bd.y = 50 + Math.random() * 120; }
+  }
+
+  if (state === 'menu' || state === 'win') return;
+
+  if (state === 'point') {
+    stateTimer -= dt;
+    if (stateTimer <= 0) { message = ''; setupServe(); }
+    return;
+  }
+
+  // Spieler 1 (links): A/D/W — im 1-Spieler-Modus auch Pfeile + Touch
+  let p1L = keys['KeyA'], p1R = keys['KeyD'], p1J = keys['KeyW'];
+  if (mode === 1) {
+    p1L = p1L || keys['ArrowLeft']  || touchState.left;
+    p1R = p1R || keys['ArrowRight'] || touchState.right;
+    p1J = p1J || keys['ArrowUp']    || touchState.jump;
+  }
+  moveBlob(blobs[0], p1L, p1R, p1J, dt);
+
+  // Spieler 2 (rechts): Pfeile oder Computer
+  if (mode === 2) {
+    moveBlob(blobs[1], keys['ArrowLeft'], keys['ArrowRight'], keys['ArrowUp'], dt);
+  } else {
+    updateAI(blobs[1], dt);
+  }
+
+  if (state === 'serve') {
+    // Ball hängt in der Luft, bis der Aufschläger ihn trifft
+    ballBlobCollision(blobs[server]);
+    blobs[1 - server].touching = false;
+  } else if (state === 'play') {
+    updateBall(dt);
+    if (state === 'play') {
+      ballBlobCollision(blobs[0]);
+      if (state === 'play') ballBlobCollision(blobs[1]);
+    }
+  }
+}
+
+// ---------- Zeichnen: Strandszene ----------
+function drawScene() {
+  const L = -offX / scale, R = W + offX / scale;
+  const T = -offY / scale, B = H + offY / scale;
+
+  // Himmel
+  const sky = ctx.createLinearGradient(0, T, 0, HORIZON);
+  sky.addColorStop(0, '#3d95cc');
+  sky.addColorStop(0.65, '#8ecae6');
+  sky.addColorStop(1, '#ffe8c9');
+  ctx.fillStyle = sky;
+  ctx.fillRect(L, T, R - L, HORIZON - T);
+
+  // Sonne mit Glow
+  const sunX = W - 150, sunY = 100;
+  const glow = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 130);
+  glow.addColorStop(0, 'rgba(255,245,200,0.9)');
+  glow.addColorStop(0.4, 'rgba(255,235,170,0.35)');
+  glow.addColorStop(1, 'rgba(255,235,170,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(sunX - 130, sunY - 130, 260, 260);
+  ctx.fillStyle = '#fdf6d8';
+  ctx.beginPath(); ctx.arc(sunX, sunY, 42, 0, Math.PI * 2); ctx.fill();
+
+  // Wolken (Parallax)
+  for (const c of clouds) {
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.55 + c.s * 0.3) + ')';
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 26 * c.s, 0, Math.PI * 2);
+    ctx.arc(c.x + 30 * c.s, c.y - 9 * c.s, 21 * c.s, 0, Math.PI * 2);
+    ctx.arc(c.x + 60 * c.s, c.y, 23 * c.s, 0, Math.PI * 2);
+    ctx.arc(c.x + 32 * c.s, c.y + 7 * c.s, 24 * c.s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Vögel
+  ctx.strokeStyle = 'rgba(50,60,70,0.7)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+  for (const bd of birds) {
+    const flap = Math.sin(gt * 0.15 + bd.ph) * 5;
+    ctx.beginPath();
+    ctx.moveTo(bd.x - 9, bd.y - flap);
+    ctx.quadraticCurveTo(bd.x, bd.y + 3, bd.x, bd.y);
+    ctx.quadraticCurveTo(bd.x, bd.y + 3, bd.x + 9, bd.y - flap);
+    ctx.stroke();
+  }
+
+  // Meer
+  const sea = ctx.createLinearGradient(0, HORIZON, 0, SHORE);
+  sea.addColorStop(0, '#1a6fa8');
+  sea.addColorStop(0.55, '#2e94b8');
+  sea.addColorStop(1, '#7fd4cd');
+  ctx.fillStyle = sea;
+  ctx.fillRect(L, HORIZON, R - L, SHORE - HORIZON + 10);
+
+  // Sonnenreflexion auf dem Wasser
+  ctx.fillStyle = 'rgba(255,240,190,0.25)';
+  for (let i = 0; i < 5; i++) {
+    const y = HORIZON + 8 + i * 13;
+    const w = 60 - i * 8 + Math.sin(gt * 0.04 + i) * 10;
+    ctx.fillRect(sunX - w / 2 + Math.sin(gt * 0.03 + i * 2) * 8, y, w, 3);
+  }
+
+  // Wellenlinien wandern Richtung Strand
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 4; i++) {
+    const yBase = HORIZON + 16 + i * 16 + Math.sin(gt * 0.02 + i * 2.1) * 3;
+    ctx.beginPath();
+    for (let x = L; x <= R; x += 22) {
+      const y = yBase + Math.sin(x * 0.045 + gt * 0.06 + i) * 2.5;
+      x === L ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+
+  // Ferne Insel am Horizont
+  ctx.fillStyle = 'rgba(50,90,100,0.8)';
+  ctx.beginPath();
+  ctx.ellipse(120, HORIZON + 2, 55, 10, 0, Math.PI, 0);
+  ctx.fill();
+
+  // Sand
+  const sand = ctx.createLinearGradient(0, SHORE, 0, B);
+  sand.addColorStop(0, '#f4e3b8');
+  sand.addColorStop(0.5, '#ecd49e');
+  sand.addColorStop(1, '#d8ba82');
+  ctx.fillStyle = sand;
+  ctx.fillRect(L, SHORE, R - L, B - SHORE);
+
+  // Wasserlinie mit Schaum (animiert)
+  const tide = Math.sin(gt * 0.015) * 6;
+  ctx.fillStyle = 'rgba(170,225,220,0.55)';
+  ctx.beginPath();
+  ctx.moveTo(L, SHORE);
+  for (let x = L; x <= R; x += 26) {
+    ctx.lineTo(x, SHORE + 4 + tide + Math.sin(x * 0.03 + gt * 0.03) * 3);
+  }
+  ctx.lineTo(R, SHORE); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let x = L; x <= R; x += 26) {
+    const y = SHORE + 4 + tide + Math.sin(x * 0.03 + gt * 0.03) * 3;
+    x === L ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Sandkörnung & Muscheln
+  for (const s of speckles) {
+    ctx.fillStyle = s.c;
+    ctx.fillRect(s.x, s.y, s.s, s.s);
+  }
+  for (const s of shells) {
+    ctx.save();
+    ctx.translate(s.x, s.y); ctx.rotate(s.a);
+    ctx.fillStyle = s.c;
+    ctx.beginPath(); ctx.arc(0, 0, s.r, Math.PI, 0); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(150,110,80,0.4)'; ctx.lineWidth = 0.8;
+    for (let k = -1; k <= 1; k++) {
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.sin(k * 0.5) * s.r, -Math.cos(k * 0.5) * s.r); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  drawPalm(28, FLOOR + 46, 1, 0);
+  drawPalm(W - 26, FLOOR + 50, -1, 2.4);
+}
+
+function drawPalm(x, baseY, dir, phase) {
+  const sway = Math.sin(gt * 0.012 + phase) * 5;
+  const topX = x + dir * (38 + sway), topY = baseY - 190;
+  // Stamm
+  ctx.strokeStyle = '#8a5a33'; ctx.lineWidth = 13; ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, baseY);
+  ctx.quadraticCurveTo(x + dir * 8, baseY - 110, topX, topY);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 4;
+  for (let i = 1; i < 6; i++) {
+    const t = i / 6;
+    const px = x + (topX - x) * t * t + dir * 8 * t * (1 - t) * 2;
+    const py = baseY + (topY - baseY) * t;
+    ctx.beginPath(); ctx.moveTo(px - 6, py); ctx.lineTo(px + 6, py); ctx.stroke();
+  }
+  // Kokosnüsse
+  ctx.fillStyle = '#6b4423';
+  ctx.beginPath(); ctx.arc(topX - 7, topY + 6, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(topX + 6, topY + 8, 6, 0, Math.PI * 2); ctx.fill();
+  // Wedel
+  for (let i = 0; i < 6; i++) {
+    const a = -Math.PI * 0.15 - i * (Math.PI * 0.75 / 5) + Math.sin(gt * 0.018 + phase + i) * 0.05;
+    const len = 78 + (i % 2) * 14;
+    const ex = topX + Math.cos(a) * len * (dir === 1 ? 1 : -1);
+    const ey = topY + Math.sin(a) * len * 0.75;
+    const midX = topX + (ex - topX) * 0.5, midY = Math.min(topY, ey) - 20;
+    ctx.strokeStyle = i % 2 ? '#2f9e57' : '#26834a';
+    ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(topX, topY);
+    ctx.quadraticCurveTo(midX, midY, ex, ey);
+    ctx.stroke();
+  }
+}
+
+// ---------- Zeichnen: Spielobjekte ----------
+function drawBlob(b) {
+  // Schatten (unabhängig vom Squash)
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(b.x, FLOOR + 6, 42 * Math.max(0.4, 1 - (FLOOR - b.y) / 500), 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.translate(b.x, b.y);
+  ctx.scale(b.sx, b.sy);
+
+  ctx.fillStyle = b.color;
+  ctx.beginPath();
+  ctx.arc(0, -40, 40, 0, Math.PI * 2);
+  ctx.arc(0, -78, 28, 0, Math.PI * 2);
+  ctx.fill();
+  // Glanzpunkt
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.arc(-8, -88, 10, 0, Math.PI * 2);
+  ctx.fill();
+  // Augen schauen zum Ball
+  const ang = Math.atan2(ball.y - (b.y - 78 * b.sy), ball.x - b.x);
+  const lookX = Math.cos(ang) * 3, lookY = Math.sin(ang) * 3;
+  for (const ex of [-11, 11]) {
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(ex, -84, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#222';
+    ctx.beginPath(); ctx.arc(ex + lookX, -84 + lookY, 3.5, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBall() {
+  // Schatten
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(ball.x, FLOOR + 6, BALL_R * Math.max(0.3, 1 - (FLOOR - ball.y) / 600), 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Trail bei schnellem Ball
+  const sp = Math.hypot(ball.vx, ball.vy);
+  if (sp > 7 && state === 'play') {
+    for (let i = 0; i < trail.length; i++) {
+      const a = (i / trail.length) * 0.22;
+      ctx.fillStyle = 'rgba(255,235,150,' + a.toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(trail[i].x, trail[i].y, BALL_R * (0.4 + 0.5 * i / trail.length), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.save();
+  ctx.translate(ball.x, ball.y);
+  ctx.rotate(ball.rot);
+  const cols = ['#f4d03f', '#fff', '#e67e22', '#fff', '#f4d03f', '#fff'];
+  for (let i = 0; i < 6; i++) {
+    ctx.fillStyle = cols[i];
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, BALL_R, i * Math.PI / 3, (i + 1) * Math.PI / 3);
+    ctx.fill();
+  }
+  ctx.strokeStyle = '#c0872b'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, 0, BALL_R, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function draw() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#3d95cc';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.setTransform(scale, 0, 0, scale, offX, offY);
+
+  drawScene();
+
+  // Netz
+  ctx.fillStyle = '#8b5a2b';
+  ctx.fillRect(W / 2 - NET_W / 2, NET_TOP, NET_W, FLOOR - NET_TOP);
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5;
+  for (let y = NET_TOP + 10; y < FLOOR; y += 22) {
+    ctx.beginPath(); ctx.moveTo(W / 2 - NET_W / 2, y); ctx.lineTo(W / 2 + NET_W / 2, y); ctx.stroke();
+  }
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(W / 2 - NET_W / 2 - 2, NET_TOP - 6, NET_W + 4, 8);
+
+  if (state !== 'menu') {
+    drawBlob(blobs[0]);
+    drawBlob(blobs[1]);
+    drawBall();
+    drawParticles();
+
+    // Punktestand
+    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.font = 'bold 52px "Courier New", monospace';
+    ctx.fillText(score[0] + ' : ' + score[1], W / 2, 62);
+    // Aufschlag-Anzeige
+    ctx.fillStyle = server === 0 ? '#e74c3c' : '#27ae60';
+    ctx.beginPath();
+    ctx.arc(W / 2 + (server === 0 ? -95 : 95), 46, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Namen
+    ctx.font = 'bold 17px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText('SPIELER 1', W * 0.25, 30);
+    ctx.fillText(mode === 1 ? 'COMPUTER' : 'SPIELER 2', W * 0.75, 30);
+
+    // Berührungsanzeige
+    if (state === 'play' && touches > 0) {
+      const tx = touchSide === 0 ? W * 0.25 : W * 0.75;
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = i < touches ? '#fff' : 'rgba(255,255,255,0.25)';
+        ctx.beginPath(); ctx.arc(tx - 18 + i * 18, 90, 5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    if (state === 'serve') {
+      ctx.font = 'bold 22px "Courier New", monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillText('Aufschlag: Ball treffen!', W / 2, 130);
+    }
+    if (message && state === 'point') {
+      ctx.font = 'bold 32px "Courier New", monospace';
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = 'rgba(26,82,118,0.8)'; ctx.lineWidth = 6;
+      ctx.strokeText(message, W / 2, 190);
+      ctx.fillText(message, W / 2, 190);
+    }
+    if (state === 'win') {
+      ctx.fillStyle = 'rgba(10,40,70,0.55)';
+      ctx.fillRect(-offX / scale, -offY / scale, W + 2 * offX / scale, H + 2 * offY / scale);
+      const name = winner === 0 ? 'SPIELER 1' : (mode === 1 ? 'COMPUTER' : 'SPIELER 2');
+      ctx.font = 'bold 64px "Courier New", monospace';
+      ctx.fillStyle = winner === 0 ? '#e74c3c' : '#27ae60';
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+      ctx.fillText(name + ' GEWINNT!', W / 2, H / 2 - 20);
+      ctx.strokeText(name + ' GEWINNT!', W / 2, H / 2 - 20);
+      ctx.font = 'bold 26px "Courier New", monospace';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(score[0] + ' : ' + score[1], W / 2, H / 2 + 35);
+      ctx.fillText('Leertaste oder Tippen für Menü', W / 2, H / 2 + 85);
+    }
+  }
+}
+
+// ---------- Hauptschleife ----------
+let lastT = performance.now();
+function loop(t) {
+  let dt = (t - lastT) / (1000 / 60);
+  lastT = t;
+  if (dt > 2.5) dt = 2.5;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
