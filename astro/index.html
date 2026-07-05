@@ -110,6 +110,21 @@ const BULLET_SPD  = 4.5;
 const BULLET_LIFE = 55;
 const MAX_BULLETS = 4;
 
+// ─── Gegner ───────────────────────────────────────────────────────
+const ENEMY_R   = 6;
+const ENEMY_PTS = 250;
+const E = { active: false, x: 0, y: 0, a: 0, vx: 0, vy: 0, hp: 3, fireCd: 0, flash: 0 };
+let ebullets    = [];           // Gegner-Schüsse
+let enemySpawnT = 0;            // Frames bis zum nächsten Spawn
+let enemyAlert  = 0;
+
+const E_TURN        = 0.045;
+const E_THRUST      = 0.055;
+const E_MAX_SPD     = 2.2;
+const E_FRICTION    = 0.985;
+const E_BULLET_SPD  = 3.2;
+const E_BULLET_LIFE = 90;
+
 // ─── Input ────────────────────────────────────────────────────────
 const keys = { left: false, right: false, up: false, fire: false };
 let fireLatch = false;          // one shot per press
@@ -243,9 +258,42 @@ function startGame() {
   state = 'playing';
   score = 0; lives = 3; level = 1;
   bullets = []; asteroids = []; particles = [];
+  ebullets = [];
+  E.active = false;
+  enemySpawnT = 480;            // ~8 s bis zum ersten Gegner
+  enemyAlert = 0;
   resetShip();
   S.inv = 0;
   spawnWave();
+}
+
+function spawnEnemy() {
+  E.active = true;
+  E.hp = 3;
+  E.flash = 0;
+  E.fireCd = 100;
+  E.vx = 0; E.vy = 0;
+  const side = Math.floor(Math.random() * 4);
+  if (side === 0)      { E.x = -ENEMY_R;      E.y = Math.random() * GH; }
+  else if (side === 1) { E.x = GW + ENEMY_R;  E.y = Math.random() * GH; }
+  else if (side === 2) { E.x = Math.random() * GW; E.y = -ENEMY_R; }
+  else                 { E.x = Math.random() * GW; E.y = GH + ENEMY_R; }
+  E.a = Math.atan2(S.y - E.y, S.x - E.x);
+  enemyAlert = 90;
+}
+
+function damageEnemy() {
+  E.hp--;
+  E.flash = 10;
+  boom(E.x, E.y, 8, '#ff8a5e', 1.0);
+  if (E.hp <= 0) {
+    E.active = false;
+    score += ENEMY_PTS;
+    boom(E.x, E.y, 30, '#ff8a5e', 1.8);
+    boom(E.x, E.y, 12, '#ffffff', 1.0);
+    shakes = 10;
+    enemySpawnT = Math.max(300, 900 - level * 60);
+  }
 }
 
 function resetShip() {
@@ -328,6 +376,58 @@ function update() {
   for (const b of bullets) { b.x += b.vx; b.y += b.vy; b.life++; wrap(b, 2); }
   bullets = bullets.filter(b => b.life < BULLET_LIFE);
 
+  // Gegner
+  if (enemyAlert > 0) enemyAlert--;
+  if (!E.active) {
+    if (enemySpawnT > 0) enemySpawnT--;
+    else spawnEnemy();
+  } else {
+    // auf den Spieler zudrehen
+    const ta = Math.atan2(S.y - E.y, S.x - E.x);
+    let da = ta - E.a;
+    while (da >  Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    E.a += Math.max(-E_TURN, Math.min(E_TURN, da));
+
+    // Schub, solange nicht zu nah
+    const dist = Math.hypot(S.x - E.x, S.y - E.y);
+    if (dist > 45) {
+      E.vx += Math.cos(E.a) * E_THRUST;
+      E.vy += Math.sin(E.a) * E_THRUST;
+      if (frame % 3 === 0) {
+        particles.push({
+          x: E.x - Math.cos(E.a) * 6, y: E.y - Math.sin(E.a) * 6,
+          vx: -Math.cos(E.a) * 1.0 + (Math.random() - 0.5) * 0.4,
+          vy: -Math.sin(E.a) * 1.0 + (Math.random() - 0.5) * 0.4,
+          life: 0, max: 8 + Math.random() * 6, col: '#ff8a5e',
+        });
+      }
+    }
+    const espd = Math.hypot(E.vx, E.vy);
+    if (espd > E_MAX_SPD) { E.vx *= E_MAX_SPD / espd; E.vy *= E_MAX_SPD / espd; }
+    E.vx *= E_FRICTION; E.vy *= E_FRICTION;
+    E.x += E.vx; E.y += E.vy;
+    wrap(E, ENEMY_R);
+    if (E.flash > 0) E.flash--;
+
+    // schießen, wenn grob ausgerichtet
+    if (E.fireCd > 0) E.fireCd--;
+    if (E.fireCd === 0 && S.dead === 0 && Math.abs(da) < 0.5) {
+      const miss = (Math.random() - 0.5) * Math.max(0.08, 0.3 - level * 0.03);
+      const ba = ta + miss;
+      ebullets.push({
+        x: E.x + Math.cos(ba) * 7, y: E.y + Math.sin(ba) * 7,
+        vx: Math.cos(ba) * E_BULLET_SPD, vy: Math.sin(ba) * E_BULLET_SPD,
+        life: 0,
+      });
+      E.fireCd = Math.max(55, 110 - level * 8);
+    }
+  }
+
+  // Gegner-Schüsse
+  for (const b of ebullets) { b.x += b.vx; b.y += b.vy; b.life++; wrap(b, 2); }
+  ebullets = ebullets.filter(b => b.life < E_BULLET_LIFE);
+
   // asteroids
   for (const a of asteroids) {
     a.x += a.vx; a.y += a.vy;
@@ -356,7 +456,39 @@ function update() {
       }
     }
   }
+  // Gegner-Schüsse ↔ Asteroiden (zerlegen sie, aber ohne Punkte)
+  for (const b of ebullets) {
+    for (const a of asteroids) {
+      if (a.hit) continue;
+      if ((b.x - a.x) ** 2 + (b.y - a.y) ** 2 < a.r ** 2) {
+        a.hit = true;
+        b.life = E_BULLET_LIFE;
+        boom(a.x, a.y, 6 + a.size * 4, '#c9d6e2', 0.9 + a.size * 0.25);
+        if (a.size > 1) {
+          for (let i = 0; i < 2; i++) {
+            const child = makeAsteroid(a.x, a.y, a.size - 1);
+            child.vx += a.vx * 0.4;
+            child.vy += a.vy * 0.4;
+            asteroids.push(child);
+          }
+        }
+        break;
+      }
+    }
+  }
   asteroids = asteroids.filter(a => !a.hit);
+
+  // Spieler-Schüsse ↔ Gegner
+  if (E.active) {
+    for (const b of bullets) {
+      if (b.life >= BULLET_LIFE) continue;
+      if ((b.x - E.x) ** 2 + (b.y - E.y) ** 2 < ENEMY_R ** 2) {
+        b.life = BULLET_LIFE;
+        damageEnemy();
+        if (!E.active) break;
+      }
+    }
+  }
 
   // ship ↔ asteroid
   if (S.dead === 0 && S.inv === 0) {
@@ -365,6 +497,25 @@ function update() {
         killShip();
         break;
       }
+    }
+  }
+
+  // Gegner-Schüsse ↔ Spieler
+  if (S.dead === 0 && S.inv === 0) {
+    for (const b of ebullets) {
+      if ((b.x - S.x) ** 2 + (b.y - S.y) ** 2 < (SHIP_R + 1) ** 2) {
+        b.life = E_BULLET_LIFE;
+        killShip();
+        break;
+      }
+    }
+  }
+
+  // Gegner ↔ Spieler (Rammen: beide nehmen Schaden)
+  if (S.dead === 0 && S.inv === 0 && E.active) {
+    if ((S.x - E.x) ** 2 + (S.y - E.y) ** 2 < (SHIP_R + ENEMY_R - 2) ** 2) {
+      killShip();
+      damageEnemy();
     }
   }
 
@@ -429,6 +580,28 @@ function drawWorld() {
   bx.fillStyle = '#ffffff';
   for (const b of bullets) bx.fillRect(b.x - 0.5, b.y - 0.5, 1.5, 1.5);
 
+  // Gegner-Schüsse
+  bx.fillStyle = '#ff8a5e';
+  for (const b of ebullets) bx.fillRect(b.x - 0.5, b.y - 0.5, 1.5, 1.5);
+
+  // Gegner
+  if (state === 'playing' && E.active) {
+    const col = E.flash > 0 && Math.floor(frame / 2) % 2 === 0 ? '#ffffff' : '#ff8a5e';
+    bx.strokeStyle = col;
+    bx.lineWidth = 1;
+    const a = E.a;
+    bx.beginPath();
+    bx.moveTo(E.x + Math.cos(a) * 8,       E.y + Math.sin(a) * 8);
+    bx.lineTo(E.x + Math.cos(a + 2.2) * 7, E.y + Math.sin(a + 2.2) * 7);
+    bx.lineTo(E.x - Math.cos(a) * 2.5,     E.y - Math.sin(a) * 2.5);
+    bx.lineTo(E.x + Math.cos(a - 2.2) * 7, E.y + Math.sin(a - 2.2) * 7);
+    bx.closePath();
+    bx.stroke();
+    // HP-Pips
+    bx.fillStyle = '#ff8a5e';
+    for (let i = 0; i < E.hp; i++) bx.fillRect(E.x - 5 + i * 4, E.y - 13, 2, 2);
+  }
+
   // ship
   if (state === 'playing' && S.dead === 0) {
     if (S.inv === 0 || Math.floor(frame / 4) % 2 === 0) {
@@ -477,6 +650,13 @@ function drawUI() {
       bx.font = `bold ${Math.max(9, Math.round(GH * 0.055))}px 'Courier New', monospace`;
       bx.fillText('LEVEL ' + level, GW / 2, Math.round(GH * 0.3));
       bx.globalAlpha = 1;
+    }
+
+    if (enemyAlert > 0 && Math.floor(frame / 8) % 2 === 0) {
+      bx.textAlign = 'center';
+      bx.fillStyle = '#ff8a5e';
+      bx.font = `bold ${Math.max(8, Math.round(GH * 0.04))}px 'Courier New', monospace`;
+      bx.fillText('! GEGNER !', GW / 2, Math.round(GH * 0.14));
     }
   }
 
