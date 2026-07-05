@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>WebXR Testcase — 3D Simulation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #0a0a12; height: 100%; }
+  #info {
+    position: absolute; top: 12px; left: 12px; color: #cfd8ff;
+    font-family: -apple-system, system-ui, sans-serif; font-size: 13px;
+    background: rgba(10,10,20,0.55); padding: 10px 14px; border-radius: 8px;
+    max-width: 320px; line-height: 1.5; pointer-events: none;
+  }
+  #info b { color: #fff; }
+</style>
+</head>
+<body>
+
+<div id="info">
+  <b>WebXR Testcase</b><br>
+  Desktop: Maus ziehen = umschauen, WASD = bewegen.<br>
+  Quest: "Enter VR" Button unten, Trigger halten + Controller bewegen
+  um Bälle zu greifen und zu werfen.
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+
+// ---------- Grundgerüst ----------
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a12);
+scene.fog = new THREE.Fog(0x0a0a12, 8, 30);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.05, 100);
+camera.position.set(0, 1.6, 3);
+
+// Dolly-Objekt fürs Desktop-Umherlaufen (in VR übernimmt das Headset-Tracking selbst)
+const dolly = new THREE.Group();
+dolly.position.set(0, 0, 0);
+dolly.add(camera);
+scene.add(dolly);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setAnimationLoop(animate); // WICHTIG: statt requestAnimationFrame, das übernimmt Head-Tracking + Sync
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+
+// ---------- Licht ----------
+scene.add(new THREE.HemisphereLight(0x8899ff, 0x1a1a2a, 1.1));
+const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+dirLight.position.set(3, 6, 2);
+scene.add(dirLight);
+
+// ---------- Boden ----------
+const floorGeo = new THREE.PlaneGeometry(20, 20);
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x1c1c2e, roughness: 0.9 });
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+const grid = new THREE.GridHelper(20, 20, 0x4444aa, 0x22223a);
+scene.add(grid);
+
+// ---------- Physik-Bälle (einfache Gravitation + Bounce, greifbar) ----------
+const balls = [];
+const ballGeo = new THREE.SphereGeometry(0.12, 24, 24);
+const colors = [0xff5566, 0x55ddff, 0xffcc44, 0x77ff88, 0xcc88ff];
+
+function spawnBall(x, y, z) {
+  const mat = new THREE.MeshStandardMaterial({
+    color: colors[balls.length % colors.length],
+    roughness: 0.3, metalness: 0.1
+  });
+  const mesh = new THREE.Mesh(ballGeo, mat);
+  mesh.position.set(x, y, z);
+  scene.add(mesh);
+  balls.push({
+    mesh,
+    velocity: new THREE.Vector3(0, 0, 0),
+    grabbedBy: null
+  });
+}
+
+for (let i = 0; i < 6; i++) {
+  spawnBall((Math.random() - 0.5) * 1.5, 1.2 + i * 0.3, -0.8 - Math.random() * 0.6);
+}
+
+const GRAVITY = -2.8;
+const BOUNCE_DAMP = 0.55;
+const FLOOR_Y = 0.12;
+
+function updatePhysics(dt) {
+  for (const b of balls) {
+    if (b.grabbedBy) continue; // gegriffene Bälle folgen dem Controller, keine Physik
+    b.velocity.y += GRAVITY * dt;
+    b.mesh.position.addScaledVector(b.velocity, dt);
+    if (b.mesh.position.y < FLOOR_Y) {
+      b.mesh.position.y = FLOOR_Y;
+      b.velocity.y *= -BOUNCE_DAMP;
+      b.velocity.x *= 0.8;
+      b.velocity.z *= 0.8;
+    }
+  }
+}
+
+// ---------- XR Controller: Ray + Greifen ----------
+const controllerModelFactory = new XRControllerModelFactory();
+const raycaster = new THREE.Raycaster();
+const tempMatrix = new THREE.Matrix4();
+
+function buildControllerRay() {
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -1)
+  ]);
+  const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0x66ccff }));
+  line.scale.z = 3;
+  line.name = 'ray';
+  return line;
+}
+
+function setupController(index) {
+  const controller = renderer.xr.getController(index);
+  controller.add(buildControllerRay());
+  controller.userData.grabbed = null;
+  controller.addEventListener('selectstart', () => onSelectStart(controller));
+  controller.addEventListener('selectend', () => onSelectEnd(controller));
+  dolly.add(controller);
+
+  const grip = renderer.xr.getControllerGrip(index);
+  grip.add(controllerModelFactory.createControllerModel(grip));
+  dolly.add(grip);
+
+  return controller;
+}
+
+const controller0 = setupController(0);
+const controller1 = setupController(1);
+
+function onSelectStart(controller) {
+  tempMatrix.identity().extractRotation(controller.matrixWorld);
+  raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+  const hits = raycaster.intersectObjects(balls.map(b => b.mesh));
+  if (hits.length > 0) {
+    const hitMesh = hits[0].object;
+    const ball = balls.find(b => b.mesh === hitMesh);
+    if (ball && !ball.grabbedBy) {
+      ball.grabbedBy = controller;
+      controller.userData.grabbed = ball;
+      controller.attach(ball.mesh); // Ball wird Kind des Controllers -> folgt Bewegung 1:1
+    }
+  }
+}
+
+function onSelectEnd(controller) {
+  const ball = controller.userData.grabbed;
+  if (ball) {
+    scene.attach(ball.mesh); // zurück in die Szene, Weltkoordinaten bleiben erhalten
+    // Wurf-Geschwindigkeit grob aus der letzten Controllerbewegung ableiten
+    ball.velocity.copy(controller.userData.lastVelocity || new THREE.Vector3());
+    ball.grabbedBy = null;
+    controller.userData.grabbed = null;
+  }
+}
+
+// grobe Geschwindigkeitsschätzung für den Wurf
+const lastControllerPos = { 0: new THREE.Vector3(), 1: new THREE.Vector3() };
+function trackControllerVelocity(controller, index, dt) {
+  const pos = new THREE.Vector3();
+  controller.getWorldPosition(pos);
+  const vel = pos.clone().sub(lastControllerPos[index]).divideScalar(Math.max(dt, 0.001));
+  controller.userData.lastVelocity = vel.multiplyScalar(1.4); // leichter Boost, fühlt sich sonst zu schwach an
+  lastControllerPos[index].copy(pos);
+}
+
+// ---------- Desktop-Fallback: Maus-Look + WASD ----------
+let yaw = 0, pitch = 0;
+let isDragging = false, lastX = 0, lastY = 0;
+const keys = {};
+
+renderer.domElement.addEventListener('mousedown', e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
+window.addEventListener('mouseup', () => isDragging = false);
+window.addEventListener('mousemove', e => {
+  if (!isDragging || renderer.xr.isPresenting) return;
+  yaw -= (e.clientX - lastX) * 0.0025;
+  pitch -= (e.clientY - lastY) * 0.0025;
+  pitch = Math.max(-1.3, Math.min(1.3, pitch));
+  lastX = e.clientX; lastY = e.clientY;
+});
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+function updateDesktopControls(dt) {
+  if (renderer.xr.isPresenting) return; // in VR übernimmt das Headset komplett
+  camera.rotation.set(pitch, yaw, 0, 'YXZ');
+  const speed = 2.2 * dt;
+  const forward = new THREE.Vector3(Math.sin(yaw) * -1, 0, Math.cos(yaw) * -1);
+  const right = new THREE.Vector3(-forward.z, 0, forward.x);
+  if (keys['KeyW']) dolly.position.addScaledVector(forward, speed);
+  if (keys['KeyS']) dolly.position.addScaledVector(forward, -speed);
+  if (keys['KeyA']) dolly.position.addScaledVector(right, -speed);
+  if (keys['KeyD']) dolly.position.addScaledVector(right, speed);
+}
+
+// ---------- Resize ----------
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ---------- Render-Loop ----------
+const clock = new THREE.Clock();
+function animate() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  updateDesktopControls(dt);
+  updatePhysics(dt);
+  trackControllerVelocity(controller0, 0, dt);
+  trackControllerVelocity(controller1, 1, dt);
+
+  renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
