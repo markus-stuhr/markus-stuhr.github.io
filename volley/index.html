@@ -26,6 +26,7 @@
     text-shadow: 2px 2px 0 rgba(0,0,0,0.3);
   }
   .btn:nth-of-type(2) { background: #27ae60; }
+  #btnDemo { background: #2980b9; }
   .btn:active { transform: scale(0.95); }
   #menu p { color: #d6eaf8; font-size: clamp(12px, 2.5vw, 16px); text-align: center; line-height: 1.6; }
   .hidden { display: none !important; }
@@ -49,6 +50,7 @@
   <h1>BLOB VOLLEY</h1>
   <button class="btn" id="btn1p">1 SPIELER</button>
   <button class="btn" id="btn2p">2 SPIELER</button>
+  <button class="btn" id="btnDemo">COMPUTER-DUELL</button>
   <p>
     Spieler 1: <b>A / D</b> bewegen, <b>W</b> springen<br>
     Spieler 2: <b>Pfeiltasten</b><br>
@@ -190,8 +192,8 @@ let touches = 0, touchSide = -1;
 let state = 'menu';        // menu | serve | play | point | win
 let stateTimer = 0;
 let message = '', winner = -1;
-let mode = 1;              // 1 = gegen Computer, 2 = zwei Spieler
-let aiErr = 0;
+let mode = 1;              // 0 = Computer-Duell, 1 = gegen Computer, 2 = zwei Spieler
+let aiErr = [0, 0];
 let gt = 0;                // globale Zeit in Frames (für Animationen)
 
 // ---------- Partikel & Trail ----------
@@ -263,7 +265,7 @@ function setupServe() {
   ball.y = 350; ball.vx = 0; ball.vy = 0;
   touches = 0; touchSide = -1;
   trail.length = 0;
-  aiErr = (Math.random() - 0.5) * 50;
+  aiErr = [(Math.random() - 0.5) * 50, (Math.random() - 0.5) * 50];
   state = 'serve';
 }
 
@@ -275,6 +277,12 @@ function startGame(m) {
   for (const id of ['tLeft', 'tRight', 'tJump'])
     document.getElementById(id).classList.toggle('hidden', !touch);
   setupServe();
+}
+
+function playerName(side) {
+  if (mode === 0) return side === 0 ? 'Computer 1' : 'Computer 2';
+  if (side === 0) return 'Spieler 1';
+  return mode === 1 ? 'Computer' : 'Spieler 2';
 }
 
 function givePoint(side, msg) {
@@ -298,6 +306,7 @@ window.addEventListener('keydown', e => {
   if (state === 'menu') {
     if (e.code === 'Digit1') startGame(1);
     if (e.code === 'Digit2') startGame(2);
+    if (e.code === 'Digit0') startGame(0);
   }
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'Space'].includes(e.code)) e.preventDefault();
 });
@@ -312,9 +321,11 @@ function backToMenu() {
 
 document.getElementById('btn1p').addEventListener('click', () => { initAudio(); startGame(1); });
 document.getElementById('btn2p').addEventListener('click', () => { initAudio(); startGame(2); });
+document.getElementById('btnDemo').addEventListener('click', () => { initAudio(); startGame(0); });
 canvas.addEventListener('pointerdown', () => {
   initAudio();
   if (state === 'win') backToMenu();
+  else if (mode === 0 && state !== 'menu') backToMenu();   // Demo: Tippen beendet
 });
 
 // Touch-Buttons (nur 1-Spieler-Modus)
@@ -381,7 +392,7 @@ function ballBlobCollision(b) {
     else { touchSide = b.side; touches = 1; }
     if (touches > 3) {
       sndFault();
-      givePoint(1 - b.side, (b.side === 0 ? 'Spieler 1' : (mode === 1 ? 'Computer' : 'Spieler 2')) + ': zu viele Berührungen!');
+      givePoint(1 - b.side, playerName(b.side) + ': zu viele Berührungen!');
     }
   }
   b.touching = hit;
@@ -452,19 +463,23 @@ function predictLandingX() {
 }
 
 function updateAI(b, dt) {
+  const dir = b.side === 1 ? 1 : -1;   // 1 = rechte Hälfte, -1 = linke Hälfte
+  const err = aiErr[b.side];
   let targetX, wantJump = false;
-  if (state === 'serve' && server === 1) {
-    targetX = ball.x + 6;
+  if (state === 'serve' && server === b.side) {
+    targetX = ball.x + 6 * dir;
     if (Math.abs(b.x - ball.x) < 25) wantJump = true;
   } else {
     const px = predictLandingX();
-    if (px > W / 2) {
-      targetX = px + 22 + aiErr * 0.3;  // leicht hinter dem Ball stehen → Schlag nach links
+    const onMyHalf = b.side === 1 ? px > W / 2 : px < W / 2;
+    if (onMyHalf) {
+      targetX = px + (22 + err * 0.3) * dir;  // leicht hinter dem Ball stehen → Schlag Richtung Gegner
     } else {
-      targetX = W * 0.72 + aiErr;       // Grundposition
+      targetX = (b.side === 1 ? W * 0.72 : W * 0.28) + err;  // Grundposition
     }
     const distX = Math.abs(ball.x - b.x);
-    if (ball.x > W / 2 - 40 && distX < 110 && ball.vy > -2 && ball.y > 180 && ball.y < b.y - 60) {
+    const ballNearMyHalf = b.side === 1 ? ball.x > W / 2 - 40 : ball.x < W / 2 + 40;
+    if (ballNearMyHalf && distX < 110 && ball.vy > -2 && ball.y > 180 && ball.y < b.y - 60) {
       wantJump = true;
     }
   }
@@ -490,14 +505,18 @@ function update(dt) {
     return;
   }
 
-  // Spieler 1 (links): A/D/W — im 1-Spieler-Modus auch Pfeile + Touch
-  let p1L = keys['KeyA'], p1R = keys['KeyD'], p1J = keys['KeyW'];
-  if (mode === 1) {
-    p1L = p1L || keys['ArrowLeft']  || touchState.left;
-    p1R = p1R || keys['ArrowRight'] || touchState.right;
-    p1J = p1J || keys['ArrowUp']    || touchState.jump;
+  // Spieler 1 (links): A/D/W — im 1-Spieler-Modus auch Pfeile + Touch, im Duell der Computer
+  if (mode === 0) {
+    updateAI(blobs[0], dt);
+  } else {
+    let p1L = keys['KeyA'], p1R = keys['KeyD'], p1J = keys['KeyW'];
+    if (mode === 1) {
+      p1L = p1L || keys['ArrowLeft']  || touchState.left;
+      p1R = p1R || keys['ArrowRight'] || touchState.right;
+      p1J = p1J || keys['ArrowUp']    || touchState.jump;
+    }
+    moveBlob(blobs[0], p1L, p1R, p1J, dt);
   }
-  moveBlob(blobs[0], p1L, p1R, p1J, dt);
 
   // Spieler 2 (rechts): Pfeile oder Computer
   if (mode === 2) {
@@ -800,8 +819,8 @@ function draw() {
     // Namen
     ctx.font = 'bold 17px "Courier New", monospace';
     ctx.fillStyle = 'rgba(255,255,255,0.75)';
-    ctx.fillText('SPIELER 1', W * 0.25, 30);
-    ctx.fillText(mode === 1 ? 'COMPUTER' : 'SPIELER 2', W * 0.75, 30);
+    ctx.fillText(playerName(0).toUpperCase(), W * 0.25, 30);
+    ctx.fillText(playerName(1).toUpperCase(), W * 0.75, 30);
 
     // Berührungsanzeige
     if (state === 'play' && touches > 0) {
@@ -827,7 +846,7 @@ function draw() {
     if (state === 'win') {
       ctx.fillStyle = 'rgba(10,40,70,0.55)';
       ctx.fillRect(-offX / scale, -offY / scale, W + 2 * offX / scale, H + 2 * offY / scale);
-      const name = winner === 0 ? 'SPIELER 1' : (mode === 1 ? 'COMPUTER' : 'SPIELER 2');
+      const name = playerName(winner).toUpperCase();
       ctx.font = 'bold 64px "Courier New", monospace';
       ctx.fillStyle = winner === 0 ? '#e74c3c' : '#27ae60';
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
