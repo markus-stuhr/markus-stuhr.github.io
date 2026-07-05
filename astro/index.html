@@ -118,11 +118,11 @@ let ebullets    = [];           // Gegner-Schüsse
 let enemySpawnT = 0;            // Frames bis zum nächsten Spawn
 let enemyAlert  = 0;
 
-const E_TURN        = 0.045;
-const E_THRUST      = 0.055;
-const E_MAX_SPD     = 2.2;
+const E_TURN        = 0.032;
+const E_THRUST      = 0.038;
+const E_MAX_SPD     = 1.5;
 const E_FRICTION    = 0.985;
-const E_BULLET_SPD  = 3.2;
+const E_BULLET_SPD  = 2.7;
 const E_BULLET_LIFE = 90;
 
 // ─── Input ────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ function update() {
         vx: Math.cos(ba) * E_BULLET_SPD, vy: Math.sin(ba) * E_BULLET_SPD,
         life: 0,
       });
-      E.fireCd = Math.max(55, 110 - level * 8);
+      E.fireCd = Math.max(75, 140 - level * 8);
     }
   }
 
