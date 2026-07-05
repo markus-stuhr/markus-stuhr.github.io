@@ -116,18 +116,20 @@ let fireLatch = false;          // one shot per press
 
 addEventListener('keydown', e => {
   if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown',' '].includes(e.key)) e.preventDefault();
-  if (e.key === 'ArrowLeft')  keys.left  = true;
-  if (e.key === 'ArrowRight') keys.right = true;
-  if (e.key === 'ArrowUp')    keys.up    = true;
+  const k = e.key.toLowerCase();
+  if (e.key === 'ArrowLeft'  || k === 'a') keys.left  = true;
+  if (e.key === 'ArrowRight' || k === 'd') keys.right = true;
+  if (e.key === 'ArrowUp'    || k === 'w') keys.up    = true;
   if (e.key === ' ') {
     keys.fire = true;
     if (state !== 'playing') startGame();
   }
 });
 addEventListener('keyup', e => {
-  if (e.key === 'ArrowLeft')  keys.left  = false;
-  if (e.key === 'ArrowRight') keys.right = false;
-  if (e.key === 'ArrowUp')    keys.up    = false;
+  const k = e.key.toLowerCase();
+  if (e.key === 'ArrowLeft'  || k === 'a') keys.left  = false;
+  if (e.key === 'ArrowRight' || k === 'd') keys.right = false;
+  if (e.key === 'ArrowUp'    || k === 'w') keys.up    = false;
   if (e.key === ' ')          { keys.fire = false; fireLatch = false; }
 });
 
@@ -433,79 +435,86 @@ function drawWorld() {
       drawShipShape(S.x, S.y, S.a, '#7ec8ff');
     }
   }
+
+  drawUI();
 }
 
-// ─── Draw: HUD (full res) ─────────────────────────────────────────
-function drawHUD() {
-  ctx.textBaseline = 'top';
+// ─── Draw: UI text (low res → pixelated) ──────────────────────────
+function drawUI() {
+  bx.textBaseline = 'top';
 
   if (state === 'playing') {
-    ctx.textAlign = 'left';
-    ctx.fillStyle = 'rgba(126,200,255,0.9)';
-    ctx.font = `bold ${Math.round(SH * 0.028)}px 'Courier New', monospace`;
-    ctx.fillText(String(score).padStart(5, '0'), SW * 0.05, SH * 0.045);
+    const fs = Math.max(8, Math.round(GH * 0.045));
+    bx.font = `bold ${fs}px 'Courier New', monospace`;
+    bx.textAlign = 'left';
+    bx.fillStyle = 'rgba(126,200,255,0.9)';
+    bx.fillText(String(score).padStart(5, '0'), Math.round(GW * 0.05), Math.round(GH * 0.045));
 
-    ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(126,200,255,0.45)';
-    ctx.fillText('HI ' + String(Math.max(hiScore, score)).padStart(5, '0'), SW * 0.95, SH * 0.045);
+    bx.textAlign = 'right';
+    bx.fillStyle = 'rgba(126,200,255,0.45)';
+    bx.fillText('HI ' + String(Math.max(hiScore, score)).padStart(5, '0'), Math.round(GW * 0.95), Math.round(GH * 0.045));
 
     // lives as small ships
-    const ls = Math.round(SH * 0.014);
-    ctx.strokeStyle = 'rgba(126,200,255,0.8)';
-    ctx.lineWidth = 1.5;
+    const ls = Math.max(2.5, GH * 0.02);
+    bx.strokeStyle = 'rgba(126,200,255,0.8)';
+    bx.lineWidth = 1;
     for (let i = 0; i < lives; i++) {
-      const lx = SW * 0.05 + i * ls * 2.4 + ls;
-      const ly = SH * 0.045 + SH * 0.045;
-      ctx.beginPath();
-      ctx.moveTo(lx, ly - ls);
-      ctx.lineTo(lx - ls * 0.7, ly + ls * 0.8);
-      ctx.lineTo(lx, ly + ls * 0.4);
-      ctx.lineTo(lx + ls * 0.7, ly + ls * 0.8);
-      ctx.closePath();
-      ctx.stroke();
+      const lx = GW * 0.05 + i * ls * 2.6 + ls;
+      const ly = GH * 0.045 + fs + ls * 1.4;
+      bx.beginPath();
+      bx.moveTo(lx, ly - ls);
+      bx.lineTo(lx - ls * 0.7, ly + ls * 0.8);
+      bx.lineTo(lx, ly + ls * 0.4);
+      bx.lineTo(lx + ls * 0.7, ly + ls * 0.8);
+      bx.closePath();
+      bx.stroke();
     }
 
     if (levelFlash > 0) {
-      ctx.globalAlpha = Math.min(1, levelFlash / 30);
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#7ec8ff';
-      ctx.font = `bold ${Math.round(SH * 0.035)}px 'Courier New', monospace`;
-      ctx.fillText('LEVEL ' + level, SW / 2, SH * 0.3);
-      ctx.globalAlpha = 1;
+      bx.globalAlpha = Math.min(1, levelFlash / 30);
+      bx.textAlign = 'center';
+      bx.fillStyle = '#7ec8ff';
+      bx.font = `bold ${Math.max(9, Math.round(GH * 0.055))}px 'Courier New', monospace`;
+      bx.fillText('LEVEL ' + level, GW / 2, Math.round(GH * 0.3));
+      bx.globalAlpha = 1;
     }
   }
 
   if (state === 'idle' || state === 'gameover') {
-    ctx.textAlign = 'center';
+    bx.textAlign = 'center';
 
-    ctx.fillStyle = '#7ec8ff';
-    ctx.font = `bold ${Math.round(SH * 0.07)}px 'Courier New', monospace`;
-    ctx.fillText(state === 'gameover' ? 'GAME OVER' : 'ASTRO', SW / 2, SH * 0.3);
+    bx.fillStyle = '#7ec8ff';
+    bx.font = `bold ${Math.max(14, Math.round(GH * 0.11))}px 'Courier New', monospace`;
+    bx.fillText(state === 'gameover' ? 'GAME OVER' : 'ASTRO', GW / 2, Math.round(GH * 0.28));
 
-    ctx.font = `${Math.round(SH * 0.022)}px 'Courier New', monospace`;
+    const sf = Math.max(7, Math.round(GH * 0.035));
+    bx.font = `${sf}px 'Courier New', monospace`;
     if (state === 'gameover') {
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.fillText('SCORE ' + score, SW / 2, SH * 0.42);
-      ctx.fillStyle = 'rgba(126,200,255,0.6)';
-      ctx.fillText('BEST ' + hiScore, SW / 2, SH * 0.42 + SH * 0.04);
+      bx.fillStyle = 'rgba(255,255,255,0.85)';
+      bx.fillText('SCORE ' + score, GW / 2, Math.round(GH * 0.44));
+      bx.fillStyle = 'rgba(126,200,255,0.6)';
+      bx.fillText('BEST ' + hiScore, GW / 2, Math.round(GH * 0.44 + sf * 1.6));
     } else {
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.fillText(TOUCH
+      bx.fillStyle = 'rgba(255,255,255,0.6)';
+      bx.fillText(TOUCH
         ? '◀ ▶ drehen · ▲ Schub · ● schießen'
-        : '← → drehen · ↑ Schub · Leertaste schießen', SW / 2, SH * 0.44);
+        : '←→/AD drehen · ↑/W Schub · Leertaste schießen', GW / 2, Math.round(GH * 0.46));
       if (hiScore > 0) {
-        ctx.fillStyle = 'rgba(126,200,255,0.6)';
-        ctx.fillText('BEST ' + hiScore, SW / 2, SH * 0.44 + SH * 0.04);
+        bx.fillStyle = 'rgba(126,200,255,0.6)';
+        bx.fillText('BEST ' + hiScore, GW / 2, Math.round(GH * 0.46 + sf * 1.6));
       }
     }
 
     if (Math.floor(frame / 30) % 2 === 0) {
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.font = `${Math.round(SH * 0.02)}px 'Courier New', monospace`;
-      ctx.fillText(TOUCH ? 'TIPPEN ZUM STARTEN' : 'LEERTASTE ZUM STARTEN', SW / 2, SH * 0.56);
+      bx.fillStyle = 'rgba(255,255,255,0.9)';
+      bx.font = `bold ${sf}px 'Courier New', monospace`;
+      bx.fillText(TOUCH ? 'TIPPEN ZUM STARTEN' : 'LEERTASTE ZUM STARTEN', GW / 2, Math.round(GH * 0.6));
     }
   }
+}
 
+// ─── Draw: HUD overlay (full res) — nur Touch-Buttons ─────────────
+function drawHUD() {
   // touch buttons
   if (TOUCH && state === 'playing') {
     for (const k in btns) {
