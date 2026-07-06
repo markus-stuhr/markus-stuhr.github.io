@@ -457,6 +457,54 @@ const segLens = gates.map((g, i) => g.pos.distanceTo(gates[(i + 1) % N_WP].pos))
 // racing-line sample index of each gate (for AI: aim at the gate, don't cut past it)
 const gateIdxOnPath = gates.map((g, i) => Math.round((i / N_WP) * PATH_N) % PATH_N);
 
+// --- Track attractions: jump ramps (kickers), crest hills, whoop sections ---
+const FEATURES = [];
+{
+  const segSamples = PATH_N / N_WP;
+  const addFeature = (type, si, h, rLon, rLat) => {
+    const i = ((Math.round(si) % PATH_N) + PATH_N) % PATH_N;
+    const p = pathPts[i], q = pathPts[(i + 1) % PATH_N];
+    const tx = q.x - p.x, tz = q.z - p.z, tl = Math.hypot(tx, tz) || 1;
+    FEATURES.push({ type, x: p.x, z: p.z, dx: tx / tl, dz: tz / tl, h, rLon, rLat, r2: (rLon + rLat) * (rLon + rLat) });
+  };
+  const plan = [
+    [1, 'kicker'], [3, 'hill'], [5, 'whoops'], [7, 'kicker'],
+    [8, 'hill'], [10, 'kicker'], [12, 'hill'], [13, 'whoops'],
+  ];
+  for (const [seg, type] of plan) {
+    const base = gateIdxOnPath[seg] + segSamples * 0.55; // halfway to the next gate
+    if (type === 'kicker') addFeature('kicker', base, 2.4, 9, 17);
+    else if (type === 'hill') addFeature('hill', base, 5.5, 34, 27);
+    else for (let k = 0; k < 3; k++) addFeature('hill', base + k * 2.4, 1.15, 5, 16); // whoops
+  }
+}
+function featureHeightAt(x, z) {
+  let h = 0;
+  for (let i = 0; i < FEATURES.length; i++) {
+    const f = FEATURES[i];
+    const ddx = x - f.x, ddz = z - f.z;
+    if (ddx * ddx + ddz * ddz > f.r2) continue;
+    const lon = ddx * f.dx + ddz * f.dz;
+    const lat = -ddx * f.dz + ddz * f.dx;
+    if (Math.abs(lat) >= f.rLat) continue;
+    const latF = Math.cos((lat / f.rLat) * Math.PI / 2) ** 2;
+    if (f.type === 'kicker') {
+      // rising ramp with an abrupt take-off lip
+      if (lon >= -f.rLon && lon <= 0) {
+        const t = (lon + f.rLon) / f.rLon;
+        h += f.h * t * t * latF;
+      }
+    } else {
+      const t = (lon / f.rLon) ** 2 + (lat / f.rLat) ** 2;
+      if (t < 1) {
+        const cs = Math.cos(Math.sqrt(t) * Math.PI / 2);
+        h += f.h * cs * cs;
+      }
+    }
+  }
+  return h;
+}
+
 // --- Track-distance grid (metres to the racing line), sampled bilinearly ---
 const CG = 220;
 const trackDist = new Float32Array(CG * CG);
@@ -508,7 +556,7 @@ function heightAt(x, z) {
   const c = corridorAt(x, z);
   // grade the track into the landscape, keep gentle gravel bumps
   h = h * (1 - 0.85 * c) + c * fbm(x * 0.03 + 21, z * 0.03 + 9) * 0.7;
-  return h;
+  return h + featureHeightAt(x, z); // jumps & crest hills sit on top of the graded track
 }
 function gradientAt(x, z) {
   const e = 2.5;
@@ -579,6 +627,9 @@ let terrainMat;
       mix.copy(cDirt).lerp(cDirtDark, 0.55 * smoothstep(8, 13, d));
       if (d < 4.6) mix.lerp(cRut, 0.42);
       col.lerp(mix, dirtF);
+      // brighten jumps & crests so they read from a distance
+      const fh = featureHeightAt(cx, cz);
+      if (fh > 0.3) col.lerp(cSteppePale, Math.min(0.45, fh * 0.14));
     }
     const v = 0.93 + 0.12 * rnd; // subtle per-face variation for the faceted look
     for (let k = 0; k < 3; k++) {
@@ -932,6 +983,7 @@ function makeCarState(i, isPlayer) {
     name: isPlayer ? 'DU' : AI_NAMES[i - 1],
     group,
     x: 0, z: 0, y: 0,
+    vy: 0, grounded: true, gPrev: undefined,
     heading: 0,
     vel: new THREE.Vector3(),
     steer: 0,
@@ -963,6 +1015,7 @@ function placeOnGrid() {
     c.finished = false; c.finishTime = 0;
     c.si = 0; c.stuckT = 0;
     c.y = heightAt(c.x, c.z);
+    c.vy = 0; c.grounded = true; c.gPrev = undefined;
     updateCarVisual(c, 0);
   });
 }
@@ -987,36 +1040,57 @@ function stepCar(c, inp, dt) {
 
   const surf = surfaceAt(c.x, c.z);
   const maxS = MAX_SPEED * surf.speedF * c.skill;
+  const onGround = c.grounded;
 
-  if (inp.throttle > 0) {
+  if (onGround && inp.throttle > 0) {
     vf += inp.throttle * ACCEL * Math.max(0.22, 1 - Math.max(0, vf) / maxS) * dt;
-  } else if (inp.throttle < 0) {
+  } else if (onGround && inp.throttle < 0) {
     if (vf > 0.5) vf += inp.throttle * BRAKE * dt;
     else vf = Math.max(vf + inp.throttle * 8 * dt, -11);
   }
-  vf -= vf * surf.drag * dt;
-  if (inp.hb) vf -= vf * 1.15 * dt;
+  vf -= vf * (onGround ? surf.drag : 0.05) * dt;
+  if (onGround && inp.hb) vf -= vf * 1.15 * dt;
 
-  const grip = (inp.hb ? 1.5 : 7.5 * surf.grip) * ENV.gripF; // wet track slides more
+  const grip = onGround ? (inp.hb ? 1.5 : 7.5 * surf.grip) * ENV.gripF : 0.15; // airborne: no grip
   vl *= Math.exp(-grip * dt);
 
   const speedFac = Math.min(1, Math.abs(vf) / 9);
-  c.heading += c.steer * 2.3 * speedFac * (inp.hb ? 1.5 : 1) * (vf < -0.5 ? -1 : 1) * dt;
+  c.heading += c.steer * 2.3 * speedFac * (inp.hb ? 1.5 : 1) * (onGround ? 1 : 0.3) * (vf < -0.5 ? -1 : 1) * dt;
 
   _fwd.set(Math.sin(c.heading), 0, Math.cos(c.heading));
   _right.set(-Math.cos(c.heading), 0, Math.sin(c.heading));
   c.vel.copy(_fwd).multiplyScalar(vf).addScaledVector(_right, vl);
 
-  // gravity pulls downhill
-  const g = gradientAt(c.x, c.z);
-  c.vel.x -= g.x * 9.8 * 0.55 * dt;
-  c.vel.z -= g.z * 9.8 * 0.55 * dt;
+  // gravity pulls downhill (only while the wheels touch the ground)
+  if (onGround) {
+    const g = gradientAt(c.x, c.z);
+    c.vel.x -= g.x * 9.8 * 0.55 * dt;
+    c.vel.z -= g.z * 9.8 * 0.55 * dt;
+  }
 
   c.x += c.vel.x * dt;
   c.z += c.vel.z * dt;
   const lim = HALF - 20;
   if (Math.abs(c.x) > lim) { c.x = Math.sign(c.x) * lim; c.vel.x *= -0.3; }
   if (Math.abs(c.z) > lim) { c.z = Math.sign(c.z) * lim; c.vel.z *= -0.3; }
+
+  // vertical: follow the ground, launch off ramps and crests, land ballistically
+  c.vy -= 16 * dt;
+  c.y += c.vy * dt;
+  const gH = heightAt(c.x, c.z);
+  const terrainVy = c.gPrev === undefined ? 0 : Math.min((gH - c.gPrev) / Math.max(dt, 1e-4), 12);
+  if (c.y <= gH) {
+    if (!c.grounded && c.vy < terrainVy - 9) {
+      c.vel.multiplyScalar(0.88); // hard landing scrubs speed
+      for (let k = 0; k < 5; k++) spawnDust(c, 2.2);
+    }
+    c.y = gH;
+    c.vy = Math.max(terrainVy, -20);
+    c.grounded = true;
+  } else {
+    c.grounded = c.y - gH < 0.3;
+  }
+  c.gPrev = gH;
 
   c.wheelSpin += vf * dt / 0.42;
 
@@ -1039,17 +1113,26 @@ function stepCar(c, inp, dt) {
 }
 
 const _up = new THREE.Vector3(0, 1, 0);
+const _ex = new THREE.Vector3(1, 0, 0);
 const _norm = new THREE.Vector3();
-const _qTilt = new THREE.Quaternion(), _qYaw = new THREE.Quaternion();
+const _qTilt = new THREE.Quaternion(), _qYaw = new THREE.Quaternion(), _qPitch = new THREE.Quaternion();
 function updateCarVisual(c, dt) {
-  const target = heightAt(c.x, c.z);
-  c.y += (target - c.y) * Math.min(1, dt * 14 || 1);
   c.group.position.set(c.x, c.y, c.z);
-  const g = gradientAt(c.x, c.z);
-  _norm.set(-g.x, 1, -g.z).normalize();
+  if (c.grounded) {
+    const g = gradientAt(c.x, c.z);
+    _norm.set(-g.x, 1, -g.z).normalize();
+  } else {
+    _norm.set(0, 1, 0);
+  }
   _qTilt.setFromUnitVectors(_up, _norm);
   _qYaw.setFromAxisAngle(_up, c.heading);
   c.group.quaternion.copy(_qTilt).multiply(_qYaw);
+  if (!c.grounded) {
+    // in the air: pitch with the flight path
+    const pitch = Math.max(-0.35, Math.min(0.35, -Math.atan2(c.vy, Math.max(10, c.vel.length())) * 0.7));
+    _qPitch.setFromAxisAngle(_ex, pitch);
+    c.group.quaternion.multiply(_qPitch);
+  }
   for (const w of c.group.userData.wheels) {
     w.spin.rotation.x = c.wheelSpin;
     if (w.front) w.pivot.rotation.y = c.steer * 0.45;
@@ -1141,6 +1224,7 @@ function resetToTrack(c) {
   c.heading = Math.atan2(g.dir.x, g.dir.z);
   c.vel.set(0, 0, 0);
   c.y = heightAt(c.x, c.z);
+  c.vy = 0; c.grounded = true; c.gPrev = undefined;
   // resync AI racing-line index to this gate
   c.si = Math.round((gi / N_WP) * PATH_N);
 }
