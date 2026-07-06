@@ -364,7 +364,10 @@ function applyEnvironment() {
   rain.visible = wet;
   rain.material.opacity = ENV.weather === 'storm' ? 0.55 : 0.38;
   ENV.gripF = ENV.weather === 'storm' ? 0.8 : wet ? 0.86 : 1;
-  cars.forEach((c) => { c.spot.intensity = ENV.time === 'night' ? 1400 : 0; });
+  cars.forEach((c) => {
+    c.spot.intensity = ENV.time === 'night' ? 1400 : 0;
+    c.spot.castShadow = ENV.time === 'night'; // don't render 10 shadow maps in daylight
+  });
   mHead.emissive.setHex(ENV.time === 'night' ? 0xffe9a0 : 0x887744);
   mTail.emissive.setHex(ENV.time === 'night' ? 0xbb1808 : 0x551105);
   document.body.classList.toggle('night', ENV.time === 'night' || ENV.weather === 'storm');
@@ -917,13 +920,12 @@ function makeCarState(i, isPlayer) {
   spot.target.position.set(0, 0.2, 40);
   group.add(spot);
   group.add(spot.target);
-  if (isPlayer) {
-    spot.castShadow = true;
-    spot.shadow.mapSize.set(1024, 1024);
-    spot.shadow.camera.near = 2;
-    spot.shadow.camera.far = 130;
-    spot.shadow.bias = -0.002;
-  }
+  // shadow-casting headlights (enabled at night via applyEnvironment)
+  spot.castShadow = false;
+  spot.shadow.mapSize.set(isPlayer ? 1024 : 512, isPlayer ? 1024 : 512);
+  spot.shadow.camera.near = 2;
+  spot.shadow.camera.far = 130;
+  spot.shadow.bias = -0.002;
   return {
     spot,
     i, isPlayer,
@@ -1193,7 +1195,7 @@ function updateDust(dt) {
 const keys = {};
 window.addEventListener('keydown', (e) => {
   keys[e.code] = true;
-  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) {
     e.preventDefault();
     touchUsed = false; // keyboard player: disable touch auto-throttle
   }
@@ -1220,10 +1222,10 @@ window.addEventListener('touchstart', () => { touchUsed = true; }, { passive: tr
 
 function playerInput() {
   let steer = 0, throttle = 0, hb = false;
-  if (keys['ArrowLeft']) steer += 1;
-  if (keys['ArrowRight']) steer -= 1;
-  if (keys['ArrowUp']) throttle += 1;
-  if (keys['ArrowDown']) throttle -= 1;
+  if (keys['ArrowLeft'] || keys['KeyA']) steer += 1;
+  if (keys['ArrowRight'] || keys['KeyD']) steer -= 1;
+  if (keys['ArrowUp'] || keys['KeyW']) throttle += 1;
+  if (keys['ArrowDown'] || keys['KeyS']) throttle -= 1;
   if (keys['Space']) hb = true;
   if (touch.left) steer += 1;
   if (touch.right) steer -= 1;
