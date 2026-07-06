@@ -379,7 +379,8 @@ function update() {
   // Gegner
   if (enemyAlert > 0) enemyAlert--;
   if (!E.active) {
-    if (enemySpawnT > 0) enemySpawnT--;
+    if (level < 4) { /* Gegner erscheint erst ab Level 4 */ }
+    else if (enemySpawnT > 0) enemySpawnT--;
     else spawnEnemy();
   } else {
     // auf den Spieler zudrehen
