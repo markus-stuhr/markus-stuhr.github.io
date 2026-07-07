@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Evolution — Markus Stuhr</title>
+
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: #020509;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    color: #fff;
+    user-select: none;
+    touch-action: none;
+  }
+  #wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+  }
+  #back {
+    position: fixed;
+    top: 1.2rem; left: 1.2rem;
+    font-size: 0.6rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(100,180,255,0.3);
+    text-decoration: none;
+    z-index: 10;
+  }
+  #back:hover { color: rgba(100,180,255,0.7); }
+
+  #hud {
+    position: fixed;
+    top: 1.2rem; right: 1.2rem;
+    z-index: 10;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    line-height: 1.7;
+    text-align: right;
+    color: rgba(140,200,255,0.65);
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+  #hud b { color: rgba(220,240,255,0.95); font-weight: normal; }
+
+  #title {
+    position: fixed;
+    bottom: 1.2rem; left: 1.2rem;
+    z-index: 10;
+    font-size: 0.6rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(100,180,255,0.4);
+    max-width: 60vw;
+    line-height: 1.6;
+  }
+
+  #controls {
+    position: fixed;
+    bottom: 1.2rem; right: 1.2rem;
+    z-index: 10;
+    display: flex;
+    gap: 0.5rem;
+  }
+  .btn {
+    font-family: 'Courier New', monospace;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: rgba(140,200,255,0.75);
+    background: rgba(100,180,255,0.08);
+    border: 1px solid rgba(100,180,255,0.25);
+    padding: 0.5rem 0.8rem;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .btn:hover {
+    background: rgba(100,180,255,0.2);
+    color: #fff;
+  }
+  .btn.active {
+    background: rgba(100,180,255,0.3);
+    color: #fff;
+  }
+
+  @media (max-width: 700px) {
+    #title { display: none; }
+    #hud { font-size: 0.55rem; }
+  }
+</style>
+</head>
+<body>
+
+<a href="/" id="back">← zurück</a>
+
+<div id="hud"></div>
+
+<div id="title">Pixel-Ökosystem — Kreaturen mit Genen für<br>Tempo, Größe &amp; Sichtweite konkurrieren um Futter.<br>Fitness entscheidet, was sich fortpflanzt.</div>
+
+<div id="controls">
+  <button class="btn" id="btnFood">+ Futter</button>
+  <button class="btn" id="btnSpeed">2×</button>
+  <button class="btn" id="btnReset">Reset</button>
+</div>
+
+<div id="wrap"><canvas id="c"></canvas></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const hud = document.getElementById('hud');
+
+const SCALE = 3;
+let W, H; // low-res world dims
+
+function resize() {
+  const dispW = window.innerWidth;
+  const dispH = window.innerHeight;
+  W = Math.floor(dispW / SCALE);
+  H = Math.floor(dispH / SCALE);
+  canvas.width = W;
+  canvas.height = H;
+  canvas.style.width = (W * SCALE) + 'px';
+  canvas.style.height = (H * SCALE) + 'px';
+}
+
+// ---------- World state ----------
+let food = [];
+let creatures = [];
+let generation = 1;
+let tick = 0;
+let timeScale = 1;
+const MAX_FOOD = () => Math.floor(W * H / 900);
+const START_POP = 26;
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+function spawnFood(n = 1) {
+  for (let i = 0; i < n; i++) {
+    if (food.length >= MAX_FOOD()) return;
+    food.push({ x: rand(4, W - 4), y: rand(4, H - 4) });
+  }
+}
+
+class Creature {
+  constructor(genes, x, y, energy) {
+    this.genes = genes || {
+      speed: rand(0.25, 0.9),
+      size: rand(0.8, 2.0),
+      sense: rand(8, 26),
+      fertility: rand(0.35, 0.85),
+    };
+    this.x = x !== undefined ? x : rand(0, W);
+    this.y = y !== undefined ? y : rand(0, H);
+    this.angle = rand(0, Math.PI * 2);
+    this.energy = energy !== undefined ? energy : 55;
+    this.age = 0;
+    this.gen = generation;
+    this.hue = 140 + this.genes.speed * 140 - this.genes.size * 20;
+  }
+
+  metabolism() {
+    // bigger + faster creatures burn more energy
+    return 0.028 + this.genes.speed * 0.05 + this.genes.size * 0.02 + this.genes.sense * 0.0015;
+  }
+
+  findFood() {
+    let best = null, bestD = this.genes.sense * this.genes.sense;
+    for (const f of food) {
+      const dx = f.x - this.x, dy = f.y - this.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD) { bestD = d2; best = f; }
+    }
+    return best;
+  }
+
+  update() {
+    this.age++;
+    const target = this.findFood();
+    const spd = this.genes.speed * 1.15;
+
+    if (target) {
+      const dx = target.x - this.x, dy = target.y - this.y;
+      this.angle = Math.atan2(dy, dx);
+      const d = Math.hypot(dx, dy);
+      if (d < 1.6) {
+        // eat
+        food.splice(food.indexOf(target), 1);
+        this.energy += 32;
+      }
+    } else if (Math.random() < 0.04) {
+      this.angle += rand(-1.2, 1.2);
+    }
+
+    this.x += Math.cos(this.angle) * spd;
+    this.y += Math.sin(this.angle) * spd;
+
+    if (this.x < 0) this.x += W; if (this.x > W) this.x -= W;
+    if (this.y < 0) this.y += H; if (this.y > H) this.y -= H;
+
+    this.energy -= this.metabolism();
+  }
+
+  canReproduce() {
+    return this.energy > 90 && this.age > 40 && Math.random() < this.genes.fertility * 0.02;
+  }
+
+  mutatedGenes() {
+    const mut = () => rand(-1, 1) * 0.14;
+    return {
+      speed: clamp(this.genes.speed * (1 + mut()), 0.15, 1.4),
+      size: clamp(this.genes.size * (1 + mut()), 0.6, 3.2),
+      sense: clamp(this.genes.sense * (1 + mut()), 5, 45),
+      fertility: clamp(this.genes.fertility * (1 + mut()), 0.1, 1),
+    };
+  }
+
+  draw() {
+    const r = 1 + this.genes.size;
+    ctx.fillStyle = `hsla(${this.hue}, 85%, ${45 + Math.min(this.energy / 3, 30)}%, 0.95)`;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    // direction nub
+    ctx.fillStyle = `hsla(${this.hue}, 90%, 75%, 0.9)`;
+    ctx.fillRect(
+      this.x + Math.cos(this.angle) * r - 0.5,
+      this.y + Math.sin(this.angle) * r - 0.5,
+      1, 1
+    );
+  }
+}
+
+function reset() {
+  food = [];
+  creatures = [];
+  generation = 1;
+  tick = 0;
+  for (let i = 0; i < START_POP; i++) creatures.push(new Creature());
+  spawnFood(MAX_FOOD() * 0.6);
+}
+
+function step() {
+  tick++;
+
+  if (Math.random() < 0.55) spawnFood(1);
+
+  const next = [];
+  for (const c of creatures) {
+    c.update();
+    if (c.energy <= 0 || c.age > 3200) continue; // dies
+    if (c.canReproduce()) {
+      c.energy *= 0.5;
+      generation = Math.max(generation, c.gen + 1);
+      next.push(new Creature(c.mutatedGenes(), c.x + rand(-3, 3), c.y + rand(-3, 3), c.energy));
+    }
+    next.push(c);
+  }
+  creatures = next;
+
+  // hard population cap for perf / stability
+  if (creatures.length > 260) {
+    creatures.sort((a, b) => b.energy - a.energy);
+    creatures.length = 260;
+  }
+
+  // extinction safety net — reseed a small founder population
+  if (creatures.length < 4) {
+    for (let i = 0; i < 8; i++) creatures.push(new Creature());
+  }
+}
+
+function avg(key) {
+  if (!creatures.length) return 0;
+  return creatures.reduce((s, c) => s + c.genes[key], 0) / creatures.length;
+}
+
+function drawFood() {
+  ctx.fillStyle = 'rgba(120, 255, 170, 0.85)';
+  for (const f of food) {
+    ctx.fillRect(f.x - 0.5, f.y - 0.5, 1, 1);
+  }
+}
+
+function updateHud() {
+  hud.innerHTML =
+    `Generation <b>${generation}</b><br>` +
+    `Population <b>${creatures.length}</b><br>` +
+    `Ø Tempo <b>${avg('speed').toFixed(2)}</b><br>` +
+    `Ø Größe <b>${avg('size').toFixed(2)}</b><br>` +
+    `Ø Sicht <b>${avg('sense').toFixed(1)}</b>`;
+}
+
+function animate() {
+  const steps = timeScale;
+  for (let i = 0; i < steps; i++) step();
+
+  ctx.fillStyle = 'rgba(2,5,9,1)';
+  ctx.fillRect(0, 0, W, H);
+  drawFood();
+  for (const c of creatures) c.draw();
+
+  if (tick % 10 === 0) updateHud();
+
+  requestAnimationFrame(animate);
+}
+
+// ---------- Controls ----------
+document.getElementById('btnFood').addEventListener('click', () => spawnFood(30));
+document.getElementById('btnReset').addEventListener('click', reset);
+const btnSpeed = document.getElementById('btnSpeed');
+btnSpeed.addEventListener('click', () => {
+  timeScale = timeScale === 1 ? 3 : 1;
+  btnSpeed.textContent = timeScale === 1 ? '2×' : '1×';
+  btnSpeed.classList.toggle('active', timeScale !== 1);
+});
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const x = (e.clientX - rect.left) / SCALE;
+  const y = (e.clientY - rect.top) / SCALE;
+  food.push({ x, y });
+});
+
+window.addEventListener('resize', () => { resize(); });
+
+resize();
+reset();
+animate();
+</script>
+</body>
+</html>
