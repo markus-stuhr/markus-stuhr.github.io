@@ -189,7 +189,7 @@
   </style>
 </head>
 <body>
-<div id="info">← → / A D to steer &nbsp;·&nbsp; VR: right stick = steer, left stick = distance, A = restart &nbsp;·&nbsp; R = restart</div>
+<div id="info">← → / A D to steer &nbsp;·&nbsp; VR: right stick = steer, left stick = orbit + zoom, A = restart &nbsp;·&nbsp; R = restart</div>
 <div id="hud">
   <div class="panel"><div class="label">TWS</div><div class="value"><span id="tws">0</span><small> kn</small></div></div>
   <div class="panel"><div class="label">TWA</div><div class="value"><span id="twd">0°</span></div></div>
@@ -370,12 +370,14 @@ scene.add(dolly);
 
 let vrSteer = 0;      // right thumbstick X → rudder
 let followYaw = null; // smoothed chase yaw so the rig swings gently behind the boat
+let vrOrbitYaw = 0;   // left thumbstick X → manual orbit offset around the boat
 let vrBtnA = false;   // edge detection for the A button (restart)
 
 renderer.xr.addEventListener('sessionstart', () => {
   if (gameState === 'menu') startGame(); // the DOM menu is invisible inside VR
   camZoom = 0.6; // start closer than the desktop chase view; left stick adjusts
   followYaw = null;
+  vrOrbitYaw = 0;
 });
 renderer.xr.addEventListener('sessionend', () => {
   dolly.position.set(0, 0, 0);
@@ -397,7 +399,9 @@ function pollVRInput(dt) {
       if (a && !vrBtnA && gameState === 'racing') restartRace();
       vrBtnA = a;
     } else if (src.handedness === 'left') {
-      const y = gp.axes[3] ?? 0; // push forward = closer, pull back = farther
+      const x = gp.axes[2] ?? 0; // orbit around the boat: push right = swing right
+      if (Math.abs(x) > 0.15) vrOrbitYaw -= x * 1.5 * dt;
+      const y = gp.axes[3] ?? 0; // push forward = zoom in, pull back = zoom out
       if (Math.abs(y) > 0.3) camZoom = Math.max(0.15, Math.min(6, camZoom * Math.exp(y * 1.2 * dt)));
     }
   }
@@ -410,14 +414,15 @@ function updateVRDolly(dt) {
   const targetYaw = boatGroup.rotation.y; // boat mesh yaw (= -heading); also set in replay
   if (followYaw === null) followYaw = targetYaw;
   followYaw += normAngle(targetYaw - followYaw) * (1 - Math.pow(0.1, dt));
-  const h = -followYaw;
+  const effYaw = followYaw + vrOrbitYaw; // manual orbit rides on top of the auto-follow
+  const h = -effYaw;
   const dist = CAM_DIST * camZoom;
   dolly.position.set(
     boatGroup.position.x - Math.sin(h) * dist * Math.cos(CAM_BASE_ELEV),
     dist * Math.sin(CAM_BASE_ELEV),
     boatGroup.position.z + Math.cos(h) * dist * Math.cos(CAM_BASE_ELEV)
   );
-  dolly.rotation.y = followYaw;
+  dolly.rotation.y = effYaw;
 }
 // =========================================================
 
