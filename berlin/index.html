@@ -153,7 +153,12 @@
 
 <div class="panel">
   <h1>Berlin Datenkarte</h1>
-  <div class="sub">OpenStreetMap-Basiskarte mit Statistik-Layern zu den 12 Berliner Bezirken.</div>
+  <div class="sub">OpenStreetMap-Basiskarte mit Statistik-Layern zu Berlin.</div>
+
+  <div class="layer-toggle">
+    <button id="btn-bezirke" class="active">Bezirke (12)</button>
+    <button id="btn-ortsteile">Ortsteile (96)</button>
+  </div>
 
   <div class="layer-toggle">
     <button id="btn-dichte" class="active">Bevölkerungsdichte</button>
@@ -187,9 +192,9 @@ const layers = {
     property: 'dichte',
     title: 'Einwohner je km²',
     unit: '',
-    stops: [1700, 2800, 5000, 7000, 9500, 13300],
+    stops: [150, 2000, 5000, 8000, 12000, 18000],
     colors: ['#1a3a6b', '#2a5aa0', '#3a86d8', '#5ec8e0', '#f2d24b', '#e8542f'],
-    source: 'Quelle: Amt für Statistik Berlin-Brandenburg / Wikipedia „Liste der Bezirke Berlins“, Stand 31.12.2025.'
+    source: 'Quelle: Amt für Statistik Berlin-Brandenburg / Wikipedia „Liste der Bezirke/Ortsteile Berlins“, Stand 31.12.2025.'
   },
   miete: {
     property: 'miete_eur_m2',
@@ -197,11 +202,18 @@ const layers = {
     unit: ' €',
     stops: [11.4, 12.5, 13.8, 15, 17, 24.4],
     colors: ['#1a3a6b', '#2a5aa0', '#3a86d8', '#5ec8e0', '#f2d24b', '#e8542f'],
-    source: 'Quelle: ImmoScout24 / Wohnungsboerse.net, Angebotsmieten Q1 2025 (Neuvermietung, nicht Bestandsmiete).'
+    source: 'Quelle: ImmoScout24 / Wohnungsboerse.net, Angebotsmieten Q1 2025 (Neuvermietung, nicht Bestandsmiete). Auf Ortsteil-Ebene als Bezirksdurchschnitt übernommen.'
   }
 };
 
+const granularities = {
+  bezirke: { file: 'bezirke.geojson', label: 'Bezirke (12)' },
+  ortsteile: { file: 'ortsteile.geojson', label: 'Ortsteile (96), Schlachtensee fehlt in der Quelle' }
+};
+
 let activeLayer = 'dichte';
+let activeGranularity = 'bezirke';
+const geojsonCache = {};
 
 function buildFillColorExpr(cfg) {
   const expr = ['interpolate', ['linear'], ['get', cfg.property]];
@@ -223,27 +235,47 @@ function updateLegend(cfg) {
 function setActiveLayer(name) {
   activeLayer = name;
   const cfg = layers[name];
-  if (map.getLayer('bezirke-fill')) {
-    map.setPaintProperty('bezirke-fill', 'fill-color', buildFillColorExpr(cfg));
+  if (map.getLayer('regionen-fill')) {
+    map.setPaintProperty('regionen-fill', 'fill-color', buildFillColorExpr(cfg));
   }
   document.getElementById('btn-dichte').classList.toggle('active', name === 'dichte');
   document.getElementById('btn-miete').classList.toggle('active', name === 'miete');
   updateLegend(cfg);
 }
 
+async function setActiveGranularity(name) {
+  activeGranularity = name;
+  document.getElementById('btn-bezirke').classList.toggle('active', name === 'bezirke');
+  document.getElementById('btn-ortsteile').classList.toggle('active', name === 'ortsteile');
+
+  if (!geojsonCache[name]) {
+    const res = await fetch(granularities[name].file);
+    geojsonCache[name] = await res.json();
+  }
+
+  const source = map.getSource('regionen');
+  if (source) {
+    source.setData(geojsonCache[name]);
+  }
+  map.setLayoutProperty('regionen-label', 'text-size', name === 'ortsteile' ? 10 : 12);
+}
+
 document.getElementById('btn-dichte').addEventListener('click', () => setActiveLayer('dichte'));
 document.getElementById('btn-miete').addEventListener('click', () => setActiveLayer('miete'));
+document.getElementById('btn-bezirke').addEventListener('click', () => setActiveGranularity('bezirke'));
+document.getElementById('btn-ortsteile').addEventListener('click', () => setActiveGranularity('ortsteile'));
 
 map.on('load', async () => {
-  const res = await fetch('bezirke.geojson');
+  const res = await fetch(granularities[activeGranularity].file);
   const geojson = await res.json();
+  geojsonCache[activeGranularity] = geojson;
 
-  map.addSource('bezirke', { type: 'geojson', data: geojson });
+  map.addSource('regionen', { type: 'geojson', data: geojson });
 
   map.addLayer({
-    id: 'bezirke-fill',
+    id: 'regionen-fill',
     type: 'fill',
-    source: 'bezirke',
+    source: 'regionen',
     paint: {
       'fill-color': buildFillColorExpr(layers[activeLayer]),
       'fill-opacity': 0.65
@@ -251,9 +283,9 @@ map.on('load', async () => {
   });
 
   map.addLayer({
-    id: 'bezirke-line',
+    id: 'regionen-line',
     type: 'line',
-    source: 'bezirke',
+    source: 'regionen',
     paint: {
       'line-color': '#0d1117',
       'line-width': 1.2
@@ -261,9 +293,9 @@ map.on('load', async () => {
   });
 
   map.addLayer({
-    id: 'bezirke-label',
+    id: 'regionen-label',
     type: 'symbol',
-    source: 'bezirke',
+    source: 'regionen',
     layout: {
       'text-field': ['get', 'name'],
       'text-size': 12,
@@ -280,12 +312,12 @@ map.on('load', async () => {
 
   const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
 
-  map.on('mousemove', 'bezirke-fill', (e) => {
+  map.on('mousemove', 'regionen-fill', (e) => {
     map.getCanvas().style.cursor = 'pointer';
     const p = e.features[0].properties;
     popup.setLngLat(e.lngLat).setHTML(`
       <div id="popup">
-        <h3>${p.name}</h3>
+        <h3>${p.name}${p.bezirk ? ' <span style=\"color:#888;font-weight:400\">(' + p.bezirk + ')</span>' : ''}</h3>
         <table>
           <tr><td>Einwohner</td><td>${Number(p.einwohner).toLocaleString('de-DE')}</td></tr>
           <tr><td>Fläche</td><td>${p.flaeche_km2} km²</td></tr>
@@ -296,7 +328,7 @@ map.on('load', async () => {
     `).addTo(map);
   });
 
-  map.on('mouseleave', 'bezirke-fill', () => {
+  map.on('mouseleave', 'regionen-fill', () => {
     map.getCanvas().style.cursor = '';
     popup.remove();
   });
