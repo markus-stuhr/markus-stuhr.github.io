@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Berlin Datenkarte – Markus Stuhr</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #0d1117;
+  }
+
+  #map { position: fixed; inset: 0; }
+
+  .panel {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 10;
+    background: rgba(20, 22, 26, 0.92);
+    color: #fff;
+    border-radius: 12px;
+    padding: 16px 18px;
+    width: 260px;
+    max-width: calc(100vw - 32px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    backdrop-filter: blur(6px);
+  }
+
+  .panel h1 {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .panel .sub {
+    font-size: 12px;
+    color: #9aa4b2;
+    margin-bottom: 14px;
+    line-height: 1.4;
+  }
+
+  .layer-toggle {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .layer-toggle button {
+    background: #1c1f26;
+    border: 1px solid #2c313c;
+    color: #d7dbe2;
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .layer-toggle button:hover { background: #262a33; }
+
+  .layer-toggle button.active {
+    background: #3a5ee8;
+    border-color: #3a5ee8;
+    color: #fff;
+    font-weight: 600;
+  }
+
+  .legend {
+    font-size: 11px;
+    color: #b7bfca;
+  }
+
+  .legend-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #7d8794;
+    margin-bottom: 6px;
+  }
+
+  .legend-scale {
+    height: 10px;
+    border-radius: 5px;
+    margin-bottom: 4px;
+  }
+
+  .legend-labels {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .source {
+    margin-top: 12px;
+    font-size: 10px;
+    color: #6b7684;
+    line-height: 1.4;
+  }
+
+  .source a { color: #6b7684; }
+
+  #popup {
+    font-family: inherit;
+  }
+
+  #popup h3 {
+    font-size: 14px;
+    margin-bottom: 6px;
+  }
+
+  #popup table {
+    font-size: 12px;
+    border-collapse: collapse;
+  }
+
+  #popup td {
+    padding: 2px 0;
+  }
+
+  #popup td:first-child {
+    color: #666;
+    padding-right: 10px;
+  }
+
+  .maplibregl-popup-content {
+    background: #1c1f26;
+    color: #fff;
+    border-radius: 8px;
+  }
+
+  .maplibregl-popup-tip {
+    border-top-color: #1c1f26 !important;
+    border-bottom-color: #1c1f26 !important;
+  }
+
+  @media (max-width: 480px) {
+    .panel { width: calc(100vw - 32px); }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div class="panel">
+  <h1>Berlin Datenkarte</h1>
+  <div class="sub">OpenStreetMap-Basiskarte mit Statistik-Layern zu den 12 Berliner Bezirken.</div>
+
+  <div class="layer-toggle">
+    <button id="btn-dichte" class="active">Bevölkerungsdichte</button>
+    <button id="btn-miete">Mietpreis (€/m²)</button>
+  </div>
+
+  <div class="legend">
+    <div class="legend-title" id="legend-title">Einwohner je km²</div>
+    <div class="legend-scale" id="legend-scale"></div>
+    <div class="legend-labels" id="legend-labels"></div>
+  </div>
+
+  <div class="source" id="source-text"></div>
+</div>
+
+<script>
+const MAPTILER_KEY = 'lT9jK8r0OXrZinP9JSOT';
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+  center: [13.405, 52.52],
+  zoom: 10.2,
+  pitch: 0,
+});
+
+map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+const layers = {
+  dichte: {
+    property: 'dichte',
+    title: 'Einwohner je km²',
+    unit: '',
+    stops: [1700, 2800, 5000, 7000, 9500, 13300],
+    colors: ['#1a3a6b', '#2a5aa0', '#3a86d8', '#5ec8e0', '#f2d24b', '#e8542f'],
+    source: 'Quelle: Amt für Statistik Berlin-Brandenburg / Wikipedia „Liste der Bezirke Berlins“, Stand 31.12.2025.'
+  },
+  miete: {
+    property: 'miete_eur_m2',
+    title: 'Angebotsmiete in €/m²',
+    unit: ' €',
+    stops: [11.4, 12.5, 13.8, 15, 17, 24.4],
+    colors: ['#1a3a6b', '#2a5aa0', '#3a86d8', '#5ec8e0', '#f2d24b', '#e8542f'],
+    source: 'Quelle: ImmoScout24 / Wohnungsboerse.net, Angebotsmieten Q1 2025 (Neuvermietung, nicht Bestandsmiete).'
+  }
+};
+
+let activeLayer = 'dichte';
+
+function buildFillColorExpr(cfg) {
+  const expr = ['interpolate', ['linear'], ['get', cfg.property]];
+  cfg.stops.forEach((s, i) => {
+    expr.push(s, cfg.colors[i]);
+  });
+  return expr;
+}
+
+function updateLegend(cfg) {
+  document.getElementById('legend-title').textContent = cfg.title;
+  const gradient = `linear-gradient(to right, ${cfg.colors.join(',')})`;
+  document.getElementById('legend-scale').style.background = gradient;
+  document.getElementById('legend-labels').innerHTML =
+    `<span>${cfg.stops[0]}${cfg.unit}</span><span>${cfg.stops[cfg.stops.length - 1]}${cfg.unit}</span>`;
+  document.getElementById('source-text').innerHTML = cfg.source;
+}
+
+function setActiveLayer(name) {
+  activeLayer = name;
+  const cfg = layers[name];
+  if (map.getLayer('bezirke-fill')) {
+    map.setPaintProperty('bezirke-fill', 'fill-color', buildFillColorExpr(cfg));
+  }
+  document.getElementById('btn-dichte').classList.toggle('active', name === 'dichte');
+  document.getElementById('btn-miete').classList.toggle('active', name === 'miete');
+  updateLegend(cfg);
+}
+
+document.getElementById('btn-dichte').addEventListener('click', () => setActiveLayer('dichte'));
+document.getElementById('btn-miete').addEventListener('click', () => setActiveLayer('miete'));
+
+map.on('load', async () => {
+  const res = await fetch('bezirke.geojson');
+  const geojson = await res.json();
+
+  map.addSource('bezirke', { type: 'geojson', data: geojson });
+
+  map.addLayer({
+    id: 'bezirke-fill',
+    type: 'fill',
+    source: 'bezirke',
+    paint: {
+      'fill-color': buildFillColorExpr(layers[activeLayer]),
+      'fill-opacity': 0.65
+    }
+  });
+
+  map.addLayer({
+    id: 'bezirke-line',
+    type: 'line',
+    source: 'bezirke',
+    paint: {
+      'line-color': '#0d1117',
+      'line-width': 1.2
+    }
+  });
+
+  map.addLayer({
+    id: 'bezirke-label',
+    type: 'symbol',
+    source: 'bezirke',
+    layout: {
+      'text-field': ['get', 'name'],
+      'text-size': 12,
+      'text-font': ['Noto Sans Regular']
+    },
+    paint: {
+      'text-color': '#fff',
+      'text-halo-color': '#000',
+      'text-halo-width': 1.2
+    }
+  });
+
+  updateLegend(layers[activeLayer]);
+
+  const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+
+  map.on('mousemove', 'bezirke-fill', (e) => {
+    map.getCanvas().style.cursor = 'pointer';
+    const p = e.features[0].properties;
+    popup.setLngLat(e.lngLat).setHTML(`
+      <div id="popup">
+        <h3>${p.name}</h3>
+        <table>
+          <tr><td>Einwohner</td><td>${Number(p.einwohner).toLocaleString('de-DE')}</td></tr>
+          <tr><td>Fläche</td><td>${p.flaeche_km2} km²</td></tr>
+          <tr><td>Dichte</td><td>${Number(p.dichte).toLocaleString('de-DE')} / km²</td></tr>
+          <tr><td>Miete</td><td>${p.miete_eur_m2} €/m²</td></tr>
+        </table>
+      </div>
+    `).addTo(map);
+  });
+
+  map.on('mouseleave', 'bezirke-fill', () => {
+    map.getCanvas().style.cursor = '';
+    popup.remove();
+  });
+});
+</script>
+
+</body>
+</html>
