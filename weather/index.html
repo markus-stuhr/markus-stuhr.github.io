@@ -260,7 +260,6 @@ function setLayer(layer) {
   }
   setSymbolMarkersVisible(layer === 'symbols');
 
-  if (hasFill) applyGridPaint();
   if (layer !== 'radar') {
     updateLegend();
     loadGrid();
@@ -401,43 +400,38 @@ function resolveTarget() {
   return { date: target.toISOString().slice(0, 10), hour: 12, mode: 'forecast' };
 }
 
-// --- Grid-Fläche: Raster über den sichtbaren Kartenausschnitt ---
-const GRID_COLS = 9;
-const GRID_ROWS = 7;
+// --- Grid-Fläche: fein gerastert + weichgezeichnet, als Bild-Overlay statt einzelner Kästen ---
+// Open-Meteo erlaubt max. 100 Orte pro Abfrage (Elevation-API testweise ermittelt: 100 ok, 120 -> 400)
+const GRID_COLS = 10;
+const GRID_ROWS = 10;
 const GRID_SOURCE_ID = 'weather-grid';
 const GRID_LAYER_ID = 'weather-grid-fill';
+const CELL_PX = 28;   // Canvas-Pixel pro Zelle vor dem Blur
+const BLUR_PX = 9;    // Weichzeichnungsradius — glättet Zellgrenzen, ohne lokale Extreme zu verwischen
+const TRANSPARENT_PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
 map.on('load', () => {
   // Ohne beforeId: Layer landen ganz oben im Stack, über allen Basiskarten-Flächen.
-  map.addSource(GRID_SOURCE_ID, { type: 'geojson', data: emptyFC() });
+  const b = map.getBounds();
+  map.addSource(GRID_SOURCE_ID, {
+    type: 'image',
+    url: TRANSPARENT_PIXEL,
+    coordinates: boundsToCoords(b)
+  });
   map.addLayer({
     id: GRID_LAYER_ID,
-    type: 'fill',
+    type: 'raster',
     source: GRID_SOURCE_ID,
-    paint: { 'fill-color': '#888', 'fill-opacity': 0.55 }
+    paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 }
   });
-  applyGridPaint();
   updateLegend();
   loadGrid();
   loadRadarFrames();
 });
 
-function emptyFC() { return { type: 'FeatureCollection', features: [] }; }
-
-function applyGridPaint() {
-  if (!map.getLayer(GRID_LAYER_ID)) return;
-
-  if (activeLayer === 'clouds') {
-    // Weiße Fläche, Deckkraft proportional zur Bewölkung: 0% unsichtbar, 100% voll weiß
-    map.setPaintProperty(GRID_LAYER_ID, 'fill-color', '#ffffff');
-    map.setPaintProperty(GRID_LAYER_ID, 'fill-opacity', ['interpolate', ['linear'], ['get', 'cloudCover'], 0, 0, 100, 1]);
-    return;
-  }
-
-  const meta = LAYER_META[activeLayer];
-  if (!meta) return;
-  map.setPaintProperty(GRID_LAYER_ID, 'fill-color', interpolateExpr(meta.field, meta.stops));
-  map.setPaintProperty(GRID_LAYER_ID, 'fill-opacity', 0.55);
+function boundsToCoords(bounds) {
+  const w = bounds.getWest(), e = bounds.getEast(), s = bounds.getSouth(), n = bounds.getNorth();
+  return [[w, n], [e, n], [e, s], [w, s]];
 }
 
 function buildGridPoints() {
@@ -448,20 +442,59 @@ function buildGridPoints() {
   const dy = (north - south) / GRID_ROWS;
 
   const points = [];
-  const cells = [];
   for (let r = 0; r < GRID_ROWS; r++) {
     for (let c = 0; c < GRID_COLS; c++) {
-      const cellW = west + c * dx;
-      const cellE = west + (c + 1) * dx;
-      const cellS = south + r * dy;
-      const cellN = south + (r + 1) * dy;
-      const lng = (cellW + cellE) / 2;
-      const lat = (cellS + cellN) / 2;
+      const lng = west + (c + 0.5) * dx;
+      const lat = south + (r + 0.5) * dy;
       points.push({ lng, lat });
-      cells.push([cellW, cellS, cellE, cellN]);
     }
   }
-  return { points, cells };
+  return { points, bounds };
+}
+
+// Bestimmt Farbe + Deckkraft einer Zelle für den aktuellen Layer; null = Zelle bleibt transparent
+function cellStyle(layer, props) {
+  if (layer === 'clouds') {
+    if (props.cloudCover == null) return null;
+    return { color: '#ffffff', alpha: props.cloudCover / 100 };
+  }
+  const meta = LAYER_META[layer];
+  if (!meta) return null;
+  const value = props[meta.field];
+  if (value == null) return null;
+  return { color: colorFromStops(meta.stops, value), alpha: 0.65 };
+}
+
+// Rendert die Zellwerte auf eine Canvas, weichzeichnet sie und legt sie als Bild-Overlay auf die Karte
+function renderGridImage(layer, propsList, bounds) {
+  const w = GRID_COLS * CELL_PX, h = GRID_ROWS * CELL_PX;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  propsList.forEach((props, i) => {
+    const style = cellStyle(layer, props);
+    if (!style) return;
+    const col = i % GRID_COLS;
+    const row = Math.floor(i / GRID_COLS);
+    const x = col * CELL_PX;
+    const y = (GRID_ROWS - 1 - row) * CELL_PX; // row 0 = Süden = unten in Lat, aber oben im Canvas ist Norden
+    ctx.globalAlpha = style.alpha;
+    ctx.fillStyle = style.color;
+    ctx.fillRect(x, y, CELL_PX, CELL_PX);
+  });
+
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width = w; blurCanvas.height = h;
+  const bctx = blurCanvas.getContext('2d');
+  bctx.filter = `blur(${BLUR_PX}px)`;
+  bctx.drawImage(canvas, 0, 0);
+
+  const src = map.getSource(GRID_SOURCE_ID);
+  if (src) {
+    src.updateImage({ url: blurCanvas.toDataURL(), coordinates: boundsToCoords(bounds) });
+    map.triggerRepaint();
+  }
 }
 
 let gridRequestId = 0;
@@ -478,18 +511,9 @@ function loadGrid() {
   }, 400);
 }
 
-function makeFeature(cell, properties) {
-  const [w, s, e, n] = cell;
-  return {
-    type: 'Feature',
-    properties,
-    geometry: { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }
-  };
-}
-
 async function fetchWeatherGrid() {
   const requestId = ++gridRequestId;
-  const { points, cells } = buildGridPoints();
+  const { points, bounds } = buildGridPoints();
   const target = resolveTarget();
   const base = target.mode === 'archive'
     ? 'https://archive-api.open-meteo.com/v1/archive'
@@ -513,18 +537,19 @@ async function fetchWeatherGrid() {
 
     if (requestId !== gridRequestId) return; // veraltete Antwort verwerfen
 
-    const features = data.map((loc, i) => {
+    const propsList = data.map(loc => {
       const hours = loc.hourly.time;
       let idx = hours.findIndex(t => new Date(t).getUTCHours() === target.hour);
       if (idx === -1) idx = Math.floor(hours.length / 2);
-      const temp = loc.hourly.temperature_2m[idx];
-      const precip = loc.hourly.precipitation[idx];
-      const weathercode = loc.hourly.weathercode ? loc.hourly.weathercode[idx] : null;
-      const cloudCover = loc.hourly.cloud_cover ? loc.hourly.cloud_cover[idx] : null;
-      return makeFeature(cells[i], { temp, precip, weathercode, cloudCover });
+      return {
+        temp: loc.hourly.temperature_2m[idx],
+        precip: loc.hourly.precipitation[idx],
+        weathercode: loc.hourly.weathercode ? loc.hourly.weathercode[idx] : null,
+        cloudCover: loc.hourly.cloud_cover ? loc.hourly.cloud_cover[idx] : null
+      };
     });
 
-    map.getSource(GRID_SOURCE_ID).setData({ type: 'FeatureCollection', features });
+    renderGridImage(activeLayer, propsList, bounds);
     setStatus('');
   } catch (err) {
     console.error(err);
@@ -597,7 +622,7 @@ async function fetchSymbolsGrid() {
 
 async function fetchElevationGrid() {
   const requestId = ++gridRequestId;
-  const { points, cells } = buildGridPoints();
+  const { points, bounds } = buildGridPoints();
 
   const params = new URLSearchParams({
     latitude: points.map(p => p.lat.toFixed(3)).join(','),
@@ -612,8 +637,8 @@ async function fetchElevationGrid() {
 
     if (requestId !== gridRequestId) return;
 
-    const features = data.elevation.map((elevation, i) => makeFeature(cells[i], { elevation }));
-    map.getSource(GRID_SOURCE_ID).setData({ type: 'FeatureCollection', features });
+    const propsList = data.elevation.map(elevation => ({ elevation }));
+    renderGridImage('elevation', propsList, bounds);
     setStatus('');
   } catch (err) {
     console.error(err);
@@ -623,7 +648,7 @@ async function fetchElevationGrid() {
 
 async function fetchFloodGrid() {
   const requestId = ++gridRequestId;
-  const { points, cells } = buildGridPoints();
+  const { points, bounds } = buildGridPoints();
   const target = resolveTarget();
 
   const params = new URLSearchParams({
@@ -643,15 +668,14 @@ async function fetchFloodGrid() {
 
     if (requestId !== gridRequestId) return;
 
-    const features = [];
-    data.forEach((loc, i) => {
+    const propsList = data.map(loc => {
       const discharge = loc.daily.river_discharge[0];
       const mean = loc.daily.river_discharge_mean[0];
-      if (discharge == null || mean == null || mean === 0) return; // kein Fluss an diesem Punkt
-      features.push(makeFeature(cells[i], { floodRatio: discharge / mean, discharge, mean }));
+      if (discharge == null || mean == null || mean === 0) return { floodRatio: null };
+      return { floodRatio: discharge / mean };
     });
 
-    map.getSource(GRID_SOURCE_ID).setData({ type: 'FeatureCollection', features });
+    renderGridImage('flood', propsList, bounds);
     setStatus('');
   } catch (err) {
     console.error(err);
