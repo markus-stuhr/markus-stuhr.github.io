@@ -158,6 +158,7 @@
   <div class="layer-toggle">
     <button id="btnTemp" class="active">Temperatur</button>
     <button id="btnPrecip">Niederschlag</button>
+    <button id="btnClouds">Wolken</button>
     <button id="btnElevation">Höhe</button>
     <button id="btnFlood">Hochwasser</button>
     <button id="btnRadar">Regenradar</button>
@@ -224,18 +225,19 @@ pastDate.addEventListener('change', loadGrid);
 let activeLayer = 'temp'; // 'temp' | 'precip' | 'elevation' | 'flood' | 'radar' | 'symbols'
 const btnTemp = document.getElementById('btnTemp');
 const btnPrecip = document.getElementById('btnPrecip');
+const btnClouds = document.getElementById('btnClouds');
 const btnElevation = document.getElementById('btnElevation');
 const btnFlood = document.getElementById('btnFlood');
 const btnRadar = document.getElementById('btnRadar');
 const btnSymbols = document.getElementById('btnSymbols');
-const layerButtons = { temp: btnTemp, precip: btnPrecip, elevation: btnElevation, flood: btnFlood, radar: btnRadar, symbols: btnSymbols };
+const layerButtons = { temp: btnTemp, precip: btnPrecip, clouds: btnClouds, elevation: btnElevation, flood: btnFlood, radar: btnRadar, symbols: btnSymbols };
 const radarWrap = document.getElementById('radarWrap');
 const legendEl = document.getElementById('legend');
 
 Object.entries(layerButtons).forEach(([layer, btn]) => btn.addEventListener('click', () => setLayer(layer)));
 
-// Zeitpunkt ist für Temperatur/Niederschlag/Hochwasser/Symbole relevant (Höhe ist statisch, Radar hat eigene Zeitachse)
-const TIME_DEPENDENT_LAYERS = ['temp', 'precip', 'flood', 'symbols'];
+// Zeitpunkt ist für Temperatur/Niederschlag/Wolken/Hochwasser/Symbole relevant (Höhe ist statisch, Radar hat eigene Zeitachse)
+const TIME_DEPENDENT_LAYERS = ['temp', 'precip', 'clouds', 'flood', 'symbols'];
 // Layer ohne Farbfläche (nutzen einen eigenen Layer statt GRID_LAYER_ID)
 const NO_FILL_LAYERS = ['radar', 'symbols'];
 
@@ -354,12 +356,26 @@ function interpolateExpr(field, stops) {
 }
 
 function updateLegend() {
+  const ticks = document.getElementById('legendTicks');
+  const bar = document.getElementById('legendBar');
+
+  if (activeLayer === 'clouds') {
+    // Weiß = 100% Bewölkung, transparent = 0% — Verlauf über einem blauen Hintergrund sichtbar gemacht
+    bar.style.background = 'linear-gradient(to right, #2563eb, rgba(255,255,255,1))';
+    ticks.innerHTML = '';
+    [0, 50, 100].forEach(v => {
+      const span = document.createElement('span');
+      span.textContent = `${v}%`;
+      ticks.appendChild(span);
+    });
+    return;
+  }
+
   const meta = LAYER_META[activeLayer];
   if (!meta) return;
   const { stops, unit } = meta;
   const colors = stops.map(s => s[1]).join(',');
-  document.getElementById('legendBar').style.background = `linear-gradient(to right, ${colors})`;
-  const ticks = document.getElementById('legendTicks');
+  bar.style.background = `linear-gradient(to right, ${colors})`;
   ticks.innerHTML = '';
   [stops[0][0], stops[Math.floor(stops.length / 2)][0], stops[stops.length - 1][0]].forEach(v => {
     const span = document.createElement('span');
@@ -410,9 +426,18 @@ function emptyFC() { return { type: 'FeatureCollection', features: [] }; }
 
 function applyGridPaint() {
   if (!map.getLayer(GRID_LAYER_ID)) return;
+
+  if (activeLayer === 'clouds') {
+    // Weiße Fläche, Deckkraft proportional zur Bewölkung: 0% unsichtbar, 100% voll weiß
+    map.setPaintProperty(GRID_LAYER_ID, 'fill-color', '#ffffff');
+    map.setPaintProperty(GRID_LAYER_ID, 'fill-opacity', ['interpolate', ['linear'], ['get', 'cloudCover'], 0, 0, 100, 1]);
+    return;
+  }
+
   const meta = LAYER_META[activeLayer];
   if (!meta) return;
   map.setPaintProperty(GRID_LAYER_ID, 'fill-color', interpolateExpr(meta.field, meta.stops));
+  map.setPaintProperty(GRID_LAYER_ID, 'fill-opacity', 0.55);
 }
 
 function buildGridPoints() {
@@ -639,13 +664,18 @@ map.on('moveend', loadGrid);
 // --- Einzelpunkt-Abfrage per Klick (exakter Wert, lokale Zeitzone) ---
 let currentMarker = null;
 
-function placeMarker(lngLat, label, color, popupHtml) {
+function placeMarker(lngLat, label, color, popupHtml, darkText) {
   if (currentMarker) currentMarker.remove();
 
   const el = document.createElement('div');
   el.className = 'weather-marker';
   el.style.background = color;
   el.textContent = label;
+  if (darkText) {
+    el.style.color = '#1e3a8a';
+    el.style.textShadow = 'none';
+    el.style.border = '2px solid rgba(30,58,138,0.6)';
+  }
 
   currentMarker = new maplibregl.Marker({ element: el })
     .setLngLat(lngLat)
@@ -732,6 +762,8 @@ async function queryWeather(lngLat) {
 
     if (activeLayer === 'symbols') {
       placeSymbolMarker(lngLat, icon, popupHtml);
+    } else if (activeLayer === 'clouds') {
+      placeMarker(lngLat, `${cloudCover}%`, `rgba(255,255,255,${(cloudCover / 100).toFixed(2)})`, popupHtml, true);
     } else {
       const label = activeLayer === 'temp' ? `${Math.round(temp)}°` : `${precip.toFixed(1)}`;
       const color = activeLayer === 'temp' ? tempColor(temp) : precipColor(precip);
