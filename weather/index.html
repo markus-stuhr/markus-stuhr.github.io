@@ -43,11 +43,12 @@
   }
   .layer-toggle {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     margin-top: 8px;
   }
   .layer-toggle button {
-    flex: 1;
+    flex: 1 1 calc(33% - 4px);
     padding: 6px 4px;
     border: 1px solid #ccc;
     background: #f2f2f2;
@@ -151,6 +152,8 @@
   <div class="layer-toggle">
     <button id="btnTemp" class="active">Temperatur</button>
     <button id="btnPrecip">Niederschlag</button>
+    <button id="btnElevation">Höhe</button>
+    <button id="btnFlood">Hochwasser</button>
     <button id="btnRadar">Regenradar</button>
   </div>
 
@@ -211,28 +214,30 @@ timeSelect.addEventListener('change', () => {
 pastDate.addEventListener('change', loadGrid);
 
 // --- Layer-Umschalter ---
-let activeLayer = 'temp'; // 'temp' | 'precip' | 'radar'
+let activeLayer = 'temp'; // 'temp' | 'precip' | 'elevation' | 'flood' | 'radar'
 const btnTemp = document.getElementById('btnTemp');
 const btnPrecip = document.getElementById('btnPrecip');
+const btnElevation = document.getElementById('btnElevation');
+const btnFlood = document.getElementById('btnFlood');
 const btnRadar = document.getElementById('btnRadar');
+const layerButtons = { temp: btnTemp, precip: btnPrecip, elevation: btnElevation, flood: btnFlood, radar: btnRadar };
 const radarWrap = document.getElementById('radarWrap');
 const legendEl = document.getElementById('legend');
-const timeSelectWrap = timeSelect.parentElement;
-btnTemp.addEventListener('click', () => setLayer('temp'));
-btnPrecip.addEventListener('click', () => setLayer('precip'));
-btnRadar.addEventListener('click', () => setLayer('radar'));
+
+Object.entries(layerButtons).forEach(([layer, btn]) => btn.addEventListener('click', () => setLayer(layer)));
+
+// Zeitpunkt ist nur für Temperatur/Niederschlag/Hochwasser relevant (Höhe ist statisch, Radar hat eigene Zeitachse)
+const TIME_DEPENDENT_LAYERS = ['temp', 'precip', 'flood'];
 
 function setLayer(layer) {
   activeLayer = layer;
-  btnTemp.classList.toggle('active', layer === 'temp');
-  btnPrecip.classList.toggle('active', layer === 'precip');
-  btnRadar.classList.toggle('active', layer === 'radar');
+  Object.entries(layerButtons).forEach(([l, btn]) => btn.classList.toggle('active', l === layer));
 
   const isRadar = layer === 'radar';
   radarWrap.style.display = isRadar ? 'block' : 'none';
   legendEl.style.display = isRadar ? 'none' : 'block';
-  timeSelect.disabled = isRadar;
-  pastDate.disabled = isRadar;
+  timeSelect.disabled = !TIME_DEPENDENT_LAYERS.includes(layer);
+  pastDate.disabled = timeSelect.disabled;
 
   if (map.getLayer(GRID_LAYER_ID)) {
     map.setLayoutProperty(GRID_LAYER_ID, 'visibility', isRadar ? 'none' : 'visible');
@@ -244,6 +249,7 @@ function setLayer(layer) {
   if (!isRadar) {
     applyGridPaint();
     updateLegend();
+    loadGrid();
   }
 }
 
@@ -262,6 +268,23 @@ const PRECIP_STOPS = [
   [0, '#9ca3af'], [0.5, '#93c5fd'], [2, '#3b82f6'],
   [5, '#1d4ed8'], [10, '#1e3a8a'], [20, '#4c1d95']
 ];
+const ELEV_STOPS = [
+  [0, '#2563eb'], [200, '#22c55e'], [600, '#eab308'],
+  [1200, '#f97316'], [2000, '#92400e'], [3500, '#f5f5f4']
+];
+// Verhältnis aktueller Abfluss / langjähriges Mittel — >1 heißt überdurchschnittlich viel Wasser im Fluss
+const FLOOD_STOPS = [
+  [0.7, '#9ca3af'], [1.2, '#60a5fa'], [1.8, '#fbbf24'],
+  [2.5, '#f97316'], [4, '#dc2626']
+];
+
+// Layer-Konfiguration: welches GeoJSON-Feld, welche Farbskala, welche Einheit
+const LAYER_META = {
+  temp:      { field: 'temp',       stops: TEMP_STOPS,   unit: '°C' },
+  precip:    { field: 'precip',     stops: PRECIP_STOPS, unit: 'mm' },
+  elevation: { field: 'elevation',  stops: ELEV_STOPS,   unit: 'm' },
+  flood:     { field: 'floodRatio', stops: FLOOD_STOPS,  unit: '×' }
+};
 
 function colorFromStops(stops, value) {
   if (value <= stops[0][0]) return stops[0][1];
@@ -272,6 +295,8 @@ function colorFromStops(stops, value) {
 }
 function tempColor(t) { return colorFromStops(TEMP_STOPS, t); }
 function precipColor(mm) { return colorFromStops(PRECIP_STOPS, mm); }
+function elevationColor(m) { return colorFromStops(ELEV_STOPS, m); }
+function floodColor(ratio) { return colorFromStops(FLOOD_STOPS, ratio); }
 
 function interpolateExpr(field, stops) {
   const expr = ['interpolate', ['linear'], ['get', field]];
@@ -280,8 +305,9 @@ function interpolateExpr(field, stops) {
 }
 
 function updateLegend() {
-  const stops = activeLayer === 'temp' ? TEMP_STOPS : PRECIP_STOPS;
-  const unit = activeLayer === 'temp' ? '°C' : 'mm';
+  const meta = LAYER_META[activeLayer];
+  if (!meta) return;
+  const { stops, unit } = meta;
   const colors = stops.map(s => s[1]).join(',');
   document.getElementById('legendBar').style.background = `linear-gradient(to right, ${colors})`;
   const ticks = document.getElementById('legendTicks');
@@ -335,9 +361,9 @@ function emptyFC() { return { type: 'FeatureCollection', features: [] }; }
 
 function applyGridPaint() {
   if (!map.getLayer(GRID_LAYER_ID)) return;
-  const field = activeLayer === 'temp' ? 'temp' : 'precip';
-  const stops = activeLayer === 'temp' ? TEMP_STOPS : PRECIP_STOPS;
-  map.setPaintProperty(GRID_LAYER_ID, 'fill-color', interpolateExpr(field, stops));
+  const meta = LAYER_META[activeLayer];
+  if (!meta) return;
+  map.setPaintProperty(GRID_LAYER_ID, 'fill-color', interpolateExpr(meta.field, meta.stops));
 }
 
 function buildGridPoints() {
@@ -368,11 +394,25 @@ let gridRequestId = 0;
 let gridDebounce = null;
 
 function loadGrid() {
+  if (activeLayer === 'radar') return;
   clearTimeout(gridDebounce);
-  gridDebounce = setTimeout(fetchGrid, 400);
+  gridDebounce = setTimeout(() => {
+    if (activeLayer === 'elevation') fetchElevationGrid();
+    else if (activeLayer === 'flood') fetchFloodGrid();
+    else fetchWeatherGrid();
+  }, 400);
 }
 
-async function fetchGrid() {
+function makeFeature(cell, properties) {
+  const [w, s, e, n] = cell;
+  return {
+    type: 'Feature',
+    properties,
+    geometry: { type: 'Polygon', coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]] }
+  };
+}
+
+async function fetchWeatherGrid() {
   const requestId = ++gridRequestId;
   const { points, cells } = buildGridPoints();
   const target = resolveTarget();
@@ -404,15 +444,7 @@ async function fetchGrid() {
       if (idx === -1) idx = Math.floor(hours.length / 2);
       const temp = loc.hourly.temperature_2m[idx];
       const precip = loc.hourly.precipitation[idx];
-      const [w, s, e, n] = cells[i];
-      return {
-        type: 'Feature',
-        properties: { temp, precip },
-        geometry: {
-          type: 'Polygon',
-          coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]]
-        }
-      };
+      return makeFeature(cells[i], { temp, precip });
     });
 
     map.getSource(GRID_SOURCE_ID).setData({ type: 'FeatureCollection', features });
@@ -423,10 +455,96 @@ async function fetchGrid() {
   }
 }
 
+async function fetchElevationGrid() {
+  const requestId = ++gridRequestId;
+  const { points, cells } = buildGridPoints();
+
+  const params = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(3)).join(','),
+    longitude: points.map(p => p.lng.toFixed(3)).join(',')
+  });
+
+  setStatus('Lade Höhendaten …');
+  try {
+    const res = await fetch(`https://api.open-meteo.com/v1/elevation?${params.toString()}`);
+    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    const data = await res.json();
+
+    if (requestId !== gridRequestId) return;
+
+    const features = data.elevation.map((elevation, i) => makeFeature(cells[i], { elevation }));
+    map.getSource(GRID_SOURCE_ID).setData({ type: 'FeatureCollection', features });
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    if (requestId === gridRequestId) setStatus('Fehler beim Laden der Höhendaten.', true);
+  }
+}
+
+async function fetchFloodGrid() {
+  const requestId = ++gridRequestId;
+  const { points, cells } = buildGridPoints();
+  const target = resolveTarget();
+
+  const params = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(3)).join(','),
+    longitude: points.map(p => p.lng.toFixed(3)).join(','),
+    daily: 'river_discharge,river_discharge_mean',
+    start_date: target.date,
+    end_date: target.date
+  });
+
+  setStatus('Lade Hochwasserdaten …');
+  try {
+    const res = await fetch(`https://flood-api.open-meteo.com/v1/flood?${params.toString()}`);
+    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    let data = await res.json();
+    if (!Array.isArray(data)) data = [data];
+
+    if (requestId !== gridRequestId) return;
+
+    const features = [];
+    data.forEach((loc, i) => {
+      const discharge = loc.daily.river_discharge[0];
+      const mean = loc.daily.river_discharge_mean[0];
+      if (discharge == null || mean == null || mean === 0) return; // kein Fluss an diesem Punkt
+      features.push(makeFeature(cells[i], { floodRatio: discharge / mean, discharge, mean }));
+    });
+
+    map.getSource(GRID_SOURCE_ID).setData({ type: 'FeatureCollection', features });
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    if (requestId === gridRequestId) setStatus('Fehler beim Laden der Hochwasserdaten.', true);
+  }
+}
+
 map.on('moveend', loadGrid);
 
 // --- Einzelpunkt-Abfrage per Klick (exakter Wert, lokale Zeitzone) ---
 let currentMarker = null;
+
+function placeMarker(lngLat, label, color, popupHtml) {
+  if (currentMarker) currentMarker.remove();
+
+  const el = document.createElement('div');
+  el.className = 'weather-marker';
+  el.style.background = color;
+  el.textContent = label;
+
+  currentMarker = new maplibregl.Marker({ element: el })
+    .setLngLat(lngLat)
+    .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml))
+    .addTo(map)
+    .togglePopup();
+}
+
+async function queryPoint(lngLat) {
+  if (activeLayer === 'radar') return; // Radar hat keinen sinnvollen Einzelpunkt-Wert
+  if (activeLayer === 'elevation') return queryElevation(lngLat);
+  if (activeLayer === 'flood') return queryFlood(lngLat);
+  return queryWeather(lngLat);
+}
 
 async function queryWeather(lngLat) {
   const { lng, lat } = lngLat;
@@ -471,7 +589,14 @@ async function queryWeather(lngLat) {
     const precip = data.hourly.precipitation[idx];
     const timeLabel = hours[idx].replace('T', ' ');
 
-    showMarker(lngLat, temp, precip, timeLabel);
+    const label = activeLayer === 'temp' ? `${Math.round(temp)}°` : `${precip.toFixed(1)}`;
+    const color = activeLayer === 'temp' ? tempColor(temp) : precipColor(precip);
+    const popupHtml = `
+      <strong>${timeLabel}</strong><br>
+      🌡️ ${temp.toFixed(1)} °C<br>
+      🌧️ ${precip.toFixed(1)} mm
+    `;
+    placeMarker(lngLat, label, color, popupHtml);
     setStatus('');
   } catch (err) {
     console.error(err);
@@ -479,37 +604,61 @@ async function queryWeather(lngLat) {
   }
 }
 
-function showMarker(lngLat, temp, precip, timeLabel) {
-  if (currentMarker) currentMarker.remove();
+async function queryElevation(lngLat) {
+  const { lng, lat } = lngLat;
+  setStatus('Lade Höhe …');
+  try {
+    const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`);
+    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    const data = await res.json();
+    const elevation = data.elevation[0];
 
-  const el = document.createElement('div');
-  el.className = 'weather-marker';
-
-  let label, color;
-  if (activeLayer === 'temp') {
-    label = `${Math.round(temp)}°`;
-    color = tempColor(temp);
-  } else {
-    label = `${precip.toFixed(1)}`;
-    color = precipColor(precip);
+    placeMarker(lngLat, `${Math.round(elevation)}`, elevationColor(elevation), `⛰️ ${elevation.toFixed(0)} m ü. NN`);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus('Fehler beim Laden der Höhe.', true);
   }
-  el.style.background = color;
-  el.textContent = label;
-
-  const popupHtml = `
-    <strong>${timeLabel}</strong><br>
-    🌡️ ${temp.toFixed(1)} °C<br>
-    🌧️ ${precip.toFixed(1)} mm
-  `;
-
-  currentMarker = new maplibregl.Marker({ element: el })
-    .setLngLat(lngLat)
-    .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml))
-    .addTo(map)
-    .togglePopup();
 }
 
-map.on('click', (e) => queryWeather(e.lngLat));
+async function queryFlood(lngLat) {
+  const { lng, lat } = lngLat;
+  const target = resolveTarget();
+  const params = new URLSearchParams({
+    latitude: lat.toFixed(4),
+    longitude: lng.toFixed(4),
+    daily: 'river_discharge,river_discharge_mean',
+    start_date: target.date,
+    end_date: target.date
+  });
+
+  setStatus('Lade Hochwasserdaten …');
+  try {
+    const res = await fetch(`https://flood-api.open-meteo.com/v1/flood?${params.toString()}`);
+    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    const data = await res.json();
+    const discharge = data.daily.river_discharge[0];
+    const mean = data.daily.river_discharge_mean[0];
+
+    if (discharge == null || mean == null || mean === 0) {
+      setStatus('Kein Fluss-Modell an diesem Punkt verfügbar.', true);
+      return;
+    }
+    const ratio = discharge / mean;
+    const popupHtml = `
+      📅 ${target.date}<br>
+      🌊 Abfluss: ${discharge.toFixed(1)} m³/s<br>
+      📊 Mittel: ${mean.toFixed(1)} m³/s (${ratio.toFixed(2)}×)
+    `;
+    placeMarker(lngLat, `${ratio.toFixed(1)}×`, floodColor(ratio), popupHtml);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus('Fehler beim Laden der Hochwasserdaten.', true);
+  }
+}
+
+map.on('click', (e) => queryPoint(e.lngLat));
 
 // --- RainViewer Regenradar ---
 const RADAR_SOURCE_ID = 'radar-tiles';

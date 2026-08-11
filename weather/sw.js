@@ -1,5 +1,5 @@
 const CACHE_NAME = 'open-meteo-cache-v1';
-const CACHEABLE_HOSTS = ['api.open-meteo.com', 'archive-api.open-meteo.com'];
+const CACHEABLE_HOSTS = ['api.open-meteo.com', 'archive-api.open-meteo.com', 'flood-api.open-meteo.com'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
