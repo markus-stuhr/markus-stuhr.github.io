@@ -87,6 +87,44 @@
     box-shadow: 0 1px 6px rgba(0,0,0,0.4);
     text-shadow: 0 1px 2px rgba(0,0,0,0.4);
   }
+
+  #radarWrap {
+    margin-top: 10px;
+  }
+  #radarWrap input[type=range] {
+    width: 100%;
+  }
+  #radarTimeLabel {
+    display: block;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #2563eb;
+    margin-top: 2px;
+  }
+
+  #legend {
+    position: absolute;
+    bottom: 24px;
+    left: 12px;
+    z-index: 5;
+    background: rgba(255,255,255,0.95);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    padding: 8px 10px;
+    font-size: 11px;
+    color: #333;
+  }
+  #legend .bar {
+    width: 200px;
+    height: 10px;
+    border-radius: 5px;
+    margin-bottom: 4px;
+  }
+  #legend .ticks {
+    display: flex;
+    justify-content: space-between;
+  }
 </style>
 </head>
 <body>
@@ -113,15 +151,31 @@
   <div class="layer-toggle">
     <button id="btnTemp" class="active">Temperatur</button>
     <button id="btnPrecip">Niederschlag</button>
+    <button id="btnRadar">Regenradar</button>
+  </div>
+
+  <div id="radarWrap" style="display:none;">
+    <label for="radarSlider">Radar-Zeitpunkt</label>
+    <input type="range" id="radarSlider" min="0" max="0" value="0" step="1">
+    <span id="radarTimeLabel">–</span>
   </div>
 
   <div id="status"></div>
-  <div id="hint">Klick auf die Karte, um Wetterdaten für den gewählten Zeitpunkt abzurufen.</div>
+  <div id="hint">Die Fläche zeigt die Werte für den gewählten Zeitpunkt. Klick auf die Karte für einen exakten Messpunkt.</div>
+</div>
+
+<div id="legend">
+  <div class="bar" id="legendBar"></div>
+  <div class="ticks" id="legendTicks"></div>
 </div>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 const MAPTILER_KEY = 'nKyAvBkGUvss9FTqT7f6'; // shared with Globe/Simulator project
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(err => console.error('SW-Registrierung fehlgeschlagen:', err));
+}
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -152,18 +206,45 @@ pastDate.value = defaultPast.toISOString().slice(0, 10);
 
 timeSelect.addEventListener('change', () => {
   dateWrap.style.display = timeSelect.value === 'past' ? 'block' : 'none';
+  loadGrid();
 });
+pastDate.addEventListener('change', loadGrid);
 
 // --- Layer-Umschalter ---
-let activeLayer = 'temp'; // 'temp' | 'precip'
+let activeLayer = 'temp'; // 'temp' | 'precip' | 'radar'
 const btnTemp = document.getElementById('btnTemp');
 const btnPrecip = document.getElementById('btnPrecip');
+const btnRadar = document.getElementById('btnRadar');
+const radarWrap = document.getElementById('radarWrap');
+const legendEl = document.getElementById('legend');
+const timeSelectWrap = timeSelect.parentElement;
 btnTemp.addEventListener('click', () => setLayer('temp'));
 btnPrecip.addEventListener('click', () => setLayer('precip'));
+btnRadar.addEventListener('click', () => setLayer('radar'));
+
 function setLayer(layer) {
   activeLayer = layer;
   btnTemp.classList.toggle('active', layer === 'temp');
   btnPrecip.classList.toggle('active', layer === 'precip');
+  btnRadar.classList.toggle('active', layer === 'radar');
+
+  const isRadar = layer === 'radar';
+  radarWrap.style.display = isRadar ? 'block' : 'none';
+  legendEl.style.display = isRadar ? 'none' : 'block';
+  timeSelect.disabled = isRadar;
+  pastDate.disabled = isRadar;
+
+  if (map.getLayer(GRID_LAYER_ID)) {
+    map.setLayoutProperty(GRID_LAYER_ID, 'visibility', isRadar ? 'none' : 'visible');
+  }
+  if (map.getLayer(RADAR_LAYER_ID)) {
+    map.setLayoutProperty(RADAR_LAYER_ID, 'visibility', isRadar ? 'visible' : 'none');
+  }
+
+  if (!isRadar) {
+    applyGridPaint();
+    updateLegend();
+  }
 }
 
 const statusEl = document.getElementById('status');
@@ -172,50 +253,198 @@ function setStatus(text, isError) {
   statusEl.style.color = isError ? '#dc2626' : '#2563eb';
 }
 
-// --- Farbskalen ---
-function tempColor(t) {
-  if (t <= -10) return '#3730a3';
-  if (t <= 0)   return '#2563eb';
-  if (t <= 10)  return '#0ea5e9';
-  if (t <= 18)  return '#22c55e';
-  if (t <= 25)  return '#eab308';
-  if (t <= 32)  return '#f97316';
-  return '#dc2626';
+// --- Farbskalen (Stützstellen, gemeinsam für Marker, Fläche & Legende) ---
+const TEMP_STOPS = [
+  [-10, '#3730a3'], [0, '#2563eb'], [10, '#0ea5e9'],
+  [18, '#22c55e'], [25, '#eab308'], [32, '#f97316'], [40, '#dc2626']
+];
+const PRECIP_STOPS = [
+  [0, '#9ca3af'], [0.5, '#93c5fd'], [2, '#3b82f6'],
+  [5, '#1d4ed8'], [10, '#1e3a8a'], [20, '#4c1d95']
+];
+
+function colorFromStops(stops, value) {
+  if (value <= stops[0][0]) return stops[0][1];
+  for (let i = 1; i < stops.length; i++) {
+    if (value <= stops[i][0]) return stops[i][1];
+  }
+  return stops[stops.length - 1][1];
 }
-function precipColor(mm) {
-  if (mm <= 0)   return '#9ca3af';
-  if (mm <= 0.5) return '#93c5fd';
-  if (mm <= 2)   return '#3b82f6';
-  if (mm <= 5)   return '#1d4ed8';
-  if (mm <= 10)  return '#1e3a8a';
-  return '#4c1d95';
+function tempColor(t) { return colorFromStops(TEMP_STOPS, t); }
+function precipColor(mm) { return colorFromStops(PRECIP_STOPS, mm); }
+
+function interpolateExpr(field, stops) {
+  const expr = ['interpolate', ['linear'], ['get', field]];
+  stops.forEach(([val, color]) => { expr.push(val, color); });
+  return expr;
 }
 
-// --- Zielzeitpunkt (ISO Datum + ggf. Stunde) aus der Auswahl ableiten ---
+function updateLegend() {
+  const stops = activeLayer === 'temp' ? TEMP_STOPS : PRECIP_STOPS;
+  const unit = activeLayer === 'temp' ? '°C' : 'mm';
+  const colors = stops.map(s => s[1]).join(',');
+  document.getElementById('legendBar').style.background = `linear-gradient(to right, ${colors})`;
+  const ticks = document.getElementById('legendTicks');
+  ticks.innerHTML = '';
+  [stops[0][0], stops[Math.floor(stops.length / 2)][0], stops[stops.length - 1][0]].forEach(v => {
+    const span = document.createElement('span');
+    span.textContent = `${v}${unit}`;
+    ticks.appendChild(span);
+  });
+}
+
+// --- Zielzeitpunkt aus der Auswahl ableiten (UTC, fürs Grid) ---
 function resolveTarget() {
   const now = new Date();
   const sel = timeSelect.value;
 
   if (sel === 'live') {
-    return { date: now.toISOString().slice(0, 10), hour: now.getHours(), mode: 'forecast' };
+    return { date: now.toISOString().slice(0, 10), hour: now.getUTCHours(), mode: 'forecast' };
   }
   if (sel === 'past') {
     return { date: pastDate.value, hour: 12, mode: 'archive' };
   }
-  // "+N"
   const days = parseInt(sel.replace('+', ''), 10);
   const target = new Date(now);
-  target.setDate(target.getDate() + days);
+  target.setUTCDate(target.getUTCDate() + days);
   return { date: target.toISOString().slice(0, 10), hour: 12, mode: 'forecast' };
 }
 
-// --- Marker ---
+// --- Grid-Fläche: Raster über den sichtbaren Kartenausschnitt ---
+const GRID_COLS = 9;
+const GRID_ROWS = 7;
+const GRID_SOURCE_ID = 'weather-grid';
+const GRID_LAYER_ID = 'weather-grid-fill';
+
+map.on('load', () => {
+  // Ohne beforeId: Layer landen ganz oben im Stack, über allen Basiskarten-Flächen.
+  map.addSource(GRID_SOURCE_ID, { type: 'geojson', data: emptyFC() });
+  map.addLayer({
+    id: GRID_LAYER_ID,
+    type: 'fill',
+    source: GRID_SOURCE_ID,
+    paint: { 'fill-color': '#888', 'fill-opacity': 0.55 }
+  });
+  applyGridPaint();
+  updateLegend();
+  loadGrid();
+  loadRadarFrames();
+});
+
+function emptyFC() { return { type: 'FeatureCollection', features: [] }; }
+
+function applyGridPaint() {
+  if (!map.getLayer(GRID_LAYER_ID)) return;
+  const field = activeLayer === 'temp' ? 'temp' : 'precip';
+  const stops = activeLayer === 'temp' ? TEMP_STOPS : PRECIP_STOPS;
+  map.setPaintProperty(GRID_LAYER_ID, 'fill-color', interpolateExpr(field, stops));
+}
+
+function buildGridPoints() {
+  const bounds = map.getBounds();
+  const west = bounds.getWest(), east = bounds.getEast();
+  const south = bounds.getSouth(), north = bounds.getNorth();
+  const dx = (east - west) / GRID_COLS;
+  const dy = (north - south) / GRID_ROWS;
+
+  const points = [];
+  const cells = [];
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      const cellW = west + c * dx;
+      const cellE = west + (c + 1) * dx;
+      const cellS = south + r * dy;
+      const cellN = south + (r + 1) * dy;
+      const lng = (cellW + cellE) / 2;
+      const lat = (cellS + cellN) / 2;
+      points.push({ lng, lat });
+      cells.push([cellW, cellS, cellE, cellN]);
+    }
+  }
+  return { points, cells };
+}
+
+let gridRequestId = 0;
+let gridDebounce = null;
+
+function loadGrid() {
+  clearTimeout(gridDebounce);
+  gridDebounce = setTimeout(fetchGrid, 400);
+}
+
+async function fetchGrid() {
+  const requestId = ++gridRequestId;
+  const { points, cells } = buildGridPoints();
+  const target = resolveTarget();
+  const base = target.mode === 'archive'
+    ? 'https://archive-api.open-meteo.com/v1/archive'
+    : 'https://api.open-meteo.com/v1/forecast';
+
+  const params = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(3)).join(','),
+    longitude: points.map(p => p.lng.toFixed(3)).join(','),
+    hourly: 'temperature_2m,precipitation',
+    start_date: target.date,
+    end_date: target.date,
+    timezone: 'UTC'
+  });
+
+  setStatus('Lade Wetterfläche …');
+  try {
+    const res = await fetch(`${base}?${params.toString()}`);
+    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    let data = await res.json();
+    if (!Array.isArray(data)) data = [data]; // einzelner Punkt liefert ein Objekt statt Array
+
+    if (requestId !== gridRequestId) return; // veraltete Antwort verwerfen
+
+    const features = data.map((loc, i) => {
+      const hours = loc.hourly.time;
+      let idx = hours.findIndex(t => new Date(t).getUTCHours() === target.hour);
+      if (idx === -1) idx = Math.floor(hours.length / 2);
+      const temp = loc.hourly.temperature_2m[idx];
+      const precip = loc.hourly.precipitation[idx];
+      const [w, s, e, n] = cells[i];
+      return {
+        type: 'Feature',
+        properties: { temp, precip },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[w, s], [e, s], [e, n], [w, n], [w, s]]]
+        }
+      };
+    });
+
+    map.getSource(GRID_SOURCE_ID).setData({ type: 'FeatureCollection', features });
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    if (requestId === gridRequestId) setStatus('Fehler beim Laden der Wetterfläche.', true);
+  }
+}
+
+map.on('moveend', loadGrid);
+
+// --- Einzelpunkt-Abfrage per Klick (exakter Wert, lokale Zeitzone) ---
 let currentMarker = null;
 
 async function queryWeather(lngLat) {
   const { lng, lat } = lngLat;
-  const target = resolveTarget();
-  const base = target.mode === 'archive'
+  const now = new Date();
+  const sel = timeSelect.value;
+  let date, hourLocal, mode;
+  if (sel === 'live') {
+    date = now.toISOString().slice(0, 10); hourLocal = now.getHours(); mode = 'forecast';
+  } else if (sel === 'past') {
+    date = pastDate.value; hourLocal = 12; mode = 'archive';
+  } else {
+    const days = parseInt(sel.replace('+', ''), 10);
+    const target = new Date(now);
+    target.setDate(target.getDate() + days);
+    date = target.toISOString().slice(0, 10); hourLocal = 12; mode = 'forecast';
+  }
+
+  const base = mode === 'archive'
     ? 'https://archive-api.open-meteo.com/v1/archive'
     : 'https://api.open-meteo.com/v1/forecast';
 
@@ -223,19 +452,19 @@ async function queryWeather(lngLat) {
     latitude: lat.toFixed(4),
     longitude: lng.toFixed(4),
     hourly: 'temperature_2m,precipitation',
-    start_date: target.date,
-    end_date: target.date,
+    start_date: date,
+    end_date: date,
     timezone: 'auto'
   });
 
-  setStatus('Lade Wetterdaten …');
+  setStatus('Lade Messpunkt …');
   try {
     const res = await fetch(`${base}?${params.toString()}`);
     if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
     const data = await res.json();
 
     const hours = data.hourly.time;
-    let idx = hours.findIndex(t => new Date(t).getHours() === target.hour);
+    let idx = hours.findIndex(t => new Date(t).getHours() === hourLocal);
     if (idx === -1) idx = Math.floor(hours.length / 2);
 
     const temp = data.hourly.temperature_2m[idx];
@@ -246,7 +475,7 @@ async function queryWeather(lngLat) {
     setStatus('');
   } catch (err) {
     console.error(err);
-    setStatus('Fehler beim Laden der Wetterdaten.', true);
+    setStatus('Fehler beim Laden des Messpunkts.', true);
   }
 }
 
@@ -281,6 +510,70 @@ function showMarker(lngLat, temp, precip, timeLabel) {
 }
 
 map.on('click', (e) => queryWeather(e.lngLat));
+
+// --- RainViewer Regenradar ---
+const RADAR_SOURCE_ID = 'radar-tiles';
+const RADAR_LAYER_ID = 'radar-tiles-layer';
+let radarFrames = [];   // { time, path } je Zeitschritt, past + nowcast
+let radarNowIndex = 0;  // Index des letzten "echten" (past) Frames
+
+const radarSlider = document.getElementById('radarSlider');
+const radarTimeLabel = document.getElementById('radarTimeLabel');
+
+async function loadRadarFrames() {
+  try {
+    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    if (!res.ok) throw new Error(`RainViewer-Fehler ${res.status}`);
+    const data = await res.json();
+    const host = data.host;
+    const past = data.radar.past || [];
+    const nowcast = data.radar.nowcast || [];
+    radarFrames = [...past, ...nowcast].map(f => ({ time: f.time, path: `${host}${f.path}` }));
+    radarNowIndex = past.length - 1;
+
+    radarSlider.min = 0;
+    radarSlider.max = radarFrames.length - 1;
+    radarSlider.value = radarNowIndex;
+    setRadarFrame(radarNowIndex);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function setRadarFrame(index) {
+  const frame = radarFrames[index];
+  if (!frame) return;
+
+  const tileUrl = `${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+
+  if (map.getLayer(RADAR_LAYER_ID)) map.removeLayer(RADAR_LAYER_ID);
+  if (map.getSource(RADAR_SOURCE_ID)) map.removeSource(RADAR_SOURCE_ID);
+
+  map.addSource(RADAR_SOURCE_ID, {
+    type: 'raster',
+    tiles: [tileUrl],
+    tileSize: 256,
+    attribution: 'Radar © RainViewer'
+  });
+  map.addLayer({
+    id: RADAR_LAYER_ID,
+    type: 'raster',
+    source: RADAR_SOURCE_ID,
+    paint: { 'raster-opacity': 0.7 },
+    layout: { visibility: activeLayer === 'radar' ? 'visible' : 'none' }
+  });
+
+  const date = new Date(frame.time * 1000);
+  const timeStr = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const offsetMin = Math.round((frame.time - radarFrames[radarNowIndex].time) / 60);
+  let rel;
+  if (offsetMin === 0) rel = 'jetzt';
+  else if (offsetMin > 0) rel = `+${offsetMin} min (Vorhersage)`;
+  else rel = `${offsetMin} min`;
+  radarTimeLabel.textContent = `${timeStr} Uhr (${rel})`;
+}
+
+radarSlider.addEventListener('input', () => setRadarFrame(parseInt(radarSlider.value, 10)));
 </script>
 </body>
 </html>
