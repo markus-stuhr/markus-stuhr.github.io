@@ -72,6 +72,8 @@
     font-size: 12px;
     min-height: 16px;
     color: #2563eb;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   .weather-marker {
@@ -270,6 +272,21 @@ const statusEl = document.getElementById('status');
 function setStatus(text, isError) {
   statusEl.textContent = text;
   statusEl.style.color = isError ? '#dc2626' : '#2563eb';
+}
+
+// Liest HTTP-Status + Fehlertext (Open-Meteo liefert meist {"reason": "..."}) aus einer fehlgeschlagenen Antwort
+async function describeFetchError(res) {
+  let detail = '';
+  try {
+    const body = await res.clone().text();
+    try {
+      const json = JSON.parse(body);
+      detail = json.reason || body.slice(0, 200);
+    } catch {
+      detail = body.slice(0, 200);
+    }
+  } catch { /* Body nicht lesbar */ }
+  return `HTTP ${res.status}${res.statusText ? ' ' + res.statusText : ''}${detail ? ' — ' + detail : ''}`;
 }
 
 // --- Farbskalen (Stützstellen, gemeinsam für Marker, Fläche & Legende) ---
@@ -549,7 +566,7 @@ async function fetchWeatherGrid() {
   setStatus('Lade Wetterfläche …');
   try {
     const res = await fetch(`${base}?${params.toString()}`);
-    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
     let data = await res.json();
     if (!Array.isArray(data)) data = [data]; // einzelner Punkt liefert ein Objekt statt Array
 
@@ -571,7 +588,7 @@ async function fetchWeatherGrid() {
     setStatus('');
   } catch (err) {
     console.error(err);
-    if (requestId === gridRequestId) setStatus('Fehler beim Laden der Wetterfläche.', true);
+    if (requestId === gridRequestId) setStatus(`Fehler beim Laden der Wetterfläche:\n${err.message}`, true);
   }
 }
 
@@ -607,7 +624,7 @@ async function fetchSymbolsGrid() {
   setStatus('Lade Wettersymbole …');
   try {
     const res = await fetch(`${base}?${params.toString()}`);
-    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
     let data = await res.json();
     if (!Array.isArray(data)) data = [data];
 
@@ -634,7 +651,7 @@ async function fetchSymbolsGrid() {
     setStatus('');
   } catch (err) {
     console.error(err);
-    if (requestId === gridRequestId) setStatus('Fehler beim Laden der Wettersymbole.', true);
+    if (requestId === gridRequestId) setStatus(`Fehler beim Laden der Wettersymbole:\n${err.message}`, true);
   }
 }
 
@@ -650,7 +667,7 @@ async function fetchElevationGrid() {
   setStatus('Lade Höhendaten …');
   try {
     const res = await fetch(`https://api.open-meteo.com/v1/elevation?${params.toString()}`);
-    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
     const data = await res.json();
 
     if (requestId !== gridRequestId) return;
@@ -660,7 +677,7 @@ async function fetchElevationGrid() {
     setStatus('');
   } catch (err) {
     console.error(err);
-    if (requestId === gridRequestId) setStatus('Fehler beim Laden der Höhendaten.', true);
+    if (requestId === gridRequestId) setStatus(`Fehler beim Laden der Höhendaten:\n${err.message}`, true);
   }
 }
 
@@ -680,7 +697,7 @@ async function fetchFloodGrid() {
   setStatus('Lade Hochwasserdaten …');
   try {
     const res = await fetch(`https://flood-api.open-meteo.com/v1/flood?${params.toString()}`);
-    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
     let data = await res.json();
     if (!Array.isArray(data)) data = [data];
 
@@ -697,7 +714,7 @@ async function fetchFloodGrid() {
     setStatus('');
   } catch (err) {
     console.error(err);
-    if (requestId === gridRequestId) setStatus('Fehler beim Laden der Hochwasserdaten.', true);
+    if (requestId === gridRequestId) setStatus(`Fehler beim Laden der Hochwasserdaten:\n${err.message}`, true);
   }
 }
 
@@ -780,7 +797,7 @@ async function queryWeather(lngLat) {
   setStatus('Lade Messpunkt …');
   try {
     const res = await fetch(`${base}?${params.toString()}`);
-    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
     const data = await res.json();
 
     const hours = data.hourly.time;
@@ -814,7 +831,7 @@ async function queryWeather(lngLat) {
     setStatus('');
   } catch (err) {
     console.error(err);
-    setStatus('Fehler beim Laden des Messpunkts.', true);
+    setStatus(`Fehler beim Laden des Messpunkts:\n${err.message}`, true);
   }
 }
 
@@ -823,7 +840,7 @@ async function queryElevation(lngLat) {
   setStatus('Lade Höhe …');
   try {
     const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`);
-    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
     const data = await res.json();
     const elevation = data.elevation[0];
 
@@ -831,7 +848,7 @@ async function queryElevation(lngLat) {
     setStatus('');
   } catch (err) {
     console.error(err);
-    setStatus('Fehler beim Laden der Höhe.', true);
+    setStatus(`Fehler beim Laden der Höhe:\n${err.message}`, true);
   }
 }
 
@@ -849,7 +866,7 @@ async function queryFlood(lngLat) {
   setStatus('Lade Hochwasserdaten …');
   try {
     const res = await fetch(`https://flood-api.open-meteo.com/v1/flood?${params.toString()}`);
-    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
     const data = await res.json();
     const discharge = data.daily.river_discharge[0];
     const mean = data.daily.river_discharge_mean[0];
@@ -868,7 +885,7 @@ async function queryFlood(lngLat) {
     setStatus('');
   } catch (err) {
     console.error(err);
-    setStatus('Fehler beim Laden der Hochwasserdaten.', true);
+    setStatus(`Fehler beim Laden der Hochwasserdaten:\n${err.message}`, true);
   }
 }
 
