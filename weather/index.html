@@ -89,6 +89,12 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.4);
   }
 
+  .symbol-marker {
+    font-size: 34px;
+    line-height: 1;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+  }
+
   #radarWrap {
     margin-top: 10px;
   }
@@ -155,6 +161,7 @@
     <button id="btnElevation">Höhe</button>
     <button id="btnFlood">Hochwasser</button>
     <button id="btnRadar">Regenradar</button>
+    <button id="btnSymbols">Symbole</button>
   </div>
 
   <div id="radarWrap" style="display:none;">
@@ -214,40 +221,45 @@ timeSelect.addEventListener('change', () => {
 pastDate.addEventListener('change', loadGrid);
 
 // --- Layer-Umschalter ---
-let activeLayer = 'temp'; // 'temp' | 'precip' | 'elevation' | 'flood' | 'radar'
+let activeLayer = 'temp'; // 'temp' | 'precip' | 'elevation' | 'flood' | 'radar' | 'symbols'
 const btnTemp = document.getElementById('btnTemp');
 const btnPrecip = document.getElementById('btnPrecip');
 const btnElevation = document.getElementById('btnElevation');
 const btnFlood = document.getElementById('btnFlood');
 const btnRadar = document.getElementById('btnRadar');
-const layerButtons = { temp: btnTemp, precip: btnPrecip, elevation: btnElevation, flood: btnFlood, radar: btnRadar };
+const btnSymbols = document.getElementById('btnSymbols');
+const layerButtons = { temp: btnTemp, precip: btnPrecip, elevation: btnElevation, flood: btnFlood, radar: btnRadar, symbols: btnSymbols };
 const radarWrap = document.getElementById('radarWrap');
 const legendEl = document.getElementById('legend');
 
 Object.entries(layerButtons).forEach(([layer, btn]) => btn.addEventListener('click', () => setLayer(layer)));
 
-// Zeitpunkt ist nur für Temperatur/Niederschlag/Hochwasser relevant (Höhe ist statisch, Radar hat eigene Zeitachse)
-const TIME_DEPENDENT_LAYERS = ['temp', 'precip', 'flood'];
+// Zeitpunkt ist für Temperatur/Niederschlag/Hochwasser/Symbole relevant (Höhe ist statisch, Radar hat eigene Zeitachse)
+const TIME_DEPENDENT_LAYERS = ['temp', 'precip', 'flood', 'symbols'];
+// Layer ohne Farbfläche (nutzen einen eigenen Layer statt GRID_LAYER_ID)
+const NO_FILL_LAYERS = ['radar', 'symbols'];
 
 function setLayer(layer) {
   activeLayer = layer;
   Object.entries(layerButtons).forEach(([l, btn]) => btn.classList.toggle('active', l === layer));
 
   const isRadar = layer === 'radar';
+  const hasFill = !NO_FILL_LAYERS.includes(layer);
   radarWrap.style.display = isRadar ? 'block' : 'none';
-  legendEl.style.display = isRadar ? 'none' : 'block';
+  legendEl.style.display = hasFill ? 'block' : 'none';
   timeSelect.disabled = !TIME_DEPENDENT_LAYERS.includes(layer);
   pastDate.disabled = timeSelect.disabled;
 
   if (map.getLayer(GRID_LAYER_ID)) {
-    map.setLayoutProperty(GRID_LAYER_ID, 'visibility', isRadar ? 'none' : 'visible');
+    map.setLayoutProperty(GRID_LAYER_ID, 'visibility', hasFill ? 'visible' : 'none');
   }
   if (map.getLayer(RADAR_LAYER_ID)) {
     map.setLayoutProperty(RADAR_LAYER_ID, 'visibility', isRadar ? 'visible' : 'none');
   }
+  setSymbolMarkersVisible(layer === 'symbols');
 
-  if (!isRadar) {
-    applyGridPaint();
+  if (hasFill) applyGridPaint();
+  if (layer !== 'radar') {
     updateLegend();
     loadGrid();
   }
@@ -297,6 +309,43 @@ function tempColor(t) { return colorFromStops(TEMP_STOPS, t); }
 function precipColor(mm) { return colorFromStops(PRECIP_STOPS, mm); }
 function elevationColor(m) { return colorFromStops(ELEV_STOPS, m); }
 function floodColor(ratio) { return colorFromStops(FLOOD_STOPS, ratio); }
+
+// --- WMO-Wettercode → Symbol & Beschreibung ---
+const WMO_TABLE = {
+  0:  { desc: 'Klarer Himmel',              icon: '☀️', night: '🌙' },
+  1:  { desc: 'Überwiegend klar',           icon: '🌤️', night: '🌙' },
+  2:  { desc: 'Teilweise bewölkt',          icon: '⛅' },
+  3:  { desc: 'Bedeckt',                    icon: '☁️' },
+  45: { desc: 'Nebel',                      icon: '🌫️' },
+  48: { desc: 'Reifnebel',                  icon: '🌫️' },
+  51: { desc: 'Leichter Nieselregen',       icon: '🌦️' },
+  53: { desc: 'Nieselregen',                icon: '🌦️' },
+  55: { desc: 'Starker Nieselregen',        icon: '🌦️' },
+  56: { desc: 'Leichter gefrierender Niesel', icon: '🌦️' },
+  57: { desc: 'Gefrierender Nieselregen',   icon: '🌦️' },
+  61: { desc: 'Leichter Regen',             icon: '🌧️' },
+  63: { desc: 'Regen',                      icon: '🌧️' },
+  65: { desc: 'Starker Regen',              icon: '🌧️' },
+  66: { desc: 'Leichter gefrierender Regen', icon: '🌧️' },
+  67: { desc: 'Gefrierender Regen',         icon: '🌧️' },
+  71: { desc: 'Leichter Schneefall',        icon: '🌨️' },
+  73: { desc: 'Schneefall',                 icon: '🌨️' },
+  75: { desc: 'Starker Schneefall',         icon: '🌨️' },
+  77: { desc: 'Schneegriesel',              icon: '🌨️' },
+  80: { desc: 'Leichte Regenschauer',       icon: '🌦️' },
+  81: { desc: 'Regenschauer',               icon: '🌦️' },
+  82: { desc: 'Heftige Regenschauer',       icon: '🌦️' },
+  85: { desc: 'Leichte Schneeschauer',      icon: '🌨️' },
+  86: { desc: 'Schneeschauer',              icon: '🌨️' },
+  95: { desc: 'Gewitter',                   icon: '⛈️' },
+  96: { desc: 'Gewitter mit leichtem Hagel', icon: '⛈️' },
+  99: { desc: 'Gewitter mit starkem Hagel', icon: '⛈️' }
+};
+function weatherCodeInfo(code, isDay) {
+  const entry = WMO_TABLE[code] || { desc: 'Unbekannt', icon: '❓' };
+  const icon = (isDay === 0 && entry.night) ? entry.night : entry.icon;
+  return { desc: entry.desc, icon };
+}
 
 function interpolateExpr(field, stops) {
   const expr = ['interpolate', ['linear'], ['get', field]];
@@ -399,6 +448,7 @@ function loadGrid() {
   gridDebounce = setTimeout(() => {
     if (activeLayer === 'elevation') fetchElevationGrid();
     else if (activeLayer === 'flood') fetchFloodGrid();
+    else if (activeLayer === 'symbols') fetchSymbolsGrid();
     else fetchWeatherGrid();
   }, 400);
 }
@@ -423,7 +473,7 @@ async function fetchWeatherGrid() {
   const params = new URLSearchParams({
     latitude: points.map(p => p.lat.toFixed(3)).join(','),
     longitude: points.map(p => p.lng.toFixed(3)).join(','),
-    hourly: 'temperature_2m,precipitation',
+    hourly: 'temperature_2m,precipitation,weathercode,cloud_cover,is_day',
     start_date: target.date,
     end_date: target.date,
     timezone: 'UTC'
@@ -444,7 +494,9 @@ async function fetchWeatherGrid() {
       if (idx === -1) idx = Math.floor(hours.length / 2);
       const temp = loc.hourly.temperature_2m[idx];
       const precip = loc.hourly.precipitation[idx];
-      return makeFeature(cells[i], { temp, precip });
+      const weathercode = loc.hourly.weathercode ? loc.hourly.weathercode[idx] : null;
+      const cloudCover = loc.hourly.cloud_cover ? loc.hourly.cloud_cover[idx] : null;
+      return makeFeature(cells[i], { temp, precip, weathercode, cloudCover });
     });
 
     map.getSource(GRID_SOURCE_ID).setData({ type: 'FeatureCollection', features });
@@ -452,6 +504,69 @@ async function fetchWeatherGrid() {
   } catch (err) {
     console.error(err);
     if (requestId === gridRequestId) setStatus('Fehler beim Laden der Wetterfläche.', true);
+  }
+}
+
+// --- Symbol-Layer: Wettericons als DOM-Marker auf dem Grid ---
+let symbolMarkers = [];
+
+function clearSymbolMarkers() {
+  symbolMarkers.forEach(m => m.remove());
+  symbolMarkers = [];
+}
+
+function setSymbolMarkersVisible(visible) {
+  symbolMarkers.forEach(m => { m.getElement().style.display = visible ? 'block' : 'none'; });
+}
+
+async function fetchSymbolsGrid() {
+  const requestId = ++gridRequestId;
+  const { points } = buildGridPoints();
+  const target = resolveTarget();
+  const base = target.mode === 'archive'
+    ? 'https://archive-api.open-meteo.com/v1/archive'
+    : 'https://api.open-meteo.com/v1/forecast';
+
+  const params = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(3)).join(','),
+    longitude: points.map(p => p.lng.toFixed(3)).join(','),
+    hourly: 'temperature_2m,weathercode,cloud_cover,is_day',
+    start_date: target.date,
+    end_date: target.date,
+    timezone: 'UTC'
+  });
+
+  setStatus('Lade Wettersymbole …');
+  try {
+    const res = await fetch(`${base}?${params.toString()}`);
+    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    let data = await res.json();
+    if (!Array.isArray(data)) data = [data];
+
+    if (requestId !== gridRequestId) return;
+
+    clearSymbolMarkers();
+    data.forEach((loc, i) => {
+      const hours = loc.hourly.time;
+      let idx = hours.findIndex(t => new Date(t).getUTCHours() === target.hour);
+      if (idx === -1) idx = Math.floor(hours.length / 2);
+      const code = loc.hourly.weathercode[idx];
+      const isDay = loc.hourly.is_day[idx];
+      const { icon } = weatherCodeInfo(code, isDay);
+
+      const el = document.createElement('div');
+      el.className = 'symbol-marker';
+      el.textContent = icon;
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([points[i].lng, points[i].lat])
+        .addTo(map);
+      symbolMarkers.push(marker);
+    });
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    if (requestId === gridRequestId) setStatus('Fehler beim Laden der Wettersymbole.', true);
   }
 }
 
@@ -546,6 +661,21 @@ async function queryPoint(lngLat) {
   return queryWeather(lngLat);
 }
 
+// Icon-Kachel als Marker-Inhalt (statt Zahl in einem Farbkreis) für den Symbole-Layer
+function placeSymbolMarker(lngLat, icon, popupHtml) {
+  if (currentMarker) currentMarker.remove();
+
+  const el = document.createElement('div');
+  el.className = 'symbol-marker';
+  el.textContent = icon;
+
+  currentMarker = new maplibregl.Marker({ element: el })
+    .setLngLat(lngLat)
+    .setPopup(new maplibregl.Popup({ offset: 20 }).setHTML(popupHtml))
+    .addTo(map)
+    .togglePopup();
+}
+
 async function queryWeather(lngLat) {
   const { lng, lat } = lngLat;
   const now = new Date();
@@ -569,7 +699,7 @@ async function queryWeather(lngLat) {
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lng.toFixed(4),
-    hourly: 'temperature_2m,precipitation',
+    hourly: 'temperature_2m,precipitation,weathercode,cloud_cover,is_day',
     start_date: date,
     end_date: date,
     timezone: 'auto'
@@ -587,16 +717,26 @@ async function queryWeather(lngLat) {
 
     const temp = data.hourly.temperature_2m[idx];
     const precip = data.hourly.precipitation[idx];
+    const code = data.hourly.weathercode[idx];
+    const cloudCover = data.hourly.cloud_cover[idx];
+    const isDay = data.hourly.is_day[idx];
+    const { icon, desc } = weatherCodeInfo(code, isDay);
     const timeLabel = hours[idx].replace('T', ' ');
 
-    const label = activeLayer === 'temp' ? `${Math.round(temp)}°` : `${precip.toFixed(1)}`;
-    const color = activeLayer === 'temp' ? tempColor(temp) : precipColor(precip);
     const popupHtml = `
       <strong>${timeLabel}</strong><br>
-      🌡️ ${temp.toFixed(1)} °C<br>
-      🌧️ ${precip.toFixed(1)} mm
+      ${icon} ${desc}<br>
+      🌡️ ${temp.toFixed(1)} °C &nbsp; 🌧️ ${precip.toFixed(1)} mm<br>
+      ☁️ Bewölkung: ${cloudCover}%
     `;
-    placeMarker(lngLat, label, color, popupHtml);
+
+    if (activeLayer === 'symbols') {
+      placeSymbolMarker(lngLat, icon, popupHtml);
+    } else {
+      const label = activeLayer === 'temp' ? `${Math.round(temp)}°` : `${precip.toFixed(1)}`;
+      const color = activeLayer === 'temp' ? tempColor(temp) : precipColor(precip);
+      placeMarker(lngLat, label, color, popupHtml);
+    }
     setStatus('');
   } catch (err) {
     console.error(err);
