@@ -416,7 +416,7 @@ map.on('load', () => {
   map.addSource(GRID_SOURCE_ID, {
     type: 'image',
     url: TRANSPARENT_PIXEL,
-    coordinates: boundsToCoords(b)
+    coordinates: boundsToCoords({ west: b.getWest(), east: b.getEast(), south: b.getSouth(), north: b.getNorth() })
   });
   map.addLayer({
     id: GRID_LAYER_ID,
@@ -429,15 +429,25 @@ map.on('load', () => {
   loadRadarFrames();
 });
 
+// bounds: einfaches Objekt {west, east, south, north} (kein maplibregl.LngLatBounds)
 function boundsToCoords(bounds) {
-  const w = bounds.getWest(), e = bounds.getEast(), s = bounds.getSouth(), n = bounds.getNorth();
+  const { west: w, east: e, south: s, north: n } = bounds;
   return [[w, n], [e, n], [e, s], [w, s]];
 }
 
+// Kartenausschnitt auf ein grobes Raster "einrasten" — kleine Schwenks/Zooms erzeugen dann
+// dieselbe Anfrage-URL wie zuvor, sodass der Service Worker aus dem Cache bedienen kann,
+// statt bei jeder Mausbewegung eine neue Open-Meteo-Anfrage zu feuern.
+const BOUNDS_SNAP = 0.5; // Grad
+
+function snap(value, step) { return Math.round(value / step) * step; }
+
 function buildGridPoints() {
-  const bounds = map.getBounds();
-  const west = bounds.getWest(), east = bounds.getEast();
-  const south = bounds.getSouth(), north = bounds.getNorth();
+  const raw = map.getBounds();
+  const west = snap(raw.getWest(), BOUNDS_SNAP);
+  const east = snap(raw.getEast(), BOUNDS_SNAP);
+  const south = snap(raw.getSouth(), BOUNDS_SNAP);
+  const north = snap(raw.getNorth(), BOUNDS_SNAP);
   const dx = (east - west) / GRID_COLS;
   const dy = (north - south) / GRID_ROWS;
 
@@ -449,7 +459,7 @@ function buildGridPoints() {
       points.push({ lng, lat });
     }
   }
-  return { points, bounds };
+  return { points, bounds: { west, east, south, north } };
 }
 
 // Bestimmt Farbe + Deckkraft einer Zelle für den aktuellen Layer; null = Zelle bleibt transparent
@@ -499,16 +509,24 @@ function renderGridImage(layer, propsList, bounds) {
 
 let gridRequestId = 0;
 let gridDebounce = null;
+let lastGridFetchAt = 0;
+const GRID_DEBOUNCE_MS = 900;
+const GRID_MIN_INTERVAL_MS = 2500; // harte Mindestpause zwischen zwei Grid-Abfragen, gegen Rate-Limits
 
 function loadGrid() {
   if (activeLayer === 'radar') return;
   clearTimeout(gridDebounce);
+
+  const sinceLast = Date.now() - lastGridFetchAt;
+  const delay = Math.max(GRID_DEBOUNCE_MS, GRID_MIN_INTERVAL_MS - sinceLast);
+
   gridDebounce = setTimeout(() => {
+    lastGridFetchAt = Date.now();
     if (activeLayer === 'elevation') fetchElevationGrid();
     else if (activeLayer === 'flood') fetchFloodGrid();
     else if (activeLayer === 'symbols') fetchSymbolsGrid();
     else fetchWeatherGrid();
-  }, 400);
+  }, delay);
 }
 
 async function fetchWeatherGrid() {
