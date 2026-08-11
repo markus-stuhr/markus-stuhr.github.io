@@ -6,12 +6,118 @@
 <title>Weather — Markus Stuhr</title>
 <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
 <style>
-  html, body { margin: 0; padding: 0; height: 100%; }
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+  #panel {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 5;
+    background: rgba(255,255,255,0.95);
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #222;
+    max-width: 260px;
+  }
+  #panel h1 {
+    font-size: 14px;
+    margin: 0 0 8px;
+  }
+  #panel label {
+    display: block;
+    margin: 8px 0 3px;
+    font-weight: 600;
+    font-size: 12px;
+    color: #555;
+  }
+  #panel select, #panel input[type=date] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 6px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 13px;
+  }
+  .layer-toggle {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .layer-toggle button {
+    flex: 1;
+    padding: 6px 4px;
+    border: 1px solid #ccc;
+    background: #f2f2f2;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .layer-toggle button.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+  #hint {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #777;
+    line-height: 1.4;
+  }
+  #status {
+    margin-top: 8px;
+    font-size: 12px;
+    min-height: 16px;
+    color: #2563eb;
+  }
+
+  .weather-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    border: 2px solid rgba(255,255,255,0.85);
+    box-shadow: 0 1px 6px rgba(0,0,0,0.4);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
 </style>
 </head>
 <body>
 <div id="map"></div>
+
+<div id="panel">
+  <h1>🌤️ Weather</h1>
+
+  <label for="timeSelect">Zeitpunkt</label>
+  <select id="timeSelect">
+    <option value="live">Live (jetzt)</option>
+    <optgroup label="Vorhersage">
+      <!-- +1 .. +16 werden per JS ergänzt -->
+    </optgroup>
+    <option value="past">Datum in der Vergangenheit …</option>
+  </select>
+
+  <div id="dateWrap" style="display:none;">
+    <label for="pastDate">Datum</label>
+    <input type="date" id="pastDate">
+  </div>
+
+  <label>Datenlayer</label>
+  <div class="layer-toggle">
+    <button id="btnTemp" class="active">Temperatur</button>
+    <button id="btnPrecip">Niederschlag</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="hint">Klick auf die Karte, um Wetterdaten für den gewählten Zeitpunkt abzurufen.</div>
+</div>
 
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
@@ -25,6 +131,156 @@ const map = new maplibregl.Map({
 });
 
 map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+// --- UI: Zeit-Auswahl aufbauen (+1 bis +16 Tage) ---
+const timeSelect = document.getElementById('timeSelect');
+const forecastGroup = timeSelect.querySelector('optgroup');
+for (let i = 1; i <= 16; i++) {
+  const opt = document.createElement('option');
+  opt.value = `+${i}`;
+  opt.textContent = `+${i} Tag${i > 1 ? 'e' : ''}`;
+  forecastGroup.appendChild(opt);
+}
+
+const dateWrap = document.getElementById('dateWrap');
+const pastDate = document.getElementById('pastDate');
+const today = new Date();
+pastDate.max = today.toISOString().slice(0, 10);
+const defaultPast = new Date(today);
+defaultPast.setDate(defaultPast.getDate() - 7);
+pastDate.value = defaultPast.toISOString().slice(0, 10);
+
+timeSelect.addEventListener('change', () => {
+  dateWrap.style.display = timeSelect.value === 'past' ? 'block' : 'none';
+});
+
+// --- Layer-Umschalter ---
+let activeLayer = 'temp'; // 'temp' | 'precip'
+const btnTemp = document.getElementById('btnTemp');
+const btnPrecip = document.getElementById('btnPrecip');
+btnTemp.addEventListener('click', () => setLayer('temp'));
+btnPrecip.addEventListener('click', () => setLayer('precip'));
+function setLayer(layer) {
+  activeLayer = layer;
+  btnTemp.classList.toggle('active', layer === 'temp');
+  btnPrecip.classList.toggle('active', layer === 'precip');
+}
+
+const statusEl = document.getElementById('status');
+function setStatus(text, isError) {
+  statusEl.textContent = text;
+  statusEl.style.color = isError ? '#dc2626' : '#2563eb';
+}
+
+// --- Farbskalen ---
+function tempColor(t) {
+  if (t <= -10) return '#3730a3';
+  if (t <= 0)   return '#2563eb';
+  if (t <= 10)  return '#0ea5e9';
+  if (t <= 18)  return '#22c55e';
+  if (t <= 25)  return '#eab308';
+  if (t <= 32)  return '#f97316';
+  return '#dc2626';
+}
+function precipColor(mm) {
+  if (mm <= 0)   return '#9ca3af';
+  if (mm <= 0.5) return '#93c5fd';
+  if (mm <= 2)   return '#3b82f6';
+  if (mm <= 5)   return '#1d4ed8';
+  if (mm <= 10)  return '#1e3a8a';
+  return '#4c1d95';
+}
+
+// --- Zielzeitpunkt (ISO Datum + ggf. Stunde) aus der Auswahl ableiten ---
+function resolveTarget() {
+  const now = new Date();
+  const sel = timeSelect.value;
+
+  if (sel === 'live') {
+    return { date: now.toISOString().slice(0, 10), hour: now.getHours(), mode: 'forecast' };
+  }
+  if (sel === 'past') {
+    return { date: pastDate.value, hour: 12, mode: 'archive' };
+  }
+  // "+N"
+  const days = parseInt(sel.replace('+', ''), 10);
+  const target = new Date(now);
+  target.setDate(target.getDate() + days);
+  return { date: target.toISOString().slice(0, 10), hour: 12, mode: 'forecast' };
+}
+
+// --- Marker ---
+let currentMarker = null;
+
+async function queryWeather(lngLat) {
+  const { lng, lat } = lngLat;
+  const target = resolveTarget();
+  const base = target.mode === 'archive'
+    ? 'https://archive-api.open-meteo.com/v1/archive'
+    : 'https://api.open-meteo.com/v1/forecast';
+
+  const params = new URLSearchParams({
+    latitude: lat.toFixed(4),
+    longitude: lng.toFixed(4),
+    hourly: 'temperature_2m,precipitation',
+    start_date: target.date,
+    end_date: target.date,
+    timezone: 'auto'
+  });
+
+  setStatus('Lade Wetterdaten …');
+  try {
+    const res = await fetch(`${base}?${params.toString()}`);
+    if (!res.ok) throw new Error(`API-Fehler ${res.status}`);
+    const data = await res.json();
+
+    const hours = data.hourly.time;
+    let idx = hours.findIndex(t => new Date(t).getHours() === target.hour);
+    if (idx === -1) idx = Math.floor(hours.length / 2);
+
+    const temp = data.hourly.temperature_2m[idx];
+    const precip = data.hourly.precipitation[idx];
+    const timeLabel = hours[idx].replace('T', ' ');
+
+    showMarker(lngLat, temp, precip, timeLabel);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus('Fehler beim Laden der Wetterdaten.', true);
+  }
+}
+
+function showMarker(lngLat, temp, precip, timeLabel) {
+  if (currentMarker) currentMarker.remove();
+
+  const el = document.createElement('div');
+  el.className = 'weather-marker';
+
+  let label, color;
+  if (activeLayer === 'temp') {
+    label = `${Math.round(temp)}°`;
+    color = tempColor(temp);
+  } else {
+    label = `${precip.toFixed(1)}`;
+    color = precipColor(precip);
+  }
+  el.style.background = color;
+  el.textContent = label;
+
+  const popupHtml = `
+    <strong>${timeLabel}</strong><br>
+    🌡️ ${temp.toFixed(1)} °C<br>
+    🌧️ ${precip.toFixed(1)} mm
+  `;
+
+  currentMarker = new maplibregl.Marker({ element: el })
+    .setLngLat(lngLat)
+    .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml))
+    .addTo(map)
+    .togglePopup();
+}
+
+map.on('click', (e) => queryWeather(e.lngLat));
 </script>
 </body>
 </html>
