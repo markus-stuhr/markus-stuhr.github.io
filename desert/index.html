@@ -206,7 +206,7 @@ map.on('load', () => {
 });
 
 function updateLabelVisibility() {
-  document.body.classList.toggle('labels-off', map.getZoom() < 6.4);
+  document.body.classList.toggle('labels-off', map.getZoom() < 7);
 }
 
 async function loadStations() {
@@ -243,17 +243,21 @@ async function loadStations() {
     Quelle <a href="https://www.pegelonline.wsv.de" target="_blank" rel="noopener"
     style="color:#58a6ff">PEGELONLINE (WSV)</a><br>Marker anklicken für den 10-Tage-Verlauf.`;
 
-  // Farbe = Lage im 10-Tage-Bereich; Serien nacheinander laden, um die API zu schonen
-  for (const entry of stations) {
-    try {
-      const s = await fetchSeries(entry.st.uuid);
-      entry.series = s;
-      colorMarker(entry);
-    } catch (_) { /* Marker bleibt neutral */ }
-  }
-
   const kaub = stations.find(e => e.st.shortname === 'KAUB');
   if (kaub) select(kaub);
+
+  // Farbe = Lage im 10-Tage-Bereich; mit begrenzter Parallelität, um die API zu schonen
+  const queue = stations.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const entry = queue.shift();
+      try {
+        entry.series = await fetchSeries(entry.st.uuid);
+        colorMarker(entry);
+      } catch (_) { /* Marker bleibt neutral */ }
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
 }
 
 async function fetchSeries(uuid) {
