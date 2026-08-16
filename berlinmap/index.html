@@ -52,6 +52,35 @@
     width: 46px;
   }
 
+  /* Standortpunkt – liegt über beiden Karten, damit er auf dunklen
+     historischen Blättern nicht verschwindet */
+  #userdot {
+    position: fixed;
+    top: 0; left: 0;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: #2b8cff;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 0 14px 4px rgba(43,140,255,0.75);
+    z-index: 25;
+    pointer-events: none;
+    display: none;
+  }
+  #userdot::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 46px; height: 46px;
+    margin: -23px 0 0 -23px;
+    border-radius: 50%;
+    border: 2px solid rgba(43,140,255,0.55);
+    animation: ping 2s ease-out infinite;
+  }
+  @keyframes ping {
+    0%   { transform: scale(0.4); opacity: 0.9; }
+    100% { transform: scale(1.3); opacity: 0; }
+  }
+
   .panel {
     position: fixed;
     top: 16px; left: 16px;
@@ -213,6 +242,7 @@
 <div id="map"></div>
 <div id="overlay"></div>
 <div id="handle"><div class="grab"></div></div>
+<div id="userdot"></div>
 
 <button class="toggle-panel hidden" id="showPanel">☰ Info</button>
 
@@ -400,12 +430,31 @@ const map = new maplibregl.Map({
   attributionControl: false,
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-map.addControl(new maplibregl.GeolocateControl({
+// Standort: der Punkt der GeolocateControl läge unter der historischen Ebene und
+// wäre damit unsichtbar – deshalb nur den Button nutzen und den Punkt selbst zeichnen.
+const geolocate = new maplibregl.GeolocateControl({
   positionOptions: { enableHighAccuracy: true },
   trackUserLocation: true,
-  showUserLocation: true,
-  showAccuracyCircle: true,
-}), 'top-right');
+  showUserLocation: false,
+  showAccuracyCircle: false,
+});
+map.addControl(geolocate, 'top-right');
+
+let userPos = null;   // [lng, lat]
+geolocate.on('geolocate', e => {
+  userPos = [e.coords.longitude, e.coords.latitude];
+  drawUserDot();
+});
+geolocate.on('trackuserlocationend', () => { userPos = null; drawUserDot(); });
+
+function drawUserDot() {
+  const el = document.getElementById('userdot');
+  if (!userPos) { el.style.display = 'none'; return; }
+  const p = map.project(userPos);
+  el.style.display = 'block';
+  el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
+}
+map.on('move', drawUserDot);
 
 // Zweite Karte nur für die historische Kachelebene – liegt transparent darüber
 const overlay = new maplibregl.Map({
