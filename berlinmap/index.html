@@ -445,7 +445,12 @@ geolocate.on('geolocate', e => {
   userPos = [e.coords.longitude, e.coords.latitude];
   drawUserDot();
 });
-geolocate.on('trackuserlocationend', () => { userPos = null; drawUserDot(); });
+// Achtung: 'trackuserlocationend' feuert auch, wenn man nur zoomt oder verschiebt
+// (die Control wechselt dabei in den Hintergrund-Zustand). Der Punkt darf nur
+// verschwinden, wenn die Ortung wirklich aus ist.
+geolocate.on('trackuserlocationend', () => {
+  if (geolocate._watchState === 'OFF' || !geolocate._watchState) { userPos = null; drawUserDot(); }
+});
 
 function drawUserDot() {
   const el = document.getElementById('userdot');
@@ -454,7 +459,8 @@ function drawUserDot() {
   el.style.display = 'block';
   el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
 }
-map.on('move', drawUserDot);
+// bei jedem gerenderten Bild nachziehen – sonst hinkt der Punkt beim Zoomen hinterher
+map.on('render', drawUserDot);
 
 // Zweite Karte nur für die historische Kachelebene – liegt transparent darüber
 const overlay = new maplibregl.Map({
