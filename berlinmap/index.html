@@ -105,6 +105,15 @@
     cursor: pointer; border-width: 2px;
   }
 
+  .ctrl .note { font-size: 10.5px; color: #6b7280; line-height: 1.45; margin-top: 7px; }
+
+  .check {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 14px; font-size: 12px; color: #c7cedb;
+    cursor: pointer;
+  }
+  .check input { accent-color: #f0b429; width: 14px; height: 14px; cursor: pointer; }
+
   .modes { display: flex; gap: 6px; margin-top: 14px; }
   .modes button {
     flex: 1;
@@ -124,10 +133,8 @@
   /* Zeitstrahl unten */
   .timeline {
     position: fixed;
-    left: 50%; bottom: 18px;
-    transform: translateX(-50%);
+    left: 16px; right: 16px; bottom: 18px;
     z-index: 30;
-    width: min(880px, calc(100vw - 32px));
     background: rgba(20, 22, 26, 0.92);
     border-radius: 12px;
     padding: 14px 18px 10px;
@@ -151,6 +158,8 @@
     transition: transform .12s, border-color .12s, background .12s;
   }
   .dot:hover { border-color: #f0b429; transform: scale(1.25); }
+  .dot.k4 { border-color: #e05252; }
+  .dot.k4.active { background: #e05252; }
   .dot.air { border-color: #4fd1c5; }
   .dot.air.active { background: #4fd1c5; }
   .dot.active {
@@ -194,7 +203,7 @@
     .toggle-panel { display: block; left: 12px; top: 12px; }
     .toggle-panel.hidden { display: none; }
     .year { font-size: 26px; }
-    .timeline { bottom: 10px; padding: 12px 14px 8px; }
+    .timeline { left: 12px; right: 12px; bottom: 10px; padding: 12px 14px 8px; }
     .ticks { display: none; }
   }
 </style>
@@ -209,7 +218,7 @@
 
 <div class="panel" id="panel">
   <h1>Berlin Zeitreise</h1>
-  <div class="sub">28 historische Stadtpläne von 1652 bis 1937, exakt auf die heutige Karte gelegt. Zieh den Zeitstrahl unten durch die Jahrhunderte. Der türkise Punkt ist ein Luftbild.</div>
+  <div class="sub">Historische Karten von 1652 bis 1992, exakt auf die heutige Karte gelegt. Zieh den Zeitstrahl unten durch die Jahrhunderte. Türkis = Luftbild, Rot = amtliche Blattkarten mit eigenem Jahresregler.</div>
 
   <div class="maprow">
     <div class="year" id="year">1652</div>
@@ -221,10 +230,18 @@
     <button id="mSwipe">Vergleichen</button>
   </div>
 
+  <div class="ctrl" id="k4Ctrl" style="display:none">
+    <label><span>Blattausgaben bis</span><span id="k4Val">1956</span></label>
+    <input type="range" id="k4year" min="1925" max="1992" value="1956">
+    <div class="note">220 Kartenblätter, jedes einzeln fortgeführt – gezeigt wird pro Blatt die jüngste Ausgabe bis zu diesem Jahr. Daher ein Flickenteppich aus mehreren Jahrgängen; außerhalb des S-Bahn-Rings ist längst nicht alles digitalisiert.</div>
+  </div>
+
   <div class="ctrl" id="opacityCtrl">
     <label><span>Deckkraft</span><span id="opVal">85 %</span></label>
     <input type="range" id="opacity" min="0" max="100" value="85">
   </div>
+
+  <label class="check"><input type="checkbox" id="wall"> Mauerstreifen 1989 einblenden</label>
 </div>
 
 <div class="timeline">
@@ -278,14 +295,24 @@ const MAPS = [
   { y: 1929, src: 'w', id: 189,  t: 'Pharus-Plan Berlin' },
   { y: 1932, src: 'm', id: 34429, t: 'Plan von Berlin (um 1930)' },
   { y: 1937, src: 'm', id: 80850, t: 'Berlin, innere Stadt – Baedeker (mit Kartenrahmen)' },
+  // Karte von Berlin 1:4000 – Blattkarten des Landesarchivs, blattweise fortgeführt
+  { y: 1941, src: 'k4', t: 'Karte von Berlin 1:4000 – Kriegsjahre' },
+  { y: 1950, src: 'k4', t: 'Karte von Berlin 1:4000 – Nachkriegszeit' },
+  { y: 1956, src: 'k4', t: 'Karte von Berlin 1:4000 – geteilte Stadt' },
+  { y: 1963, src: 'k4', t: 'Karte von Berlin 1:4000 – nach dem Mauerbau' },
+  { y: 1975, src: 'k4', t: 'Karte von Berlin 1:4000' },
+  { y: 1989, src: 'k4', t: 'Karte von Berlin 1:4000 – letztes Jahr der Mauer' },
+  { y: 1992, src: 'k4', t: 'Karte von Berlin 1:4000 – nach der Wiedervereinigung' },
 ];
-const Y0 = 1640, Y1 = 1950;
+const Y0 = 1640, Y1 = 2000;
+const K4_MIN = 1925, K4_MAX = 1992;
 
 const LAB_WMS = 'https://histomapberlin.de:8443/geoserver/wms';
 
 function tileUrl(m) {
   if (m.src === 'w') return `https://warper.wmflabs.org/maps/tile/${m.id}/{z}/{x}/{y}.png`;
   if (m.src === 'm') return `https://mapwarper.net/maps/tile/${m.id}/{z}/{x}/{y}.png`;
+  if (m.src === 'k4') return `k4://${k4Year}/{z}/{x}/{y}`;
   return LAB_WMS + '?service=WMS&version=1.1.1&request=GetMap&styles=&format=image/png'
     + '&transparent=true&srs=EPSG:3857&width=256&height=256'
     + '&layers=' + encodeURIComponent(m.id) + '&bbox={bbox-epsg-3857}';
@@ -297,6 +324,74 @@ function sourceLink(m) {
   return 'https://histomapberlin.de/';
 }
 
+/* ---------------------------------------------------------------------------
+   Blattkarten "Karte von Berlin 1:4000" (Landesarchiv Berlin)
+   288 Kartenblätter, jedes blattweise in eigenen Jahren fortgeführt (1925–1992).
+   Für ein Zieljahr wird pro Blatt die jüngste Ausgabe <= Jahr genommen.
+   Da jede Kachel andere Blätter braucht, läuft das über ein eigenes Protokoll:
+   k4://<jahr>/<z>/<x>/<y> -> WMS-GetMap nur mit den Blättern dieser Kachel.
+--------------------------------------------------------------------------- */
+let SHEETS = null;          // { blattnr: { b: [w,s,e,n], y: [jahre] } }
+let k4Year = 1956;
+
+// Kacheln können angefordert werden, bevor der Blattindex da ist – deshalb warten
+const sheetsReady = fetch('sheets.json').then(r => r.json()).then(d => { SHEETS = d; return d; });
+
+const LEER_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+function tile2lon(x, z) { return x / Math.pow(2, z) * 360 - 180; }
+function tile2lat(y, z) {
+  const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
+  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+function merc(lon, lat) {
+  return [
+    lon * 20037508.34 / 180,
+    Math.log(Math.tan((90 + lat) * Math.PI / 360)) / (Math.PI / 180) * 20037508.34 / 180,
+  ];
+}
+
+// Blätter, die diese Kachel schneiden – je Blatt die jüngste Ausgabe <= Jahr
+function sheetsFor(w, s, e, n, year) {
+  const out = [];
+  for (const id in SHEETS) {
+    const b = SHEETS[id].b;
+    if (b[2] < w || b[0] > e || b[3] < s || b[1] > n) continue;
+    const older = SHEETS[id].y.filter(y => y <= year);
+    if (older.length) out.push('histomap:' + id + '_' + older[older.length - 1]);
+  }
+  return out;
+}
+
+maplibregl.addProtocol('k4', async (params, abortController) => {
+  const p = params.url.replace('k4://', '').split('/');
+  const year = +p[0], z = +p[1], x = +p[2], y = +p[3];
+  if (!SHEETS) await sheetsReady;
+
+  const w = tile2lon(x, z), e = tile2lon(x + 1, z);
+  const n = tile2lat(y, z), s = tile2lat(y + 1, z);
+  const layers = sheetsFor(w, s, e, n, year);
+  if (!layers.length) return { data: Uint8Array.from(atob(LEER_PNG), c => c.charCodeAt(0)).buffer };
+
+  const [x0, y0] = merc(w, s), [x1, y1] = merc(e, n);
+  const url = LAB_WMS + '?service=WMS&version=1.1.1&request=GetMap&styles=&format=image/png'
+    + '&transparent=true&srs=EPSG:3857&width=256&height=256'
+    + '&layers=' + encodeURIComponent(layers.join(','))
+    + '&bbox=' + [x0, y0, x1, y1].join(',');
+
+  const res = await fetch(url, { signal: abortController ? abortController.signal : undefined });
+  if (!res.ok) return { data: Uint8Array.from(atob(LEER_PNG), c => c.charCodeAt(0)).buffer };
+  return { data: await res.arrayBuffer() };
+});
+
+// Jahr der Blattkarte geändert -> Kacheln der aktiven Ebene neu anfordern
+function reloadK4() {
+  const m = MAPS[current];
+  if (!m || m.src !== 'k4') return;
+  const src = overlay.getSource(layerId(current));
+  if (src) src.setTiles([tileUrl(m)]);
+}
+
 const map = new maplibregl.Map({
   container: 'map',
   style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
@@ -305,6 +400,12 @@ const map = new maplibregl.Map({
   attributionControl: false,
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+map.addControl(new maplibregl.GeolocateControl({
+  positionOptions: { enableHighAccuracy: true },
+  trackUserLocation: true,
+  showUserLocation: true,
+  showAccuracyCircle: true,
+}), 'top-right');
 
 // Zweite Karte nur für die historische Kachelebene – liegt transparent darüber
 const overlay = new maplibregl.Map({
@@ -351,7 +452,7 @@ function ensureLayer(i) {
   overlay.addLayer({
     id, type: 'raster', source: id,
     paint: { 'raster-opacity': 0, 'raster-opacity-transition': { duration: 260 }, 'raster-fade-duration': 200 },
-  });
+  }, overlay.getLayer('wall') ? 'wall' : undefined);   // Mauer bleibt obenauf
 }
 
 function applyOpacity() {
@@ -379,14 +480,18 @@ function applyClip() {
 
 function select(i, animate) {
   current = Math.max(0, Math.min(MAPS.length - 1, i));
+  const cur = MAPS[current];
+  if (cur.src === 'k4') { k4Year = cur.y; setK4Ui(); }
+  document.getElementById('k4Ctrl').style.display = cur.src === 'k4' ? 'block' : 'none';
   ensureLayer(current);
+  if (cur.src === 'k4') reloadK4();
   // Nachbarn vorladen, damit das Durchziehen flüssig bleibt
   if (current > 0) ensureLayer(current - 1);
   if (current < MAPS.length - 1) ensureLayer(current + 1);
   applyOpacity();
 
   const m = MAPS[current];
-  document.getElementById('year').textContent = m.y;
+  document.getElementById('year').textContent = m.src === 'k4' ? k4Year : m.y;
   document.getElementById('mtitle').innerHTML =
     m.t + ' · <a href="' + sourceLink(m) + '" target="_blank" rel="noopener">Quelle</a>';
   document.querySelectorAll('.dot').forEach((d, k) => d.classList.toggle('active', k === current));
@@ -399,7 +504,7 @@ const pos = y => ((y - Y0) / (Y1 - Y0)) * 100;
 
 MAPS.forEach((m, i) => {
   const d = document.createElement('div');
-  d.className = 'dot' + (m.air ? ' air' : '');
+  d.className = 'dot' + (m.air ? ' air' : '') + (m.src === 'k4' ? ' k4' : '');
   d.style.left = pos(m.y) + '%';
   d.title = m.y + ' – ' + m.t;
   d.addEventListener('click', () => select(i));
@@ -407,7 +512,7 @@ MAPS.forEach((m, i) => {
 });
 
 const ticks = document.getElementById('ticks');
-for (let y = 1650; y <= 1950; y += 50) {
+for (let y = 1650; y <= 2000; y += 50) {
   const t = document.createElement('div');
   t.className = 'tick';
   t.style.left = pos(y) + '%';
@@ -450,6 +555,40 @@ opSlider.addEventListener('input', () => {
   opacity = opSlider.value / 100;
   document.getElementById('opVal').textContent = opSlider.value + ' %';
   applyOpacity();
+});
+
+// Feinregler für das Blattkarten-Jahr
+const k4Slider = document.getElementById('k4year');
+function setK4Ui() {
+  k4Slider.value = k4Year;
+  document.getElementById('k4Val').textContent = k4Year;
+}
+k4Slider.addEventListener('input', () => {
+  k4Year = +k4Slider.value;
+  document.getElementById('k4Val').textContent = k4Year;
+  document.getElementById('year').textContent = k4Year;
+});
+k4Slider.addEventListener('change', reloadK4);
+
+// Mauerstreifen 1989 als Zusatzebene (Vektordaten des Landesarchivs über WMS)
+document.getElementById('wall').addEventListener('change', e => {
+  if (e.target.checked) {
+    if (!overlay.getSource('wall')) {
+      overlay.addSource('wall', {
+        type: 'raster',
+        tiles: [LAB_WMS + '?service=WMS&version=1.1.1&request=GetMap&styles=&format=image/png'
+          + '&transparent=true&srs=EPSG:3857&width=256&height=256'
+          + '&layers=' + encodeURIComponent('otherlayer:mauerstreifen_1989_3068_group')
+          + '&bbox={bbox-epsg-3857}'],
+        tileSize: 256,
+      });
+      overlay.addLayer({ id: 'wall', type: 'raster', source: 'wall', paint: { 'raster-opacity': 0.9 } });
+    } else {
+      overlay.setLayoutProperty('wall', 'visibility', 'visible');
+    }
+  } else if (overlay.getLayer('wall')) {
+    overlay.setLayoutProperty('wall', 'visibility', 'none');
+  }
 });
 
 const bOverlay = document.getElementById('mOverlay');
