@@ -70,6 +70,15 @@
   .now .unit { font-size: 13px; color: #9aa4b2; }
   .now .trend { font-size: 12px; font-weight: 600; }
   .up { color: #7ee787; } .down { color: #ff7b72; } .flat { color: #9aa4b2; }
+  .vsmean {
+    font-size: 11px; color: #9aa4b2; line-height: 1.5; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  }
+  .vsmean b { color: #e6edf3; font-weight: 600; }
+  .badge {
+    font-size: 12px; font-weight: 700; padding: 1px 6px;
+    border: 1px solid; border-radius: 5px;
+  }
   .chart { width: 100%; height: 90px; display: block; }
   .stats { display: flex; gap: 14px; font-size: 11px; color: #9aa4b2; margin-top: 6px; }
   .stats b { color: #e6edf3; font-weight: 600; }
@@ -99,7 +108,8 @@
   <div class="legend">
     <div><span class="swatch-line"></span> Flussverlauf</div>
     <div><span class="dot" style="background:#7ee787"></span> Quelle &amp; Mündung</div>
-    <div><span class="dot" style="background:#ff7b72"></span> niedrig <span class="dot" style="background:#58a6ff"></span> mittel <span class="dot" style="background:#7ee787"></span> hoch <span style="color:#6e7681">(10-Tage-Spanne)</span></div>
+    <div><span class="dot" style="background:#ff7b72"></span> unter <span class="dot" style="background:#58a6ff"></span> im <span class="dot" style="background:#7ee787"></span> über dem Schnitt</div>
+    <div style="color:#6e7681;font-size:11px;display:block">Zahl am Pegel: Abweichung vom 30-Tage-Mittel der Station (± in cm), gestrichelte Linie im Verlauf = dieses Mittel.</div>
   </div>
   <div class="status" id="status">Lade Pegelstände …</div>
 </div>
@@ -226,19 +236,19 @@ async function loadStations() {
 
   statusEl.innerHTML = `${stations.length} Pegel · Stand ${fmtTime(newest)} ·
     Quelle <a href="https://www.pegelonline.wsv.de" target="_blank" rel="noopener"
-    style="color:#58a6ff">PEGELONLINE (WSV)</a><br>Marker anklicken für den 10-Tage-Verlauf. Flussgeometrie: OpenStreetMap.`;
+    style="color:#58a6ff">PEGELONLINE (WSV)</a><br>Zahl = Abweichung vom 30-Tage-Mittel, Marker anklicken für den Verlauf. Flussgeometrie: OpenStreetMap.`;
 
   const kaub = stations.find(e => e.st.shortname === 'KAUB');
   if (kaub) select(kaub);
 
-  // Farbe = Lage im 10-Tage-Bereich; mit begrenzter Parallelität, um die API zu schonen
+  // Abweichung vom 30-Tage-Mittel je Station; mit begrenzter Parallelität, um die API zu schonen
   const queue = stations.slice();
   const worker = async () => {
     while (queue.length) {
       const entry = queue.shift();
       try {
         entry.series = await fetchSeries(entry.st.uuid);
-        colorMarker(entry);
+        updateMarker(entry);
       } catch (_) { /* Marker bleibt neutral */ }
     }
   };
@@ -247,32 +257,44 @@ async function loadStations() {
 
 async function fetchSeries(uuid) {
   if (seriesCache.has(uuid)) return seriesCache.get(uuid);
-  const p = fetch(`${API}/stations/${uuid}/W/measurements.json?start=P10D`)
+  const p = fetch(`${API}/stations/${uuid}/W/measurements.json?start=P30D`)
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(rows => rows.map(m => ({ t: new Date(m.timestamp).getTime(), v: m.value })));
   seriesCache.set(uuid, p);
   return p;
 }
 
-function range(series) {
-  let min = Infinity, max = -Infinity;
-  series.forEach(m => { if (m.v < min) min = m.v; if (m.v > max) max = m.v; });
-  return { min, max };
+function stats(series) {
+  let min = Infinity, max = -Infinity, sum = 0;
+  series.forEach(m => { if (m.v < min) min = m.v; if (m.v > max) max = m.v; sum += m.v; });
+  const mean = sum / series.length;
+  const varr = series.reduce((a, m) => a + (m.v - mean) ** 2, 0) / series.length;
+  return { min, max, mean, sd: Math.sqrt(varr) };
 }
 
-// rot (niedrig) → blau (mittel) → grün (hoch), relativ zur eigenen 10-Tage-Spanne
-function levelColor(pos) {
-  if (pos == null || !isFinite(pos)) return '#58a6ff';
-  return pos < 0.33 ? '#ff7b72' : pos > 0.66 ? '#7ee787' : '#58a6ff';
+// Abweichung vom 30-Tage-Mittel, gemessen in Standardabweichungen der Station
+function deltaColor(delta, sd) {
+  if (!isFinite(delta) || !(sd > 0)) return '#58a6ff';
+  const z = delta / sd;
+  return z < -0.5 ? '#ff7b72' : z > 0.5 ? '#7ee787' : '#58a6ff';
 }
 
-function colorMarker(entry) {
-  const { min, max } = range(entry.series);
-  const pos = max > min ? (entry.cur.value - min) / (max - min) : 0.5;
-  const c = levelColor(pos);
+const signed = v => (v > 0 ? '+' : v < 0 ? '−' : '±') + Math.abs(Math.round(v));
+
+// Marker zeigt die Abweichung vom 30-Tage-Mittel statt des Rohwerts
+function updateMarker(entry) {
+  const s = stats(entry.series);
+  entry.stats = s;
+  const delta = entry.cur.value - s.mean;
+  const c = deltaColor(delta, s.sd);
   const bullet = entry.el.querySelector('.bullet');
   bullet.style.background = c;
   bullet.style.boxShadow = `0 0 8px ${c}99`;
+  const val = entry.el.querySelector('.val');
+  val.textContent = `${signed(delta)} ${entry.ts.unit}`;
+  val.style.color = c;
+  entry.el.title = `${fmtName(entry.st.longname)}: ${Math.round(entry.cur.value)} ${entry.ts.unit}`
+    + ` (Ø 30 Tage ${Math.round(s.mean)} ${entry.ts.unit})`;
 }
 
 function select(entry) {
@@ -285,7 +307,7 @@ function select(entry) {
   document.getElementById('dMeta').textContent =
     `Rhein-km ${entry.st.km} · ${fmtName(entry.st.agency)}`;
   const body = document.getElementById('dBody');
-  body.innerHTML = '<div class="loading">Lade 10-Tage-Verlauf …</div>';
+  body.innerHTML = '<div class="loading">Lade 30-Tage-Verlauf …</div>';
 
   fetchSeries(entry.st.uuid)
     .then(series => {
@@ -303,28 +325,36 @@ function renderDetail(entry, series) {
   const last = series[series.length - 1] || { t: new Date(entry.cur.timestamp).getTime(), v: entry.cur.value };
   const dayAgo = last.t - 24 * 3600 * 1000;
   const ref = series.find(m => m.t >= dayAgo);
-  const delta = ref ? last.v - ref.v : null;
-  const { min, max } = range(series);
-  const cls = delta == null ? 'flat' : delta > 1 ? 'up' : delta < -1 ? 'down' : 'flat';
-  const arrow = delta == null ? '' : delta > 1 ? '▲' : delta < -1 ? '▼' : '▬';
-  const deltaTxt = delta == null ? '' :
-    `${arrow} ${delta > 0 ? '+' : ''}${Math.round(delta)} ${unit} / 24 h`;
+  const d24 = ref ? last.v - ref.v : null;
+  const s = stats(series);
+  const dMean = last.v - s.mean;
+
+  const cls = d24 == null ? 'flat' : d24 > 1 ? 'up' : d24 < -1 ? 'down' : 'flat';
+  const arrow = d24 == null ? '' : d24 > 1 ? '▲' : d24 < -1 ? '▼' : '▬';
+  const d24Txt = d24 == null ? '' : `${arrow} ${signed(d24)} ${unit} / 24 h`;
+  const mc = deltaColor(dMean, s.sd);
 
   return `
     <div class="now">
       <span class="big">${Math.round(last.v)}</span>
       <span class="unit">${unit}</span>
-      <span class="trend ${cls}">${deltaTxt}</span>
+      <span class="trend ${cls}">${d24Txt}</span>
     </div>
-    ${sparkline(series, min, max)}
+    <div class="vsmean">
+      <span class="badge" style="color:${mc};border-color:${mc}66">${signed(dMean)} ${unit}</span>
+      gegenüber dem 30-Tage-Mittel von <b>${Math.round(s.mean)} ${unit}</b>
+    </div>
+    ${sparkline(series, s)}
     <div class="stats">
-      <span>Min <b>${Math.round(min)}</b></span>
-      <span>Max <b>${Math.round(max)}</b></span>
+      <span>Min <b>${Math.round(s.min)}</b></span>
+      <span>Ø <b>${Math.round(s.mean)}</b></span>
+      <span>Max <b>${Math.round(s.max)}</b></span>
       <span>Stand <b>${fmtTime(last.t)}</b></span>
     </div>`;
 }
 
-function sparkline(series, min, max) {
+function sparkline(series, st) {
+  const { min, max, mean } = st;
   const W = 308, H = 90, pad = 6;
   const t0 = series[0].t, t1 = series[series.length - 1].t;
   const span = Math.max(1, max - min);
@@ -338,10 +368,10 @@ function sparkline(series, min, max) {
   const area = `${line}L${x(t1).toFixed(1)},${H - pad}L${x(t0).toFixed(1)},${H - pad}Z`;
   const lastPt = pts[pts.length - 1];
 
-  // Tagesraster
+  // Wochenraster
   const ticks = [];
   const d = new Date(t0); d.setHours(0, 0, 0, 0);
-  for (let tt = d.getTime(); tt <= t1; tt += 86400000) {
+  for (let tt = d.getTime(); tt <= t1; tt += 7 * 86400000) {
     if (tt >= t0) ticks.push(`<line x1="${x(tt).toFixed(1)}" y1="${pad}" x2="${x(tt).toFixed(1)}" y2="${H - pad}"
       stroke="#30363d" stroke-width="1"/>`);
   }
@@ -352,6 +382,8 @@ function sparkline(series, min, max) {
       <stop offset="100%" stop-color="#58a6ff" stop-opacity="0"/>
     </linearGradient></defs>
     ${ticks.join('')}
+    <line x1="${pad}" y1="${y(mean).toFixed(1)}" x2="${W - pad}" y2="${y(mean).toFixed(1)}"
+      stroke="#8b949e" stroke-width="1" stroke-dasharray="4 3"/>
     <path d="${area}" fill="url(#fill)"/>
     <path d="${line}" fill="none" stroke="#5ec8ff" stroke-width="1.6"
       stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
