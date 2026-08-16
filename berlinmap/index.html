@@ -151,6 +151,8 @@
     transition: transform .12s, border-color .12s, background .12s;
   }
   .dot:hover { border-color: #f0b429; transform: scale(1.25); }
+  .dot.air { border-color: #4fd1c5; }
+  .dot.air.active { background: #4fd1c5; }
   .dot.active {
     background: #f0b429; border-color: #fff;
     transform: scale(1.35);
@@ -207,7 +209,7 @@
 
 <div class="panel" id="panel">
   <h1>Berlin Zeitreise</h1>
-  <div class="sub">Historische Stadtpläne, exakt auf die heutige Karte gelegt. Zieh den Zeitstrahl unten durch die Jahrhunderte.</div>
+  <div class="sub">28 historische Stadtpläne von 1652 bis 1937, exakt auf die heutige Karte gelegt. Zieh den Zeitstrahl unten durch die Jahrhunderte. Der türkise Punkt ist ein Luftbild.</div>
 
   <div class="maprow">
     <div class="year" id="year">1652</div>
@@ -236,34 +238,64 @@
 </div>
 
 <div class="attrib">
-  Historische Karten: <a href="https://warper.wmflabs.org/" target="_blank" rel="noopener">Wikimaps Warper</a> / Wikimedia Commons · Basiskarte © MapTiler, OpenStreetMap
+  Karten: <a href="https://warper.wmflabs.org/" target="_blank" rel="noopener">Wikimaps Warper</a> / Wikimedia Commons ·
+  <a href="https://mapwarper.net/" target="_blank" rel="noopener">mapwarper.net</a> ·
+  <a href="https://histomapberlin.de/" target="_blank" rel="noopener">HistoMapBerlin</a> © Landesarchiv Berlin ·
+  Basiskarte © MapTiler, OpenStreetMap
 </div>
 
 <script>
 const MAPTILER_KEY = 'lT9jK8r0OXrZinP9JSOT';
 
-// Georeferenzierte historische Karten (Wikimaps Warper)
+// Georeferenzierte historische Karten
+// src: 'w' = Wikimaps Warper, 'm' = mapwarper.net, 'lab' = Landesarchiv Berlin (histomapberlin, WMS)
 const MAPS = [
-  { y: 1652, id: 279,  t: 'Memhardt: Grundriß der beyden Churf. Residentz Stätte Berlin und Cölln' },
-  { y: 1688, id: 491,  t: 'Dahlberg: Berlin (Aufnahme 1656/57)' },
-  { y: 1723, id: 185,  t: 'Dusableau: Plan von Berlin' },
-  { y: 1750, id: 188,  t: 'Schmettau: Plan de la Ville de Berlin' },
-  { y: 1772, id: 1132, t: 'Rhode / Lotter: Plan von Berlin' },
-  { y: 1786, id: 1135, t: 'Sotzmann: Plan von Berlin' },
-  { y: 1803, id: 472,  t: 'Sotzmann: Grundriss der Königlichen Haupt- und Residenzstadt Berlin' },
-  { y: 1816, id: 1136, t: 'Sachs: Grundriss von Berlin' },
-  { y: 1835, id: 475,  t: 'Reymann: Neuester Grundriss von Berlin' },
-  { y: 1849, id: 478,  t: 'Boehm: Grundriss von Berlin mit nächster Umgebung' },
-  { y: 1862, id: 288,  t: 'Boehm: Plan von Berlin und Umgegend' },
-  { y: 1874, id: 283,  t: 'Neuester Plan von Berlin mit Parochie-Grenzen' },
-  { y: 1883, id: 286,  t: 'Ravenstein: Plan von Berlin' },
-  { y: 1891, id: 1139, t: 'Sineck: Situations-Plan von Berlin' },
-  { y: 1903, id: 210,  t: 'Straube: Plan von Berlin' },
-  { y: 1910, id: 1220, t: 'Straube-Plan von Berlin' },
-  { y: 1920, id: 484,  t: 'Kiessling: Grosser Verkehrs-Plan von Berlin' },
-  { y: 1928, id: 190,  t: 'Pharus-Plan Berlin, Große Ausgabe' },
+  { y: 1652, src: 'w', id: 279,  t: 'Memhardt: Grundriß der beyden Churf. Residentz Stätte Berlin und Cölln' },
+  { y: 1688, src: 'w', id: 491,  t: 'Dahlberg: Berlin (Aufnahme 1656/57)' },
+  { y: 1698, src: 'w', id: 183,  t: 'Grundris der Königl. Residentz Berlin' },
+  { y: 1723, src: 'w', id: 185,  t: 'Dusableau: Plan von Berlin' },
+  { y: 1738, src: 'w', id: 1144, t: 'Walther / Homann: Berlin' },
+  { y: 1750, src: 'w', id: 188,  t: 'Schmettau: Plan de la Ville de Berlin' },
+  { y: 1769, src: 'w', id: 1133, t: 'Grundriss der Königlich-Preussischen Residenz-Stadt Berlin' },
+  { y: 1786, src: 'w', id: 1135, t: 'Sotzmann: Plan von Berlin' },
+  { y: 1803, src: 'w', id: 472,  t: 'Sotzmann: Grundriss der Königlichen Haupt- und Residenzstadt Berlin' },
+  { y: 1816, src: 'w', id: 1136, t: 'Sachs: Grundriss von Berlin' },
+  { y: 1831, src: 'w', id: 2195, t: 'Natorff: Plan von Berlin' },
+  { y: 1841, src: 'w', id: 485,  t: 'Morin: Plan von Berlin' },
+  { y: 1849, src: 'w', id: 478,  t: 'Boehm: Grundriss von Berlin mit nächster Umgebung' },
+  { y: 1862, src: 'w', id: 288,  t: 'Boehm: Plan von Berlin und Umgegend' },
+  { y: 1867, src: 'lab', id: 'liebenow_1867:liebenow_1867', t: 'Liebenow: Karte von Berlin und Umgebung (Landesarchiv Berlin)' },
+  { y: 1874, src: 'w', id: 283,  t: 'Neuester Plan von Berlin mit Parochie-Grenzen' },
+  { y: 1883, src: 'w', id: 286,  t: 'Ravenstein: Plan von Berlin' },
+  { y: 1891, src: 'w', id: 1139, t: 'Sineck: Situations-Plan von Berlin' },
+  { y: 1896, src: 'w', id: 1074, t: 'Grieben: Neuer Plan von Berlin mit Umgebung' },
+  { y: 1903, src: 'w', id: 210,  t: 'Straube: Plan von Berlin' },
+  { y: 1910, src: 'lab', id: 'straube_1910_historical:straube', t: 'Straube-Plan von Berlin, hochaufgelöst (Landesarchiv Berlin)' },
+  { y: 1913, src: 'w', id: 1123, t: 'Pharus-Plan Groß-Berlin' },
+  { y: 1920, src: 'w', id: 484,  t: 'Kiessling: Grosser Verkehrs-Plan von Berlin' },
+  { y: 1925, src: 'w', id: 1145, t: 'Griebens Stadtplan von Berlin' },
+  { y: 1928, src: 'lab', id: 'luftbilder_1928:Luftbilder_1928', t: '★ Luftbild-Mosaik von ganz Berlin (Landesarchiv Berlin)', air: true },
+  { y: 1929, src: 'w', id: 189,  t: 'Pharus-Plan Berlin' },
+  { y: 1932, src: 'm', id: 34429, t: 'Plan von Berlin (um 1930)' },
+  { y: 1937, src: 'm', id: 80850, t: 'Berlin, innere Stadt – Baedeker (mit Kartenrahmen)' },
 ];
 const Y0 = 1640, Y1 = 1950;
+
+const LAB_WMS = 'https://histomapberlin.de:8443/geoserver/wms';
+
+function tileUrl(m) {
+  if (m.src === 'w') return `https://warper.wmflabs.org/maps/tile/${m.id}/{z}/{x}/{y}.png`;
+  if (m.src === 'm') return `https://mapwarper.net/maps/tile/${m.id}/{z}/{x}/{y}.png`;
+  return LAB_WMS + '?service=WMS&version=1.1.1&request=GetMap&styles=&format=image/png'
+    + '&transparent=true&srs=EPSG:3857&width=256&height=256'
+    + '&layers=' + encodeURIComponent(m.id) + '&bbox={bbox-epsg-3857}';
+}
+
+function sourceLink(m) {
+  if (m.src === 'w') return 'https://warper.wmflabs.org/maps/' + m.id;
+  if (m.src === 'm') return 'https://mapwarper.net/maps/' + m.id;
+  return 'https://histomapberlin.de/';
+}
 
 const map = new maplibregl.Map({
   container: 'map',
@@ -304,18 +336,17 @@ let mode = 'overlay';   // 'overlay' | 'swipe'
 let split = 0.5;
 let ready = false;
 
-function layerId(i) { return 'hist-' + MAPS[i].id; }
+function layerId(i) { return 'hist-' + i; }
 
 function ensureLayer(i) {
   const id = layerId(i);
   if (overlay.getSource(id)) return;
   overlay.addSource(id, {
     type: 'raster',
-    tiles: [`https://warper.wmflabs.org/maps/tile/${MAPS[i].id}/{z}/{x}/{y}.png`],
+    tiles: [tileUrl(MAPS[i])],
     tileSize: 256,
     minzoom: 0,
     maxzoom: 18,
-    attribution: 'Wikimaps Warper',
   });
   overlay.addLayer({
     id, type: 'raster', source: id,
@@ -357,7 +388,7 @@ function select(i, animate) {
   const m = MAPS[current];
   document.getElementById('year').textContent = m.y;
   document.getElementById('mtitle').innerHTML =
-    m.t + ' · <a href="https://warper.wmflabs.org/maps/' + m.id + '" target="_blank" rel="noopener">Quelle</a>';
+    m.t + ' · <a href="' + sourceLink(m) + '" target="_blank" rel="noopener">Quelle</a>';
   document.querySelectorAll('.dot').forEach((d, k) => d.classList.toggle('active', k === current));
   history.replaceState(null, '', '#' + m.y);
 }
@@ -368,7 +399,7 @@ const pos = y => ((y - Y0) / (Y1 - Y0)) * 100;
 
 MAPS.forEach((m, i) => {
   const d = document.createElement('div');
-  d.className = 'dot';
+  d.className = 'dot' + (m.air ? ' air' : '');
   d.style.left = pos(m.y) + '%';
   d.title = m.y + ' – ' + m.t;
   d.addEventListener('click', () => select(i));
