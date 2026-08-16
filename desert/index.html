@@ -236,7 +236,7 @@ async function loadStations() {
 
   statusEl.innerHTML = `${stations.length} Pegel · Stand ${fmtTime(newest)} ·
     Quelle <a href="https://www.pegelonline.wsv.de" target="_blank" rel="noopener"
-    style="color:#58a6ff">PEGELONLINE (WSV)</a><br>Zahl = Abweichung vom 30-Tage-Mittel, Marker anklicken für den Verlauf. Flussgeometrie: OpenStreetMap.`;
+    style="color:#58a6ff">PEGELONLINE (WSV)</a><br>Flussgeometrie: OpenStreetMap · Marker anklicken für den Verlauf.`;
 
   const kaub = stations.find(e => e.st.shortname === 'KAUB');
   if (kaub) select(kaub);
