@@ -52,6 +52,10 @@
     width: 46px;
   }
 
+  /* Fotomarker liegen wie der Standortpunkt über beiden Karten */
+  #pins { position: fixed; inset: 0; z-index: 24; pointer-events: none; }
+  #pins > * { position: absolute; top: 0; left: 0; pointer-events: auto; }
+
   /* Standortpunkt – liegt über beiden Karten, damit er auf dunklen
      historischen Blättern nicht verschwindet */
   #userdot {
@@ -142,6 +146,57 @@
     cursor: pointer;
   }
   .check input { accent-color: #f0b429; width: 14px; height: 14px; cursor: pointer; }
+
+  .check .cnt { color: #6b7280; font-size: 11px; }
+
+  /* Fotomarker */
+  .photo-pin {
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: #f0b429;
+    border: 2px solid #14161a;
+    box-shadow: 0 0 0 1.5px rgba(255,255,255,0.85), 0 2px 6px rgba(0,0,0,0.5);
+    cursor: pointer;
+  }
+  .photo-pin:hover { background: #fff; transform: scale(1.25); }
+
+  /* Lightbox */
+  #lightbox {
+    position: fixed; inset: 0;
+    z-index: 60;
+    background: rgba(8,9,11,0.88);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  #lightbox.on { display: flex; }
+  .lb-inner {
+    max-width: min(1100px, 92vw);
+    max-height: 88vh;
+    display: flex; flex-direction: column;
+    background: #14161a;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .lb-inner img {
+    max-width: 100%; max-height: calc(88vh - 74px);
+    object-fit: contain;
+    background: #0b0c0e;
+    display: block;
+  }
+  .lb-meta { padding: 12px 16px; }
+  .lb-meta #lbTitle { font-size: 13px; line-height: 1.4; }
+  .lb-meta #lbSub { font-size: 11.5px; color: #9aa4b2; margin-top: 4px; }
+  .lb-meta a { color: #7fb2ff; text-decoration: none; }
+  #lbClose {
+    position: absolute; top: 16px; right: 20px;
+    background: rgba(20,22,26,0.9);
+    border: 1px solid #2c313c; color: #fff;
+    width: 36px; height: 36px; border-radius: 50%;
+    font-size: 15px; cursor: pointer;
+  }
 
   .modes { display: flex; gap: 6px; margin-top: 14px; }
   .modes button {
@@ -243,12 +298,13 @@
 <div id="overlay"></div>
 <div id="handle"><div class="grab"></div></div>
 <div id="userdot"></div>
+<div id="pins"></div>
 
 <button class="toggle-panel hidden" id="showPanel">☰ Info</button>
 
 <div class="panel" id="panel">
   <h1>Berlin Zeitreise</h1>
-  <div class="sub">Historische Karten von 1652 bis 1992, exakt auf die heutige Karte gelegt. Zieh den Zeitstrahl unten durch die Jahrhunderte. Türkis = Luftbild, Rot = amtliche Blattkarten mit eigenem Jahresregler.</div>
+  <div class="sub">Historische Karten von 1652 bis 1992, exakt auf die heutige Karte gelegt. Zieh den Zeitstrahl unten durch die Jahrhunderte. Türkis = Luftbild, Rot = amtliche Blattkarten mit eigenem Jahresregler. Die gelben Punkte auf der Karte sind Fotos aus derselben Zeit – anklicken.</div>
 
   <div class="maprow">
     <div class="year" id="year">1652</div>
@@ -272,6 +328,18 @@
   </div>
 
   <label class="check"><input type="checkbox" id="wall"> Mauerstreifen 1989 einblenden</label>
+  <label class="check"><input type="checkbox" id="photos" checked> Fotos aus der Zeit <span id="photoCount" class="cnt"></span></label>
+</div>
+
+<div id="lightbox">
+  <div class="lb-inner">
+    <img id="lbImg" alt="">
+    <div class="lb-meta">
+      <div id="lbTitle"></div>
+      <div id="lbSub"></div>
+    </div>
+  </div>
+  <button id="lbClose" aria-label="Schließen">✕</button>
 </div>
 
 <div class="timeline">
@@ -409,9 +477,14 @@ maplibregl.addProtocol('k4', async (params, abortController) => {
     + '&layers=' + encodeURIComponent(layers.join(','))
     + '&bbox=' + [x0, y0, x1, y1].join(',');
 
-  const res = await fetch(url, { signal: abortController ? abortController.signal : undefined });
-  if (!res.ok) return { data: Uint8Array.from(atob(LEER_PNG), c => c.charCodeAt(0)).buffer };
-  return { data: await res.arrayBuffer() };
+  try {
+    const res = await fetch(url, { signal: abortController ? abortController.signal : undefined });
+    if (!res.ok) return { data: Uint8Array.from(atob(LEER_PNG), c => c.charCodeAt(0)).buffer };
+    return { data: await res.arrayBuffer() };
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;   // Kachel wurde verworfen, das ist normal
+    return { data: Uint8Array.from(atob(LEER_PNG), c => c.charCodeAt(0)).buffer };
+  }
 });
 
 // Jahr der Blattkarte geändert -> Kacheln der aktiven Ebene neu anfordern
@@ -459,8 +532,8 @@ function drawUserDot() {
   el.style.display = 'block';
   el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -50%)`;
 }
-// bei jedem gerenderten Bild nachziehen – sonst hinkt der Punkt beim Zoomen hinterher
-map.on('render', drawUserDot);
+// bei jedem gerenderten Bild nachziehen – sonst hinken die Punkte beim Zoomen hinterher
+map.on('render', () => { drawUserDot(); drawPins(); });
 
 // Zweite Karte nur für die historische Kachelebene – liegt transparent darüber
 const overlay = new maplibregl.Map({
@@ -550,6 +623,7 @@ function select(i, animate) {
   document.getElementById('mtitle').innerHTML =
     m.t + ' · <a href="' + sourceLink(m) + '" target="_blank" rel="noopener">Quelle</a>';
   document.querySelectorAll('.dot').forEach((d, k) => d.classList.toggle('active', k === current));
+  pickPhotos();
   history.replaceState(null, '', '#' + m.y);
 }
 
@@ -612,6 +686,88 @@ opSlider.addEventListener('input', () => {
   applyOpacity();
 });
 
+/* ---------------------------------------------------------------------------
+   Historische Fotos: zu jeder Karte bis zu 10 Aufnahmen aus derselben Zeit.
+   Punkte liegen über der historischen Ebene, Klick öffnet das Bild.
+--------------------------------------------------------------------------- */
+let PHOTOS = [];
+let shown = [];          // aktuell angezeigte Fotos
+const pinBox = document.getElementById('pins');
+
+fetch('photos.json').then(r => r.json()).then(d => { PHOTOS = d; pickPhotos(); })
+  .catch(() => { document.getElementById('photoCount').textContent = '(nicht geladen)'; });
+
+// Zeitfenster: halber Abstand zu den Nachbarkarten, mindestens ±4 Jahre
+function windowFor(i) {
+  const y = MAPS[i].src === 'k4' ? k4Year : MAPS[i].y;
+  const prev = MAPS[i - 1] ? (y - MAPS[i - 1].y) / 2 : 12;
+  const next = MAPS[i + 1] ? (MAPS[i + 1].y - y) / 2 : 12;
+  return [y, Math.max(4, Math.min(prev, 15)), Math.max(4, Math.min(next, 15))];
+}
+
+function pickPhotos() {
+  if (!PHOTOS.length) return;
+  const [y, back, fwd] = windowFor(current);
+  let inRange = PHOTOS.filter(p => p.y >= y - back && p.y <= y + fwd);
+  // Für die ganz frühen Karten gibt es kaum Bildmaterial – dann das Fenster weiten
+  if (inRange.length < 6) inRange = PHOTOS.filter(p => Math.abs(p.y - y) <= 40);
+  inRange = inRange.sort((a, b) => Math.abs(a.y - y) - Math.abs(b.y - y));
+
+  // räumlich streuen, damit die Punkte nicht alle am selben Ort kleben
+  const out = [];
+  for (const p of inRange) {
+    if (out.length >= 10) break;
+    if (out.some(q => Math.hypot((q.lat - p.lat) * 111, (q.lon - p.lon) * 68) < 0.6)) continue;
+    out.push(p);
+  }
+  shown = out;
+  document.getElementById('photoCount').textContent = out.length ? '(' + out.length + ')' : '(keine)';
+  buildPins();
+}
+
+function buildPins() {
+  pinBox.innerHTML = '';
+  if (!document.getElementById('photos').checked) return;
+  shown.forEach(p => {
+    const el = document.createElement('div');
+    el.className = 'photo-pin';
+    el.title = p.y + ' – ' + p.o;
+    el.addEventListener('click', () => openPhoto(p));
+    pinBox.appendChild(el);
+    p._el = el;
+  });
+  drawPins();
+}
+
+function drawPins() {
+  for (const p of shown) {
+    if (!p._el) continue;
+    const q = map.project([p.lon, p.lat]);
+    p._el.style.transform = `translate(${q.x}px, ${q.y}px) translate(-50%, -50%)`;
+  }
+}
+
+const commonsImg = (name, w) =>
+  'https://commons.wikimedia.org/wiki/Special:FilePath/' + encodeURIComponent(name) + '?width=' + w;
+const commonsPage = name =>
+  'https://commons.wikimedia.org/wiki/File:' + encodeURIComponent(name);
+
+function openPhoto(p) {
+  document.getElementById('lbImg').src = commonsImg(p.t, 1200);
+  document.getElementById('lbTitle').textContent = p.t.replace(/\.(jpg|jpeg|png|tif|tiff)$/i, '').replace(/_/g, ' ');
+  document.getElementById('lbSub').innerHTML =
+    p.y + ' · ' + p.o + (p.e ? '' : ' (Standort ungefähr)')
+    + ' · <a href="' + commonsPage(p.t) + '" target="_blank" rel="noopener">Wikimedia Commons</a>';
+  document.getElementById('lightbox').classList.add('on');
+}
+function closePhoto() { document.getElementById('lightbox').classList.remove('on'); }
+document.getElementById('lbClose').addEventListener('click', closePhoto);
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target.id === 'lightbox') closePhoto();
+});
+window.addEventListener('keydown', e => { if (e.key === 'Escape') closePhoto(); });
+document.getElementById('photos').addEventListener('change', buildPins);
+
 // Feinregler für das Blattkarten-Jahr
 const k4Slider = document.getElementById('k4year');
 function setK4Ui() {
@@ -623,7 +779,7 @@ k4Slider.addEventListener('input', () => {
   document.getElementById('k4Val').textContent = k4Year;
   document.getElementById('year').textContent = k4Year;
 });
-k4Slider.addEventListener('change', reloadK4);
+k4Slider.addEventListener('change', () => { reloadK4(); pickPhotos(); });
 
 // Mauerstreifen 1989 als Zusatzebene (Vektordaten des Landesarchivs über WMS)
 document.getElementById('wall').addEventListener('change', e => {
