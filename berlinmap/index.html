@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Berlin Zeitreise – Historische Karten</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    width: 100vw; height: 100vh;
+    overflow: hidden;
+    background: #0d1117;
+    color: #fff;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  #map, #overlay { position: fixed; inset: 0; }
+  #overlay { pointer-events: none; }
+  #overlay .maplibregl-control-container { display: none; }
+
+  /* Trennlinie im Vergleichsmodus */
+  #handle {
+    position: fixed;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: rgba(255,255,255,0.85);
+    box-shadow: 0 0 12px rgba(0,0,0,0.6);
+    z-index: 20;
+    display: none;
+    cursor: ew-resize;
+  }
+  #handle.on { display: block; }
+  #handle::after {
+    content: '⇄';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: rgba(20,22,26,0.94);
+    border: 1px solid rgba(255,255,255,0.5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; color: #fff;
+  }
+  #handle .grab {
+    position: absolute;
+    top: 0; bottom: 0; left: -22px;
+    width: 46px;
+  }
+
+  .panel {
+    position: fixed;
+    top: 16px; left: 16px;
+    z-index: 30;
+    background: rgba(20, 22, 26, 0.92);
+    border-radius: 12px;
+    padding: 14px 16px;
+    width: 300px;
+    max-width: calc(100vw - 32px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+    backdrop-filter: blur(6px);
+  }
+  .panel h1 { font-size: 16px; font-weight: 600; }
+  .panel .sub { font-size: 11.5px; color: #9aa4b2; margin-top: 3px; line-height: 1.45; }
+
+  .maprow { margin-top: 12px; }
+  .year {
+    font-size: 34px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.5px;
+  }
+  .maptitle { font-size: 12px; color: #c7cedb; margin-top: 6px; line-height: 1.4; }
+  .maptitle a { color: #7fb2ff; text-decoration: none; }
+  .maptitle a:hover { text-decoration: underline; }
+
+  .ctrl { margin-top: 14px; }
+  .ctrl label {
+    display: flex; justify-content: space-between;
+    font-size: 11px; color: #9aa4b2;
+    text-transform: uppercase; letter-spacing: 0.6px;
+    margin-bottom: 6px;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px;
+    border-radius: 3px;
+    background: #2c313c;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #f0b429; border: 2px solid #1a1d23;
+    cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #f0b429; border: 2px solid #1a1d23;
+    cursor: pointer; border-width: 2px;
+  }
+
+  .modes { display: flex; gap: 6px; margin-top: 14px; }
+  .modes button {
+    flex: 1;
+    background: #1c1f26;
+    border: 1px solid #2c313c;
+    color: #d7dbe2;
+    font-size: 12px;
+    padding: 7px 4px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .modes button.active {
+    background: #f0b429; border-color: #f0b429; color: #14161a; font-weight: 600;
+  }
+
+  /* Zeitstrahl unten */
+  .timeline {
+    position: fixed;
+    left: 50%; bottom: 18px;
+    transform: translateX(-50%);
+    z-index: 30;
+    width: min(880px, calc(100vw - 32px));
+    background: rgba(20, 22, 26, 0.92);
+    border-radius: 12px;
+    padding: 14px 18px 10px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.45);
+    backdrop-filter: blur(6px);
+  }
+  .track { position: relative; height: 26px; }
+  .track .line {
+    position: absolute; left: 0; right: 0; top: 11px;
+    height: 3px; border-radius: 2px;
+    background: linear-gradient(90deg, #3a3020, #f0b429);
+  }
+  .dot {
+    position: absolute; top: 4px;
+    width: 17px; height: 17px;
+    margin-left: -8.5px;
+    border-radius: 50%;
+    background: #14161a;
+    border: 2px solid #6b7280;
+    cursor: pointer;
+    transition: transform .12s, border-color .12s, background .12s;
+  }
+  .dot:hover { border-color: #f0b429; transform: scale(1.25); }
+  .dot.active {
+    background: #f0b429; border-color: #fff;
+    transform: scale(1.35);
+  }
+  .ticks {
+    position: relative; height: 14px;
+    font-size: 10px; color: #6b7280;
+    margin-top: 2px;
+  }
+  .tick { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .navrow {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 4px;
+  }
+  .navrow button {
+    background: #1c1f26; border: 1px solid #2c313c; color: #d7dbe2;
+    border-radius: 6px; width: 30px; height: 26px;
+    cursor: pointer; font-size: 13px; font-family: inherit;
+  }
+  .navrow .hint { font-size: 11px; color: #6b7280; flex: 1; text-align: center; }
+
+  .attrib {
+    position: fixed; right: 10px; bottom: 8px;
+    font-size: 10px; color: #6b7280; z-index: 5;
+  }
+  .attrib a { color: #8a93a1; }
+
+  .toggle-panel {
+    position: fixed; top: 16px; left: 16px; z-index: 31;
+    display: none;
+    background: rgba(20,22,26,0.92); border: 1px solid #2c313c;
+    color: #d7dbe2; border-radius: 8px; padding: 8px 10px;
+    font-size: 12px; font-family: inherit; cursor: pointer;
+  }
+
+  @media (max-width: 720px) {
+    .panel { width: calc(100vw - 24px); left: 12px; top: 12px; padding: 12px 14px; }
+    .panel.hidden { display: none; }
+    .toggle-panel { display: block; left: 12px; top: 12px; }
+    .toggle-panel.hidden { display: none; }
+    .year { font-size: 26px; }
+    .timeline { bottom: 10px; padding: 12px 14px 8px; }
+    .ticks { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="overlay"></div>
+<div id="handle"><div class="grab"></div></div>
+
+<button class="toggle-panel hidden" id="showPanel">☰ Info</button>
+
+<div class="panel" id="panel">
+  <h1>Berlin Zeitreise</h1>
+  <div class="sub">Historische Stadtpläne, exakt auf die heutige Karte gelegt. Zieh den Zeitstrahl unten durch die Jahrhunderte.</div>
+
+  <div class="maprow">
+    <div class="year" id="year">1652</div>
+    <div class="maptitle" id="mtitle"></div>
+  </div>
+
+  <div class="modes">
+    <button id="mOverlay" class="active">Überblenden</button>
+    <button id="mSwipe">Vergleichen</button>
+  </div>
+
+  <div class="ctrl" id="opacityCtrl">
+    <label><span>Deckkraft</span><span id="opVal">85 %</span></label>
+    <input type="range" id="opacity" min="0" max="100" value="85">
+  </div>
+</div>
+
+<div class="timeline">
+  <div class="track" id="track"><div class="line"></div></div>
+  <div class="ticks" id="ticks"></div>
+  <div class="navrow">
+    <button id="prev">‹</button>
+    <div class="hint">← → Pfeiltasten · Karte ziehen zum Verschieben</div>
+    <button id="next">›</button>
+  </div>
+</div>
+
+<div class="attrib">
+  Historische Karten: <a href="https://warper.wmflabs.org/" target="_blank" rel="noopener">Wikimaps Warper</a> / Wikimedia Commons · Basiskarte © MapTiler, OpenStreetMap
+</div>
+
+<script>
+const MAPTILER_KEY = 'lT9jK8r0OXrZinP9JSOT';
+
+// Georeferenzierte historische Karten (Wikimaps Warper)
+const MAPS = [
+  { y: 1652, id: 279,  t: 'Memhardt: Grundriß der beyden Churf. Residentz Stätte Berlin und Cölln' },
+  { y: 1688, id: 491,  t: 'Dahlberg: Berlin (Aufnahme 1656/57)' },
+  { y: 1723, id: 185,  t: 'Dusableau: Plan von Berlin' },
+  { y: 1750, id: 188,  t: 'Schmettau: Plan de la Ville de Berlin' },
+  { y: 1772, id: 1132, t: 'Rhode / Lotter: Plan von Berlin' },
+  { y: 1786, id: 1135, t: 'Sotzmann: Plan von Berlin' },
+  { y: 1803, id: 472,  t: 'Sotzmann: Grundriss der Königlichen Haupt- und Residenzstadt Berlin' },
+  { y: 1816, id: 1136, t: 'Sachs: Grundriss von Berlin' },
+  { y: 1835, id: 475,  t: 'Reymann: Neuester Grundriss von Berlin' },
+  { y: 1849, id: 478,  t: 'Boehm: Grundriss von Berlin mit nächster Umgebung' },
+  { y: 1862, id: 288,  t: 'Boehm: Plan von Berlin und Umgegend' },
+  { y: 1874, id: 283,  t: 'Neuester Plan von Berlin mit Parochie-Grenzen' },
+  { y: 1883, id: 286,  t: 'Ravenstein: Plan von Berlin' },
+  { y: 1891, id: 1139, t: 'Sineck: Situations-Plan von Berlin' },
+  { y: 1903, id: 210,  t: 'Straube: Plan von Berlin' },
+  { y: 1910, id: 1220, t: 'Straube-Plan von Berlin' },
+  { y: 1920, id: 484,  t: 'Kiessling: Grosser Verkehrs-Plan von Berlin' },
+  { y: 1928, id: 190,  t: 'Pharus-Plan Berlin, Große Ausgabe' },
+];
+const Y0 = 1640, Y1 = 1950;
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+  center: [13.4045, 52.5185],
+  zoom: 12.4,
+  attributionControl: false,
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+// Zweite Karte nur für die historische Kachelebene – liegt transparent darüber
+const overlay = new maplibregl.Map({
+  container: 'overlay',
+  style: { version: 8, sources: {}, layers: [], glyphs: `https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=${MAPTILER_KEY}` },
+  center: map.getCenter(), zoom: map.getZoom(),
+  interactive: false,
+  attributionControl: false,
+});
+
+// Kamera synchron halten
+let syncing = false;
+function sync() {
+  if (syncing) return;
+  syncing = true;
+  overlay.jumpTo({
+    center: map.getCenter(), zoom: map.getZoom(),
+    bearing: map.getBearing(), pitch: map.getPitch(),
+  });
+  syncing = false;
+}
+map.on('move', sync);
+map.on('rotate', sync);
+map.on('pitch', sync);
+
+let current = 0;
+let opacity = 0.85;
+let mode = 'overlay';   // 'overlay' | 'swipe'
+let split = 0.5;
+let ready = false;
+
+function layerId(i) { return 'hist-' + MAPS[i].id; }
+
+function ensureLayer(i) {
+  const id = layerId(i);
+  if (overlay.getSource(id)) return;
+  overlay.addSource(id, {
+    type: 'raster',
+    tiles: [`https://warper.wmflabs.org/maps/tile/${MAPS[i].id}/{z}/{x}/{y}.png`],
+    tileSize: 256,
+    minzoom: 0,
+    maxzoom: 18,
+    attribution: 'Wikimaps Warper',
+  });
+  overlay.addLayer({
+    id, type: 'raster', source: id,
+    paint: { 'raster-opacity': 0, 'raster-opacity-transition': { duration: 260 }, 'raster-fade-duration': 200 },
+  });
+}
+
+function applyOpacity() {
+  if (!ready) return;
+  MAPS.forEach((m, i) => {
+    const id = layerId(i);
+    if (!overlay.getLayer(id)) return;
+    overlay.setPaintProperty(id, 'raster-opacity', i === current ? (mode === 'swipe' ? 1 : opacity) : 0);
+  });
+}
+
+function applyClip() {
+  const el = document.getElementById('overlay');
+  const h = document.getElementById('handle');
+  if (mode === 'swipe') {
+    const px = Math.round(split * window.innerWidth);
+    el.style.clipPath = `inset(0 0 0 ${px}px)`;
+    h.style.left = px + 'px';
+    h.classList.add('on');
+  } else {
+    el.style.clipPath = 'none';
+    h.classList.remove('on');
+  }
+}
+
+function select(i, animate) {
+  current = Math.max(0, Math.min(MAPS.length - 1, i));
+  ensureLayer(current);
+  // Nachbarn vorladen, damit das Durchziehen flüssig bleibt
+  if (current > 0) ensureLayer(current - 1);
+  if (current < MAPS.length - 1) ensureLayer(current + 1);
+  applyOpacity();
+
+  const m = MAPS[current];
+  document.getElementById('year').textContent = m.y;
+  document.getElementById('mtitle').innerHTML =
+    m.t + ' · <a href="https://warper.wmflabs.org/maps/' + m.id + '" target="_blank" rel="noopener">Quelle</a>';
+  document.querySelectorAll('.dot').forEach((d, k) => d.classList.toggle('active', k === current));
+  history.replaceState(null, '', '#' + m.y);
+}
+
+// --- Zeitstrahl aufbauen ---
+const track = document.getElementById('track');
+const pos = y => ((y - Y0) / (Y1 - Y0)) * 100;
+
+MAPS.forEach((m, i) => {
+  const d = document.createElement('div');
+  d.className = 'dot';
+  d.style.left = pos(m.y) + '%';
+  d.title = m.y + ' – ' + m.t;
+  d.addEventListener('click', () => select(i));
+  track.appendChild(d);
+});
+
+const ticks = document.getElementById('ticks');
+for (let y = 1650; y <= 1950; y += 50) {
+  const t = document.createElement('div');
+  t.className = 'tick';
+  t.style.left = pos(y) + '%';
+  t.textContent = y;
+  ticks.appendChild(t);
+}
+
+// Ziehen über den Zeitstrahl wählt die nächstgelegene Karte
+function yearFromX(clientX) {
+  const r = track.getBoundingClientRect();
+  const f = Math.max(0, Math.min(1, (clientX - r.left) / r.width));
+  return Y0 + f * (Y1 - Y0);
+}
+function nearest(year) {
+  let best = 0, bd = Infinity;
+  MAPS.forEach((m, i) => { const d = Math.abs(m.y - year); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
+let draggingTrack = false;
+function trackMove(e) {
+  const x = e.touches ? e.touches[0].clientX : e.clientX;
+  const i = nearest(yearFromX(x));
+  if (i !== current) select(i);
+}
+track.addEventListener('pointerdown', e => { draggingTrack = true; track.setPointerCapture(e.pointerId); trackMove(e); });
+track.addEventListener('pointermove', e => { if (draggingTrack) trackMove(e); });
+track.addEventListener('pointerup', () => { draggingTrack = false; });
+track.addEventListener('pointercancel', () => { draggingTrack = false; });
+
+document.getElementById('prev').addEventListener('click', () => select(current - 1));
+document.getElementById('next').addEventListener('click', () => select(current + 1));
+window.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft') { select(current - 1); e.preventDefault(); }
+  if (e.key === 'ArrowRight') { select(current + 1); e.preventDefault(); }
+});
+
+// --- Deckkraft & Modi ---
+const opSlider = document.getElementById('opacity');
+opSlider.addEventListener('input', () => {
+  opacity = opSlider.value / 100;
+  document.getElementById('opVal').textContent = opSlider.value + ' %';
+  applyOpacity();
+});
+
+const bOverlay = document.getElementById('mOverlay');
+const bSwipe = document.getElementById('mSwipe');
+function setMode(m) {
+  mode = m;
+  bOverlay.classList.toggle('active', m === 'overlay');
+  bSwipe.classList.toggle('active', m === 'swipe');
+  document.getElementById('opacityCtrl').style.display = m === 'swipe' ? 'none' : 'block';
+  applyClip();
+  applyOpacity();
+}
+bOverlay.addEventListener('click', () => setMode('overlay'));
+bSwipe.addEventListener('click', () => setMode('swipe'));
+
+// Trennlinie ziehen
+const handle = document.getElementById('handle');
+let draggingHandle = false;
+handle.addEventListener('pointerdown', e => {
+  draggingHandle = true; handle.setPointerCapture(e.pointerId); e.preventDefault();
+});
+window.addEventListener('pointermove', e => {
+  if (!draggingHandle) return;
+  split = Math.max(0.02, Math.min(0.98, e.clientX / window.innerWidth));
+  applyClip();
+});
+window.addEventListener('pointerup', () => { draggingHandle = false; });
+window.addEventListener('resize', applyClip);
+
+// Panel auf dem Handy einklappen
+document.getElementById('showPanel').addEventListener('click', () => {
+  document.getElementById('panel').classList.remove('hidden');
+  document.getElementById('showPanel').classList.add('hidden');
+});
+document.getElementById('panel').addEventListener('dblclick', () => {
+  if (window.innerWidth <= 720) {
+    document.getElementById('panel').classList.add('hidden');
+    document.getElementById('showPanel').classList.remove('hidden');
+  }
+});
+
+overlay.on('load', () => {
+  ready = true;
+  const fromHash = parseInt((location.hash || '').slice(1), 10);
+  const start = fromHash ? nearest(fromHash) : MAPS.findIndex(m => m.y === 1910);
+  select(start >= 0 ? start : 0);
+  applyClip();
+});
+</script>
+</body>
+</html>
