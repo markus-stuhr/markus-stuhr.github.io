@@ -348,6 +348,47 @@ const BED_POS = new THREE.Vector3(-1.85, 0, 0.95);
   room.add(piping);
 }
 
+// ---------------------------------------------------------------------
+//  Bodenprofil
+//
+//  Der Zimmerboden liegt auf y = 0, das Körbchen ist aber eine eigene Höhe.
+//  Ohne dieses Profil läuft die Katze einfach hindurch.
+// ---------------------------------------------------------------------
+const BED_R_FLAT = 0.62;    // ebene Liegefläche in der Mitte
+const BED_TOP    = 0.17;    // Oberkante des Kissens
+const PIPE_R     = 0.74;    // Mitte des Randwulstes
+const PIPE_TOP   = 0.225;   // Scheitel des Randwulstes
+const BED_R_OUT  = 0.95;    // ab hier wieder Zimmerboden
+
+/**
+ * Höhe des begehbaren Bodens an einer Stelle.
+ *
+ * Profil des Körbchens: innen flach, zum Rand hin auf den Wulst ansteigend,
+ * nach außen sanft auf Null auslaufend. Die weichen Übergänge sind wichtig —
+ * mit einer harten Kante würde die Katze am Rand springen statt zu steigen.
+ */
+function groundHeightAt(x, z) {
+  const r = Math.hypot(x - BED_POS.x, z - BED_POS.z);
+  if (r >= BED_R_OUT) return 0;
+  if (r <= BED_R_FLAT) return BED_TOP;
+  if (r <= PIPE_R) {
+    return lerp(BED_TOP, PIPE_TOP, smooth((r - BED_R_FLAT) / (PIPE_R - BED_R_FLAT)));
+  }
+  return lerp(PIPE_TOP, 0, smooth((r - PIPE_R) / (BED_R_OUT - PIPE_R)));
+}
+
+/** Der Napf ist ein Hindernis, kein Untergrund — da steigt keine Katze hinein. */
+const BOWL_KEEP = 0.44;
+
+function pushOutOfBowl(pos) {
+  const dx = pos.x - BOWL_POS.x, dz = pos.z - BOWL_POS.z;
+  const d = Math.hypot(dx, dz);
+  if (d >= BOWL_KEEP || d < 1e-4) return;
+  const s = BOWL_KEEP / d;
+  pos.x = BOWL_POS.x + dx * s;
+  pos.z = BOWL_POS.z + dz * s;
+}
+
 // --- Wollknäuel zum Spielen ------------------------------------------
 const ball = new THREE.Group();
 {
@@ -1290,13 +1331,17 @@ function roamPoint() {
   for (let i = 0; i < 12; i++) {
     const a = rand(0, TAU), r = Math.sqrt(Math.random()) * ROAM_R;
     const p = new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r);
-    if (p.distanceTo(catRoot.position) > 1.0) return p;
+    if (p.distanceTo(catRoot.position) > 1.0 && p.distanceTo(BOWL_POS) > BOWL_KEEP + 0.2) return p;
   }
   return new THREE.Vector3(0, 0, 0);
 }
 
 /** Dreht die Katze zum Ziel und schiebt sie vorwärts. Liefert true bei Ankunft. */
 function walkToward(target, dt, speed = 1.25, stopAt = 0.12) {
+  // Ohne Ziel gilt der Weg als beendet. Ein fehlendes Ziel würde sonst eine
+  // Ausnahme in der Renderschleife auslösen und die ganze Seite einfrieren.
+  if (!target) { CAT.speed = damp(CAT.speed, 0, 0.12, dt); return true; }
+
   const dx = target.x - catRoot.position.x;
   const dz = target.z - catRoot.position.z;
   const dist = Math.hypot(dx, dz);
@@ -1525,6 +1570,8 @@ function updateState(dt, t) {
   // Ohne aktiven Lauf sanft ausrollen
   if (!moving) CAT.speed = damp(CAT.speed, 0, 0.15, dt);
 
+  pushOutOfBowl(catRoot.position);
+
   // Innerhalb des Zimmers halten
   const r = Math.hypot(catRoot.position.x, catRoot.position.z);
   if (r > 2.9) {
@@ -1674,8 +1721,11 @@ function updateBall(dt) {
   ballVel.y -= 7.5 * dt;
   ball.position.addScaledVector(ballVel, dt);
 
-  if (ball.position.y < 0.15) {
-    ball.position.y = 0.15;
+  // Auch das Knäuel liegt auf dem Untergrund auf, nicht auf fester Höhe —
+  // sonst versinkt es im Körbchen.
+  const floor = groundHeightAt(ball.position.x, ball.position.z) + 0.15;
+  if (ball.position.y < floor) {
+    ball.position.y = floor;
     ballVel.y *= -0.48;
     ballVel.x *= 0.72; ballVel.z *= 0.72;
     if (Math.abs(ballVel.y) < 0.35) ballVel.y = 0;
@@ -1802,6 +1852,7 @@ function updateLook(dt, t) {
 // ---------------------------------------------------------------------
 let t = 0;
 const camLook = new THREE.Vector3(0, 0.55, 0);
+let groundY = 0;   // aktuelle Höhe des Untergrunds unter der Katze
 
 function frame() {
   const dt = Math.min(clock.getDelta(), 1 / 20); // große Sprünge nach Tabwechsel abfangen
@@ -1834,7 +1885,10 @@ function frame() {
 
     // --- Wurzeltransformation ----------------------------------------
     catRoot.rotation.y = CAT.facing;
-    catRoot.position.y = CAT.jumpY;
+    // Der Höhe des Untergrunds nachgehen statt hindurchzulaufen. Leicht
+    // gedämpft, damit das Aufsteigen aufs Körbchen weich wirkt.
+    groundY = damp(groundY, groundHeightAt(catRoot.position.x, catRoot.position.z), 0.07, dt);
+    catRoot.position.y = groundY + CAT.jumpY;
   }
 
   updateUI(dt);
@@ -1858,7 +1912,8 @@ function frame() {
 
   // Nach dem Zeichnen sind alle Matrizen auf dem Stand des Bildes — der
   // richtige Moment, um Bodenhöhe und Pfotenausrichtung nachzumessen.
-  if (catReady && groundPasses > 0 && CAT.posture === 'stand' && CAT.speed < 0.01) {
+  if (catReady && groundPasses > 0 && CAT.posture === 'stand' && CAT.speed < 0.01 &&
+      groundHeightAt(catRoot.position.x, catRoot.position.z) === 0) {
     settleOnGround();
   }
 
@@ -1867,7 +1922,7 @@ function frame() {
 frame();
 
 // Prüfhilfe für die Entwicklung (schadet im Betrieb nicht)
-window.__kitty = { CAT, stats, setState, setPosture, camera, catRoot, catModel, B, REST, NEUTRAL, POSTURE, rot, accum, commitPose, skin, VERTS, pawGroundY, soleSpread, evalNeutral, sagittal, STANCE, aimLegs, flattenPaws, calibrateNeutral };
+window.__kitty = { CAT, stats, setState, setPosture, camera, catRoot, catModel, B, REST, NEUTRAL, POSTURE, rot, accum, commitPose, skin, VERTS, pawGroundY, soleSpread, evalNeutral, sagittal, STANCE, aimLegs, flattenPaws, calibrateNeutral, groundHeightAt, BED_POS, BOWL_POS };
 
 // ---------------------------------------------------------------------
 //  Fenstergröße
