@@ -172,6 +172,24 @@
 
   .empty{color:var(--tx3);font-size:13px;padding:6px 2px}
 
+  /* ---------- Suchergebnisse ---------- */
+  #results{display:none;max-width:1180px}
+  #results.on{display:block}
+  #tree.hide{display:none}
+  .rbar{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    margin-bottom:14px;color:var(--tx3);font-size:13px;
+  }
+  .rbar b{color:var(--tx);font-size:15px;font-weight:700}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{
+    background:var(--panel);border:1px solid var(--line);border-radius:20px;
+    padding:4px 11px;font-size:12.5px;color:var(--tx2);transition:.15s;
+  }
+  .chip:hover{border-color:var(--line2);color:var(--tx);background:var(--panel2)}
+  .chip .k{color:var(--tx3);margin-right:5px}
+  .card .set{font-size:10px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
   /* ---------- Detail ---------- */
   #ov{
     position:fixed;inset:0;z-index:60;display:none;
@@ -243,7 +261,7 @@
   </button>
 </header>
 
-<main id="stage"><div id="tree"></div></main>
+<main id="stage"><div id="tree"></div><div id="results"></div></main>
 
 <footer>
   <div class="pill"><span class="led" id="led"></span><span id="status">bereit</span></div>
@@ -337,6 +355,7 @@ async function build(){
 function serieNode(s){
   const li = el('li','branch');
   const node = el('button','node');
+  node.dataset.key = 's:' + s.id;
   node.style.setProperty('--dot', hue(s.id));
 
   node.append(tw(), Object.assign(el('span','dot'),{}));
@@ -379,7 +398,10 @@ function serieNode(s){
   if (open.has('s:'+s.id)) queueMicrotask(() => node.click());
   else box.style.display = 'none';
 
-  li._name = (s.name||'').toLowerCase();
+  li._name  = norm(s.name || '');
+  li._label = s.name || s.id;
+  li._kind  = 'serie';
+  li._jump  = () => jumpTo(node);
   return li;
 }
 
@@ -387,6 +409,7 @@ function serieNode(s){
 function setNode(st, serieId){
   const li = el('li','branch');
   const node = el('button','node');
+  node.dataset.key = 't:' + st.id;
   node.style.setProperty('--dot', hue(serieId));
 
   node.append(tw());
@@ -431,7 +454,10 @@ function setNode(st, serieId){
   if (open.has('t:'+st.id)) queueMicrotask(() => node.click());
   else box.style.display = 'none';
 
-  li._name = (st.name||'').toLowerCase();
+  li._name  = norm(st.name || '');
+  li._label = st.name || st.id;
+  li._kind  = 'set';
+  li._jump  = () => jumpTo(node);
   return li;
 }
 
@@ -596,7 +622,7 @@ function countUp(){
 
 /* Filter blendet Serien/Sets aus, deren Name nicht passt */
 function applyFilter(){
-  const q = $('#q').value.trim().toLowerCase();
+  const q = norm($('#q').value.trim());
   for (const li of document.querySelectorAll('.branch')){
     if (!q){ li.style.display=''; continue; }
     const self = (li._name||'').includes(q);
@@ -604,10 +630,194 @@ function applyFilter(){
     li.style.display = (self || kid) ? '' : 'none';
   }
 }
-$('#q').oninput = applyFilter;
+
+/* ================= Einzelkartensuche =================
+ *
+ * Gegen einen eigenen Index statt gegen die API: TCGdex liefert die
+ * Gesamtliste unkomprimiert (1,8 MB für Deutsch), derselbe Bestand kompakt
+ * umgeschichtet sind ~126 KB gzip. Gebaut von tools/build-index.py.
+ */
+
+/* Diakritika weg, damit "Pokemon" auch "Pokémon" findet */
+const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+
+let idx = null, idxLang = null, idxPromise = null;
+
+function loadIndex(){
+  if (idx && idxLang === lang) return Promise.resolve(idx);
+  if (idxPromise && idxPromise.lang === lang) return idxPromise.p;
+
+  const want = lang;
+  const p = fetch(`index/${want}.json`)
+    .then(r => { if(!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => {
+      d.norm = d.cards.map(c => norm(c[2]));   // einmal normalisieren, nicht pro Tastendruck
+      if (lang === want){ idx = d; idxLang = want; }
+      return d;
+    });
+  idxPromise = { lang: want, p };
+  return p;
+}
+
+/* Treffer sortieren: exakt vor Präfix vor Teilstring, dann neuestes Set zuerst */
+function rank(d, i, q){
+  const n = d.norm[i];
+  const s = n === q ? 0 : n.startsWith(q) ? 1 : 2;
+  const rel = d.sets[d.cards[i][0]][3] || '';
+  return [s, rel];
+}
+
+function searchCards(d, raw, cap){
+  const q = norm(raw);
+  const hits = [];
+  for (let i = 0; i < d.norm.length; i++) if (d.norm[i].includes(q)) hits.push(i);
+  hits.sort((a,b) => {
+    const A = rank(d,a,q), B = rank(d,b,q);
+    return A[0] - B[0] || B[1].localeCompare(A[1]);
+  });
+  return { total: hits.length, shown: hits.slice(0, cap) };
+}
+
+const CAP = 300;
+
+function renderResults(d, raw){
+  const box = $('#results');
+  box.innerHTML = '';
+
+  const { total, shown } = searchCards(d, raw, CAP);
+
+  const bar = el('div','rbar');
+  bar.append(el('b', null, total.toLocaleString('de-DE')));
+  bar.append(el('span', null, total === 1 ? 'Karte' : 'Karten'
+    + (total > shown.length ? ` — die ersten ${shown.length} angezeigt` : '')));
+  bar.append(el('span', null, `· Index vom ${d.built}, ${d.count.toLocaleString('de-DE')} Karten`));
+  box.append(bar);
+
+  /* Sprungmarken in den Baum. Die Set-Namen kommen aus dem Index, nicht aus
+     dem DOM — sonst fände man nur Sets, die zufällig schon aufgeklappt sind. */
+  const nq = norm(raw);
+  const chips = el('div','chips');
+
+  for (const li of document.querySelectorAll('#tree > .kids > .branch')){
+    if (!(li._name||'').includes(nq)) continue;
+    chips.append(chip('Serie', li._label, li._jump));
+  }
+  for (const [setId, setName, serieId] of d.sets){
+    if (!norm(setName).includes(nq)) continue;
+    chips.append(chip('Set', setName, () => jumpToSet(setId, serieId)));
+    if (chips.children.length >= 14) break;
+  }
+  if (chips.children.length) box.append(chips);
+
+  if (!total){ box.append(el('div','empty','Keine Karte mit diesem Namen.')); return; }
+
+  const grid = el('div','grid');
+  for (const i of shown){
+    const [si, localId, name] = d.cards[i];
+    const [setId, setName, serieId, , enOnly] = d.sets[si];
+
+    const b = el('button','card');
+    b.style.setProperty('--dot', hue(serieId));
+    const ph = el('div','ph'); ph.dataset.n = localId;
+
+    if (serieId){
+      const imgLang = enOnly ? 'en' : lang;
+      const url = l => `https://assets.tcgdex.net/${l}/${serieId}/${setId}/${localId}/low.webp`;
+      const img = el('img');
+      img.crossOrigin = 'anonymous';
+      img.alt = name; img.loading = 'lazy'; img.decoding = 'async';
+      img.dataset.src = url(imgLang);
+      /* Alte Sets haben in vielen Sprachen keine Scans → einmal auf EN ausweichen */
+      img.onerror = () => {
+        if (img.dataset.tried || imgLang === 'en') return;
+        img.dataset.tried = '1';
+        img.src = url('en');
+      };
+      img.onload = () => { img.classList.add('in'); ph.dataset.n = ''; };
+      ph.append(img);
+      io.observe(img);
+    }
+
+    const m = el('div','meta');
+    m.append(el('div','nm', name));
+    m.append(el('div','set', setName));
+    m.append(el('div','no', localId));
+    b.append(ph, m);
+    b.onclick = () => detail(`${setId}-${localId}`, serieId);
+    grid.append(b);
+  }
+  box.append(grid);
+}
+
+let tmr = 0;
+function onSearch(){
+  clearTimeout(tmr);
+  tmr = setTimeout(async () => {
+    const raw = $('#q').value.trim();
+    applyFilter();
+
+    const on = raw.length >= 2;
+    $('#tree').classList.toggle('hide', on);
+    $('#results').classList.toggle('on', on);
+    if (!on) return;
+
+    $('#results').innerHTML = '<div class="empty">Index wird geladen…</div>';
+    try {
+      const d = await loadIndex();
+      if ($('#q').value.trim() !== raw) return;      // schon weitergetippt
+      if (!d.count){
+        $('#results').innerHTML = '<div class="empty">Für diese Sprache liegen keine Kartendaten vor.</div>';
+        return;
+      }
+      renderResults(d, raw);
+    } catch(e){
+      $('#results').innerHTML = '<div class="empty">Suchindex nicht ladbar.</div>';
+    }
+  }, 130);
+}
+$('#q').oninput = onSearch;
+
+function chip(kind, label, fn){
+  const c = el('button','chip');
+  c.append(el('span','k', kind));
+  c.append(document.createTextNode(label));
+  c.onclick = fn;
+  return c;
+}
+
+/* Suche verlassen und einen bereits vorhandenen Knoten ansteuern */
+function jumpTo(node){
+  $('#q').value = '';
+  onSearch();
+  setTimeout(() => {
+    if (!node.classList.contains('on')) node.click();
+    node.scrollIntoView({ block:'center', behavior:'smooth' });
+  }, 180);
+}
+
+/* Sprung zu einem Set, das im Baum noch gar nicht existiert: Aufklapp-Zustand
+   setzen und neu aufbauen — die Wiederherstellung aus dem Zustand erledigt
+   das verschachtelte Aufklappen dann von selbst. */
+function jumpToSet(setId, serieId){
+  if (serieId) open.add('s:' + serieId);
+  open.add('t:' + setId);
+  localStorage.setItem('poke.open', JSON.stringify([...open]));
+
+  $('#q').value = '';
+  onSearch();
+  build().then(() => {
+    let tries = 0;
+    const look = setInterval(() => {
+      const n = document.querySelector(`[data-key="t:${CSS.escape(setId)}"]`);
+      if (n){ clearInterval(look); n.scrollIntoView({ block:'center', behavior:'smooth' }); }
+      else if (++tries > 25) clearInterval(look);
+    }, 120);
+  });
+}
 
 $('#collapse').onclick = () => {
   open.clear(); localStorage.setItem('poke.open','[]');
+  $('#q').value = ''; onSearch();
   mem.clear(); build();
 };
 
@@ -631,7 +841,9 @@ sel.onchange = () => {
   lang = sel.value;
   localStorage.setItem('poke.lang', lang);
   document.documentElement.lang = lang;
+  idx = idxLang = idxPromise = null;   // Suchindex gilt je Sprache
   build();   // IDs bleiben sprachübergreifend gleich → Aufklapp-Zustand überlebt
+  if ($('#q').value.trim().length >= 2) onSearch();
 };
 
 /* Online-Status */
