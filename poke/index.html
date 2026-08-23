@@ -332,12 +332,28 @@
     display:flex;justify-content:space-between;gap:14px;align-items:flex-start;
     background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;
   }
-  .vname{min-width:0}
-  .vprices{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex:none;text-align:right}
-  .var b{color:var(--acc);font-variant-numeric:tabular-nums;font-size:14px}
+  .var{flex-direction:column;align-items:stretch;gap:9px}
+  .vname{min-width:0;font-weight:600;color:var(--tx)}
+  .vprices{display:flex;flex-direction:column;gap:9px}
+
+  /* Je Quelle ein Block: Kopfzeile nennt die Zustandsgrundlage, darunter
+     eine Zeile je Wert. */
+  .quelle{border-left:2px solid var(--line2);padding-left:10px}
+  .qkopf{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-bottom:3px}
+  .qname{font-size:11.5px;font-weight:700;letter-spacing:.3px;color:var(--tx2);text-transform:uppercase}
+  a.qname{text-decoration:none;border-bottom:1px solid var(--line2);transition:.15s}
+  a.qname:hover{color:var(--acc);border-bottom-color:var(--acc)}
+  a.qname::after{content:' ↗';font-size:9px;opacity:.6;border:0}
+  .qbasis{font-size:11px;color:var(--tx3)}
+  .preisz{display:flex;justify-content:space-between;gap:14px;align-items:baseline;font-size:12.5px}
+  .plabel{color:var(--tx3)}
+  .var b{color:var(--tx2);font-variant-numeric:tabular-nums;font-size:13px;font-weight:600}
+  /* Hauptpreis: der 30-Tage-Schnitt von Cardmarket, sonst der Trend */
+  .preisz.haupt{margin-bottom:2px}
+  .preisz.haupt .plabel{color:var(--tx2)}
+  .preisz.haupt b{color:var(--acc);font-size:17px;font-weight:700}
   .vsub{color:var(--tx3);font-size:11px;font-variant-numeric:tabular-nums}
-  .vtp{color:var(--tx3);font-size:11px;font-variant-numeric:tabular-nums;opacity:.8}
-  .vars + .vsub{display:block;margin-top:8px}
+  .vars + .vsub{display:block;margin-top:10px}
   .closeb{position:absolute;top:14px;right:14px}
   .sheet{position:relative}
   .blaetter{position:absolute;top:50%;transform:translateY(-50%);z-index:3}
@@ -771,21 +787,65 @@ async function detail(id, serieId, idxRef){
 
       const preise = el('div','vprices');
       const cm = marktpreis(v, hatNormal, vs.length === 1);
-      preise.append(el('b', null, cm && cm.trend != null ? euro(cm.trend) : '—'));
-
-      const neben = [];
-      if (cm && cm.low   != null) neben.push('ab ' + euro(cm.low));
-      if (cm && cm.avg30 != null) neben.push('Ø30 ' + euro(cm.avg30));
-      if (neben.length) preise.append(el('span','vsub', neben.join(' · ')));
-
       const tp = tcgplayer(c, v);
-      if (tp != null) preise.append(el('span','vtp', 'TCGplayer ' + dollar(tp)));
+
+      /* Je Quelle ein Block. Der Zustand steht einmal im Kopf statt in jeder
+         Zeile — die Grundlage unterscheidet sich zwischen den Quellen, nicht
+         zwischen den Werten einer Quelle. */
+      const block = (titel, grundlage, zeilen, hauptpreis, link) => {
+        const gefuellt = zeilen.filter(z => z[1] != null);
+        if (!gefuellt.length) return;
+        const q = el('div','quelle');
+        const kopf = el('div','qkopf');
+        if (link){
+          const a = el('a','qname');
+          a.href = link; a.target = '_blank'; a.rel = 'noopener';
+          a.textContent = titel;
+          a.title = 'Bei ' + titel + ' ansehen';
+          kopf.append(a);
+        } else {
+          kopf.append(el('span','qname', titel));
+        }
+        kopf.append(el('span','qbasis', grundlage));
+        q.append(kopf);
+        gefuellt.forEach(([label, wert, fmt], i) => {
+          /* Die erste befüllte Zeile ist der Hauptpreis — fehlt der
+             30-Tage-Schnitt, rückt automatisch der Trend nach. */
+          const z = el('div','preisz' + (hauptpreis && i === 0 ? ' haupt' : ''));
+          z.append(el('span','plabel', label));
+          z.append(el('b', null, fmt(wert)));
+          q.append(z);
+        });
+        preise.append(q);
+      };
+
+      /* Cardmarket-Produktseiten laufen über Slugs aus englischem Set- und
+         Kartennamen (…/Singles/Pokemon-GO/Charizard-PGO010) — die lassen sich
+         aus unseren Daten nicht bilden. Deshalb ein Suchlink auf den
+         Kartennamen. TCGplayer geht direkt über die Produkt-ID. */
+      const cmLink = c.name
+        ? 'https://www.cardmarket.com/de/Pokemon/Products/Search?searchString='
+          + encodeURIComponent(c.name)
+        : null;
+      const tpLink = tp && tp.productId ? 'https://www.tcgplayer.com/product/' + tp.productId : null;
+
+      if (cm) block('Cardmarket', 'alle Zustände gemischt', [
+        ['Ø 30 Tage verkauft',  cm.avg30, euro],
+        ['Preistrend',          cm.trend, euro],
+        ['Günstigstes Angebot', cm.low,   euro],
+      ], true, cmLink);
+      if (tp) block('TCGplayer', 'Near Mint', [
+        ['Marktpreis',          tp.marketPrice ?? tp.midPrice, dollar],
+        ['Günstigstes Angebot', tp.lowPrice,                   dollar],
+      ], false, tpLink);
+      if (!preise.children.length) preise.append(el('span','vsub','kein Preis zuordenbar'));
 
       line.append(preise);
       box.append(line);
     }
     r.append(box);
-    r.append(el('div','vsub', 'Cardmarket, Stand ' + stand(c)));
+    r.append(el('div','vsub', 'Cardmarket und TCGplayer, Stand ' + stand(c)
+      + ' · Cardmarket bündelt alle Zustände unter einem Produkt'));
   }
   sh.append(r);
 
@@ -849,11 +909,12 @@ function marktpreis(v, hatNormal, einzige){
   const foil = t === 'reverse' || (t === 'holo' && hatNormal);
   const lies = k => cm[foil ? k + '-holo' : k];
 
-  let out = { trend: lies('trend'), low: lies('low'), avg30: lies('avg30') };
+  let out = { trend: lies('trend'), low: lies('low'), avg30: lies('avg30'),
+              idProduct: cm.idProduct };
   /* Manche Karten führen die Foil-Felder gar nicht — dann lieber der
      schlichte Wert als ein leerer Strich. */
   if (foil && out.trend == null && out.low == null) {
-    out = { trend: cm.trend, low: cm.low, avg30: cm.avg30 };
+    out = { trend: cm.trend, low: cm.low, avg30: cm.avg30, idProduct: cm.idProduct };
   }
   if (out.trend == null) out.trend = foil ? cm['avg-holo'] : cm.avg;
   return out;
@@ -881,7 +942,7 @@ function tcgplayer(c, v){
 
   for (const k of kandidaten){
     const p = tp[k];
-    if (p && (p.marketPrice != null || p.midPrice != null)) return p.marketPrice ?? p.midPrice;
+    if (p && (p.marketPrice != null || p.midPrice != null || p.lowPrice != null)) return p;
   }
   return null;
 }
