@@ -203,28 +203,32 @@
   /* ---------- Pokédex ---------- */
   #dex{display:none;max-width:1180px}
   #dex.on{display:block}
-  .chains{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}
+  .chains{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+  /* 300px min + 1180px Deckel auf #dex ergibt genau drei Spalten auf großen
+     Schirmen, darunter sauber 2 und 1. */
+  /* Entwicklungsstufen laufen von oben nach unten, eine Zeile je Stufe.
+     Verzweigungen (Evoli hat acht) stehen dadurch nebeneinander in ihrer Zeile. */
   .chain{
     background:var(--bg2);border:1px solid var(--line);border-radius:14px;
-    padding:11px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+    padding:12px 10px;display:flex;flex-direction:column;align-items:center;gap:3px;
   }
-  .chain.solo{grid-column:auto}
-  .stack{display:flex;flex-direction:column;gap:4px}
+  .rank{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%}
+  .down{color:var(--tx3);font-size:13px;line-height:1.1}
   .mon{
-    display:flex;align-items:center;gap:7px;
-    padding:5px 10px 5px 5px;border-radius:10px;border:1px solid transparent;
-    transition:.15s;min-width:0;
+    display:flex;flex-direction:column;align-items:center;gap:1px;
+    padding:6px 6px 8px;border-radius:12px;border:1px solid transparent;
+    transition:.15s;width:104px;
   }
   .mon:hover{background:var(--panel2);border-color:var(--line2)}
-  .mon img{width:44px;height:44px;flex:none;image-rendering:pixelated;opacity:0;transition:opacity .25s}
+  .mon img{width:80px;height:80px;flex:none;image-rendering:pixelated;opacity:0;transition:opacity .25s}
   .mon img.in{opacity:1}
-  .mon .t{min-width:0}
-  .mon .n{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mon .d{font-size:10.5px;color:var(--tx3);font-variant-numeric:tabular-nums}
+  .mon .t{min-width:0;width:100%;text-align:center}
+  .mon .n{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mon .d{font-size:10px;color:var(--tx3);font-variant-numeric:tabular-nums}
   .arrow{color:var(--tx3);flex:none;font-size:15px;line-height:1}
 
-  .sbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
-  .sbar img{width:66px;height:66px;image-rendering:pixelated;flex:none}
+  .sbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+  .sbar img{width:96px;height:96px;image-rendering:pixelated;flex:none}
   .sbar h2{font-size:24px;letter-spacing:-.4px}
   .sbar .d{color:var(--tx3);font-size:13px}
   .back{
@@ -920,7 +924,8 @@ function renderDex(filter){
   }
 
   bar.append(el('b', null, mons.toLocaleString('de-DE')));
-  bar.append(el('span', null, `Pokémon in ${ketten} Entwicklungsreihen`));
+  bar.append(el('span', null, `Pokémon in ${ketten} `
+    + (ketten === 1 ? 'Entwicklungsreihe' : 'Entwicklungsreihen')));
   bar.append(el('span', null, `· Pokédex vom ${d.built}`));
   box.append(bar);
 
@@ -941,30 +946,39 @@ function orderChain(list){
   return out;
 }
 
+/* Abstand einer Art zur Grundform innerhalb ihrer Kette */
+function depthOf(s, list){
+  let d = 0, cur = s;
+  const seen = new Set();
+  while (cur && cur[3] && !seen.has(cur[0])){
+    seen.add(cur[0]);
+    const p = list.find(x => x[0] === cur[3]);
+    if (!p) break;
+    cur = p; d++;
+  }
+  return d;
+}
+
 function chainBlock(list){
   const box = el('div','chain');
-  const roots = list.filter(s => !s[3] || !list.some(x => x[0] === s[3]));
-  const kids  = p => list.filter(s => s[3] === p[0]);
 
-  const column = arr => {
-    const st = el('div','stack');
-    for (const s of arr){
-      const row = el('div','stack');
-      const line = el('div','line'); line.style.margin = '0';
-      line.append(monTile(s));
-      const k = kids(s);
-      if (k.length){
-        line.append(el('span','arrow','→'));
-        line.append(column(k));
-      }
-      row.append(line);
-      st.append(row);
-    }
-    return st;
-  };
+  /* Nach Stufe gruppieren statt den Baum zu verschachteln: dadurch stehen
+     Verzweigungen nebeneinander in einer Zeile, und nichts bricht schief um. */
+  const rows = new Map();
+  for (const s of list){
+    const d = depthOf(s, list);
+    if (!rows.has(d)) rows.set(d, []);
+    rows.get(d).push(s);
+  }
 
-  box.append(column(roots));
-  if (list.length === 1) box.classList.add('solo');
+  const stufen = [...rows.keys()].sort((a,b) => a - b);
+  stufen.forEach((d, i) => {
+    if (i) box.append(el('div','down','↓'));
+    const row = el('div','rank');
+    for (const s of rows.get(d).sort((a,b) => a[0] - b[0])) row.append(monTile(s));
+    box.append(row);
+  });
+
   return box;
 }
 
