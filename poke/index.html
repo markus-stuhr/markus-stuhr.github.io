@@ -589,30 +589,39 @@ function cardBlock(set, serieId){
     const b = el('button','card');
     const ph = el('div','ph'); ph.dataset.n = c.localId || '';
 
-    /* Alte Sets haben in manchen Sprachen keine Scans (Grundset DE: 0 von 102).
-       Dann auf das englische Bild ausweichen und das ehrlich kennzeichnen. */
-    const src = c.image
-      ? c.image + '/low.webp'
-      : `https://assets.tcgdex.net/en/${serieId}/${set.id}/${c.localId}/low.webp`;
+    /* Bildquelle bevorzugt aus dem Index — der weiß auch von pokemontcg.io.
+       Ist er noch nicht geladen, bleibt der alte Weg: eigenes Bild, sonst EN. */
+    const row = rowFor(set.id, c.localId);
+    let url, fremd;
+    if (row != null){
+      url   = cardImage(idx, row, false);
+      fremd = idx.cards[row][3] > 0;
+    } else {
+      url   = c.image ? c.image + '/low.webp'
+                      : `https://assets.tcgdex.net/en/${serieId}/${set.id}/${c.localId}/low.webp`;
+      fremd = !c.image;
+    }
 
-    const img = el('img');
-    /* crossOrigin vor src setzen: sonst ist die Antwort opak (status 0) und der
-       Service Worker kann sie nicht cachen. TCGdex schickt ACAO:*, also klappt es. */
-    img.crossOrigin = 'anonymous';
-    img.alt = c.name || ''; img.loading = 'lazy'; img.decoding = 'async';
-    img.dataset.src = src;
-    img.onload = () => {
-      img.classList.add('in');
-      ph.dataset.n = '';
-      if (!c.image && lang !== 'en') ph.append(el('span','flag','EN'));
-    };
-    ph.append(img);
-    io.observe(img);
+    if (url){
+      const img = el('img');
+      /* crossOrigin vor src setzen: sonst ist die Antwort opak (status 0) und der
+         Service Worker kann sie nicht cachen. Beide CDNs schicken ACAO:*. */
+      img.crossOrigin = 'anonymous';
+      img.alt = c.name || ''; img.loading = 'lazy'; img.decoding = 'async';
+      img.dataset.src = url;
+      img.onload = () => {
+        img.classList.add('in');
+        ph.dataset.n = '';
+        if (fremd && lang !== 'en') ph.append(el('span','flag','EN'));
+      };
+      ph.append(img);
+      io.observe(img);
+    }
     const m = el('div','meta');
     m.append(el('div','nm', c.name || '—'));
     m.append(el('div','no', (c.localId||'') + (cc.official ? ' / ' + cc.official : '')));
     b.append(ph, m);
-    b.onclick = () => detail(c.id, serieId);
+    b.onclick = () => detail(c.id, serieId, row != null ? { d: idx, i: row } : null);
     grid.append(b);
   }
   wrap.append(grid);
@@ -630,7 +639,7 @@ const io = new IntersectionObserver((ents) => {
 }, { rootMargin: '400px' });
 
 /* ---------- Kartendetail ---------- */
-async function detail(id, serieId){
+async function detail(id, serieId, idxRef){
   const ov = $('#ov'), sh = $('#sheet');
   sh.innerHTML = '<div class="empty">lädt…</div>';
   ov.classList.add('on');
@@ -643,15 +652,27 @@ async function detail(id, serieId){
   sh.style.setProperty('--dot', hue(serieId));
 
   const left = el('div');
-  const base = c.image
-    || (c.set && `https://assets.tcgdex.net/en/${serieId}/${c.set.id}/${c.localId}`);
-  if (base){
+  /* Bildquelle kommt aus dem Index, nicht aus c.image — der ist bei Lücken
+     null, obwohl es anderswo einen Scan gibt. */
+  const src = idxRef ? idxRef.d.cards[idxRef.i][3] : (c.image ? 0 : 3);
+  const url = idxRef ? cardImage(idxRef.d, idxRef.i, true)
+                     : (c.image ? c.image + '/high.webp' : null);
+  if (url){
     const i = el('img','big');
     i.crossOrigin = 'anonymous';
-    i.src = base + '/high.webp'; i.alt = c.name || '';
-    i.onerror = () => { i.onerror = null; i.src = base + '/high.png'; };
+    i.src = url; i.alt = c.name || '';
+    /* Ältere TCGdex-Scans liegen teils nur als PNG vor */
+    if (url.endsWith('.webp')) i.onerror = () => {
+      i.onerror = null; i.src = url.replace(/\.webp$/, '.png');
+    };
     left.append(i);
-    if (!c.image && lang !== 'en') left.append(el('div','rar','Scan aus der englischen Ausgabe'));
+    if (src > 0 && lang !== 'en'){
+      left.append(el('div','rar', src === 2
+        ? 'Englischer Scan von pokemontcg.io'
+        : 'Scan aus der englischen Ausgabe'));
+    }
+  } else {
+    left.append(el('div','empty','Für diese Karte gibt es keinen Scan.'));
   }
   sh.append(left);
 
@@ -743,7 +764,7 @@ function applyFilter(){
  */
 
 /* Diakritika weg, damit "Pokemon" auch "Pokémon" findet */
-const norm = s => s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+const norm = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 
 let idx = null, idxLang = null, idxPromise = null;
 
@@ -817,31 +838,60 @@ function renderResults(d, raw){
   box.append(cardGrid(d, shown));
 }
 
+/* Bildquelle steht im Index (siehe tools/build-index.py):
+   0 eigene Sprache · 1 englischer Scan · 2 pokemontcg.io · 3 keins.
+   Dadurch muss hier nichts mehr geraten und kein Request ins Leere laufen. */
+function cardImage(d, i, gross){
+  const [si, localId, , src] = d.cards[i];
+  const [setId, , serieId, , , ptcgId] = d.sets[si];
+  const q = gross ? 'high' : 'low';
+  if (src === 0 && serieId) return `https://assets.tcgdex.net/${lang}/${serieId}/${setId}/${localId}/${q}.webp`;
+  if (src === 1 && serieId) return `https://assets.tcgdex.net/en/${serieId}/${setId}/${localId}/${q}.webp`;
+  if (src === 2 && ptcgId)  return `https://images.pokemontcg.io/${ptcgId}/${localId}${gross ? '_hires' : ''}.png`;
+  return null;
+}
+
+/* Zeilennummer im Index zu einer Karten-ID. Der Sets-Tab baut seine Karten aus
+   der API und kennt die Bildquelle nicht — hier holt er sie sich. */
+let rowMap = null, rowMapKey = '';
+function rowFor(setId, localId){
+  if (!idx || idxLang !== lang) return null;
+  const key = lang + ':' + idx.count;
+  if (rowMapKey !== key){
+    rowMap = new Map();
+    for (let i = 0; i < idx.cards.length; i++){
+      const [si, lid] = idx.cards[i];
+      rowMap.set(idx.sets[si][0] + ' ' + lid, i);
+    }
+    rowMapKey = key;
+  }
+  const i = rowMap.get(setId + ' ' + localId);
+  return i == null ? null : i;
+}
+
 /* Kartenraster aus Index-Zeilen — von der Suche und vom Pokédex genutzt */
 function cardGrid(d, rows){
   const grid = el('div','grid');
   for (const i of rows){
-    const [si, localId, name] = d.cards[i];
-    const [setId, setName, serieId, , enOnly] = d.sets[si];
+    const [si, localId, name, src] = d.cards[i];
+    const [setId, setName, serieId] = d.sets[si];
 
     const b = el('button','card');
     b.style.setProperty('--dot', hue(serieId));
     const ph = el('div','ph'); ph.dataset.n = localId;
 
-    if (serieId){
-      const imgLang = enOnly ? 'en' : lang;
-      const url = l => `https://assets.tcgdex.net/${l}/${serieId}/${setId}/${localId}/low.webp`;
+    const url = cardImage(d, i, false);
+    if (url){
       const img = el('img');
       img.crossOrigin = 'anonymous';
       img.alt = name; img.loading = 'lazy'; img.decoding = 'async';
-      img.dataset.src = url(imgLang);
-      /* Alte Sets haben in vielen Sprachen keine Scans → einmal auf EN ausweichen */
-      img.onerror = () => {
-        if (img.dataset.tried || imgLang === 'en') return;
-        img.dataset.tried = '1';
-        img.src = url('en');
+      img.dataset.src = url;
+      img.onload = () => {
+        img.classList.add('in');
+        ph.dataset.n = '';
+        /* src 1 und 2 sind beide englische Scans — ehrlich kennzeichnen */
+        if (src > 0 && lang !== 'en') ph.append(el('span','flag','EN'));
       };
-      img.onload = () => { img.classList.add('in'); ph.dataset.n = ''; };
       ph.append(img);
       io.observe(img);
     }
@@ -851,7 +901,7 @@ function cardGrid(d, rows){
     m.append(el('div','set', setName));
     m.append(el('div','no', localId));
     b.append(ph, m);
-    b.onclick = () => detail(`${setId}-${localId}`, serieId);
+    b.onclick = () => detail(`${setId}-${localId}`, serieId, { d, i });
     grid.append(b);
   }
   return grid;
@@ -1340,6 +1390,11 @@ if ('serviceWorker' in navigator){
         });
       }
       for (const p of ['/series', '/sets']) fetch(`${API}/${lang}${p}`).catch(()=>{});
+
+      /* Suchindex im Hintergrund vorladen: die Suche ist damit beim ersten
+         Tippen sofort da, und der Sets-Tab kennt die Bildquellen. ~126 KB gzip. */
+      const idle = self.requestIdleCallback || (f => setTimeout(f, 1200));
+      idle(() => loadIndex().catch(()=>{}));
     } catch {}
   });
 }

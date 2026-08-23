@@ -51,7 +51,8 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
 
   if (url.hostname === 'api.tcgdex.net')    return e.respondWith(swr(req));
-  if (url.hostname === 'assets.tcgdex.net') return e.respondWith(cacheFirst(req, IMG, IMG_MAX));
+  if (url.hostname === 'assets.tcgdex.net')   return e.respondWith(cacheFirst(req, IMG, IMG_MAX));
+  if (url.hostname === 'images.pokemontcg.io') return e.respondWith(cacheFirst(req, IMG, IMG_MAX));
   /* Pokédex-Sprites von PokeAPI/sprites — ändern sich nie, brauchen aber
      wegen ihrer Größe einen eigenen Deckel neben den Kartenbildern */
   if (url.hostname === 'raw.githubusercontent.com') return e.respondWith(cacheFirst(req, DEX, DEX_MAX));
