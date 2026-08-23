@@ -150,7 +150,6 @@
   .block{
     margin:8px 0 14px;padding:14px;
     background:var(--bg2);border:1px solid var(--line);border-radius:14px;
-    max-width:min(1180px,90vw);
   }
   .blockbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;color:var(--tx3);font-size:12.5px}
   .blockbar b{color:var(--tx2);font-weight:600}
@@ -183,7 +182,7 @@
   .empty{color:var(--tx3);font-size:13px;padding:6px 2px}
 
   /* ---------- Suchergebnisse ---------- */
-  #results{display:none;max-width:1180px}
+  #results{display:none}
   #results.on{display:block}
   #tree.hide{display:none}
   .rbar{
@@ -201,17 +200,21 @@
   .card .set{font-size:10px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   /* ---------- Pokédex ---------- */
-  #dex{display:none;max-width:1180px}
+  #dex{display:none}
   #dex.on{display:block}
-  .chains{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
-  /* 300px min + 1180px Deckel auf #dex ergibt genau drei Spalten auf großen
-     Schirmen, darunter sauber 2 und 1. */
+  /* Masonry: Spalten nebeneinander, jeder Block wandert in die gerade
+     kürzeste. CSS `columns` schied aus — das füllt spaltenweise, wodurch die
+     ersten ~180 Pokémon alle in Spalte 1 gelandet wären. */
+  .chains{display:flex;gap:12px;align-items:flex-start}
+  .col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
   /* Entwicklungsstufen laufen von oben nach unten, eine Zeile je Stufe.
      Verzweigungen (Evoli hat acht) stehen dadurch nebeneinander in ihrer Zeile. */
   .chain{
     background:var(--bg2);border:1px solid var(--line);border-radius:14px;
     padding:12px 10px;display:flex;flex-direction:column;align-items:center;gap:3px;
   }
+  /* In einer Multicol-Spalte muss der Block die volle Spaltenbreite belegen */
+  .chains > .chain{width:100%}
   .rank{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%}
   .down{color:var(--tx3);font-size:13px;line-height:1.1}
   /* Kachelbreite so gewählt, dass in einer 385px-Rasterspalte zwei
@@ -236,11 +239,22 @@
   .rank .mon:only-child img{width:200px;height:200px}
   .rank .mon:only-child .n{font-size:15px}
 
-  @media(max-width:560px){
-    .mon{width:142px;padding:6px 4px 8px}
-    .mon img{width:120px;height:120px}
-    .rank .mon:only-child{max-width:200px}
-    .rank .mon:only-child img{width:164px;height:164px}
+  /* Handy: zwei Spalten. Dafür müssen die Kacheln deutlich kleiner werden —
+     die Einzelstufe füllt ihre Spalte, Verzweigungen bleiben zu zweit nebeneinander,
+     sonst würde Evoli achtmal untereinander stehen. */
+  @media(max-width:640px){
+    #stage{padding:70px 12px 110px}
+    .chain{padding:9px 6px;border-radius:12px}
+    /* 72px: zwei davon plus Lücke passen in die ~156px Innenbreite einer
+       Handy-Spalte. Bei 80px war es genau eine Kachel zu breit. */
+    .rank{gap:4px}
+    .mon{width:72px;padding:4px 1px 6px;border-radius:10px}
+    .mon img{width:62px;height:62px}
+    .mon .n{font-size:11px}
+    .mon .d{font-size:9.5px}
+    .rank .mon:only-child{width:100%;max-width:none}
+    .rank .mon:only-child img{width:min(132px,100%);height:auto;aspect-ratio:1}
+    .rank .mon:only-child .n{font-size:12.5px}
   }
 
   .sbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
@@ -936,10 +950,11 @@ function renderDex(filter){
   const wrap = el('div','chains');
 
   let mons = 0, ketten = 0;
+  const blocks = [];
   for (const [chainId, list] of d.chains){
     const hit = !nq || list.some(s => norm(s[1]).includes(nq));
     if (!hit) continue;
-    wrap.append(chainBlock(list));
+    blocks.push(chainBlock(list));
     ketten++; mons += list.length;
   }
 
@@ -949,9 +964,54 @@ function renderDex(filter){
   bar.append(el('span', null, `· Pokédex vom ${d.built}`));
   box.append(bar);
 
-  if (!ketten) box.append(el('div','empty','Kein Pokémon mit diesem Namen.'));
-  else box.append(wrap);
+  if (!ketten){ box.append(el('div','empty','Kein Pokémon mit diesem Namen.')); return; }
+  box.append(wrap);
+  masonry(wrap, blocks);
 }
+
+/* Blöcke auf Spalten verteilen — jeder in die gerade kürzeste.
+   Die Kachelmaße stehen per CSS fest, deshalb ist offsetHeight schon vor dem
+   Laden der Bilder verlässlich. */
+const COL_GAP = 12;
+/* Auf dem Handy sollen zwei Spalten passen, auf großen Schirmen sollen die
+   Kacheln nicht zu schmal werden. */
+const colMin = () => innerWidth <= 640 ? 150 : 260;
+const colCount = w => Math.max(1, Math.floor((w + COL_GAP) / (colMin() + COL_GAP)));
+
+let masonryOf = null;
+
+function masonry(wrap, blocks){
+  masonryOf = { wrap, blocks };
+  const n = colCount(wrap.clientWidth);
+
+  wrap.innerHTML = '';
+  const cols = [], h = new Array(n).fill(0);
+  for (let i = 0; i < n; i++){ const c = el('div','col'); cols.push(c); wrap.append(c); }
+
+  for (const b of blocks){
+    let k = 0;
+    for (let i = 1; i < n; i++) if (h[i] < h[k]) k = i;
+    cols[k].append(b);
+    h[k] += b.offsetHeight + COL_GAP;
+  }
+  wrap.dataset.cols  = n;
+  wrap.dataset.klein = innerWidth <= 640 ? '1' : '0';
+}
+
+let reflow;
+addEventListener('resize', () => {
+  clearTimeout(reflow);
+  reflow = setTimeout(() => {
+    if (!masonryOf || !masonryOf.wrap.isConnected) return;
+    const n = colCount(masonryOf.wrap.clientWidth);
+    /* Über den Handy-Breakpoint ändern sich auch die Kachelmaße — dann neu
+       vermessen, selbst wenn die Spaltenzahl gleich bleibt. */
+    const klein = innerWidth <= 640 ? '1' : '0';
+    if (String(n) !== masonryOf.wrap.dataset.cols || klein !== masonryOf.wrap.dataset.klein){
+      masonry(masonryOf.wrap, masonryOf.blocks);
+    }
+  }, 180);
+});
 
 /* Eine Entwicklungsreihe: Grundform, dann die Zweige daneben.
    Evoli hat acht davon, deshalb Zweige untereinander statt nebeneinander. */
