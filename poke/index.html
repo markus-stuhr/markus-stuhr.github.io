@@ -91,13 +91,13 @@
 
   /* ---------- Bühne ---------- */
   #stage{
-    position:fixed;inset:0;overflow:auto;
-    padding:78px 40px 120px 24px;
+    position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;
+    padding:78px 24px 96px;
     scrollbar-width:thin;scrollbar-color:var(--line2) transparent;
   }
   #stage::-webkit-scrollbar{width:11px;height:11px}
   #stage::-webkit-scrollbar-thumb{background:var(--line2);border-radius:6px;border:3px solid var(--bg)}
-  #tree{transform-origin:0 0;width:max-content;min-width:100%;transition:transform .18s ease}
+  #tree{width:100%}
 
   /* ---------- Mindmap-Äste ---------- */
   .kids{padding-left:30px}
@@ -120,7 +120,7 @@
     display:inline-flex;align-items:center;gap:10px;
     margin:5px 0;padding:7px 13px 7px 9px;
     background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
-    transition:.15s;text-align:left;max-width:min(560px,86vw);
+    transition:.15s;text-align:left;max-width:100%;
   }
   .node:hover{background:var(--panel2);border-color:var(--line2);transform:translateX(2px)}
   .node.on{border-color:var(--dot,var(--acc));background:var(--panel2)}
@@ -154,8 +154,8 @@
   .blockbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;color:var(--tx3);font-size:12.5px}
   .blockbar b{color:var(--tx2);font-weight:600}
   .grid{
-    display:grid;gap:11px;
-    grid-template-columns:repeat(auto-fill,minmax(104px,1fr));
+    display:grid;gap:13px;
+    grid-template-columns:repeat(auto-fill,minmax(152px,1fr));
   }
   .card{
     background:var(--panel);border:1px solid var(--line);border-radius:9px;
@@ -175,9 +175,9 @@
     font-size:9px;font-weight:700;letter-spacing:.4px;color:var(--tx2);
     padding:1px 4px;
   }
-  .card .meta{padding:6px 7px}
-  .card .nm{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .card .no{font-size:10.5px;color:var(--tx3);font-variant-numeric:tabular-nums}
+  .card .meta{padding:8px 9px}
+  .card .nm{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .no{font-size:11.5px;color:var(--tx3);font-variant-numeric:tabular-nums}
 
   .empty{color:var(--tx3);font-size:13px;padding:6px 2px}
 
@@ -197,7 +197,7 @@
   }
   .chip:hover{border-color:var(--line2);color:var(--tx);background:var(--panel2)}
   .chip .k{color:var(--tx3);margin-right:5px}
-  .card .set{font-size:10px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .set{font-size:11px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   /* ---------- Pokédex ---------- */
   #dex{display:none}
@@ -244,6 +244,12 @@
   }
   .mon .pill.laedt{color:var(--tx3);opacity:.35}
   .mon .pill.leer{color:var(--tx3);opacity:.55}
+
+  /* Pokémon ohne Karte in der gewählten Sprache: ausgegraut und blass, damit
+     man die Lücken einer Sprache auf einen Blick sieht. */
+  .mon.leer{opacity:.4}
+  .mon.leer img{filter:grayscale(1)}
+  .mon.leer:hover{opacity:.75}
   .rank .mon:only-child .pill{font-size:11.5px;padding:2px 9px}
   .arrow{color:var(--tx3);flex:none;font-size:15px;line-height:1}
 
@@ -258,7 +264,17 @@
      die Einzelstufe füllt ihre Spalte, Verzweigungen bleiben zu zweit nebeneinander,
      sonst würde Evoli achtmal untereinander stehen. */
   @media(max-width:640px){
-    #stage{padding:70px 12px 110px}
+    #stage{padding:70px 12px 96px}
+    /* Zwei Ebenen Einrückung fressen sonst die halbe Schirmbreite und der
+       Kartenblock wird breiter als das Fenster. */
+    .kids{padding-left:15px}
+    .branch{padding-left:16px}
+    .branch::before{width:13px;height:22px;border-bottom-left-radius:9px}
+    .branch::after{top:22px}
+    .block{padding:10px 9px}
+    .grid{grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:9px}
+    .card .nm{font-size:12px}
+    .card .meta{padding:6px 7px}
     .chain{padding:9px 6px;border-radius:12px}
     /* 72px: zwei davon plus Lücke passen in die ~156px Innenbreite einer
        Handy-Spalte. Bei 80px war es genau eine Kachel zu breit. */
@@ -273,10 +289,12 @@
     .rank .mon:only-child img{width:min(132px,100%);height:auto;aspect-ratio:1}
     .rank .mon:only-child .n{font-size:12.5px}
     .rank .mon:only-child .pill{font-size:10.5px;padding:1px 8px}
+    .sbar img{width:200px;height:200px}
+    .sbar h2{font-size:20px}
   }
 
-  .sbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
-  .sbar img{width:150px;height:150px;object-fit:contain;flex:none}
+  .sbar{display:flex;align-items:center;gap:22px;flex-wrap:wrap;margin-bottom:18px}
+  .sbar img{width:300px;height:300px;object-fit:contain;flex:none;max-width:60vw}
   .sbar h2{font-size:24px;letter-spacing:-.4px}
   .sbar .d{color:var(--tx3);font-size:13px}
   .back{
@@ -321,6 +339,21 @@
   .vtp{color:var(--tx3);font-size:11px;font-variant-numeric:tabular-nums;opacity:.8}
   .vars + .vsub{display:block;margin-top:8px}
   .closeb{position:absolute;top:14px;right:14px}
+  .sheet{position:relative}
+  .blaetter{position:absolute;top:50%;transform:translateY(-50%);z-index:3}
+  .blaetter.vor{left:-52px}
+  .blaetter.zur{right:-52px}
+  .blaetter:disabled{opacity:.25;cursor:default}
+  .zaehler{
+    position:absolute;bottom:-30px;left:50%;transform:translateX(-50%);
+    font-size:12px;color:var(--tx3);font-variant-numeric:tabular-nums;
+  }
+  @media(max-width:900px){
+    .blaetter.vor{left:6px}
+    .blaetter.zur{right:6px}
+    .blaetter{top:auto;bottom:10px;transform:none;background:rgba(6,9,13,.85)}
+    .zaehler{bottom:18px}
+  }
 
   /* ---------- Fußzeile ---------- */
   footer{
@@ -335,12 +368,6 @@
   .pill{display:flex;align-items:center;gap:6px}
   .led{width:7px;height:7px;border-radius:50%;background:var(--ok)}
   .led.off{background:var(--warn)}
-  .zoom{display:flex;gap:4px;margin-left:auto}
-  .zoom button{
-    width:27px;height:27px;border-radius:7px;border:1px solid var(--line);
-    background:var(--panel);color:var(--tx2);display:grid;place-items:center;font-size:14px;line-height:1;
-  }
-  .zoom button:hover{background:var(--panel2);color:var(--tx)}
 </style>
 </head>
 <body>
@@ -365,9 +392,6 @@
 
   <select id="lang" title="Sprache"></select>
 
-  <button class="iconbtn" id="collapse" title="Alles zuklappen">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 9l7-5 7 5M5 15l7 5 7-5"/></svg>
-  </button>
 </header>
 
 <main id="stage"><div id="tree"></div><div id="dex"></div><div id="results"></div></main>
@@ -376,11 +400,6 @@
   <div class="pill"><span class="led" id="led"></span><span id="status">bereit</span></div>
   <div class="pill" id="stats"></div>
   <div>Daten: <a href="https://tcgdex.dev" target="_blank" rel="noopener">TCGdex</a></div>
-  <div class="zoom">
-    <button id="zo" title="Kleiner">−</button>
-    <button id="zr" title="100 %">◦</button>
-    <button id="zi" title="Größer">+</button>
-  </div>
 </footer>
 
 <div id="ov"><div class="sheet" id="sheet"></div></div>
@@ -390,11 +409,13 @@
 
 const API = 'https://api.tcgdex.net/v2';
 
+/* Deutsche Bezeichnungen, solange die Oberfläche deutsch ist */
 const LANGS = [
-  ['de','Deutsch'],['en','English'],['fr','Français'],['it','Italiano'],
-  ['es','Español'],['pt','Português'],['ja','日本語'],['ko','한국어'],
-  ['zh-tw','繁體中文'],['zh-cn','简体中文'],['id','Indonesia'],['th','ไทย'],
-  ['nl','Nederlands'],['pl','Polski'],['ru','Русский']
+  ['de','Deutsch'],['en','Englisch'],['fr','Französisch'],['it','Italienisch'],
+  ['es','Spanisch'],['pt','Portugiesisch'],['ja','Japanisch'],['ko','Koreanisch'],
+  ['zh-tw','Chinesisch (trad.)'],['zh-cn','Chinesisch (vereinf.)'],
+  ['id','Indonesisch'],['th','Thai'],
+  ['nl','Niederländisch'],['pl','Polnisch'],['ru','Russisch']
 ];
 
 /* Serienfarben — ein fester Farbton je Serie, damit Äste unterscheidbar bleiben */
@@ -404,11 +425,17 @@ const HUES = {
 };
 const hue = id => `hsl(${HUES[id] ?? 220} 70% 58%)`;
 
+/* TCGdex nennt die erste Serie auf Deutsch "Grund" — abgeleitet vom "Grundset".
+   Im deutschen Sprachgebrauch heißt die Ära aber "Basis-Serie". Andere Sprachen
+   verwenden dort ebenfalls Ära-Namen ("Originale", "Clásica"), nur Deutsch
+   kürzt den Setnamen ab. Einzelfall-Korrektur statt Datenpflege im Generator. */
+const SERIE_NAME = { de: { base: 'Basis' } };
+const serieName = s => ((SERIE_NAME[lang] || {})[s.id]) || s.name;
+
 const $  = s => document.querySelector(s);
 const el = (t,c,x) => { const n=document.createElement(t); if(c)n.className=c; if(x!=null)n.textContent=x; return n; };
 
 let lang  = localStorage.getItem('poke.lang') || 'de';
-let zoom  = +(localStorage.getItem('poke.zoom') || 1);
 const open = new Set(JSON.parse(localStorage.getItem('poke.open') || '[]'));
 const mem  = new Map();   // In-Memory-Cache je Sprache+Pfad
 
@@ -474,7 +501,7 @@ function serieNode(s){
     img.onerror = () => img.remove();
     node.append(img);
   }
-  node.append(el('span','lbl', s.name));
+  node.append(el('span','lbl', serieName(s)));
 
   const box = el('div');
   li.append(node, box);
@@ -507,8 +534,8 @@ function serieNode(s){
   if (open.has('s:'+s.id)) queueMicrotask(() => node.click());
   else box.style.display = 'none';
 
-  li._name  = norm(s.name || '');
-  li._label = s.name || s.id;
+  li._name  = norm(serieName(s) || '');
+  li._label = serieName(s) || s.id;
   li._kind  = 'serie';
   li._jump  = () => jumpTo(node);
   return li;
@@ -551,6 +578,8 @@ function setNode(st, serieId){
       const sp = el('span','spin'); node.append(sp);
       try {
         const full = await get('/sets/' + st.id);
+        /* Liefert die API keine Karten, muss der Index einspringen */
+        if (!(full.cards || []).length) await loadIndex().catch(()=>{});
         box.append(cardBlock(full, serieId));
       } catch(e){
         box.append(el('div','empty','Karten nicht ladbar (offline?)'));
@@ -587,25 +616,47 @@ function cardBlock(set, serieId){
   bar.append(el('span', null, bits.join(' · ')));
   wrap.append(bar);
 
-  if (!cards.length){ wrap.append(el('div','empty','Keine Karten in dieser Sprache.')); return wrap; }
+  if (!cards.length){
+    const rows = rowsForSet(set.id);
+    if (rows && rows.length){
+      bar.append(el('span', null, '· Karten aus der englischen Ausgabe'));
+      wrap.append(cardGrid(idx, rows));
+      return wrap;
+    }
+    /* Unterschied deutlich machen: TCGdex kennt das Set und seine Größe,
+       hat aber keine einzige Karte erfasst. */
+    wrap.append(el('div','empty', cc.official
+      ? `TCGdex hat für dieses Set in dieser Sprache keine Karten erfasst — laut Set-Angabe wären es ${cc.official}.`
+      : 'Keine Karten in dieser Sprache.'));
+    return wrap;
+  }
+  /* Gespiegelte Sprachen: Hinweis in die Kopfzeile, das Raster bleibt */
+  if (langSpiegel[lang]) bar.append(el('span', null, '· Karten aus der englischen Ausgabe'));
 
   const grid = el('div','grid');
+  const liste = cards.map(c => ({
+    id: c.id, serieId,
+    ref: (() => { const r = rowFor(set.id, c.localId); return r != null ? { d: idx, i: r } : null; })()
+  }));
+  let k = -1;
   for (const c of cards){
+    k++;
     const b = el('button','card');
     const ph = el('div','ph'); ph.dataset.n = c.localId || '';
 
     /* Bildquelle bevorzugt aus dem Index — der weiß auch von pokemontcg.io.
        Ist er noch nicht geladen, bleibt der alte Weg: eigenes Bild, sonst EN. */
     const row = rowFor(set.id, c.localId);
-    let url, fremd;
+    let url, kz;
     if (row != null){
-      url   = cardImage(idx, row, false);
-      fremd = idx.cards[row][3] > 0;
+      url = cardImage(idx, row, false);
+      kz  = fremdsprache(idx.cards[row][3]);
     } else {
-      url   = c.image ? c.image + '/low.webp'
-                      : `https://assets.tcgdex.net/en/${serieId}/${set.id}/${c.localId}/low.webp`;
-      fremd = !c.image;
+      url = c.image ? c.image + '/low.webp'
+                    : `https://assets.tcgdex.net/en/${serieId}/${set.id}/${c.localId}/low.webp`;
+      kz  = c.image ? null : 'EN';
     }
+    if (kz && kz.toLowerCase() === lang) kz = null;
 
     if (url){
       const img = el('img');
@@ -617,7 +668,7 @@ function cardBlock(set, serieId){
       img.onload = () => {
         img.classList.add('in');
         ph.dataset.n = '';
-        if (fremd && lang !== 'en') ph.append(el('span','flag','EN'));
+        if (kz) ph.append(el('span','flag', kz));
       };
       ph.append(img);
       io.observe(img);
@@ -626,7 +677,8 @@ function cardBlock(set, serieId){
     m.append(el('div','nm', c.name || '—'));
     m.append(el('div','no', (c.localId||'') + (cc.official ? ' / ' + cc.official : '')));
     b.append(ph, m);
-    b.onclick = () => detail(c.id, serieId, row != null ? { d: idx, i: row } : null);
+    const pos = k;
+    b.onclick = () => oeffne(liste, pos);
     grid.append(b);
   }
   wrap.append(grid);
@@ -671,10 +723,12 @@ async function detail(id, serieId, idxRef){
       i.onerror = null; i.src = url.replace(/\.webp$/, '.png');
     };
     left.append(i);
-    if (src > 0 && lang !== 'en'){
-      left.append(el('div','rar', src === 2
-        ? 'Englischer Scan von pokemontcg.io'
-        : 'Scan aus der englischen Ausgabe'));
+    const kz = fremdsprache(src);
+    if (kz && kz.toLowerCase() !== lang){
+      left.append(el('div','rar',
+        src === 2 ? 'Englischer Scan von pokemontcg.io'
+      : src === 4 ? 'Scan aus der japanischen Ausgabe'
+      :             'Scan aus der englischen Ausgabe'));
     }
   } else {
     left.append(el('div','empty','Für diese Karte gibt es keinen Scan.'));
@@ -734,6 +788,21 @@ async function detail(id, serieId, idxRef){
     r.append(el('div','vsub', 'Cardmarket, Stand ' + stand(c)));
   }
   sh.append(r);
+
+  if (blaettern && blaettern.liste.length > 1){
+    const mach = (schritt, pfad, klasse, titel) => {
+      const b = el('button','iconbtn blaetter ' + klasse);
+      b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="${pfad}"/></svg>`;
+      b.title = titel;
+      b.disabled = schritt < 0 ? blaettern.pos === 0
+                                : blaettern.pos === blaettern.liste.length - 1;
+      b.onclick = ev => { ev.stopPropagation(); nachbar(schritt); };
+      return b;
+    };
+    sh.append(mach(-1, 'M15 5l-7 7 7 7', 'vor',  'Vorherige Karte (Pfeil links)'));
+    sh.append(mach( 1, 'M9 5l7 7-7 7',   'zur',  'Nächste Karte (Pfeil rechts)'));
+    sh.append(el('div','zaehler', `${blaettern.pos + 1} / ${blaettern.liste.length}`));
+  }
 
   const x = el('button','iconbtn closeb');
   x.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -826,9 +895,14 @@ function stand(c){
   try { return new Date(u).toLocaleDateString('de-DE'); } catch(e){ return u.slice(0,10); }
 }
 
-const close = () => $('#ov').classList.remove('on');
+const close = () => { $('#ov').classList.remove('on'); blaettern = null; };
 $('#ov').onclick = e => { if (e.target.id === 'ov') close(); };
-addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') return close();
+  if (!$('#ov').classList.contains('on')) return;
+  if (e.key === 'ArrowRight'){ e.preventDefault(); nachbar(1); }
+  if (e.key === 'ArrowLeft'){  e.preventDefault(); nachbar(-1); }
+});
 
 /* ---------- Hilfen ---------- */
 function tw(){
@@ -950,34 +1024,64 @@ function cardImage(d, i, gross){
   const [si, localId, , src] = d.cards[i];
   const [setId, , serieId, , , ptcgId] = d.sets[si];
   const q = gross ? 'high' : 'low';
-  if (src === 0 && serieId) return `https://assets.tcgdex.net/${lang}/${serieId}/${setId}/${localId}/${q}.webp`;
-  if (src === 1 && serieId) return `https://assets.tcgdex.net/en/${serieId}/${setId}/${localId}/${q}.webp`;
+  const tcg = l => `https://assets.tcgdex.net/${l}/${serieId}/${setId}/${localId}/${q}.webp`;
+  if (src === 0 && serieId) return tcg(lang);
+  if (src === 1 && serieId) return tcg('en');
+  if (src === 4 && serieId) return tcg('ja');
   if (src === 2 && ptcgId)  return `https://images.pokemontcg.io/${ptcgId}/${localId}${gross ? '_hires' : ''}.png`;
   return null;
 }
 
+/* Kürzel für die Ecke der Kachel: aus welcher Ausgabe stammt der Scan? */
+const fremdsprache = src => src === 4 ? 'JA' : src > 0 ? 'EN' : null;
+
 /* Zeilennummer im Index zu einer Karten-ID. Der Sets-Tab baut seine Karten aus
    der API und kennt die Bildquelle nicht — hier holt er sie sich. */
-let rowMap = null, rowMapKey = '';
-function rowFor(setId, localId){
-  if (!idx || idxLang !== lang) return null;
+let rowMap = null, setRows = null, rowMapKey = '';
+
+function baueRowMap(){
+  if (!idx || idxLang !== lang) return false;
   const key = lang + ':' + idx.count;
   if (rowMapKey !== key){
-    rowMap = new Map();
+    rowMap = new Map(); setRows = new Map();
     for (let i = 0; i < idx.cards.length; i++){
       const [si, lid] = idx.cards[i];
-      rowMap.set(idx.sets[si][0] + ' ' + lid, i);
+      const sid = idx.sets[si][0];
+      rowMap.set(sid + ' ' + lid, i);
+      if (!setRows.has(sid)) setRows.set(sid, []);
+      setRows.get(sid).push(i);
     }
     rowMapKey = key;
   }
-  const i = rowMap.get(setId + ' ' + localId);
+  return true;
+}
+
+function rowFor(setId, localId){
+  if (!baueRowMap()) return null;
+  const i = rowMap.get(setId + ' ' + localId);
   return i == null ? null : i;
+}
+
+/* Alle Index-Zeilen eines Sets — gebraucht, wenn die API für das Set nichts
+   liefert (nl, pl, ru), der Index es aber aus dem Englischen gespiegelt hat. */
+function rowsForSet(setId){
+  if (!baueRowMap()) return null;
+  return setRows.get(setId) || null;
 }
 
 /* Kartenraster aus Index-Zeilen — von der Suche und vom Pokédex genutzt */
 function cardGrid(d, rows){
   const grid = el('div','grid');
+  /* Reihenfolge der angezeigten Karten festhalten, damit man im Detail mit
+     den Pfeiltasten durch genau diese Liste blättern kann. */
+  const liste = rows.map(i => {
+    const [si, localId] = d.cards[i];
+    const [setId, , serieId] = d.sets[si];
+    return { id: `${setId}-${localId}`, serieId, ref: { d, i } };
+  });
+  let k = -1;
   for (const i of rows){
+    k++;
     const [si, localId, name, src] = d.cards[i];
     const [setId, setName, serieId] = d.sets[si];
 
@@ -994,8 +1098,9 @@ function cardGrid(d, rows){
       img.onload = () => {
         img.classList.add('in');
         ph.dataset.n = '';
-        /* src 1 und 2 sind beide englische Scans — ehrlich kennzeichnen */
-        if (src > 0 && lang !== 'en') ph.append(el('span','flag','EN'));
+        /* Fremde Ausgabe ehrlich kennzeichnen */
+        const kz = fremdsprache(src);
+        if (kz && kz.toLowerCase() !== lang) ph.append(el('span','flag', kz));
       };
       ph.append(img);
       io.observe(img);
@@ -1006,10 +1111,27 @@ function cardGrid(d, rows){
     m.append(el('div','set', setName));
     m.append(el('div','no', localId));
     b.append(ph, m);
-    b.onclick = () => detail(`${setId}-${localId}`, serieId, { d, i });
+    const pos = k;
+    b.onclick = () => oeffne(liste, pos);
     grid.append(b);
   }
   return grid;
+}
+
+/* ---------- Blättern im Detail ---------- */
+let blaettern = null;
+
+function oeffne(liste, pos){
+  blaettern = { liste, pos };
+  const it = liste[pos];
+  detail(it.id, it.serieId, it.ref);
+}
+
+function nachbar(schritt){
+  if (!blaettern) return;
+  const p = blaettern.pos + schritt;
+  if (p < 0 || p >= blaettern.liste.length) return;
+  oeffne(blaettern.liste, p);
 }
 
 /* ================= Pokédex =================
@@ -1137,10 +1259,20 @@ function renderDex(filter){
   bar.append(el('span', null, `· Pokédex vom ${d.built}`));
   box.append(bar);
 
+  if (langSpiegel[lang]){
+    box.append(el('div','empty',
+      'Für diese Sprache hat TCGdex keine eigenen Kartendaten. Gezeigt werden '
+      + 'die Karten der englischen Ausgabe derselben Sets — Namen und Scans sind '
+      + 'deshalb englisch.'));
+  } else if (langMeta[lang] === 0){
+    box.append(el('div','empty',
+      'Für diese Sprache hat TCGdex keine Karten erfasst.'));
+  }
+
   if (!ketten){ box.append(el('div','empty','Kein Pokémon mit diesem Namen.')); return; }
   box.append(wrap);
   masonry(wrap, blocks);
-  fillCounts(wrap);
+  fillCounts(wrap, true);
 }
 
 /* Blöcke auf Spalten verteilen — jeder in die gerade kürzeste.
@@ -1262,12 +1394,13 @@ function monTile(s, self){
 
 /* Kartenzahlen nachtragen. Bewusst getrennt vom Aufbau: der Pokédex ist 25 KB
    und sofort da, der Kartenindex 460 KB — die Übersicht soll nicht darauf warten. */
-async function fillCounts(root){
+async function fillCounts(root, bilanz){
   let ci;
   try { ci = await loadIndex(); } catch(e){ return; }
   if (!root.isConnected) return;
 
   const m = buildOwners(ci, dex);
+  let leer = 0;
   for (const b of root.querySelectorAll('[data-dex]')){
     const p = b.querySelector('.pill');
     if (!p) continue;
@@ -1275,6 +1408,16 @@ async function fillCounts(root){
     p.textContent = n === 0 ? 'keine Karte' : n === 1 ? '1 Karte' : `${n} Karten`;
     p.classList.remove('laedt');
     p.classList.toggle('leer', n === 0);
+    b.classList.toggle('leer', n === 0);
+    if (!n) leer++;
+  }
+
+  /* In Sprachen mit wenigen Sets fehlen die meisten Pokémon — das gehört
+     in die Kopfzeile, nicht nur in die einzelnen Kacheln. */
+  const bar = $('#dex .rbar');
+  if (bilanz && bar && leer){
+    bar.querySelectorAll('.luecke').forEach(e => e.remove());
+    bar.append(el('span','luecke', `· ${leer.toLocaleString('de-DE')} davon ohne Karte in dieser Sprache`));
   }
 }
 
@@ -1283,25 +1426,47 @@ async function fillCounts(root){
    klappt einem die Übersicht über die gerade geöffnete Karte. */
 let dexToken = 0;
 
-function dexOverview(){
+/* Wo steckt der Pokédex gerade? Wird für den Sprachwechsel gebraucht — die
+   Species-IDs sind sprachübergreifend gleich, man kann also an Ort und Stelle
+   bleiben. Und für die Scrollposition beim Zurückgehen. */
+let dexRoute  = { art: 'uebersicht' };
+let dexScroll = 0;
+
+function dexOverview(zurueck){
   const my = ++dexToken;
+  dexRoute = { art: 'uebersicht' };
   setView('dex');
   $('#dex').innerHTML = '<div class="empty">Pokédex wird geladen…</div>';
   return loadDex()
-    .then(() => { if (my === dexToken) renderDex($('#q').value.trim()); })
+    .then(() => {
+      if (my !== dexToken) return;
+      renderDex($('#q').value.trim());
+      /* Erst nach dem Verteilen auf die Spalten steht die Höhe fest */
+      if (zurueck && dexScroll) requestAnimationFrame(() => {
+        if (my === dexToken) $('#stage').scrollTop = dexScroll;
+      });
+    })
     .catch(() => { if (my === dexToken) $('#dex').innerHTML = '<div class="empty">Pokédex nicht ladbar.</div>'; });
 }
 
 /* ---------- Alle Karten eines Pokémon ---------- */
-async function showSpecies(dexId){
+async function showSpecies(dexId, scrollTo){
   const my = ++dexToken;
+  /* Nur beim Verlassen der Übersicht merken — sonst überschriebe ein Klick
+     innerhalb der Entwicklungsreihe die Position, zu der man zurück will. */
+  if (dexRoute.art === 'uebersicht') dexScroll = $('#stage').scrollTop;
+  dexRoute = { art: 'species', dex: dexId };
+
   const box = $('#dex');
   box.innerHTML = '<div class="empty">lädt…</div>';
   setView('dex');
+  $('#stage').scrollTop = 0;
 
+  /* Beides laden: nach einem Sprachwechsel ist der Pokédex noch leer, weil
+     showSpecies dann direkt aufgerufen wird statt über die Übersicht. */
   let ci;
-  try { ci = await loadIndex(); }
-  catch(e){ if (my === dexToken) box.innerHTML = '<div class="empty">Kartenindex nicht ladbar.</div>'; return; }
+  try { [ci] = await Promise.all([loadIndex(), loadDex()]); }
+  catch(e){ if (my === dexToken) box.innerHTML = '<div class="empty">Daten nicht ladbar.</div>'; return; }
   if (my !== dexToken) return;
 
   const s = dex.byDex.get(dexId);
@@ -1313,7 +1478,7 @@ async function showSpecies(dexId){
   box.innerHTML = '';
 
   const back = el('button','back','← Alle Pokémon');
-  back.onclick = () => { $('#q').value = ''; dexOverview(); };
+  back.onclick = () => { $('#q').value = ''; dexOverview(true); };
   box.append(back);
 
   const bar = el('div','sbar');
@@ -1338,9 +1503,17 @@ async function showSpecies(dexId){
     fillCounts(line);
   }
 
-  if (!rows.length){ box.append(el('div','empty','Keine Karte zu diesem Pokémon im Index.')); return; }
-  box.append(cardGrid(ci, rows.slice(0, 400)));
-  if (rows.length > 400) box.append(el('div','empty', `… und ${rows.length-400} weitere.`));
+  if (rows.length){
+    box.append(cardGrid(ci, rows.slice(0, 400)));
+    if (rows.length > 400) box.append(el('div','empty', `… und ${rows.length-400} weitere.`));
+  } else {
+    box.append(el('div','empty','Keine Karte zu diesem Pokémon im Index.'));
+  }
+
+  /* Erst jetzt steht die Höhe — vorher liefe die Position ins Leere. */
+  if (scrollTo) requestAnimationFrame(() => {
+    if (my === dexToken) $('#stage').scrollTop = scrollTo;
+  });
 }
 
 /* ---------- Ansichtswechsel ---------- */
@@ -1440,28 +1613,31 @@ function jumpToSet(setId, serieId){
   });
 }
 
-$('#collapse').onclick = () => {
-  open.clear(); localStorage.setItem('poke.open','[]');
-  $('#q').value = ''; onSearch();
-  mem.clear(); build();
-};
-
-/* Zoom */
-function setZoom(z){
-  zoom = Math.min(1.6, Math.max(.5, +z.toFixed(2)));
-  $('#tree').style.transform = `scale(${zoom})`;
-  localStorage.setItem('poke.zoom', zoom);
-}
-$('#zi').onclick = () => setZoom(zoom + .1);
-$('#zo').onclick = () => setZoom(zoom - .1);
-$('#zr').onclick = () => setZoom(1);
-
 /* Sprache */
 const sel = $('#lang');
 for (const [c,n] of LANGS){
   const o = el('option', null, n); o.value = c; sel.append(o);
 }
 sel.value = lang;
+
+/* Niederländisch, Polnisch und Russisch haben bei TCGdex keine eigenen
+   Kartendaten — dort wird die englische Ausgabe derselben Sets gespiegelt.
+   Das gehört in die Auswahl, sonst wundert man sich über englische Namen. */
+let langMeta = {}, langSpiegel = {};
+fetch('index/_meta.json')
+  .then(r => r.ok ? r.json() : null)
+  .then(m => {
+    if (!m) return;
+    langMeta    = m.counts || {};
+    langSpiegel = m.gespiegelt || {};
+    for (const o of sel.options){
+      /* Der Hinweis steht in der Ansicht selbst — in der Auswahl macht er
+         die Einträge nur breit. */
+      if (langSpiegel[o.value]) continue;
+      if (langMeta[o.value] === 0) o.textContent += ' — keine Kartendaten';
+    }
+  })
+  .catch(()=>{});
 sel.onchange = () => {
   lang = sel.value;
   localStorage.setItem('poke.lang', lang);
@@ -1469,9 +1645,21 @@ sel.onchange = () => {
   idx = idxLang = idxPromise = null;   // Suchindex gilt je Sprache
   dex = dexLang = dexPromise = null;   // Pokédex ebenso
   owner = null; ownerKey = '';
-  build();   // IDs bleiben sprachübergreifend gleich → Aufklapp-Zustand überlebt
-  if (view === 'dex') dexOverview();
-  else if ($('#q').value.trim().length >= 2) onSearch();
+  /* Position halten. Set-, Serien- und Species-IDs sind sprachübergreifend
+     gleich, deshalb lässt sich die Stelle wiederherstellen; nur die Namen
+     wechseln. Klappt das nicht, landet man auf der jeweiligen Übersicht. */
+  const stand = $('#stage').scrollTop;
+  build();   // Aufklapp-Zustand überlebt, er hängt an den IDs
+
+  if (view === 'dex'){
+    if (dexRoute.art === 'species') showSpecies(dexRoute.dex, stand);
+    else { dexScroll = stand; dexOverview(true); }
+  } else {
+    if ($('#q').value.trim().length >= 2) onSearch();
+    /* Der Baum klappt sich erst nach und nach wieder auf, deshalb mehrfach
+       nachziehen statt einmal zu raten. */
+    [120, 500, 1100].forEach(t => setTimeout(() => { $('#stage').scrollTop = stand; }, t));
+  }
 };
 
 /* Online-Status */
@@ -1504,7 +1692,6 @@ if ('serviceWorker' in navigator){
   });
 }
 
-setZoom(zoom);
 document.documentElement.lang = lang;
 setView(view);
 build();

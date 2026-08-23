@@ -14,6 +14,13 @@ der Browser raten und liefe in fehlschlagende Requests:
     1  nur englischer Scan          assets.tcgdex.net/en/…
     2  von pokemontcg.io            images.pokemontcg.io/{ptcgSet}/{nr}.png
     3  nirgends vorhanden           Platzhalter
+    4  japanischer Scan             assets.tcgdex.net/ja/…
+
+Warum zwei Ausweichsprachen: Westliche Ausgaben (de, fr, it, es, pt) teilen
+sich die Set-Struktur mit dem Englischen. Koreanisch, Thai, Indonesisch und
+Chinesisch folgen dagegen der **japanischen** Struktur (SV1a, S12a …), die es
+im Englischen gar nicht gibt — dort ist Japanisch der passende Rückgriff und
+deckt die Lücken praktisch vollständig.
 
 Aufruf:   python3 poke/tools/build-index.py [sprache ...]
 Ergebnis: poke/index/{lang}.json
@@ -63,6 +70,7 @@ def with_image(details):
 
 # ---- Caches über alle Sprachen hinweg, die Daten sind sprachunabhängig ----
 _en_images = None
+_ja_images = None
 _ptcg_sets = None
 _ptcg_nums = {}
 
@@ -72,6 +80,13 @@ def en_images():
     if _en_images is None:
         _en_images = with_image(set_details('en'))
     return _en_images
+
+
+def ja_images():
+    global _ja_images
+    if _ja_images is None:
+        _ja_images = with_image(set_details('ja'))
+    return _ja_images
 
 
 def ptcg_sets():
@@ -115,10 +130,23 @@ def ptcg_numbers(psid):
 norm = lambda s: re.sub(r'[^a-z0-9]', '', (s or '').lower())
 
 
+def liegt_auf_cdn(url):
+    """Die API meldet für manche Karten image=null, obwohl der Scan auf dem
+    CDN liegt — bei Japanisch betrifft das rund 40 % der vermeintlichen Lücken.
+    Deshalb für jede verbleibende Lücke einmal nachfassen."""
+    try:
+        req = urllib.request.Request(url, method='HEAD', headers={'User-Agent': UA})
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+
 def build(lang):
     details = set_details(lang)
     own = with_image(details)
-    en  = en_images()
+    en  = en_images() if lang != 'en' else set()
+    ja  = ja_images() if lang != 'ja' else set()
 
     # Serien -> Sets, damit jede Karte ihre Serie kennt (für Bild-URL und Farbe)
     series = fetch(f'{API}/{lang}/series')
@@ -134,6 +162,22 @@ def build(lang):
             meta[st['id']] = [st.get('name') or st['id'], d['id'], st.get('releaseDate') or '']
 
     cards = fetch(f'{API}/{lang}/cards')
+
+    # Niederländisch, Polnisch und Russisch führen bei TCGdex Sets, aber keine
+    # einzige Karte. Die Sets tragen dort dieselben IDs wie im Englischen und
+    # haben denselben Umfang (nl base1 = 102, pl dp1 = 130, ru xy1 = 146),
+    # also die englische Kartenliste spiegeln. Namen und Scans sind damit
+    # englisch — das kennzeichnet die App ausdrücklich.
+    gespiegelt = False
+    if not cards:
+        en_det = {d['id']: d for d in set_details('en')}
+        cards = []
+        for st in fetch(f'{API}/{lang}/sets'):
+            d = en_det.get(st['id'])
+            for c in (d.get('cards') or []) if d else []:
+                cards.append({'id': f"{st['id']}-{c.get('localId')}",
+                              'localId': c.get('localId'), 'name': c.get('name')})
+        gespiegelt = bool(cards)
 
     order, rows, fehlend = {}, [], set()
     for c in cards:
@@ -165,7 +209,7 @@ def build(lang):
     # Welche Sets haben Lücken? Nur für die lohnt der Blick zu pokemontcg.io.
     luecken = {}
     for si, lid, name, sid in rows:
-        if (sid, lid) not in own and (sid, lid) not in en:
+        if (sid, lid) not in own and (sid, lid) not in en and (sid, lid) not in ja:
             luecken.setdefault(sid, set()).add(lid)
 
     # Zuordnung über den *englischen* Setnamen — die IDs unterscheiden sich
@@ -178,20 +222,43 @@ def build(lang):
             ptcg_by_set[sid] = psid
 
     # Quelle je Karte festschreiben
-    quelle = {0: 0, 1: 0, 2: 0, 3: 0}
+    quelle = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0}
     final = []
     for si, lid, name, sid in rows:
         if (sid, lid) in own:                                        src = 0
         elif (sid, lid) in en:                                       src = 1
+        elif (sid, lid) in ja:                                       src = 4
         elif sid in ptcg_by_set and lid in ptcg_numbers(ptcg_by_set[sid]): src = 2
         else:                                                        src = 3
         quelle[src] += 1
         final.append([si, lid, name, src])
 
+    # Verbleibende Lücken direkt am CDN prüfen — die API-Metadaten sind dort
+    # unvollständig. Kostet einen HEAD-Request je Lücke, lohnt sich aber.
+    offen = [k for k, (si, lid, name, src) in enumerate(final) if src == 3]
+    if offen:
+        def pruefe(k):
+            si, lid = final[k][0], final[k][1]
+            serie = meta[list(order)[si]][1] if si < len(order) else ''
+            sid = list(order)[si]
+            if not serie:
+                return k, False
+            return k, liegt_auf_cdn(f'https://assets.tcgdex.net/{lang}/{serie}/{sid}/{lid}/low.webp')
+        gefunden = 0
+        with ThreadPoolExecutor(10) as ex:
+            for k, ok in ex.map(pruefe, offen):
+                if ok:
+                    final[k][3] = 0
+                    quelle[3] -= 1; quelle[0] += 1
+                    gefunden += 1
+        if gefunden:
+            print(f'       {gefunden} von {len(offen)} Lücken lagen doch auf dem CDN')
+
     out = {
         'lang':  lang,
         'built': datetime.date.today().isoformat(),
         'count': len(final),
+        'gespiegelt': gespiegelt,
         # [setId, setName, serieId, releaseDate, nurEnglischeMetadaten, ptcgSetId]
         'sets':  [[s, *meta[s], 1 if s in en_only else 0, ptcg_by_set.get(s, '')] for s in order],
         # [setIndex, localId, name, bildquelle]
@@ -204,17 +271,42 @@ def build(lang):
 
     n = len(final) or 1
     print(f'{lang:6s} {len(final):6d} Karten  {len(order):4d} Sets  {p.stat().st_size//1024:5d} KB'
-          f'   Bilder: {quelle[0]} eigen · {quelle[1]} EN · {quelle[2]} ptcg.io · {quelle[3]} keins'
-          f'  ({100*(n-quelle[3])/n:.1f} % abgedeckt)')
-    return len(final)
+          f'   Bilder: {quelle[0]} eigen · {quelle[1]} EN · {quelle[4]} JA · {quelle[2]} ptcg.io · {quelle[3]} keins'
+          f'  ({100*(n-quelle[3])/n:.1f} % abgedeckt)'
+          + ('   [aus der englischen Ausgabe gespiegelt]' if gespiegelt else ''))
+    return len(final), gespiegelt
+
+
+def schreibe_meta(neu):
+    """Kartenzahl je Sprache, damit die App Sprachen ohne Kartendaten
+    kennzeichnen kann (nl, pl und ru führen Sets, aber keine Karten)."""
+    p = OUT / '_meta.json'
+    alt = {}
+    if p.exists():
+        try: alt = json.loads(p.read_text(encoding='utf-8')).get('counts', {})
+        except Exception: pass
+    alt.update(neu['counts'])
+    spiegel = {}
+    if p.exists():
+        try: spiegel = json.loads(p.read_text(encoding='utf-8')).get('gespiegelt', {})
+        except Exception: pass
+    spiegel.update(neu['gespiegelt'])
+    p.write_text(json.dumps({'built': datetime.date.today().isoformat(),
+                             'counts': alt, 'gespiegelt': spiegel},
+                            ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
+    return alt
 
 
 if __name__ == '__main__':
     todo = sys.argv[1:] or LANGS
-    total = 0
+    total, counts, spiegel = 0, {}, {}
     for l in todo:
         try:
-            total += build(l)
+            counts[l], spiegel[l] = build(l)
+            total += counts[l]
         except Exception as e:
             print(f'{l:6s} FEHLER: {e}', file=sys.stderr)
+    schreibe_meta({'counts': counts, 'gespiegelt': spiegel})
+    gs = [l for l, v in spiegel.items() if v]
     print(f'\n{total} Karten in {len(todo)} Sprachen -> {OUT}')
+    if gs: print(f'Aus dem Englischen gespiegelt: {", ".join(gs)}')
