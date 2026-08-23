@@ -1685,7 +1685,7 @@ sel.value = lang;
    Kartendaten — dort wird die englische Ausgabe derselben Sets gespiegelt.
    Das gehört in die Auswahl, sonst wundert man sich über englische Namen. */
 let langMeta = {}, langSpiegel = {};
-fetch('index/_meta.json')
+fetch('index/meta.json')
   .then(r => r.ok ? r.json() : null)
   .then(m => {
     if (!m) return;

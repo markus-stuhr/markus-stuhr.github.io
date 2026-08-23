@@ -280,7 +280,9 @@ def build(lang):
 def schreibe_meta(neu):
     """Kartenzahl je Sprache, damit die App Sprachen ohne Kartendaten
     kennzeichnen kann (nl, pl und ru führen Sets, aber keine Karten)."""
-    p = OUT / '_meta.json'
+    # Kein führender Unterstrich: GitHub Pages lässt solche Dateien über
+    # Jekyll gar nicht erst ausliefern (404 trotz vorhandener Datei).
+    p = OUT / 'meta.json'
     alt = {}
     if p.exists():
         try: alt = json.loads(p.read_text(encoding='utf-8')).get('counts', {})
