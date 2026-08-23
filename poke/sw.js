@@ -14,10 +14,12 @@ const V     = 'kartenbaum-v1';
 const SHELL = `${V}-shell`;
 const API   = `${V}-api`;
 const IMG   = `${V}-img`;
+const DEX   = `${V}-dex`;   // Pokédex-Sprites, ~120 KB je Bild
 
 const SHELL_FILES = ['./', './index.html', './manifest.webmanifest'];
 
 const IMG_MAX = 3000;   // Kartenbilder ~35 KB → Deckel bei grob 100 MB
+const DEX_MAX = 600;    // Sprites sind rund 120 KB → eigener, engerer Deckel
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -49,9 +51,10 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
 
   if (url.hostname === 'api.tcgdex.net')    return e.respondWith(swr(req));
-  if (url.hostname === 'assets.tcgdex.net') return e.respondWith(cacheFirst(req, IMG, true));
-  /* Pokédex-Sprites von PokeAPI/sprites — ändern sich nie */
-  if (url.hostname === 'raw.githubusercontent.com') return e.respondWith(cacheFirst(req, IMG, true));
+  if (url.hostname === 'assets.tcgdex.net') return e.respondWith(cacheFirst(req, IMG, IMG_MAX));
+  /* Pokédex-Sprites von PokeAPI/sprites — ändern sich nie, brauchen aber
+     wegen ihrer Größe einen eigenen Deckel neben den Kartenbildern */
+  if (url.hostname === 'raw.githubusercontent.com') return e.respondWith(cacheFirst(req, DEX, DEX_MAX));
   if (url.origin === self.location.origin)  return e.respondWith(shell(req));
 });
 
@@ -74,7 +77,7 @@ async function swr(req) {
 }
 
 /* Cache-first für Bilder — die ändern sich nie. */
-async function cacheFirst(req, name, trim) {
+async function cacheFirst(req, name, max) {
   const cache = await caches.open(name);
   const hit   = await cache.match(req);
   if (hit) return hit;
@@ -85,7 +88,7 @@ async function cacheFirst(req, name, trim) {
        Die Seite setzt crossOrigin, aber als Netz greifen wir sie trotzdem ab. */
     if (res && (res.ok || res.type === 'opaque')) {
       cache.put(req, res.clone());
-      if (trim) trimCache(name, IMG_MAX);
+      if (max) trimCache(name, max);
     }
     return res;
   } catch {
@@ -113,10 +116,10 @@ async function shell(req) {
 }
 
 /* Ältestes zuerst rauswerfen, wenn der Deckel überschritten ist. */
-let trimming = false;
+const trimming = new Set();   // je Cache eigener Riegel, sonst blockieren sie sich
 async function trimCache(name, max) {
-  if (trimming) return;
-  trimming = true;
+  if (trimming.has(name)) return;
+  trimming.add(name);
   try {
     const cache = await caches.open(name);
     const keys  = await cache.keys();
@@ -124,6 +127,6 @@ async function trimCache(name, max) {
       await Promise.all(keys.slice(0, keys.length - max).map(k => cache.delete(k)));
     }
   } finally {
-    trimming = false;
+    trimming.delete(name);
   }
 }

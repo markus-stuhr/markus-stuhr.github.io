@@ -214,21 +214,37 @@
   }
   .rank{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%}
   .down{color:var(--tx3);font-size:13px;line-height:1.1}
+  /* Kachelbreite so gewählt, dass in einer 385px-Rasterspalte zwei
+     nebeneinander passen — Verzweigungen bleiben damit kompakt. */
   .mon{
-    display:flex;flex-direction:column;align-items:center;gap:1px;
-    padding:6px 6px 8px;border-radius:12px;border:1px solid transparent;
-    transition:.15s;width:104px;
+    display:flex;flex-direction:column;align-items:center;gap:2px;
+    padding:8px 6px 10px;border-radius:14px;border:1px solid transparent;
+    transition:.15s;width:176px;max-width:100%;
   }
   .mon:hover{background:var(--panel2);border-color:var(--line2)}
-  .mon img{width:80px;height:80px;flex:none;image-rendering:pixelated;opacity:0;transition:opacity .25s}
+  .mon img{width:150px;height:150px;flex:none;object-fit:contain;opacity:0;transition:opacity .25s}
   .mon img.in{opacity:1}
   .mon .t{min-width:0;width:100%;text-align:center}
-  .mon .n{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mon .d{font-size:10px;color:var(--tx3);font-variant-numeric:tabular-nums}
+  .mon .n{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mon .d{font-size:11px;color:var(--tx3);font-variant-numeric:tabular-nums}
   .arrow{color:var(--tx3);flex:none;font-size:15px;line-height:1}
 
-  .sbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px}
-  .sbar img{width:96px;height:96px;image-rendering:pixelated;flex:none}
+  /* Steht eine Stufe allein in ihrer Zeile — der Normalfall —, darf sie die
+     Spaltenbreite ausnutzen. Verzweigungszeilen bleiben bei der Grundgröße,
+     sonst würde Evoli acht Zeilen hoch. */
+  .rank .mon:only-child{width:100%;max-width:250px}
+  .rank .mon:only-child img{width:200px;height:200px}
+  .rank .mon:only-child .n{font-size:15px}
+
+  @media(max-width:560px){
+    .mon{width:142px;padding:6px 4px 8px}
+    .mon img{width:120px;height:120px}
+    .rank .mon:only-child{max-width:200px}
+    .rank .mon:only-child img{width:164px;height:164px}
+  }
+
+  .sbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+  .sbar img{width:150px;height:150px;object-fit:contain;flex:none}
   .sbar h2{font-size:24px;letter-spacing:-.4px}
   .sbar .d{color:var(--tx3);font-size:13px}
   .back{
@@ -816,7 +832,11 @@ function cardGrid(d, rows){
  * die Volltextsuche — nur mit einer strengeren Zuordnung, siehe unten.
  */
 
-const SPRITE = d => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${d}.png`;
+/* Die kleinen Sprites sind nur 96×96 und werden groß matschig. "home" ist
+   512×512 und lückenlos vorhanden — dafür rund 120 KB statt 1,3 KB, was
+   Lazy Loading und ein eigener Cache-Deckel im Worker auffangen. */
+const SPRITE      = d => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${d}.png`;
+const SPRITE_MINI = d => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${d}.png`;
 
 let dex = null, dexLang = null, dexPromise = null;
 
@@ -990,6 +1010,11 @@ function monTile(s, self){
   img.alt = name; img.loading = 'lazy'; img.decoding = 'async';
   img.dataset.src = SPRITE(dexId);
   img.onload = () => img.classList.add('in');
+  img.onerror = () => {
+    if (img.dataset.tried) return;
+    img.dataset.tried = '1';
+    img.src = SPRITE_MINI(dexId);
+  };
   io.observe(img);
   const t = el('div','t');
   t.append(el('div','n', name));
