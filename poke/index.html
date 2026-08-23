@@ -231,6 +231,20 @@
   .mon .t{min-width:0;width:100%;text-align:center}
   .mon .n{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mon .d{font-size:10px;color:var(--tx3);font-variant-numeric:tabular-nums}
+  /* Kartenzahl — erscheint erst, wenn der Kartenindex nachgeladen ist */
+  /* Von Anfang an sichtbar, damit das Masonry-Ausmessen stimmt — sonst
+     würden die Blöcke beim Nachtragen der Zahlen alle höher und die
+     Spaltenverteilung wäre falsch. */
+  .mon .pill{
+    display:inline-block;margin-top:4px;
+    font-size:10px;font-weight:700;color:var(--tx2);
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:20px;padding:1px 7px;font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+  }
+  .mon .pill.laedt{color:var(--tx3);opacity:.35}
+  .mon .pill.leer{color:var(--tx3);opacity:.55}
+  .rank .mon:only-child .pill{font-size:11.5px;padding:2px 9px}
   .arrow{color:var(--tx3);flex:none;font-size:15px;line-height:1}
 
   /* Steht eine Stufe allein in ihrer Zeile — der Normalfall —, darf sie die
@@ -253,9 +267,12 @@
     .mon img{width:62px;height:62px}
     .mon .n{font-size:11px}
     .mon .d{font-size:9.5px}
+    /* Auf der 72px-Zweigkachel würde "151 Karten" bei 10px überstehen */
+    .mon .pill{font-size:9px;padding:1px 5px;margin-top:3px}
     .rank .mon:only-child{width:100%;max-width:none}
     .rank .mon:only-child img{width:min(132px,100%);height:auto;aspect-ratio:1}
     .rank .mon:only-child .n{font-size:12.5px}
+    .rank .mon:only-child .pill{font-size:10.5px;padding:1px 8px}
   }
 
   .sbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
@@ -968,6 +985,7 @@ function renderDex(filter){
   if (!ketten){ box.append(el('div','empty','Kein Pokémon mit diesem Namen.')); return; }
   box.append(wrap);
   masonry(wrap, blocks);
+  fillCounts(wrap);
 }
 
 /* Blöcke auf Spalten verteilen — jeder in die gerade kürzeste.
@@ -1080,9 +1098,29 @@ function monTile(s, self){
   const t = el('div','t');
   t.append(el('div','n', name));
   t.append(el('div','d', '#' + String(dexId).padStart(4,'0')));
+  t.append(el('span','pill laedt','·'));   // Platzhalter, gefüllt von fillCounts()
   b.append(img, t);
+  b.dataset.dex = dexId;
   b.onclick = () => showSpecies(dexId);
   return b;
+}
+
+/* Kartenzahlen nachtragen. Bewusst getrennt vom Aufbau: der Pokédex ist 25 KB
+   und sofort da, der Kartenindex 460 KB — die Übersicht soll nicht darauf warten. */
+async function fillCounts(root){
+  let ci;
+  try { ci = await loadIndex(); } catch(e){ return; }
+  if (!root.isConnected) return;
+
+  const m = buildOwners(ci, dex);
+  for (const b of root.querySelectorAll('[data-dex]')){
+    const p = b.querySelector('.pill');
+    if (!p) continue;
+    const n = (m.get(+b.dataset.dex) || []).length;
+    p.textContent = n === 0 ? 'keine Karte' : n === 1 ? '1 Karte' : `${n} Karten`;
+    p.classList.remove('laedt');
+    p.classList.toggle('leer', n === 0);
+  }
 }
 
 /* Jede Navigation im Pokédex zieht eine neue Nummer. Späte Antworten einer
@@ -1142,6 +1180,7 @@ async function showSpecies(dexId){
       line.append(monTile(list[i], list[i][0] === dexId));
     }
     box.append(line);
+    fillCounts(line);
   }
 
   if (!rows.length){ box.append(el('div','empty','Keine Karte zu diesem Pokémon im Index.')); return; }
