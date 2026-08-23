@@ -217,19 +217,20 @@
   .chains > .chain{width:100%}
   .rank{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;width:100%}
   .down{color:var(--tx3);font-size:13px;line-height:1.1}
-  /* Kachelbreite so gewählt, dass in einer 385px-Rasterspalte zwei
-     nebeneinander passen — Verzweigungen bleiben damit kompakt. */
+  /* Verzweigungskacheln: 112px, damit zwei in die schmalste Spalte (260px minus
+     Polster ≈ 238px) passen. Dass sie kleiner sind als eine Einzelstufe ist
+     gewollt — man sieht auf einen Blick, dass die Stufe mehrere Formen hat. */
   .mon{
     display:flex;flex-direction:column;align-items:center;gap:2px;
-    padding:8px 6px 10px;border-radius:14px;border:1px solid transparent;
-    transition:.15s;width:176px;max-width:100%;
+    padding:7px 4px 9px;border-radius:13px;border:1px solid transparent;
+    transition:.15s;width:112px;max-width:100%;
   }
   .mon:hover{background:var(--panel2);border-color:var(--line2)}
-  .mon img{width:150px;height:150px;flex:none;object-fit:contain;opacity:0;transition:opacity .25s}
+  .mon img{width:96px;height:96px;flex:none;object-fit:contain;opacity:0;transition:opacity .25s}
   .mon img.in{opacity:1}
   .mon .t{min-width:0;width:100%;text-align:center}
-  .mon .n{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .mon .d{font-size:11px;color:var(--tx3);font-variant-numeric:tabular-nums}
+  .mon .n{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mon .d{font-size:10px;color:var(--tx3);font-variant-numeric:tabular-nums}
   .arrow{color:var(--tx3);flex:none;font-size:15px;line-height:1}
 
   /* Steht eine Stufe allein in ihrer Zeile — der Normalfall —, darf sie die
