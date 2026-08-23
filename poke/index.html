@@ -44,6 +44,16 @@
 
   .spacer{flex:1}
 
+  /* ---------- Hauptmenü ---------- */
+  .tabs{display:flex;gap:2px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px}
+  .tab{
+    padding:5px 15px;border-radius:8px;font-size:13.5px;font-weight:600;
+    color:var(--tx3);transition:.15s;white-space:nowrap;
+  }
+  .tab:hover{color:var(--tx2)}
+  .tab.on{background:var(--panel2);color:var(--tx);box-shadow:inset 0 0 0 1px var(--line2)}
+  @media(max-width:560px){.tab{padding:5px 10px;font-size:12.5px}}
+
   .ctl{
     display:flex;align-items:center;gap:6px;
     background:var(--panel);border:1px solid var(--line);
@@ -190,6 +200,43 @@
   .chip .k{color:var(--tx3);margin-right:5px}
   .card .set{font-size:10px;color:var(--tx3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
+  /* ---------- Pokédex ---------- */
+  #dex{display:none;max-width:1180px}
+  #dex.on{display:block}
+  .chains{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(310px,1fr))}
+  .chain{
+    background:var(--bg2);border:1px solid var(--line);border-radius:14px;
+    padding:11px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;
+  }
+  .chain.solo{grid-column:auto}
+  .stack{display:flex;flex-direction:column;gap:4px}
+  .mon{
+    display:flex;align-items:center;gap:7px;
+    padding:5px 10px 5px 5px;border-radius:10px;border:1px solid transparent;
+    transition:.15s;min-width:0;
+  }
+  .mon:hover{background:var(--panel2);border-color:var(--line2)}
+  .mon img{width:44px;height:44px;flex:none;image-rendering:pixelated;opacity:0;transition:opacity .25s}
+  .mon img.in{opacity:1}
+  .mon .t{min-width:0}
+  .mon .n{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mon .d{font-size:10.5px;color:var(--tx3);font-variant-numeric:tabular-nums}
+  .arrow{color:var(--tx3);flex:none;font-size:15px;line-height:1}
+
+  .sbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+  .sbar img{width:66px;height:66px;image-rendering:pixelated;flex:none}
+  .sbar h2{font-size:24px;letter-spacing:-.4px}
+  .sbar .d{color:var(--tx3);font-size:13px}
+  .back{
+    display:inline-flex;align-items:center;gap:7px;
+    background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    padding:6px 12px;font-size:13px;color:var(--tx2);margin-bottom:14px;transition:.15s;
+  }
+  .back:hover{background:var(--panel2);color:var(--tx);border-color:var(--line2)}
+  .line{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+  .line .mon{background:var(--panel);border-color:var(--line)}
+  .line .mon.self{border-color:var(--acc);background:var(--panel2)}
+
   /* ---------- Detail ---------- */
   #ov{
     position:fixed;inset:0;z-index:60;display:none;
@@ -247,6 +294,11 @@
     Kartenbaum <span>· Pokémon TCG</span>
   </div>
 
+  <nav class="tabs">
+    <button class="tab on" data-view="sets">Sets</button>
+    <button class="tab" data-view="dex">Pokémon</button>
+  </nav>
+
   <div class="spacer"></div>
 
   <label class="ctl">
@@ -261,7 +313,7 @@
   </button>
 </header>
 
-<main id="stage"><div id="tree"></div><div id="results"></div></main>
+<main id="stage"><div id="tree"></div><div id="dex"></div><div id="results"></div></main>
 
 <footer>
   <div class="pill"><span class="led" id="led"></span><span id="status">bereit</span></div>
@@ -710,9 +762,13 @@ function renderResults(d, raw){
   if (chips.children.length) box.append(chips);
 
   if (!total){ box.append(el('div','empty','Keine Karte mit diesem Namen.')); return; }
+  box.append(cardGrid(d, shown));
+}
 
+/* Kartenraster aus Index-Zeilen — von der Suche und vom Pokédex genutzt */
+function cardGrid(d, rows){
   const grid = el('div','grid');
-  for (const i of shown){
+  for (const i of rows){
     const [si, localId, name] = d.cards[i];
     const [setId, setName, serieId, , enOnly] = d.sets[si];
 
@@ -746,7 +802,275 @@ function renderResults(d, raw){
     b.onclick = () => detail(`${setId}-${localId}`, serieId);
     grid.append(b);
   }
-  box.append(grid);
+  return grid;
+}
+
+/* ================= Pokédex =================
+ *
+ * Species, Namen und Evolutionsketten kommen aus PokéAPI, vorgebacken von
+ * tools/build-pokedex.py. Die Karten dazu kommen aus demselben Suchindex wie
+ * die Volltextsuche — nur mit einer strengeren Zuordnung, siehe unten.
+ */
+
+const SPRITE = d => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${d}.png`;
+
+let dex = null, dexLang = null, dexPromise = null;
+
+function loadDex(){
+  if (dex && dexLang === lang) return Promise.resolve(dex);
+  if (dexPromise && dexPromise.lang === lang) return dexPromise.p;
+
+  const want = lang;
+  const p = fetch(`pokedex/${want}.json`)
+    .then(r => { if(!r.ok) throw new Error(r.status); return r.json(); })
+    .then(d => {
+      d.byDex = new Map(d.species.map(s => [s[0], s]));
+      d.chains = new Map();
+      for (const s of d.species){
+        if (!d.chains.has(s[2])) d.chains.set(s[2], []);
+        d.chains.get(s[2]).push(s);
+      }
+      if (dexLang !== want || !dex){ dex = d; dexLang = want; }
+      return d;
+    });
+  dexPromise = { lang: want, p };
+  return p;
+}
+
+/* Kartenname -> Species.
+ *
+ * Reine Teilstringsuche taugt hier nicht: "Mew" steckt in "Mewtu",
+ * "Porygon" in "Porygon-Z". Deshalb wortweise, und der längste Treffer
+ * gewinnt — "Porygon-Z" schlägt "Porygon", "Mewtu" schlägt "Mew".
+ * "Mega-Glurak" und "Glurak-ex" landen beide korrekt bei Glurak.
+ */
+const TOKEN = /[^\p{L}\p{N}♀♂]+/u;
+const tokens = s => s.split(TOKEN).filter(Boolean);
+
+let owner = null, ownerKey = '';
+
+/* Ergebnis: Map dexId -> Kartenindizes. Eine Karte darf bei mehreren Pokémon
+   auftauchen — "Reshiram & Glurak GX" gehört zu beiden. */
+function buildOwners(cardIdx, dexIdx){
+  const key = lang + ':' + cardIdx.count + ':' + dexIdx.count;
+  if (owner && ownerKey === key) return owner;
+
+  const byName = new Map();
+  for (const s of dexIdx.species) byName.set(norm(s[1]), s[0]);
+
+  /* Für Sprachen ohne Wortgrenzen (ja, zh, ko) greift die Wortsuche nicht:
+     "リザードンex" ist ein einziges Token. Dafür ein Präfix-Fallback, nach
+     Anfangszeichen gebündelt, damit nicht 1025 Namen pro Karte geprüft werden. */
+  const buckets = new Map();
+  for (const [n, d] of byName){
+    const k = n.slice(0, 2);
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k).push([n, d]);
+  }
+  for (const list of buckets.values()) list.sort((a,b) => b[0].length - a[0].length);
+
+  const out = new Map();
+  const add = (d, i) => {
+    let a = out.get(d);
+    if (!a) out.set(d, a = []);
+    if (a[a.length-1] !== i) a.push(i);
+  };
+
+  for (let i = 0; i < cardIdx.norm.length; i++){
+    const n = cardIdx.norm[i];
+    const tk = tokens(n);
+    let traf = false;
+
+    /* Je Wortposition gewinnt der längste Treffer — sonst würde
+       "Porygon-Z" auch unter Porygon landen. Über die Positionen hinweg
+       zählen dagegen alle Treffer, damit Doppelkarten beide erwischen. */
+    for (let t = 0; t < tk.length; t++){
+      const pair = t + 1 < tk.length ? tk[t] + '-' + tk[t+1] : null;   // Porygon-Z, Ho-Oh
+      const d = (pair && byName.get(pair)) || byName.get(tk[t]);
+      if (d){ add(d, i); traf = true; }
+    }
+
+    if (!traf){
+      for (const [nm, d] of (buckets.get(n.slice(0,2)) || [])){
+        if (n.startsWith(nm)){ add(d, i); break; }   // Liste ist nach Länge sortiert
+      }
+    }
+  }
+
+  owner = out; ownerKey = key;
+  return out;
+}
+
+/* ---------- Kettenübersicht ---------- */
+function renderDex(filter){
+  const box = $('#dex');
+  box.innerHTML = '';
+  const d = dex;
+  const nq = norm(filter || '');
+
+  const bar = el('div','rbar');
+  const wrap = el('div','chains');
+
+  let mons = 0, ketten = 0;
+  for (const [chainId, list] of d.chains){
+    const hit = !nq || list.some(s => norm(s[1]).includes(nq));
+    if (!hit) continue;
+    wrap.append(chainBlock(list));
+    ketten++; mons += list.length;
+  }
+
+  bar.append(el('b', null, mons.toLocaleString('de-DE')));
+  bar.append(el('span', null, `Pokémon in ${ketten} Entwicklungsreihen`));
+  bar.append(el('span', null, `· Pokédex vom ${d.built}`));
+  box.append(bar);
+
+  if (!ketten) box.append(el('div','empty','Kein Pokémon mit diesem Namen.'));
+  else box.append(wrap);
+}
+
+/* Eine Entwicklungsreihe: Grundform, dann die Zweige daneben.
+   Evoli hat acht davon, deshalb Zweige untereinander statt nebeneinander. */
+/* Dex-Nummern folgen nicht der Entwicklung: Pichu ist #172, kommt aber vor
+   Pikachu #25. Also entlang der Vorentwicklung sortieren, nicht nach Nummer. */
+function orderChain(list){
+  const kids = p => list.filter(s => s[3] === p);
+  const out = [];
+  const walk = s => { out.push(s); for (const k of kids(s[0])) walk(k); };
+  for (const r of list.filter(s => !s[3] || !list.some(x => x[0] === s[3]))) walk(r);
+  for (const s of list) if (!out.includes(s)) out.push(s);   // Sicherheitsnetz
+  return out;
+}
+
+function chainBlock(list){
+  const box = el('div','chain');
+  const roots = list.filter(s => !s[3] || !list.some(x => x[0] === s[3]));
+  const kids  = p => list.filter(s => s[3] === p[0]);
+
+  const column = arr => {
+    const st = el('div','stack');
+    for (const s of arr){
+      const row = el('div','stack');
+      const line = el('div','line'); line.style.margin = '0';
+      line.append(monTile(s));
+      const k = kids(s);
+      if (k.length){
+        line.append(el('span','arrow','→'));
+        line.append(column(k));
+      }
+      row.append(line);
+      st.append(row);
+    }
+    return st;
+  };
+
+  box.append(column(roots));
+  if (list.length === 1) box.classList.add('solo');
+  return box;
+}
+
+function monTile(s, self){
+  const [dexId, name] = s;
+  const b = el('button','mon' + (self ? ' self' : ''));
+  const img = el('img');
+  img.crossOrigin = 'anonymous';
+  img.alt = name; img.loading = 'lazy'; img.decoding = 'async';
+  img.dataset.src = SPRITE(dexId);
+  img.onload = () => img.classList.add('in');
+  io.observe(img);
+  const t = el('div','t');
+  t.append(el('div','n', name));
+  t.append(el('div','d', '#' + String(dexId).padStart(4,'0')));
+  b.append(img, t);
+  b.onclick = () => showSpecies(dexId);
+  return b;
+}
+
+/* Jede Navigation im Pokédex zieht eine neue Nummer. Späte Antworten einer
+   überholten Navigation dürfen die Ansicht nicht mehr überschreiben — sonst
+   klappt einem die Übersicht über die gerade geöffnete Karte. */
+let dexToken = 0;
+
+function dexOverview(){
+  const my = ++dexToken;
+  setView('dex');
+  $('#dex').innerHTML = '<div class="empty">Pokédex wird geladen…</div>';
+  return loadDex()
+    .then(() => { if (my === dexToken) renderDex($('#q').value.trim()); })
+    .catch(() => { if (my === dexToken) $('#dex').innerHTML = '<div class="empty">Pokédex nicht ladbar.</div>'; });
+}
+
+/* ---------- Alle Karten eines Pokémon ---------- */
+async function showSpecies(dexId){
+  const my = ++dexToken;
+  const box = $('#dex');
+  box.innerHTML = '<div class="empty">lädt…</div>';
+  setView('dex');
+
+  let ci;
+  try { ci = await loadIndex(); }
+  catch(e){ if (my === dexToken) box.innerHTML = '<div class="empty">Kartenindex nicht ladbar.</div>'; return; }
+  if (my !== dexToken) return;
+
+  const s = dex.byDex.get(dexId);
+  if (!s){ box.innerHTML = '<div class="empty">Unbekanntes Pokémon.</div>'; return; }
+
+  const rows = (buildOwners(ci, dex).get(dexId) || []).slice();
+  rows.sort((a,b) => (ci.sets[ci.cards[b][0]][3]||'').localeCompare(ci.sets[ci.cards[a][0]][3]||''));
+
+  box.innerHTML = '';
+
+  const back = el('button','back','← Alle Pokémon');
+  back.onclick = () => { $('#q').value = ''; dexOverview(); };
+  box.append(back);
+
+  const bar = el('div','sbar');
+  const img = el('img'); img.crossOrigin='anonymous'; img.src = SPRITE(dexId); img.alt = s[1];
+  bar.append(img);
+  const t = el('div');
+  t.append(el('h2', null, s[1]));
+  t.append(el('div','d', `#${String(dexId).padStart(4,'0')} · Generation ${s[4]} · `
+    + `${rows.length} ${rows.length === 1 ? 'Karte' : 'Karten'}`));
+  bar.append(t);
+  box.append(bar);
+
+  /* Die ganze Reihe zum Weiterklicken */
+  const list = orderChain(dex.chains.get(s[2]) || []);
+  if (list.length > 1){
+    const line = el('div','line');
+    for (let i = 0; i < list.length; i++){
+      if (i) line.append(el('span','arrow','→'));
+      line.append(monTile(list[i], list[i][0] === dexId));
+    }
+    box.append(line);
+  }
+
+  if (!rows.length){ box.append(el('div','empty','Keine Karte zu diesem Pokémon im Index.')); return; }
+  box.append(cardGrid(ci, rows.slice(0, 400)));
+  if (rows.length > 400) box.append(el('div','empty', `… und ${rows.length-400} weitere.`));
+}
+
+/* ---------- Ansichtswechsel ---------- */
+let view = localStorage.getItem('poke.view') || 'sets';
+
+function setView(v){
+  view = v;
+  localStorage.setItem('poke.view', v);
+  for (const t of document.querySelectorAll('.tab')) t.classList.toggle('on', t.dataset.view === v);
+  const searching = $('#q').value.trim().length >= 2 && v === 'sets';
+  $('#tree').classList.toggle('hide', v !== 'sets' || searching);
+  $('#dex').classList.toggle('on', v === 'dex');
+  $('#results').classList.toggle('on', searching);
+  $('#q').placeholder = v === 'dex' ? 'Pokémon…' : 'Karte, Serie oder Set…';
+}
+
+for (const t of document.querySelectorAll('.tab')){
+  t.onclick = async () => {
+    const v = t.dataset.view;
+    $('#q').value = '';
+    setView(v);
+    if (v === 'dex') dexOverview();
+    else onSearch();
+  };
 }
 
 let tmr = 0;
@@ -754,6 +1078,13 @@ function onSearch(){
   clearTimeout(tmr);
   tmr = setTimeout(async () => {
     const raw = $('#q').value.trim();
+
+    /* Im Pokédex filtert das Feld die Entwicklungsreihen, nicht die Karten */
+    if (view === 'dex'){
+      if (dex) renderDex(raw);
+      return;
+    }
+
     applyFilter();
 
     const on = raw.length >= 2;
@@ -842,8 +1173,11 @@ sel.onchange = () => {
   localStorage.setItem('poke.lang', lang);
   document.documentElement.lang = lang;
   idx = idxLang = idxPromise = null;   // Suchindex gilt je Sprache
+  dex = dexLang = dexPromise = null;   // Pokédex ebenso
+  owner = null; ownerKey = '';
   build();   // IDs bleiben sprachübergreifend gleich → Aufklapp-Zustand überlebt
-  if ($('#q').value.trim().length >= 2) onSearch();
+  if (view === 'dex') dexOverview();
+  else if ($('#q').value.trim().length >= 2) onSearch();
 };
 
 /* Online-Status */
@@ -873,7 +1207,9 @@ if ('serviceWorker' in navigator){
 
 setZoom(zoom);
 document.documentElement.lang = lang;
+setView(view);
 build();
+if (view === 'dex') dexOverview();
 </script>
 </body>
 </html>

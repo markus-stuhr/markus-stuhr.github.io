@@ -50,6 +50,8 @@ self.addEventListener('fetch', e => {
 
   if (url.hostname === 'api.tcgdex.net')    return e.respondWith(swr(req));
   if (url.hostname === 'assets.tcgdex.net') return e.respondWith(cacheFirst(req, IMG, true));
+  /* Pokédex-Sprites von PokeAPI/sprites — ändern sich nie */
+  if (url.hostname === 'raw.githubusercontent.com') return e.respondWith(cacheFirst(req, IMG, true));
   if (url.origin === self.location.origin)  return e.respondWith(shell(req));
 });
 
