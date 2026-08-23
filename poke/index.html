@@ -829,15 +829,20 @@ async function detail(id, serieId, idxRef){
         : null;
       const tpLink = tp && tp.productId ? 'https://www.tcgplayer.com/product/' + tp.productId : null;
 
-      if (cm) block('Cardmarket', 'alle Zustände gemischt', [
+      const cmZeilen = cm ? [
         ['Ø 30 Tage verkauft',  cm.avg30, euro],
         ['Preistrend',          cm.trend, euro],
         ['Günstigstes Angebot', cm.low,   euro],
-      ], true, cmLink);
+      ] : [];
+      /* Ohne Cardmarket-Wert übernimmt TCGplayer den Hauptpreis — sonst
+         stünde die Karte ganz ohne Leitzahl da. */
+      const cmHatWert = cmZeilen.some(z => z[1] != null);
+
+      block('Cardmarket', 'alle Zustände gemischt', cmZeilen, true, cmLink);
       if (tp) block('TCGplayer', 'Near Mint', [
         ['Marktpreis',          tp.marketPrice ?? tp.midPrice, dollar],
         ['Günstigstes Angebot', tp.lowPrice,                   dollar],
-      ], false, tpLink);
+      ], !cmHatWert, tpLink);
       if (!preise.children.length) preise.append(el('span','vsub','kein Preis zuordenbar'));
 
       line.append(preise);
