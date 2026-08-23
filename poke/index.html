@@ -311,10 +311,15 @@
   .kv dd{color:var(--tx)}
   .vars{display:flex;flex-direction:column;gap:6px}
   .var{
-    display:flex;justify-content:space-between;gap:12px;align-items:center;
-    background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-size:13px;
+    display:flex;justify-content:space-between;gap:14px;align-items:flex-start;
+    background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;
   }
-  .var b{color:var(--acc);font-variant-numeric:tabular-nums}
+  .vname{min-width:0}
+  .vprices{display:flex;flex-direction:column;align-items:flex-end;gap:1px;flex:none;text-align:right}
+  .var b{color:var(--acc);font-variant-numeric:tabular-nums;font-size:14px}
+  .vsub{color:var(--tx3);font-size:11px;font-variant-numeric:tabular-nums}
+  .vtp{color:var(--tx3);font-size:11px;font-variant-numeric:tabular-nums;opacity:.8}
+  .vars + .vsub{display:block;margin-top:8px}
   .closeb{position:absolute;top:14px;right:14px}
 
   /* ---------- Fußzeile ---------- */
@@ -696,6 +701,8 @@ async function detail(id, serieId, idxRef){
   if (vs.length){
     r.append(el('div','rar','Varianten'));
     const box = el('div','vars');
+    const hatNormal = vs.some(v => vtype(v) === 'normal');
+
     for (const v of vs){
       const line = el('div','var');
       /* type allein reicht nicht — erst subtype und stamp trennen
@@ -706,13 +713,25 @@ async function detail(id, serieId, idxRef){
         Array.isArray(v.stamp) ? v.stamp.join(' + ') : v.stamp,
         v.size && v.size !== 'Standard' ? v.size : null
       ].filter(Boolean).join(' · ');
-      line.append(el('span', null, label || '—'));
-      const cm = v.pricing && v.pricing.cardmarket;
-      const price = cm && (cm.trend ?? cm.avg);
-      line.append(el('b', null, price ? price.toFixed(2) + ' ' + (cm.unit==='EUR'?'€':cm.unit||'') : '—'));
+      line.append(el('div','vname', label || '—'));
+
+      const preise = el('div','vprices');
+      const cm = marktpreis(v, hatNormal, vs.length === 1);
+      preise.append(el('b', null, cm && cm.trend != null ? euro(cm.trend) : '—'));
+
+      const neben = [];
+      if (cm && cm.low   != null) neben.push('ab ' + euro(cm.low));
+      if (cm && cm.avg30 != null) neben.push('Ø30 ' + euro(cm.avg30));
+      if (neben.length) preise.append(el('span','vsub', neben.join(' · ')));
+
+      const tp = tcgplayer(c, v);
+      if (tp != null) preise.append(el('span','vtp', 'TCGplayer ' + dollar(tp)));
+
+      line.append(preise);
       box.append(line);
     }
     r.append(box);
+    r.append(el('div','vsub', 'Cardmarket, Stand ' + stand(c)));
   }
   sh.append(r);
 
@@ -721,6 +740,92 @@ async function detail(id, serieId, idxRef){
   x.onclick = close;
   sh.append(x);
 }
+/* ---------- Preise ----------
+ *
+ * Cardmarket kennt je Produkt nur **zwei** Preissätze: die schlichten Felder
+ * und dieselben mit Suffix "-holo". TCGdex reicht für jede Variante dasselbe
+ * Objekt durch (gleiche idProduct), die Zuordnung muss also hier passieren —
+ * sonst zeigt Reverse Holo den Preis der Normalkarte.
+ *
+ * Regel: "-holo" gilt für Reverse, und für Holo nur dann, wenn es die Karte
+ * auch als Normal gibt. Bei einer reinen Holo-Karte steckt ihr Preis in den
+ * schlichten Feldern und "-holo" enthält Datenmüll (Grundset-Glurak:
+ * trend 632,84 € gegen trend-holo 123,63 €).
+ */
+
+const vtype = v => String(v.type || '').toLowerCase();
+
+/* Auflage einer Variante. "offen" heißt: keine Auflagen-Angabe oder ausdrücklich
+   unbegrenzt — nur solche Varianten lassen sich einem Marktpreis zuordnen. */
+function auflage(v){
+  const st = ((v.subtype || '') + ' ' +
+              (Array.isArray(v.stamp) ? v.stamp.join(' ') : v.stamp || '')).toLowerCase().trim();
+  return {
+    erste: /(^|\D)1\.|1st|first/.test(st),
+    offen: !st || /unbegrenzt|unlimited/.test(st),
+  };
+}
+
+function marktpreis(v, hatNormal, einzige){
+  const cm = v.pricing && v.pricing.cardmarket;
+  if (!cm) return null;
+
+  /* Cardmarket führt 1. Auflage, schattenlos und unbegrenzt unter **einer**
+     Produkt-ID (Neo-Lugia: beide Auflagen idProduct 274409, gleicher Trend).
+     Diese Varianten also lieber ohne Preis lassen, als allen denselben Wert
+     unterzuschieben. Ist es die einzige Variante, gilt der Preis natürlich. */
+  if (!einzige && !auflage(v).offen) return null;
+
+  const t = vtype(v);
+  const foil = t === 'reverse' || (t === 'holo' && hatNormal);
+  const lies = k => cm[foil ? k + '-holo' : k];
+
+  let out = { trend: lies('trend'), low: lies('low'), avg30: lies('avg30') };
+  /* Manche Karten führen die Foil-Felder gar nicht — dann lieber der
+     schlichte Wert als ein leerer Strich. */
+  if (foil && out.trend == null && out.low == null) {
+    out = { trend: cm.trend, low: cm.low, avg30: cm.avg30 };
+  }
+  if (out.trend == null) out.trend = foil ? cm['avg-holo'] : cm.avg;
+  return out;
+}
+
+/* TCGplayer ist sauberer modelliert — die Preise stehen dort je Variante unter
+   eigenen Schlüsseln (normal, holofoil, reverse-holofoil, 1st-edition …).
+   Wichtig: **kein Ausweichen über die Auflagengrenze**. Sonst bekäme die
+   1.-Auflage-Variante den Preis der unbegrenzten untergeschoben — derselbe
+   Fehler, den die Cardmarket-Zuordnung oben vermeidet. Varianten, die sich
+   nicht sauber zuordnen lassen (schattenlos, "Copyright 1999-2000"), bleiben
+   lieber ohne Preis. */
+function tcgplayer(c, v){
+  const tp = (c.pricing || {}).tcgplayer;
+  if (!tp) return null;
+
+  const t = vtype(v);
+  const { erste, offen } = auflage(v);
+  if (!erste && !offen) return null;          // schattenlos & Co. nicht zuordenbar
+
+  const kandidaten =
+      t === 'reverse' ? ['reverse-holofoil']
+    : t === 'holo'    ? (erste ? ['1st-edition-holofoil'] : ['holofoil','unlimited-holofoil'])
+    :                   (erste ? ['1st-edition']          : ['normal','unlimited']);
+
+  for (const k of kandidaten){
+    const p = tp[k];
+    if (p && (p.marketPrice != null || p.midPrice != null)) return p.marketPrice ?? p.midPrice;
+  }
+  return null;
+}
+
+const euro   = n => n.toLocaleString('de-DE', { style:'currency', currency:'EUR' });
+const dollar = n => n.toLocaleString('de-DE', { style:'currency', currency:'USD' });
+
+function stand(c){
+  const u = (((c.pricing || {}).cardmarket) || {}).updated;
+  if (!u) return 'unbekannt';
+  try { return new Date(u).toLocaleDateString('de-DE'); } catch(e){ return u.slice(0,10); }
+}
+
 const close = () => $('#ov').classList.remove('on');
 $('#ov').onclick = e => { if (e.target.id === 'ov') close(); };
 addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
