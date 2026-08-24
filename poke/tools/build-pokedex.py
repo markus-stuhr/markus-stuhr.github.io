@@ -11,7 +11,7 @@ Aufruf:   python3 poke/tools/build-pokedex.py
 Ergebnis: poke/pokedex/{lang}.json  (eine Datei je Sprache des Kartenbaums)
 """
 
-import json, sys, urllib.request, urllib.error, pathlib, datetime, time
+import json, re, sys, urllib.request, urllib.error, pathlib, datetime, time
 from concurrent.futures import ThreadPoolExecutor
 
 API = 'https://pokeapi.co/api/v2'
@@ -45,16 +45,31 @@ def fetch(url, tries=3):
             time.sleep(1.5 * (n + 1))
 
 
+# Mega-Entwicklung und Gigadynamax sind **keine** Entwicklungen: sie halten nur
+# im Kampf und fallen danach zurück. Sie gehören deshalb nicht in die Kette,
+# sondern als Sonderformen an die jeweilige Art. Kosmetische Varianten (Pikachu
+# hat 16 davon, überwiegend Mützen) bleiben draußen.
+FORM = re.compile(r'-(mega(?:-[xy])?|gmax)$')
+
+
 def species(i):
     d = fetch(f'{API}/pokemon-species/{i}')
     names = {n['language']['name']: n['name'] for n in d['names']}
     parent = d.get('evolves_from_species')
+
+    formen = []
+    for v in d.get('varieties') or []:
+        m = FORM.search(v['pokemon']['name'])
+        if m:
+            formen.append([int(v['pokemon']['url'].rstrip('/').split('/')[-1]), m.group(1)])
+
     return {
-        'dex':   d['id'],
-        'names': names,
-        'from':  int(parent['url'].rstrip('/').split('/')[-1]) if parent else 0,
-        'chain': int(d['evolution_chain']['url'].rstrip('/').split('/')[-1]),
-        'gen':   GEN.get(d['generation']['name'], 0),
+        'dex':    d['id'],
+        'names':  names,
+        'from':   int(parent['url'].rstrip('/').split('/')[-1]) if parent else 0,
+        'chain':  int(d['evolution_chain']['url'].rstrip('/').split('/')[-1]),
+        'gen':    GEN.get(d['generation']['name'], 0),
+        'formen': formen,
     }
 
 
@@ -80,10 +95,12 @@ def main():
             'lang':  lang,
             'built': datetime.date.today().isoformat(),
             'count': len(rows),
-            # [dex, name, chainId, vorentwicklungDex, generation]
+            # [dex, name, chainId, vorentwicklungDex, generation, sonderformen]
+            # sonderformen: [[pokemonId, "mega"|"mega-x"|"mega-y"|"gmax"], …]
             'species': [[r['dex'],
                          r['names'].get(pl) or r['names'].get('en') or f"#{r['dex']}",
-                         r['chain'], r['from'], r['gen']] for r in rows],
+                         r['chain'], r['from'], r['gen']] + ([r['formen']] if r['formen'] else [])
+                        for r in rows],
         }
         p = OUT / f'{lang}.json'
         p.write_text(json.dumps(out, ensure_ascii=False, separators=(',', ':')),
@@ -92,7 +109,10 @@ def main():
               f'{"" if pl == lang else f"  (Namen aus {pl})"}')
 
     ketten = len({r['chain'] for r in rows})
+    mega = sum(1 for r in rows for f in r['formen'] if f[1].startswith('mega'))
+    gmax = sum(1 for r in rows for f in r['formen'] if f[1] == 'gmax')
     print(f'\n{len(rows)} Species in {ketten} Evolutionsketten -> {OUT}')
+    print(f'{mega} Mega-Formen und {gmax} Gigadynamax-Formen erfasst')
 
 
 def safe(i):

@@ -307,6 +307,16 @@
   .line .mon{background:var(--panel);border-color:var(--line)}
   .line .mon.self{border-color:var(--acc);background:var(--panel2)}
 
+  /* Sonderformen — bewusst neben der Kette, nicht darin */
+  .formen{align-items:center;gap:8px;padding-top:2px}
+  .formlabel{
+    font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+    color:var(--tx3);margin-right:4px;align-self:center;
+  }
+  .mon.form{width:120px}
+  .mon.form img{width:100px;height:100px}
+  .mon.form .pill{display:inline-block;margin-top:3px}
+
   /* ---------- Detail ---------- */
   #ov{
     position:fixed;inset:0;z-index:60;display:none;
@@ -1210,6 +1220,32 @@ function nachbar(schritt){
 /* Die kleinen Sprites sind nur 96×96 und werden groß matschig. "home" ist
    512×512 und lückenlos vorhanden — dafür rund 120 KB statt 1,3 KB, was
    Lazy Loading und ein eigener Cache-Deckel im Worker auffangen. */
+/* Mega-Entwicklung und Gigadynamax sind keine Entwicklungen — sie halten nur
+   im Kampf und fallen danach zurück. Deshalb stehen sie als Sonderformen neben
+   der Kette, nicht darin. Die Begriffe sind Markennamen; nur Deutsch weicht ab
+   (Gigadynamax statt Gigantamax). */
+const FORMNAME = {
+  de: { 'mega':'Mega', 'mega-x':'Mega X', 'mega-y':'Mega Y', 'gmax':'Gigadynamax' },
+  en: { 'mega':'Mega', 'mega-x':'Mega X', 'mega-y':'Mega Y', 'gmax':'Gigantamax' },
+};
+const formLabel = slug => (FORMNAME[lang] || FORMNAME.en)[slug] || FORMNAME.en[slug] || slug;
+
+/* Welche Karten zeigen diese Form? Nur über den Kartennamen — die Karten
+   tragen keine Formangabe. Muster: "Glurak VMAX" für Gigadynamax,
+   "M-Glurak EX" und "Mega-Glurak X-ex" für Mega.
+
+   Bei Arten mit X- und Y-Form wird ein **ausdrückliches** Kennzeichen
+   verlangt: "M-Glurak EX" heißt für beide Formen gleich und lässt sich nicht
+   zuordnen. Solche Karten bleiben lieber ohne Form, als bei der falschen zu
+   landen — sie stehen weiter in der ungefilterten Liste. */
+function formTrifft(slug, name){
+  if (slug === 'gmax') return /vmax/.test(name);
+  if (!/(^|\s)m[- ]|mega/.test(name)) return false;
+  if (slug === 'mega-x') return /[-\s]x([-\s]|$)/.test(name);
+  if (slug === 'mega-y') return /[-\s]y([-\s]|$)/.test(name);
+  return true;
+}
+
 const SPRITE      = d => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/home/${d}.png`;
 const SPRITE_MINI = d => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${d}.png`;
 
@@ -1569,12 +1605,58 @@ async function showSpecies(dexId, scrollTo){
     fillCounts(line);
   }
 
-  if (rows.length){
-    box.append(cardGrid(ci, rows.slice(0, 400)));
-    if (rows.length > 400) box.append(el('div','empty', `… und ${rows.length-400} weitere.`));
-  } else {
-    box.append(el('div','empty','Keine Karte zu diesem Pokémon im Index.'));
+  /* Sonderformen: Mega und Gigadynamax stehen neben der Kette, nicht darin.
+     Ein Klick filtert die Kartenliste auf die passenden Karten. */
+  const formen = s[5] || [];
+  let filter = null;
+  const gitter = el('div');
+
+  const zeichneKarten = () => {
+    gitter.innerHTML = '';
+    const sicht = filter
+      ? rows.filter(i => formTrifft(filter, ci.norm[i]))
+      : rows;
+    if (!sicht.length){
+      gitter.append(el('div','empty', filter
+        ? 'Keine Karte zu dieser Form gefunden.'
+        : 'Keine Karte zu diesem Pokémon im Index.'));
+      return;
+    }
+    gitter.append(cardGrid(ci, sicht.slice(0, 400)));
+    if (sicht.length > 400) gitter.append(el('div','empty', `… und ${sicht.length-400} weitere.`));
+  };
+
+  if (formen.length){
+    const reihe = el('div','line formen');
+    reihe.append(el('span','formlabel', 'Sonderformen'));
+    const knoepfe = [];
+    for (const [pid, slug] of formen){
+      const b = el('button','mon form');
+      const img = el('img');
+      img.crossOrigin = 'anonymous'; img.alt = formLabel(slug);
+      img.loading = 'lazy'; img.decoding = 'async';
+      img.dataset.src = SPRITE(pid);
+      img.onload = () => img.classList.add('in');
+      io.observe(img);
+      const t = el('div','t');
+      t.append(el('div','n', formLabel(slug)));
+      const n = rows.filter(i => formTrifft(slug, ci.norm[i])).length;
+      t.append(el('span','pill' + (n ? '' : ' leer'),
+        n === 0 ? 'keine Karte' : n === 1 ? '1 Karte' : `${n} Karten`));
+      b.append(img, t);
+      b.onclick = () => {
+        filter = filter === slug ? null : slug;
+        for (const k of knoepfe) k.el.classList.toggle('self', k.slug === filter);
+        zeichneKarten();
+      };
+      knoepfe.push({ el: b, slug });
+      reihe.append(b);
+    }
+    box.append(reihe);
   }
+
+  zeichneKarten();
+  box.append(gitter);
 
   /* Erst jetzt steht die Höhe — vorher liefe die Position ins Leere. */
   if (scrollTo) requestAnimationFrame(() => {
