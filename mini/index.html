@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Minifiguren-Katalog – Markus Stuhr</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1a1a2e;
+    color: #fff;
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    height: 100vh;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* Sidebar mit Themes */
+  #sidebar {
+    width: 250px;
+    flex-shrink: 0;
+    background: rgba(0,0,0,0.3);
+    border-right: 1px solid rgba(255,255,255,0.1);
+    display: flex;
+    flex-direction: column;
+  }
+  #sidebar h1 { font-size: 17px; padding: 16px 16px 4px; letter-spacing: 0.3px; }
+  #sidebar .sub { font-size: 11px; color: rgba(255,255,255,0.4); padding: 0 16px 12px; }
+  #themes { overflow-y: auto; flex: 1; padding-bottom: 12px; }
+
+  .theme {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 16px;
+    cursor: pointer;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+  }
+  .theme:hover { background: rgba(255,255,255,0.06); }
+  .theme.active {
+    background: rgba(255,200,0,0.14);
+    border-left-color: #ffd700;
+    color: #ffd700;
+  }
+  .theme .n { color: rgba(255,255,255,0.35); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .theme.active .n { color: rgba(255,215,0,0.6); }
+
+  /* Hauptbereich */
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  #bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    padding: 12px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    flex-wrap: wrap;
+  }
+  #search {
+    flex: 1;
+    min-width: 180px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 7px 12px;
+    color: #fff;
+    font-size: 14px;
+  }
+  #search:focus { outline: none; border-color: rgba(255,200,0,0.5); }
+  #search::placeholder { color: rgba(255,255,255,0.35); }
+
+  .btn {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #fff;
+    border-radius: 8px;
+    padding: 6px 13px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .btn:hover { background: rgba(255,255,255,0.15); }
+  .btn.active { background: rgba(255,200,0,0.22); border-color: rgba(255,200,0,0.55); color: #ffd700; }
+
+  #count { font-size: 12px; color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; }
+
+  /* Grid */
+  #grid {
+    flex: 1;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 12px;
+    padding: 16px 18px 60px;
+    align-content: start;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    padding: 10px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .card:hover { background: rgba(255,255,255,0.09); }
+  .card.owned { border-color: rgba(80,220,120,0.55); background: rgba(80,220,120,0.09); }
+
+  .card .imgbox {
+    height: 110px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 8px;
+  }
+  .card img { max-width: 100%; max-height: 110px; object-fit: contain; }
+  .card .nm {
+    font-size: 11.5px;
+    line-height: 1.35;
+    color: rgba(255,255,255,0.85);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card .meta { font-size: 10.5px; color: rgba(255,255,255,0.4); margin-top: 3px; }
+
+  .check {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.25);
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: transparent;
+  }
+  .card.owned .check { background: #3ec46d; border-color: #3ec46d; color: #06240f; }
+  .card:hover .check { color: rgba(255,255,255,0.3); }
+  .card.owned:hover .check { color: #06240f; }
+
+  /* Detail-Panel */
+  #detail {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 200;
+  }
+  #detail.open { display: flex; }
+  #detail .box {
+    background: #23233d;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 14px;
+    padding: 22px;
+    max-width: 480px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  #detail img { max-height: 200px; display: block; margin: 0 auto 14px; }
+  #detail h2 { font-size: 17px; margin-bottom: 6px; }
+  #detail .sub { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 14px; }
+  #detail h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+               color: rgba(255,255,255,0.4); margin: 14px 0 6px; }
+  #detail ul { list-style: none; font-size: 13px; }
+  #detail li { padding: 3px 0; color: rgba(255,255,255,0.8); }
+  #detail a { color: #ffd700; text-decoration: none; font-size: 13px; }
+  #detail a:hover { text-decoration: underline; }
+  #detail .row { display: flex; gap: 8px; margin-top: 18px; }
+
+  #empty { padding: 40px 18px; color: rgba(255,255,255,0.4); font-size: 14px; }
+
+  @media (max-width: 700px) {
+    body { flex-direction: column; }
+    #sidebar { width: 100%; height: 150px; border-right: none;
+               border-bottom: 1px solid rgba(255,255,255,0.1); }
+    #grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+  }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <h1>Minifiguren</h1>
+  <div class="sub" id="stats">lädt …</div>
+  <div id="themes"></div>
+</div>
+
+<div id="main">
+  <div id="bar">
+    <input id="search" type="search" placeholder="Suche über alle 17.000 Figuren …" autocomplete="off">
+    <button class="btn" id="f-owned">Meine</button>
+    <button class="btn" id="f-missing">Fehlende</button>
+    <span id="count"></span>
+    <button class="btn" id="export">Export</button>
+    <button class="btn" id="import">Import</button>
+  </div>
+  <div id="grid"></div>
+</div>
+
+<div id="detail"><div class="box" id="detail-box"></div></div>
+<input type="file" id="file" accept="application/json" hidden>
+
+<script>
+const GRID = document.getElementById('grid');
+const CDN = 'https://cdn.rebrickable.com/media/sets/';
+
+let index = null;          // Theme-Liste
+let current = [];          // aktuell angezeigte Figuren
+let activeTheme = null;
+let searchData = null;     // [id, name, slug, jahr]
+let filter = null;         // 'owned' | 'missing' | null
+let cache = {};            // slug -> figuren
+
+/* --- Besitz: localStorage --- */
+const KEY = 'mini-owned';
+let owned = new Set();
+try { owned = new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) {}
+function saveOwned() {
+  try { localStorage.setItem(KEY, JSON.stringify([...owned])); } catch (e) {}
+  renderStats();
+}
+
+/* --- Laden --- */
+async function boot() {
+  index = await (await fetch('data/index.json')).json();
+  const box = document.getElementById('themes');
+  box.innerHTML = index.themes.map(t =>
+    `<div class="theme" data-slug="${t.slug}">
+       <span>${esc(t.name)}</span><span class="n">${t.count}</span>
+     </div>`).join('');
+  box.querySelectorAll('.theme').forEach(el =>
+    el.addEventListener('click', () => selectTheme(el.dataset.slug)));
+  renderStats();
+  selectTheme(index.themes[0].slug);
+}
+
+async function loadTheme(slug) {
+  if (!cache[slug]) cache[slug] = await (await fetch(`data/figs-${slug}.json`)).json();
+  return cache[slug];
+}
+
+async function selectTheme(slug) {
+  activeTheme = slug;
+  document.getElementById('search').value = '';
+  document.querySelectorAll('.theme').forEach(el =>
+    el.classList.toggle('active', el.dataset.slug === slug));
+  current = await loadTheme(slug);
+  render();
+}
+
+/* --- Suche über alle Themes --- */
+async function doSearch(q) {
+  if (!searchData) {
+    GRID.innerHTML = '<div id="empty">Suchindex lädt …</div>';
+    searchData = await (await fetch('data/search.json')).json();
+  }
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const hits = searchData.filter(r => {
+    const hay = (r[1] + ' ' + r[2]).toLowerCase();
+    return terms.every(t => hay.includes(t));
+  }).slice(0, 600);
+
+  // Volldaten für die getroffenen Themes nachladen
+  const slugs = [...new Set(hits.map(h => h[2]))];
+  await Promise.all(slugs.map(loadTheme));
+  const byId = {};
+  slugs.forEach(s => cache[s].forEach(f => byId[f.id] = f));
+  current = hits.map(h => byId['fig-' + h[0]]).filter(Boolean);
+
+  document.querySelectorAll('.theme').forEach(el => el.classList.remove('active'));
+  activeTheme = null;
+  render();
+}
+
+/* --- Rendern --- */
+function render() {
+  let figs = current;
+  if (filter === 'owned') figs = figs.filter(f => owned.has(f.id));
+  if (filter === 'missing') figs = figs.filter(f => !owned.has(f.id));
+
+  document.getElementById('count').textContent =
+    figs.length + (figs.length === 1 ? ' Figur' : ' Figuren');
+
+  if (!figs.length) {
+    GRID.innerHTML = '<div id="empty">Nichts gefunden.</div>';
+    return;
+  }
+  GRID.innerHTML = figs.map(f => `
+    <div class="card${owned.has(f.id) ? ' owned' : ''}" data-id="${f.id}">
+      <div class="check">✓</div>
+      <div class="imgbox"><img loading="lazy" src="${f.img || CDN + f.id + '.jpg'}" alt=""></div>
+      <div class="nm">${esc(f.name)}</div>
+      <div class="meta">${f.year || '?'}${f.set_count ? ' · ' + f.set_count + ' Set' + (f.set_count > 1 ? 's' : '') : ''}</div>
+    </div>`).join('');
+}
+
+function renderStats() {
+  if (!index) return;
+  document.getElementById('stats').textContent =
+    `${owned.size} von ${index.total.toLocaleString('de-DE')} markiert`;
+}
+
+/* --- Interaktion --- */
+GRID.addEventListener('click', e => {
+  const card = e.target.closest('.card');
+  if (!card) return;
+  const fig = current.find(f => f.id === card.dataset.id);
+  if (e.target.closest('.check')) {
+    toggle(fig.id);
+    card.classList.toggle('owned', owned.has(fig.id));
+    if (filter) render();
+  } else {
+    openDetail(fig);
+  }
+});
+
+function toggle(id) {
+  owned.has(id) ? owned.delete(id) : owned.add(id);
+  saveOwned();
+}
+
+function openDetail(f) {
+  const has = owned.has(f.id);
+  document.getElementById('detail-box').innerHTML = `
+    <img src="${f.img || CDN + f.id + '.jpg'}" alt="">
+    <h2>${esc(f.name)}</h2>
+    <div class="sub">${f.id} · ${f.theme ? esc(f.theme) : 'kein Theme'} · ${f.year || 'Jahr unbekannt'} · ${f.parts} Teile</div>
+    ${f.sets.length ? `<h3>Enthalten in ${f.set_count} Set${f.set_count > 1 ? 's' : ''}</h3>
+      <ul>${f.sets.map(s => `<li>${esc(s.name)} <span style="color:rgba(255,255,255,.4)">(${s.num}, ${s.year})</span></li>`).join('')}
+      ${f.set_count > f.sets.length ? `<li style="color:rgba(255,255,255,.4)">… und ${f.set_count - f.sets.length} weitere</li>` : ''}</ul>` : ''}
+    <h3>Links</h3>
+    <a href="https://rebrickable.com/minifigs/${f.id}/" target="_blank" rel="noopener">Auf Rebrickable ansehen ↗</a>
+    <div class="row">
+      <button class="btn${has ? ' active' : ''}" id="d-toggle">${has ? '✓ Im Besitz' : 'Als vorhanden markieren'}</button>
+      <button class="btn" id="d-close">Schließen</button>
+    </div>`;
+  document.getElementById('detail').classList.add('open');
+  document.getElementById('d-close').onclick = closeDetail;
+  document.getElementById('d-toggle').onclick = () => { toggle(f.id); closeDetail(); render(); };
+}
+function closeDetail() { document.getElementById('detail').classList.remove('open'); }
+document.getElementById('detail').addEventListener('click', e => {
+  if (e.target.id === 'detail') closeDetail();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+
+let timer;
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.trim();
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    if (q.length < 2) { if (activeTheme === null) selectTheme(index.themes[0].slug); return; }
+    doSearch(q);
+  }, 220);
+});
+
+for (const [id, mode] of [['f-owned', 'owned'], ['f-missing', 'missing']]) {
+  document.getElementById(id).addEventListener('click', e => {
+    filter = filter === mode ? null : mode;
+    document.getElementById('f-owned').classList.toggle('active', filter === 'owned');
+    document.getElementById('f-missing').classList.toggle('active', filter === 'missing');
+    render();
+  });
+}
+
+document.getElementById('export').addEventListener('click', () => {
+  const blob = new Blob([JSON.stringify({ owned: [...owned], exported: new Date().toISOString() }, null, 1)],
+                        { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'minifiguren-sammlung.json';
+  a.click();
+});
+
+document.getElementById('import').addEventListener('click', () => document.getElementById('file').click());
+document.getElementById('file').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    (data.owned || []).forEach(id => owned.add(id));
+    saveOwned();
+    render();
+  } catch (err) { alert('Datei konnte nicht gelesen werden.'); }
+  e.target.value = '';
+});
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+boot();
+</script>
+</body>
+</html>
