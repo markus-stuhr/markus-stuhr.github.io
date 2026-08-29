@@ -284,7 +284,6 @@
     <input id="search" type="search" placeholder="Suche über alle 17.000 Figuren …" autocomplete="off">
     <button class="btn owned-btn" id="f-owned">Meine</button>
     <button class="btn wish-btn" id="f-wish">♥ Wunschliste</button>
-    <button class="btn" id="f-missing">Fehlende</button>
     <span id="count"></span>
     <span id="saved"></span>
     <button class="btn" id="export">Export</button>
@@ -305,7 +304,7 @@ let index = null;          // Theme-Liste
 let current = [];          // aktuell angezeigte Figuren
 let activeTheme = null;
 let searchData = null;     // [id, name, slug, jahr]
-let filter = null;         // 'owned' | 'missing' | null
+let filter = null;         // 'owned' | 'wish' | null
 let visible = [];          // gefiltertes Ergebnis, Basis für die Pfeiltasten
 let detailIdx = -1;        // Position im Detail-Panel, -1 = geschlossen
 let cache = {};            // slug -> figuren
@@ -466,7 +465,6 @@ function render() {
   let figs = current;
   if (filter === 'owned') figs = figs.filter(f => owned.has(f.id));
   if (filter === 'wish') figs = figs.filter(f => wish.has(f.id));
-  if (filter === 'missing') figs = figs.filter(f => !owned.has(f.id));
   visible = figs;
 
   document.getElementById('count').textContent =
@@ -618,7 +616,7 @@ document.getElementById('search').addEventListener('input', e => {
   }, 220);
 });
 
-const FILTERS = [['f-owned', 'owned'], ['f-wish', 'wish'], ['f-missing', 'missing']];
+const FILTERS = [['f-owned', 'owned'], ['f-wish', 'wish']];
 for (const [id, mode] of FILTERS) {
   document.getElementById(id).addEventListener('click', () => setFilter(filter === mode ? null : mode));
 }
