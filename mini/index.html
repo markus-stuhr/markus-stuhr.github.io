@@ -314,8 +314,42 @@
     max-height: 85vh;
     overflow-y: auto;
   }
+  #setmodal .head { display: flex; gap: 16px; margin-bottom: 16px; align-items: flex-start; }
+  #setmodal .setimg {
+    flex: 0 0 190px;
+    background: #fff;
+    border-radius: 10px;
+    overflow: hidden;
+    line-height: 0;
+  }
+  #setmodal .setimg img { width: 100%; display: block; }
+  #setmodal .setimg.noimg {
+    background: repeating-linear-gradient(45deg,
+      rgba(255,255,255,0.05) 0 12px, rgba(255,255,255,0.02) 12px 24px);
+    height: 130px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.3;
+  }
+  #setmodal .setimg.noimg img { display: none; }
+  #setmodal .setimg.noimg::after {
+    content: 'kein Setbild';
+    font-size: 11px;
+    color: rgba(255,255,255,0.35);
+  }
   #setmodal h2 { font-size: 17px; margin-bottom: 4px; }
-  #setmodal .sub { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 16px; }
+  #setmodal .sub { font-size: 12px; color: rgba(255,255,255,0.5); }
+  #setmodal .head .sub { margin-bottom: 10px; }
+  #setmodal h3 {
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.6px;
+    color: rgba(255,255,255,0.4); margin-bottom: 8px;
+  }
+
+  @media (max-width: 620px) {
+    #setmodal .head { flex-direction: column; }
+    #setmodal .setimg { flex: none; width: 100%; }
+  }
   #setmodal .figs {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -692,17 +726,26 @@ async function openSet(setNum) {
   const entry = setData[setNum];
   if (!entry) { box.innerHTML = '<div class="sub">Keine Figuren zu diesem Set.</div>'; return; }
 
-  const [name, year, ids] = entry;
+  const [name, year, parts, ids] = entry;
   const figs = await figsByIds(ids.map(i => 'fig-' + i));
   const mine = figs.filter(f => owned.has(f.id)).length;
 
   box.innerHTML = `
-    <h2>${esc(name)}</h2>
-    <div class="sub">${setNum} · ${year} · ${figs.length} Minifigur${figs.length === 1 ? '' : 'en'}
-      · ${mine} davon im Besitz</div>
+    <div class="head">
+      <div class="setimg">
+        <img src="${CDN}${setNum}.jpg" alt=""
+             onerror="this.parentNode.classList.add('noimg')">
+      </div>
+      <div>
+        <h2>${esc(name)}</h2>
+        <div class="sub">${setNum} · ${year}${parts ? ' · ' + parts.toLocaleString('de-DE') + ' Teile' : ''}
+          · ${figs.length} Minifigur${figs.length === 1 ? '' : 'en'} · ${mine} davon im Besitz</div>
+        <a href="https://rebrickable.com/sets/${setNum}/" target="_blank" rel="noopener">Set auf Rebrickable ↗</a>
+      </div>
+    </div>
+    <h3>Minifiguren</h3>
     <div class="figs">${figs.map(card).join('')}</div>
     <div class="row">
-      <a href="https://rebrickable.com/sets/${setNum}/" target="_blank" rel="noopener">Set auf Rebrickable ↗</a>
       <button class="btn" id="s-close" style="margin-left:auto">Schließen</button>
     </div>`;
   document.getElementById('s-close').onclick = closeSet;

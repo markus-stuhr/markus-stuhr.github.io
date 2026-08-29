@@ -107,11 +107,12 @@ def build():
         index.append({"name": name, "slug": sl, "count": len(figs),
                       "from": min(ys) if ys else None, "to": max(ys) if ys else None})
 
-    # Rückwärts-Index Set -> Figuren: {set_num: [name, jahr, [kurz-ids]]}
+    # Rückwärts-Index Set -> Figuren: {set_num: [name, jahr, teile, [kurz-ids]]}
     setidx = {}
     for sn, figs in setfigs.items():
         e = sets[sn]
-        setidx[sn] = [e["name"], e["year"], sorted(f[4:] for f in figs)]
+        setidx[sn] = [e["name"], e["year"], int(e["num_parts"] or 0),
+                      sorted(f[4:] for f in figs)]
     with open(os.path.join(DATA, "sets.json"), "w", encoding="utf-8") as fh:
         json.dump(setidx, fh, ensure_ascii=False, separators=(",", ":"))
 
