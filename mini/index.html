@@ -1153,6 +1153,19 @@ function esc(s) {
   return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+/* --- Service Worker: Bilder und Daten offline vorhalten --- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+
+window.addEventListener('offline', () =>
+  showWarn('Keine Verbindung — bereits angesehene Figuren und Sets funktionieren weiter, '
+    + 'neue Bilder fehlen.'));
+window.addEventListener('online', () =>
+  document.getElementById('warn').classList.remove('show'));
+
 checkStorage();
 boot();
 </script>
