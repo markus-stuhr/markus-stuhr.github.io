@@ -87,6 +87,54 @@
   .btn.owned-btn.active { background: rgba(62,196,109,0.22); border-color: rgba(62,196,109,0.6); color: #6fe89b; }
   .btn.wish-btn.active { background: rgba(255,107,157,0.22); border-color: rgba(255,107,157,0.6); color: #ff9dc0; }
 
+  /* Umschalter Figuren / Sets */
+  #modeswitch {
+    display: flex;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 8px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  #modeswitch button {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.55);
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #modeswitch button.active { background: rgba(255,200,0,0.22); color: #ffd700; }
+
+  /* Set-Kachel */
+  .setcard {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.12s;
+  }
+  .setcard:hover { background: rgba(255,255,255,0.09); }
+  .setcard.owned {
+    border: 2px solid #3ec46d;
+    background: rgba(80,220,120,0.12);
+    box-shadow: 0 0 0 1px rgba(62,196,109,0.35), 0 0 14px rgba(62,196,109,0.25);
+  }
+  .setcard .imgbox { background: #fff; line-height: 0; }
+  .setcard .imgbox.noimg, #detail .settile .imgbox.noimg { aspect-ratio: 4 / 3; }
+  .setcard img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; display: block; }
+  .setcard .info { padding: 8px 10px 10px; }
+  .setcard .nm {
+    font-size: 11.5px; line-height: 1.35; color: rgba(255,255,255,0.85);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .setcard .meta { font-size: 10.5px; color: rgba(255,255,255,0.4); margin-top: 3px; }
+  .setcard.owned .check { background: #3ec46d; border-color: #3ec46d; color: #06240f; }
+  .setcard:hover .badge { color: rgba(255,255,255,0.45); }
+  .setcard.owned:hover .check { color: #06240f; }
+
   #count { font-size: 12px; color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; }
 
   #saved {
@@ -314,6 +362,59 @@
     max-height: 85vh;
     overflow-y: auto;
   }
+  #setmodal .box { max-width: 844px; }
+  #setmodal .bigimg {
+    display: flex;
+    justify-content: center;
+    background: #fff;
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  #setmodal .bigimg img { width: 100%; max-height: min(520px, 55vh); object-fit: contain; display: block; }
+  #setmodal .bigimg.noimg {
+    background: repeating-linear-gradient(45deg,
+      rgba(255,255,255,0.05) 0 14px, rgba(255,255,255,0.02) 14px 28px);
+    min-height: 200px;
+    align-items: center;
+  }
+  #setmodal .bigimg.noimg img { display: none; }
+  #setmodal .bigimg.noimg::after {
+    content: 'Für dieses Set gibt es bei Rebrickable kein Bild';
+    font-size: 12.5px;
+    color: rgba(255,255,255,0.4);
+  }
+  #setmodal .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 14px;
+  }
+
+  /* Set-Kacheln in der Figuren-Detailansicht */
+  #detail .settiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-auto-rows: max-content;
+    gap: 10px;
+  }
+  #detail .settile {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 9px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+  }
+  #detail .settile:hover { background: rgba(255,255,255,0.1); }
+  #detail .settile.owned { border-color: #3ec46d; background: rgba(80,220,120,0.12); }
+  #detail .settile .imgbox { background: #fff; line-height: 0; }
+  #detail .settile img { width: 100%; aspect-ratio: 4 / 3; object-fit: contain; display: block; }
+  #detail .settile .info { padding: 7px 9px 9px; }
+  #detail .settile .nm {
+    font-size: 11px; line-height: 1.3; color: rgba(255,255,255,0.85);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  #detail .settile .meta { font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 2px; }
+
   #setmodal .head { display: flex; gap: 16px; margin-bottom: 16px; align-items: flex-start; }
   #setmodal .setimg {
     flex: 0 0 190px;
@@ -388,6 +489,10 @@
 
 <div id="main">
   <div id="bar">
+    <div id="modeswitch">
+      <button id="m-figs" class="active">Figuren</button>
+      <button id="m-sets">Sets</button>
+    </div>
     <input id="search" type="search" placeholder="Suche über alle 17.000 Figuren …" autocomplete="off">
     <button class="btn owned-btn" id="f-owned">Meine</button>
     <button class="btn wish-btn" id="f-wish">♥ Wunschliste</button>
@@ -416,17 +521,24 @@ let filter = null;         // 'owned' | 'wish' | null
 let visible = [];          // was im Grid steht
 let nav = [];              // Liste, durch die das Detail-Panel blättert
 let detailIdx = -1;        // Position darin, -1 = geschlossen
-let setData = null;        // set_num -> [name, jahr, [kurz-ids]]
+let setData = null;        // set_num -> [name, jahr, teile, theme, [kurz-ids]]
+let setList = [];          // alle Sets als Objekte, aus setData aufgebaut
+let viewMode = 'figs';     // 'figs' | 'sets'
+let setNav = [];           // Set-Nummern, durch die das Set-Modal blättert
+let setIdx = -1;
 let gridDirty = false;     // im Set-Modal markiert -> Grid nachziehen
 let cache = {};            // slug -> figuren
 
 /* --- Besitz: localStorage --- */
 const KEY = 'mini-owned';
 const KEY_WISH = 'mini-wish';
+const KEY_SETS = 'mini-sets';
 let owned = new Set();
 let wish = new Set();
+let ownedSets = new Set();
 try { owned = new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) {}
 try { wish = new Set(JSON.parse(localStorage.getItem(KEY_WISH) || '[]')); } catch (e) {}
+try { ownedSets = new Set(JSON.parse(localStorage.getItem(KEY_SETS) || '[]')); } catch (e) {}
 
 let saveTimer;
 function save() {
@@ -434,6 +546,7 @@ function save() {
   try {
     localStorage.setItem(KEY, JSON.stringify([...owned]));
     localStorage.setItem(KEY_WISH, JSON.stringify([...wish]));
+    localStorage.setItem(KEY_SETS, JSON.stringify([...ownedSets]));
     // zurücklesen: nur was wirklich in der Ablage steht, gilt als gesichert
     const back = JSON.parse(localStorage.getItem(KEY) || '[]');
     if (back.length !== owned.size) throw new Error('Rücklesen fehlgeschlagen');
@@ -476,6 +589,20 @@ function checkStorage() {
   return true;
 }
 
+/* Ein ganzes Set markieren: alle enthaltenen Figuren wandern mit in den Besitz.
+   Beim Abwählen bleiben die Figuren markiert — sie können aus anderen Sets stammen. */
+function toggleSet(num) {
+  const entry = setData && setData[num];
+  if (!entry) return;
+  if (ownedSets.has(num)) {
+    ownedSets.delete(num);
+  } else {
+    ownedSets.add(num);
+    entry[4].forEach(short => { owned.add('fig-' + short); wish.delete('fig-' + short); });
+  }
+  save();
+}
+
 /* set: 'owned' oder 'wish' */
 function setOf(kind) { return kind === 'wish' ? wish : owned; }
 function toggle(kind, id) {
@@ -514,8 +641,60 @@ async function selectTheme(slug) {
   document.getElementById('search').value = '';
   document.querySelectorAll('.theme').forEach(el =>
     el.classList.toggle('active', el.dataset.slug === slug));
-  current = await loadTheme(slug);
+  if (viewMode === 'sets') {
+    const t = index.themes.find(x => x.slug === slug);
+    current = setsOfTheme(t.name);
+  } else {
+    current = await loadTheme(slug);
+  }
   render();
+}
+
+/* --- Sets: Daten laden und als Objekte aufbereiten --- */
+async function loadSets() {
+  if (!setData) {
+    setData = await (await fetch('data/sets.json')).json();
+    setList = Object.entries(setData).map(([num, e]) => ({
+      num, name: e[0], year: parseInt(e[1]) || 0, parts: e[2], theme: e[3], figs: e[4]
+    }));
+    setList.sort((a, b) => b.year - a.year || a.name.localeCompare(b.name, 'de'));
+  }
+  return setList;
+}
+
+function setsOfTheme(themeName) {
+  return setList.filter(s => s.theme === themeName);
+}
+
+/* Sidebar zeigt je nach Modus Figuren- oder Set-Zahlen */
+function renderSidebar() {
+  const counts = {};
+  if (viewMode === 'sets') setList.forEach(s => counts[s.theme] = (counts[s.theme] || 0) + 1);
+  document.querySelectorAll('.theme').forEach(el => {
+    const t = index.themes.find(x => x.slug === el.dataset.slug);
+    const n = viewMode === 'sets' ? (counts[t.name] || 0) : t.count;
+    el.querySelector('.n').textContent = n;
+    el.style.display = (viewMode === 'sets' && !n) ? 'none' : '';
+  });
+}
+
+async function switchMode(m) {
+  if (m === viewMode) return;
+  viewMode = m;
+  document.getElementById('m-figs').classList.toggle('active', m === 'figs');
+  document.getElementById('m-sets').classList.toggle('active', m === 'sets');
+  document.getElementById('search').placeholder = m === 'sets'
+    ? 'Suche über 9.386 Sets …' : 'Suche über alle 17.000 Figuren …';
+  document.getElementById('search').value = '';
+  filter = null;
+  FILTERS.forEach(([bid]) => document.getElementById(bid).classList.remove('active'));
+  document.getElementById('f-wish').style.display = m === 'sets' ? 'none' : '';
+
+  GRID.innerHTML = '<div id="empty">lädt …</div>';
+  await loadSets();
+  renderSidebar();
+  const slug = activeTheme || index.themes[0].slug;
+  selectTheme(slug);
 }
 
 /* --- Markierte Figuren aus ALLEN Themes einsammeln --- */
@@ -549,6 +728,16 @@ async function collectMarked(kind) {
 
 /* --- Suche über alle Themes --- */
 async function doSearch(q) {
+  if (viewMode === 'sets') {
+    const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+    current = setList.filter(s => {
+      const hay = (s.name + ' ' + s.num + ' ' + s.theme).toLowerCase();
+      return terms.every(t => hay.includes(t));
+    }).slice(0, 600);
+    document.querySelectorAll('.theme').forEach(el => el.classList.remove('active'));
+    activeTheme = null;
+    return render();
+  }
   if (!searchData) {
     GRID.innerHTML = '<div id="empty">Suchindex lädt …</div>';
     searchData = await (await fetch('data/search.json')).json();
@@ -573,6 +762,7 @@ async function doSearch(q) {
 
 /* --- Rendern --- */
 function render() {
+  if (viewMode === 'sets') return renderSets();
   let figs = current;
   if (filter === 'owned') figs = figs.filter(f => owned.has(f.id));
   if (filter === 'wish') figs = figs.filter(f => wish.has(f.id));
@@ -618,15 +808,60 @@ function card(f) {
     </div>`;
 }
 
+function renderSets() {
+  let sets = current;
+  if (filter === 'owned') sets = sets.filter(s => ownedSets.has(s.num));
+  visible = sets;
+
+  document.getElementById('count').textContent =
+    sets.length + (sets.length === 1 ? ' Set' : ' Sets');
+
+  if (!sets.length) {
+    GRID.innerHTML = '<div id="empty">' + (filter === 'owned'
+      ? 'Noch kein Set als vorhanden markiert.' : 'Keine Sets gefunden.') + '</div>';
+    return;
+  }
+  GRID.innerHTML = sets.map(setCard).join('');
+}
+
+function setCard(s) {
+  const n = s.figs.length;
+  return `
+    <div class="setcard${ownedSets.has(s.num) ? ' owned' : ''}" data-num="${s.num}">
+      <div class="badges">
+        <div class="badge check" title="Set besitze ich — markiert alle Figuren">✓</div>
+      </div>
+      <div class="imgbox"><img loading="lazy" src="${CDN}${s.num}.jpg" alt=""
+           onerror="this.parentNode.classList.add('noimg')"></div>
+      <div class="info">
+        <div class="nm">${esc(s.name)}</div>
+        <div class="meta">${s.num} · ${s.year || '?'} · ${n} Minifigur${n === 1 ? '' : 'en'}</div>
+      </div>
+    </div>`;
+}
+
 function renderStats() {
   if (!index) return;
   document.getElementById('stats').innerHTML =
     `${owned.size} von ${index.total.toLocaleString('de-DE')} im Besitz` +
-    (wish.size ? ` · <span style="color:#ff9dc0">♥ ${wish.size}</span>` : '');
+    (wish.size ? ` · <span style="color:#ff9dc0">♥ ${wish.size}</span>` : '') +
+    (ownedSets.size ? ` · ${ownedSets.size} Set${ownedSets.size === 1 ? '' : 's'}` : '');
 }
 
 /* --- Interaktion --- */
 GRID.addEventListener('click', e => {
+  const sc = e.target.closest('.setcard');
+  if (sc) {
+    if (e.target.closest('.badge')) {
+      toggleSet(sc.dataset.num);
+      sc.classList.toggle('owned', ownedSets.has(sc.dataset.num));
+      if (filter) render();
+    } else {
+      setNav = visible.map(x => x.num);
+      openSet(sc.dataset.num);
+    }
+    return;
+  }
   const card = e.target.closest('.card');
   if (!card) return;
   const idx = visible.findIndex(f => f.id === card.dataset.id);
@@ -661,8 +896,16 @@ function openDetail(idx) {
     <h2>${esc(f.name)}</h2>
     <div class="sub">${f.id} · ${f.theme ? esc(f.theme) : 'kein Theme'} · ${f.year || 'Jahr unbekannt'} · ${f.parts} Teile</div>
     ${f.sets.length ? `<h3>Enthalten in ${f.set_count} Set${f.set_count > 1 ? 's' : ''}</h3>
-      <ul>${f.sets.map(s => `<li class="setlink" data-set="${s.num}">${esc(s.name)} <span style="color:rgba(255,255,255,.4)">(${s.num}, ${s.year})</span></li>`).join('')}
-      ${f.set_count > f.sets.length ? `<li style="color:rgba(255,255,255,.4)">… und ${f.set_count - f.sets.length} weitere</li>` : ''}</ul>` : ''}
+      <div class="settiles">${f.sets.map(st => `
+        <div class="settile${ownedSets.has(st.num) ? ' owned' : ''}" data-set="${st.num}">
+          <div class="imgbox"><img loading="lazy" src="${CDN}${st.num}.jpg" alt=""
+               onerror="this.parentNode.classList.add('noimg')"></div>
+          <div class="info">
+            <div class="nm">${esc(st.name)}</div>
+            <div class="meta">${st.num} · ${st.year}</div>
+          </div>
+        </div>`).join('')}</div>
+      ${f.set_count > f.sets.length ? `<div class="sub" style="margin-top:8px">… und ${f.set_count - f.sets.length} weitere</div>` : ''}` : ''}
     <h3>Links</h3>
     <a href="https://rebrickable.com/minifigs/${f.id}/" target="_blank" rel="noopener">Auf Rebrickable ansehen ↗</a>
     <div class="row">
@@ -674,8 +917,11 @@ function openDetail(idx) {
   document.getElementById('detail').classList.add('open');
   document.getElementById('detail').scrollTop = 0;
   document.getElementById('d-close').onclick = closeDetail;
-  document.getElementById('detail-box').querySelectorAll('.setlink').forEach(li =>
-    li.onclick = () => openSet(li.dataset.set));
+  document.getElementById('detail-box').querySelectorAll('.settile').forEach(t =>
+    t.onclick = () => {
+      setNav = f.sets.map(x => x.num);   // zwischen den Sets dieser Figur blättern
+      openSet(t.dataset.set);
+    });
   document.getElementById('d-prev').onclick = () => step(-1);
   document.getElementById('d-next').onclick = () => step(1);
   document.getElementById('d-toggle').onclick = () => toggleFromDetail('owned');
@@ -722,33 +968,49 @@ async function openSet(setNum) {
   document.getElementById('setmodal').classList.add('open');
   box.innerHTML = '<div class="sub">lädt …</div>';
 
-  if (!setData) setData = await (await fetch('data/sets.json')).json();
+  await loadSets();
   const entry = setData[setNum];
   if (!entry) { box.innerHTML = '<div class="sub">Keine Figuren zu diesem Set.</div>'; return; }
 
-  const [name, year, parts, ids] = entry;
+  setIdx = setNav.indexOf(setNum);
+  const [name, year, parts, theme, ids] = entry;
   const figs = await figsByIds(ids.map(i => 'fig-' + i));
   const mine = figs.filter(f => owned.has(f.id)).length;
+  const has = ownedSets.has(setNum);
 
   box.innerHTML = `
-    <div class="head">
-      <div class="setimg">
-        <img src="${CDN}${setNum}.jpg" alt=""
-             onerror="this.parentNode.classList.add('noimg')">
-      </div>
-      <div>
-        <h2>${esc(name)}</h2>
-        <div class="sub">${setNum} · ${year}${parts ? ' · ' + parts.toLocaleString('de-DE') + ' Teile' : ''}
-          · ${figs.length} Minifigur${figs.length === 1 ? '' : 'en'} · ${mine} davon im Besitz</div>
-        <a href="https://rebrickable.com/sets/${setNum}/" target="_blank" rel="noopener">Set auf Rebrickable ↗</a>
-      </div>
+    ${setNav.length > 1 ? `<div class="nav">
+      <button class="btn" id="s-prev" ${setIdx <= 0 ? 'disabled' : ''}>← Zurück</button>
+      <span class="pos">${setIdx + 1} / ${setNav.length}</span>
+      <button class="btn" id="s-next" ${setIdx === setNav.length - 1 ? 'disabled' : ''}>Weiter →</button>
+    </div>` : ''}
+    <div class="bigimg">
+      <img src="${CDN}${setNum}.jpg" alt="" onerror="this.parentNode.classList.add('noimg')">
     </div>
+    <h2>${esc(name)}</h2>
+    <div class="sub">${setNum} · ${esc(theme)} · ${year}${parts ? ' · ' + parts.toLocaleString('de-DE') + ' Teile' : ''}
+      · ${figs.length} Minifigur${figs.length === 1 ? '' : 'en'} · ${mine} davon im Besitz</div>
     <h3>Minifiguren</h3>
     <div class="figs">${figs.map(card).join('')}</div>
     <div class="row">
+      <button class="btn owned-btn${has ? ' active' : ''}" id="s-toggle">${has
+        ? '✓ Set im Besitz' : 'Ganzes Set als vorhanden markieren'}</button>
+      <a href="https://rebrickable.com/sets/${setNum}/" target="_blank" rel="noopener">Auf Rebrickable ↗</a>
       <button class="btn" id="s-close" style="margin-left:auto">Schließen</button>
-    </div>`;
+    </div>
+    <div class="hint">Ein Set zu markieren übernimmt alle ${figs.length} Figuren in den Besitz.
+      Beim Abwählen bleiben sie markiert — sie können aus anderen Sets stammen.</div>`;
+
   document.getElementById('s-close').onclick = closeSet;
+  document.getElementById('s-toggle').onclick = () => {
+    toggleSet(setNum);
+    gridDirty = true;
+    openSet(setNum);
+  };
+  if (setNav.length > 1) {
+    document.getElementById('s-prev').onclick = () => stepSet(-1);
+    document.getElementById('s-next').onclick = () => stepSet(1);
+  }
 
   box.querySelector('.figs').onclick = e => {
     const cardEl = e.target.closest('.card');
@@ -768,6 +1030,12 @@ async function openSet(setNum) {
       openDetail(i);
     }
   };
+}
+
+function stepSet(delta) {
+  const next = setIdx + delta;
+  if (next < 0 || next >= setNav.length) return;
+  openSet(setNav[next]);
 }
 
 function closeSet() {
@@ -790,7 +1058,11 @@ function setOpen() { return document.getElementById('setmodal').classList.contai
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') return setOpen() ? closeSet() : closeDetail();
-  if (setOpen()) return;   // im Set-Modal keine Blätter-Tasten
+  if (setOpen()) {         // im Set-Modal blättern die Pfeile durch die Sets
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); stepSet(1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); stepSet(-1); }
+    return;
+  }
   const inSearch = document.activeElement === document.getElementById('search');
   if (detailIdx < 0 || inSearch) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); step(1); }
@@ -809,6 +1081,9 @@ document.getElementById('search').addEventListener('input', e => {
   }, 220);
 });
 
+document.getElementById('m-figs').addEventListener('click', () => switchMode('figs'));
+document.getElementById('m-sets').addEventListener('click', () => switchMode('sets'));
+
 const FILTERS = [['f-owned', 'owned'], ['f-wish', 'wish']];
 for (const [id, mode] of FILTERS) {
   document.getElementById(id).addEventListener('click', () => setFilter(filter === mode ? null : mode));
@@ -819,6 +1094,7 @@ async function setFilter(mode) {
   FILTERS.forEach(([bid, m]) =>
     document.getElementById(bid).classList.toggle('active', filter === m));
 
+  if (viewMode === 'sets') { render(); return; }
   if (mode === 'owned' || mode === 'wish') {
     // Diese beiden Listen gehen über alle Themes, nicht nur über das gewählte
     document.querySelectorAll('.theme').forEach(el => el.classList.remove('active'));
