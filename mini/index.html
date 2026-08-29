@@ -31,13 +31,27 @@
 
   .theme {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 8px;
-    padding: 7px 16px;
+    align-items: center;
+    gap: 9px;
+    padding: 5px 16px;
     cursor: pointer;
     font-size: 13px;
     border-left: 3px solid transparent;
+  }
+  .theme .tn { flex: 1; min-width: 0; }
+  .theme .thumb {
+    flex: 0 0 26px;
+    width: 26px;
+    height: 26px;
+    border-radius: 5px;
+    background: #fff center/cover no-repeat;
+    /* Minifiguren-Fotos zeigen die ganze Figur — auf Kopf und Schultern zoomen */
+    background-size: 200%;
+    background-position: center 12%;
+  }
+  .theme .thumb.empty {
+    background: repeating-linear-gradient(45deg,
+      rgba(255,255,255,0.07) 0 6px, rgba(255,255,255,0.03) 6px 12px);
   }
   .theme:hover { background: rgba(255,255,255,0.06); }
   .theme.active {
@@ -619,7 +633,9 @@ async function boot() {
   const box = document.getElementById('themes');
   box.innerHTML = index.themes.map(t =>
     `<div class="theme" data-slug="${t.slug}">
-       <span>${esc(t.name)}</span><span class="n">${t.count}</span>
+       <div class="thumb${t.thumb ? '' : ' empty'}"${t.thumb
+         ? ` style="background-image:url(${t.thumb})"` : ''}></div>
+       <span class="tn">${esc(t.name)}</span><span class="n">${t.count}</span>
      </div>`).join('');
   box.querySelectorAll('.theme').forEach(el =>
     el.addEventListener('click', () => selectTheme(el.dataset.slug)));

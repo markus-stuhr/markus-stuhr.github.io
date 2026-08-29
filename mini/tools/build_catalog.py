@@ -31,6 +31,31 @@ def slug(s):
     return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]+", "-", s.lower())).strip("-") or "other"
 
 
+def theme_thumbs(by_theme):
+    """Stellvertreter-Bild je Serie: die Figur mit den meisten Set-Auftritten,
+    die auch wirklich ein Bild auf dem CDN hat (neue Figuren haben oft keins)."""
+    import concurrent.futures as cf
+
+    def has_img(url):
+        try:
+            req = urllib.request.Request(url, method="HEAD")
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status == 200
+        except Exception:
+            return False
+
+    def pick(item):
+        name, figs = item
+        cands = sorted(figs, key=lambda f: (-f["set_count"], -(f["year"] or 0)))[:6]
+        for f in cands:
+            if f["img"] and has_img(f["img"]):
+                return name, f["img"]
+        return name, None
+
+    with cf.ThreadPoolExecutor(12) as ex:
+        return dict(ex.map(pick, by_theme.items()))
+
+
 def build():
     themes = {t["id"]: t for t in read("themes")}
 
@@ -96,6 +121,9 @@ def build():
         if f.startswith("figs-") or f in ("index.json", "search.json", "sets.json"):
             os.remove(os.path.join(DATA, f))
 
+    print("prüfe Stellvertreter-Bilder je Serie …")
+    thumbs = theme_thumbs(by_theme)
+
     index = []
     for name, figs in sorted(by_theme.items(), key=lambda kv: -len(kv[1])):
         # neueste zuerst; Figuren ohne Jahr ans Ende
@@ -104,7 +132,7 @@ def build():
         with open(os.path.join(DATA, "figs-%s.json" % sl), "w", encoding="utf-8") as fh:
             json.dump(figs, fh, ensure_ascii=False, separators=(",", ":"))
         ys = [f["year"] for f in figs if f["year"]]
-        index.append({"name": name, "slug": sl, "count": len(figs),
+        index.append({"name": name, "slug": sl, "count": len(figs), "thumb": thumbs.get(name),
                       "from": min(ys) if ys else None, "to": max(ys) if ys else None})
 
     # Rückwärts-Index Set -> Figuren:
