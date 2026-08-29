@@ -98,7 +98,8 @@ def build():
 
     index = []
     for name, figs in sorted(by_theme.items(), key=lambda kv: -len(kv[1])):
-        figs.sort(key=lambda f: (f["year"] or 9999, f["name"]))
+        # neueste zuerst; Figuren ohne Jahr ans Ende
+        figs.sort(key=lambda f: (-(f["year"] or 0), f["name"]))
         sl = slug(name)
         with open(os.path.join(DATA, "figs-%s.json" % sl), "w", encoding="utf-8") as fh:
             json.dump(figs, fh, ensure_ascii=False, separators=(",", ":"))
