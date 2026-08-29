@@ -89,6 +89,39 @@
 
   #count { font-size: 12px; color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; }
 
+  #saved {
+    font-size: 11.5px;
+    color: rgba(120,230,160,0.75);
+    white-space: nowrap;
+    transition: opacity 0.4s;
+  }
+  #saved.flash { color: #6fe89b; }
+  #saved.error { color: #ff8080; }
+
+  #warn {
+    display: none;
+    padding: 9px 18px;
+    background: rgba(255,90,90,0.15);
+    border-bottom: 1px solid rgba(255,90,90,0.4);
+    color: #ffb0b0;
+    font-size: 12.5px;
+  }
+  #warn.show { display: block; }
+
+  /* Section-Headline im Grid */
+  .group-head {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin: 14px 0 -2px;
+    padding-bottom: 7px;
+    border-bottom: 1px solid rgba(255,255,255,0.12);
+  }
+  .group-head:first-child { margin-top: 0; }
+  .group-head .t { font-size: 14px; font-weight: 600; color: #ffd700; }
+  .group-head .c { font-size: 11.5px; color: rgba(255,255,255,0.4); }
+
   /* Grid */
   #grid {
     flex: 1;
@@ -253,9 +286,11 @@
     <button class="btn wish-btn" id="f-wish">♥ Wunschliste</button>
     <button class="btn" id="f-missing">Fehlende</button>
     <span id="count"></span>
+    <span id="saved"></span>
     <button class="btn" id="export">Export</button>
     <button class="btn" id="import">Import</button>
   </div>
+  <div id="warn"></div>
   <div id="grid"></div>
 </div>
 
@@ -283,12 +318,52 @@ let wish = new Set();
 try { owned = new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) {}
 try { wish = new Set(JSON.parse(localStorage.getItem(KEY_WISH) || '[]')); } catch (e) {}
 
+let saveTimer;
 function save() {
+  const el = document.getElementById('saved');
   try {
     localStorage.setItem(KEY, JSON.stringify([...owned]));
     localStorage.setItem(KEY_WISH, JSON.stringify([...wish]));
-  } catch (e) {}
+    // zurücklesen: nur was wirklich in der Ablage steht, gilt als gesichert
+    const back = JSON.parse(localStorage.getItem(KEY) || '[]');
+    if (back.length !== owned.size) throw new Error('Rücklesen fehlgeschlagen');
+    el.className = 'flash';
+    el.textContent = '✓ gespeichert';
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      el.className = '';
+      el.textContent = 'gespeichert · ' + new Date().toLocaleTimeString('de-DE',
+        { hour: '2-digit', minute: '2-digit' });
+    }, 1400);
+  } catch (e) {
+    el.className = 'error';
+    el.textContent = '⚠ nicht gespeichert';
+    showWarn('Markierungen konnten nicht gespeichert werden (privates Fenster oder '
+      + 'blockierte Website-Daten). Sichere deine Liste über <b>Export</b>, sonst ist sie '
+      + 'beim Neuladen weg.');
+  }
   renderStats();
+}
+
+function showWarn(html) {
+  const w = document.getElementById('warn');
+  w.innerHTML = html;
+  w.classList.add('show');
+}
+
+/* Beim Start prüfen, ob die Ablage überhaupt nutzbar ist */
+function checkStorage() {
+  try {
+    localStorage.setItem('mini-test', '1');
+    localStorage.removeItem('mini-test');
+  } catch (e) {
+    showWarn('Dieser Browser lässt keine Website-Daten zu — Markierungen überleben das '
+      + 'Neuladen nicht. Im privaten Fenster ist das normal.');
+    return false;
+  }
+  const n = owned.size + wish.size;
+  document.getElementById('saved').textContent = n ? n + ' gespeichert' : '';
+  return true;
 }
 
 /* set: 'owned' oder 'wish' */
@@ -321,12 +396,45 @@ async function loadTheme(slug) {
 }
 
 async function selectTheme(slug) {
+  if (filter === 'owned' || filter === 'wish') {
+    filter = null;
+    FILTERS.forEach(([bid]) => document.getElementById(bid).classList.remove('active'));
+  }
   activeTheme = slug;
   document.getElementById('search').value = '';
   document.querySelectorAll('.theme').forEach(el =>
     el.classList.toggle('active', el.dataset.slug === slug));
   current = await loadTheme(slug);
   render();
+}
+
+/* --- Markierte Figuren aus ALLEN Themes einsammeln --- */
+async function loadSearchIndex() {
+  if (!searchData) searchData = await (await fetch('data/search.json')).json();
+  return searchData;
+}
+
+async function collectMarked(kind) {
+  const set = setOf(kind);
+  if (!set.size) return [];
+  await loadSearchIndex();
+  const nameBySlug = {};
+  index.themes.forEach(t => nameBySlug[t.slug] = t.name);
+
+  const slugById = {};
+  searchData.forEach(r => { const id = 'fig-' + r[0]; if (set.has(id)) slugById[id] = r[2]; });
+
+  const slugs = [...new Set(Object.values(slugById))];
+  await Promise.all(slugs.map(loadTheme));
+
+  const out = [];
+  slugs.forEach(sl => cache[sl].forEach(f => {
+    if (set.has(f.id)) { f._group = nameBySlug[sl] || sl; out.push(f); }
+  }));
+  out.sort((a, b) => a._group.localeCompare(b._group, 'de')
+                  || (a.year || 9999) - (b.year || 9999)
+                  || a.name.localeCompare(b.name, 'de'));
+  return out;
 }
 
 /* --- Suche über alle Themes --- */
@@ -365,10 +473,28 @@ function render() {
     figs.length + (figs.length === 1 ? ' Figur' : ' Figuren');
 
   if (!figs.length) {
-    GRID.innerHTML = '<div id="empty">Nichts gefunden.</div>';
+    GRID.innerHTML = '<div id="empty">' + (
+      filter === 'owned' ? 'Noch nichts als vorhanden markiert — Haken auf der Kachel.' :
+      filter === 'wish' ? 'Wunschliste ist leer — Herz auf der Kachel.' :
+      'Nichts gefunden.') + '</div>';
     return;
   }
-  GRID.innerHTML = figs.map(f => `
+  const grouped = filter === 'owned' || filter === 'wish';
+  let html = '', lastGroup = null;
+  figs.forEach(f => {
+    if (grouped && f._group !== lastGroup) {
+      lastGroup = f._group;
+      const n = figs.filter(x => x._group === lastGroup).length;
+      html += `<div class="group-head"><span class="t">${esc(lastGroup)}</span>` +
+              `<span class="c">${n} Figur${n === 1 ? '' : 'en'}</span></div>`;
+    }
+    html += card(f);
+  });
+  GRID.innerHTML = html;
+}
+
+function card(f) {
+  return `
     <div class="card${owned.has(f.id) ? ' owned' : ''}${wish.has(f.id) ? ' wish' : ''}" data-id="${f.id}">
       <div class="badges">
         <div class="badge heart" data-kind="wish" title="Auf die Wunschliste">♥</div>
@@ -379,7 +505,7 @@ function render() {
         <div class="nm">${esc(f.name)}</div>
         <div class="meta">${f.year || '?'}${f.set_count ? ' · ' + f.set_count + ' Set' + (f.set_count > 1 ? 's' : '') : ''}</div>
       </div>
-    </div>`).join('');
+    </div>`;
 }
 
 function renderStats() {
@@ -494,12 +620,27 @@ document.getElementById('search').addEventListener('input', e => {
 
 const FILTERS = [['f-owned', 'owned'], ['f-wish', 'wish'], ['f-missing', 'missing']];
 for (const [id, mode] of FILTERS) {
-  document.getElementById(id).addEventListener('click', () => {
-    filter = filter === mode ? null : mode;
-    FILTERS.forEach(([bid, m]) =>
-      document.getElementById(bid).classList.toggle('active', filter === m));
+  document.getElementById(id).addEventListener('click', () => setFilter(filter === mode ? null : mode));
+}
+
+async function setFilter(mode) {
+  filter = mode;
+  FILTERS.forEach(([bid, m]) =>
+    document.getElementById(bid).classList.toggle('active', filter === m));
+
+  if (mode === 'owned' || mode === 'wish') {
+    // Diese beiden Listen gehen über alle Themes, nicht nur über das gewählte
+    document.querySelectorAll('.theme').forEach(el => el.classList.remove('active'));
+    document.getElementById('search').value = '';
+    activeTheme = null;
+    GRID.innerHTML = '<div id="empty">lädt …</div>';
+    current = await collectMarked(mode);
     render();
-  });
+  } else if (activeTheme === null) {
+    selectTheme(index.themes[0].slug);   // zurück in die normale Ansicht
+  } else {
+    render();
+  }
 }
 
 document.getElementById('export').addEventListener('click', () => {
@@ -529,6 +670,7 @@ function esc(s) {
   return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }
 
+checkStorage();
 boot();
 </script>
 </body>
