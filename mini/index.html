@@ -84,6 +84,8 @@
   }
   .btn:hover { background: rgba(255,255,255,0.15); }
   .btn.active { background: rgba(255,200,0,0.22); border-color: rgba(255,200,0,0.55); color: #ffd700; }
+  .btn.owned-btn.active { background: rgba(62,196,109,0.22); border-color: rgba(62,196,109,0.6); color: #6fe89b; }
+  .btn.wish-btn.active { background: rgba(255,107,157,0.22); border-color: rgba(255,107,157,0.6); color: #ff9dc0; }
 
   #count { font-size: 12px; color: rgba(255,255,255,0.45); font-variant-numeric: tabular-nums; }
 
@@ -109,7 +111,18 @@
     transition: background 0.12s, border-color 0.12s;
   }
   .card:hover { background: rgba(255,255,255,0.09); }
-  .card.owned { border-color: rgba(80,220,120,0.55); background: rgba(80,220,120,0.09); }
+  .card.owned {
+    border: 2px solid #3ec46d;
+    background: rgba(80,220,120,0.12);
+    box-shadow: 0 0 0 1px rgba(62,196,109,0.35), 0 0 14px rgba(62,196,109,0.25);
+  }
+  .card.wish {
+    border: 2px solid #ff6b9d;
+    background: rgba(255,107,157,0.12);
+    box-shadow: 0 0 0 1px rgba(255,107,157,0.35), 0 0 14px rgba(255,107,157,0.25);
+  }
+  /* beides markiert: gruener Rahmen gewinnt, Herz bleibt am Badge sichtbar */
+  .card.owned.wish { border-color: #3ec46d; }
 
   /* Randloses Quadrat: die CDN-Bilder sind 800x800 auf Weiss */
   .card .imgbox { background: #fff; line-height: 0; }
@@ -132,10 +145,14 @@
   }
   .card .meta { font-size: 10.5px; color: rgba(255,255,255,0.4); margin-top: 3px; }
 
-  .check {
+  .badges {
     position: absolute;
     top: 7px;
     right: 7px;
+    display: flex;
+    gap: 5px;
+  }
+  .badge {
     width: 22px;
     height: 22px;
     border-radius: 50%;
@@ -144,12 +161,16 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
+    font-size: 12px;
+    line-height: 1;
     color: transparent;
   }
+  .card:hover .badge { color: rgba(255,255,255,0.45); }
+
   .card.owned .check { background: #3ec46d; border-color: #3ec46d; color: #06240f; }
-  .card:hover .check { color: rgba(255,255,255,0.45); }
   .card.owned:hover .check { color: #06240f; }
+  .card.wish .heart { background: #ff6b9d; border-color: #ff6b9d; color: #4a0d24; }
+  .card.wish:hover .heart { color: #4a0d24; }
 
   /* Detail-Panel */
   #detail {
@@ -228,7 +249,8 @@
 <div id="main">
   <div id="bar">
     <input id="search" type="search" placeholder="Suche über alle 17.000 Figuren …" autocomplete="off">
-    <button class="btn" id="f-owned">Meine</button>
+    <button class="btn owned-btn" id="f-owned">Meine</button>
+    <button class="btn wish-btn" id="f-wish">♥ Wunschliste</button>
     <button class="btn" id="f-missing">Fehlende</button>
     <span id="count"></span>
     <button class="btn" id="export">Export</button>
@@ -255,11 +277,28 @@ let cache = {};            // slug -> figuren
 
 /* --- Besitz: localStorage --- */
 const KEY = 'mini-owned';
+const KEY_WISH = 'mini-wish';
 let owned = new Set();
+let wish = new Set();
 try { owned = new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) {}
-function saveOwned() {
-  try { localStorage.setItem(KEY, JSON.stringify([...owned])); } catch (e) {}
+try { wish = new Set(JSON.parse(localStorage.getItem(KEY_WISH) || '[]')); } catch (e) {}
+
+function save() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify([...owned]));
+    localStorage.setItem(KEY_WISH, JSON.stringify([...wish]));
+  } catch (e) {}
   renderStats();
+}
+
+/* set: 'owned' oder 'wish' */
+function setOf(kind) { return kind === 'wish' ? wish : owned; }
+function toggle(kind, id) {
+  const set = setOf(kind);
+  set.has(id) ? set.delete(id) : set.add(id);
+  // was man besitzt, muss nicht mehr auf die Wunschliste
+  if (kind === 'owned' && owned.has(id)) wish.delete(id);
+  save();
 }
 
 /* --- Laden --- */
@@ -318,6 +357,7 @@ async function doSearch(q) {
 function render() {
   let figs = current;
   if (filter === 'owned') figs = figs.filter(f => owned.has(f.id));
+  if (filter === 'wish') figs = figs.filter(f => wish.has(f.id));
   if (filter === 'missing') figs = figs.filter(f => !owned.has(f.id));
   visible = figs;
 
@@ -329,8 +369,11 @@ function render() {
     return;
   }
   GRID.innerHTML = figs.map(f => `
-    <div class="card${owned.has(f.id) ? ' owned' : ''}" data-id="${f.id}">
-      <div class="check">✓</div>
+    <div class="card${owned.has(f.id) ? ' owned' : ''}${wish.has(f.id) ? ' wish' : ''}" data-id="${f.id}">
+      <div class="badges">
+        <div class="badge heart" data-kind="wish" title="Auf die Wunschliste">♥</div>
+        <div class="badge check" data-kind="owned" title="Besitze ich">✓</div>
+      </div>
       <div class="imgbox"><img loading="lazy" src="${f.img || CDN + f.id + '.jpg'}" alt=""></div>
       <div class="info">
         <div class="nm">${esc(f.name)}</div>
@@ -341,8 +384,9 @@ function render() {
 
 function renderStats() {
   if (!index) return;
-  document.getElementById('stats').textContent =
-    `${owned.size} von ${index.total.toLocaleString('de-DE')} markiert`;
+  document.getElementById('stats').innerHTML =
+    `${owned.size} von ${index.total.toLocaleString('de-DE')} im Besitz` +
+    (wish.size ? ` · <span style="color:#ff9dc0">♥ ${wish.size}</span>` : '');
 }
 
 /* --- Interaktion --- */
@@ -351,25 +395,24 @@ GRID.addEventListener('click', e => {
   if (!card) return;
   const idx = visible.findIndex(f => f.id === card.dataset.id);
   if (idx < 0) return;
-  if (e.target.closest('.check')) {
-    toggle(visible[idx].id);
-    card.classList.toggle('owned', owned.has(visible[idx].id));
+  const badge = e.target.closest('.badge');
+  if (badge) {
+    const id = visible[idx].id;
+    toggle(badge.dataset.kind, id);
+    card.classList.toggle('owned', owned.has(id));
+    card.classList.toggle('wish', wish.has(id));
     if (filter) render();
   } else {
     openDetail(idx);
   }
 });
 
-function toggle(id) {
-  owned.has(id) ? owned.delete(id) : owned.add(id);
-  saveOwned();
-}
-
 function openDetail(idx) {
   detailIdx = idx;
   const f = visible[idx];
   if (!f) return closeDetail();
   const has = owned.has(f.id);
+  const wanted = wish.has(f.id);
   document.getElementById('detail-box').innerHTML = `
     <div class="nav">
       <button class="btn" id="d-prev" ${idx === 0 ? 'disabled' : ''}>← Zurück</button>
@@ -385,16 +428,18 @@ function openDetail(idx) {
     <h3>Links</h3>
     <a href="https://rebrickable.com/minifigs/${f.id}/" target="_blank" rel="noopener">Auf Rebrickable ansehen ↗</a>
     <div class="row">
-      <button class="btn${has ? ' active' : ''}" id="d-toggle">${has ? '✓ Im Besitz' : 'Als vorhanden markieren'}</button>
+      <button class="btn owned-btn${has ? ' active' : ''}" id="d-toggle">${has ? '✓ Im Besitz' : 'Als vorhanden markieren'}</button>
+      <button class="btn wish-btn${wanted ? ' active' : ''}" id="d-wish">${wanted ? '♥ Auf der Wunschliste' : '♡ Auf die Wunschliste'}</button>
       <button class="btn" id="d-close">Schließen</button>
     </div>
-    <div class="hint">← → blättern · Leertaste markieren · Esc schließt</div>`;
+    <div class="hint">← → blättern · Leertaste = Besitz · W = Wunschliste · Esc schließt</div>`;
   document.getElementById('detail').classList.add('open');
   document.getElementById('detail').scrollTop = 0;
   document.getElementById('d-close').onclick = closeDetail;
   document.getElementById('d-prev').onclick = () => step(-1);
   document.getElementById('d-next').onclick = () => step(1);
-  document.getElementById('d-toggle').onclick = () => toggleFromDetail();
+  document.getElementById('d-toggle').onclick = () => toggleFromDetail('owned');
+  document.getElementById('d-wish').onclick = () => toggleFromDetail('wish');
 }
 
 /* Blättern innerhalb der aktuell sichtbaren Liste */
@@ -405,9 +450,9 @@ function step(delta) {
 }
 
 /* Markieren, ohne das Panel zu verlassen */
-function toggleFromDetail() {
+function toggleFromDetail(kind) {
   const f = visible[detailIdx];
-  toggle(f.id);
+  toggle(kind, f.id);
   if (filter) {
     // Figur fällt evtl. aus dem Filter -> Liste neu aufbauen, Position halten
     render();
@@ -433,7 +478,8 @@ document.addEventListener('keydown', e => {
   if (detailIdx < 0 || inSearch) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); step(1); }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
-  else if (e.key === ' ') { e.preventDefault(); toggleFromDetail(); }
+  else if (e.key === ' ') { e.preventDefault(); toggleFromDetail('owned'); }
+  else if (e.key === 'w' || e.key === 'W') { e.preventDefault(); toggleFromDetail('wish'); }
 });
 
 let timer;
@@ -446,17 +492,18 @@ document.getElementById('search').addEventListener('input', e => {
   }, 220);
 });
 
-for (const [id, mode] of [['f-owned', 'owned'], ['f-missing', 'missing']]) {
-  document.getElementById(id).addEventListener('click', e => {
+const FILTERS = [['f-owned', 'owned'], ['f-wish', 'wish'], ['f-missing', 'missing']];
+for (const [id, mode] of FILTERS) {
+  document.getElementById(id).addEventListener('click', () => {
     filter = filter === mode ? null : mode;
-    document.getElementById('f-owned').classList.toggle('active', filter === 'owned');
-    document.getElementById('f-missing').classList.toggle('active', filter === 'missing');
+    FILTERS.forEach(([bid, m]) =>
+      document.getElementById(bid).classList.toggle('active', filter === m));
     render();
   });
 }
 
 document.getElementById('export').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify({ owned: [...owned], exported: new Date().toISOString() }, null, 1)],
+  const blob = new Blob([JSON.stringify({ owned: [...owned], wish: [...wish], exported: new Date().toISOString() }, null, 1)],
                         { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -471,7 +518,8 @@ document.getElementById('file').addEventListener('change', async e => {
   try {
     const data = JSON.parse(await file.text());
     (data.owned || []).forEach(id => owned.add(id));
-    saveOwned();
+    (data.wish || []).forEach(id => wish.add(id));
+    save();
     render();
   } catch (err) { alert('Datei konnte nicht gelesen werden.'); }
   e.target.value = '';
