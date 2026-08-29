@@ -65,6 +65,7 @@ def build():
             figsets[row["fig_num"]].append(sn)
 
     by_theme = defaultdict(list)
+    setfigs = defaultdict(list)      # set_num -> [fig_num, ...]
     stats = {"total": 0, "ohne_set": 0}
     for fig in read("minifigs"):
         stats["total"] += 1
@@ -76,6 +77,8 @@ def build():
         else:
             tid = None
             stats["ohne_set"] += 1
+        for sn in appear:
+            setfigs[sn].append(fig["fig_num"])
         rec = {
             "id": fig["fig_num"],
             "name": fig["name"],
@@ -90,7 +93,7 @@ def build():
 
     os.makedirs(DATA, exist_ok=True)
     for f in os.listdir(DATA):
-        if f.startswith("figs-") or f in ("index.json", "search.json"):
+        if f.startswith("figs-") or f in ("index.json", "search.json", "sets.json"):
             os.remove(os.path.join(DATA, f))
 
     index = []
@@ -102,6 +105,14 @@ def build():
         ys = [f["year"] for f in figs if f["year"]]
         index.append({"name": name, "slug": sl, "count": len(figs),
                       "from": min(ys) if ys else None, "to": max(ys) if ys else None})
+
+    # Rückwärts-Index Set -> Figuren: {set_num: [name, jahr, [kurz-ids]]}
+    setidx = {}
+    for sn, figs in setfigs.items():
+        e = sets[sn]
+        setidx[sn] = [e["name"], e["year"], sorted(f[4:] for f in figs)]
+    with open(os.path.join(DATA, "sets.json"), "w", encoding="utf-8") as fh:
+        json.dump(setidx, fh, ensure_ascii=False, separators=(",", ":"))
 
     # kompakter Suchindex über alle Themes: [id, name, theme-slug, jahr]
     search = []
@@ -116,7 +127,8 @@ def build():
     with open(os.path.join(DATA, "index.json"), "w", encoding="utf-8") as fh:
         json.dump({"source": "Rebrickable", "themes": index, "total": stats["total"]}, fh,
                   ensure_ascii=False, separators=(",", ":"))
-    print("Figuren:", stats["total"], "| ohne Set:", stats["ohne_set"], "| Themes:", len(index))
+    print("Figuren:", stats["total"], "| ohne Set:", stats["ohne_set"],
+          "| Themes:", len(index), "| Sets mit Figuren:", len(setidx))
 
 
 if __name__ == "__main__":

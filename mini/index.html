@@ -257,11 +257,55 @@
                color: rgba(255,255,255,0.4); margin: 14px 0 6px; }
   #detail ul { list-style: none; font-size: 13px; }
   #detail li { padding: 3px 0; color: rgba(255,255,255,0.8); }
-  #detail a { color: #ffd700; text-decoration: none; font-size: 13px; }
+  #detail a { color: #fff; text-decoration: none; font-size: 13px; }
   #detail a:hover { text-decoration: underline; }
   #detail .row { display: flex; gap: 8px; margin-top: 18px; }
 
   #empty { padding: 40px 18px; color: rgba(255,255,255,0.4); font-size: 14px; }
+
+  /* Set-Modal, liegt über der Detailansicht */
+  #setmodal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 300;
+  }
+  #setmodal.open { display: flex; }
+  #setmodal .box {
+    background: #23233d;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 14px;
+    padding: 22px;
+    max-width: 760px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+  #setmodal h2 { font-size: 17px; margin-bottom: 4px; }
+  #setmodal .sub { font-size: 12px; color: rgba(255,255,255,0.5); margin-bottom: 16px; }
+  #setmodal .figs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    grid-auto-rows: max-content;
+    gap: 10px;
+  }
+  #setmodal .row { display: flex; gap: 8px; margin-top: 18px; align-items: center; }
+  #setmodal a { color: #fff; text-decoration: none; font-size: 13px; }
+  #setmodal a:hover { text-decoration: underline; }
+
+  /* Sets in der Detailansicht anklickbar */
+  #detail li.setlink {
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 4px 7px;
+    margin-left: -7px;
+  }
+  #detail li.setlink:hover { background: rgba(255,255,255,0.09); color: #ffd700; }
+  #detail li.setlink::after { content: ' ›'; color: rgba(255,255,255,0.35); }
 
   @media (max-width: 700px) {
     body { flex-direction: column; }
@@ -294,6 +338,7 @@
 </div>
 
 <div id="detail"><div class="box" id="detail-box"></div></div>
+<div id="setmodal"><div class="box" id="setmodal-box"></div></div>
 <input type="file" id="file" accept="application/json" hidden>
 
 <script>
@@ -305,8 +350,11 @@ let current = [];          // aktuell angezeigte Figuren
 let activeTheme = null;
 let searchData = null;     // [id, name, slug, jahr]
 let filter = null;         // 'owned' | 'wish' | null
-let visible = [];          // gefiltertes Ergebnis, Basis für die Pfeiltasten
-let detailIdx = -1;        // Position im Detail-Panel, -1 = geschlossen
+let visible = [];          // was im Grid steht
+let nav = [];              // Liste, durch die das Detail-Panel blättert
+let detailIdx = -1;        // Position darin, -1 = geschlossen
+let setData = null;        // set_num -> [name, jahr, [kurz-ids]]
+let gridDirty = false;     // im Set-Modal markiert -> Grid nachziehen
 let cache = {};            // slug -> figuren
 
 /* --- Besitz: localStorage --- */
@@ -527,27 +575,28 @@ GRID.addEventListener('click', e => {
     card.classList.toggle('wish', wish.has(id));
     if (filter) render();
   } else {
+    nav = visible;
     openDetail(idx);
   }
 });
 
 function openDetail(idx) {
   detailIdx = idx;
-  const f = visible[idx];
+  const f = nav[idx];
   if (!f) return closeDetail();
   const has = owned.has(f.id);
   const wanted = wish.has(f.id);
   document.getElementById('detail-box').innerHTML = `
     <div class="nav">
       <button class="btn" id="d-prev" ${idx === 0 ? 'disabled' : ''}>← Zurück</button>
-      <span class="pos">${idx + 1} / ${visible.length}</span>
-      <button class="btn" id="d-next" ${idx === visible.length - 1 ? 'disabled' : ''}>Weiter →</button>
+      <span class="pos">${idx + 1} / ${nav.length}</span>
+      <button class="btn" id="d-next" ${idx === nav.length - 1 ? 'disabled' : ''}>Weiter →</button>
     </div>
     <div class="imgwrap"><img src="${f.img || CDN + f.id + '.jpg'}" alt=""></div>
     <h2>${esc(f.name)}</h2>
     <div class="sub">${f.id} · ${f.theme ? esc(f.theme) : 'kein Theme'} · ${f.year || 'Jahr unbekannt'} · ${f.parts} Teile</div>
     ${f.sets.length ? `<h3>Enthalten in ${f.set_count} Set${f.set_count > 1 ? 's' : ''}</h3>
-      <ul>${f.sets.map(s => `<li>${esc(s.name)} <span style="color:rgba(255,255,255,.4)">(${s.num}, ${s.year})</span></li>`).join('')}
+      <ul>${f.sets.map(s => `<li class="setlink" data-set="${s.num}">${esc(s.name)} <span style="color:rgba(255,255,255,.4)">(${s.num}, ${s.year})</span></li>`).join('')}
       ${f.set_count > f.sets.length ? `<li style="color:rgba(255,255,255,.4)">… und ${f.set_count - f.sets.length} weitere</li>` : ''}</ul>` : ''}
     <h3>Links</h3>
     <a href="https://rebrickable.com/minifigs/${f.id}/" target="_blank" rel="noopener">Auf Rebrickable ansehen ↗</a>
@@ -560,6 +609,8 @@ function openDetail(idx) {
   document.getElementById('detail').classList.add('open');
   document.getElementById('detail').scrollTop = 0;
   document.getElementById('d-close').onclick = closeDetail;
+  document.getElementById('detail-box').querySelectorAll('.setlink').forEach(li =>
+    li.onclick = () => openSet(li.dataset.set));
   document.getElementById('d-prev').onclick = () => step(-1);
   document.getElementById('d-next').onclick = () => step(1);
   document.getElementById('d-toggle').onclick = () => toggleFromDetail('owned');
@@ -569,25 +620,90 @@ function openDetail(idx) {
 /* Blättern innerhalb der aktuell sichtbaren Liste */
 function step(delta) {
   const next = detailIdx + delta;
-  if (next < 0 || next >= visible.length) return;
+  if (next < 0 || next >= nav.length) return;
   openDetail(next);
 }
 
 /* Markieren, ohne das Panel zu verlassen */
 function toggleFromDetail(kind) {
-  const f = visible[detailIdx];
-  toggle(kind, f.id);
-  if (filter) {
-    // Figur fällt evtl. aus dem Filter -> Liste neu aufbauen, Position halten
-    render();
-    const at = Math.min(detailIdx, visible.length - 1);
-    if (!visible.length) return closeDetail();
-    openDetail(at);
+  const fromGrid = nav === visible;
+  toggle(kind, nav[detailIdx].id);
+  render();
+  if (fromGrid) {
+    // Grid ist neu gebaut -> Navigationsliste nachziehen, Position halten
+    nav = visible;
+    if (!nav.length) return closeDetail();
+    openDetail(Math.min(detailIdx, nav.length - 1));
   } else {
-    render();
-    openDetail(detailIdx);
+    openDetail(detailIdx);   // im Set-Kontext bleibt die Liste, wie sie ist
   }
 }
+
+/* --- Set-Modal: alle Minifiguren eines Sets --- */
+async function figsByIds(ids) {
+  await loadSearchIndex();
+  const want = new Set(ids);
+  const slugs = new Set();
+  searchData.forEach(r => { if (want.has('fig-' + r[0])) slugs.add(r[2]); });
+  await Promise.all([...slugs].map(loadTheme));
+  const out = [];
+  slugs.forEach(sl => cache[sl].forEach(f => { if (want.has(f.id)) out.push(f); }));
+  out.sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  return out;
+}
+
+async function openSet(setNum) {
+  const box = document.getElementById('setmodal-box');
+  document.getElementById('setmodal').classList.add('open');
+  box.innerHTML = '<div class="sub">lädt …</div>';
+
+  if (!setData) setData = await (await fetch('data/sets.json')).json();
+  const entry = setData[setNum];
+  if (!entry) { box.innerHTML = '<div class="sub">Keine Figuren zu diesem Set.</div>'; return; }
+
+  const [name, year, ids] = entry;
+  const figs = await figsByIds(ids.map(i => 'fig-' + i));
+  const mine = figs.filter(f => owned.has(f.id)).length;
+
+  box.innerHTML = `
+    <h2>${esc(name)}</h2>
+    <div class="sub">${setNum} · ${year} · ${figs.length} Minifigur${figs.length === 1 ? '' : 'en'}
+      · ${mine} davon im Besitz</div>
+    <div class="figs">${figs.map(card).join('')}</div>
+    <div class="row">
+      <a href="https://rebrickable.com/sets/${setNum}/" target="_blank" rel="noopener">Set auf Rebrickable ↗</a>
+      <button class="btn" id="s-close" style="margin-left:auto">Schließen</button>
+    </div>`;
+  document.getElementById('s-close').onclick = closeSet;
+
+  box.querySelector('.figs').onclick = e => {
+    const cardEl = e.target.closest('.card');
+    if (!cardEl) return;
+    const i = figs.findIndex(f => f.id === cardEl.dataset.id);
+    if (i < 0) return;
+    const badge = e.target.closest('.badge');
+    if (badge) {
+      toggle(badge.dataset.kind, figs[i].id);
+      cardEl.classList.toggle('owned', owned.has(figs[i].id));
+      cardEl.classList.toggle('wish', wish.has(figs[i].id));
+      gridDirty = true;
+    } else {
+      // in die Figur springen: ab hier blättern die Pfeiltasten durch dieses Set
+      nav = figs;
+      closeSet();
+      openDetail(i);
+    }
+  };
+}
+
+function closeSet() {
+  document.getElementById('setmodal').classList.remove('open');
+  if (gridDirty) { gridDirty = false; render(); if (nav === visible) nav = visible; }
+}
+
+document.getElementById('setmodal').addEventListener('click', e => {
+  if (e.target.id === 'setmodal') closeSet();
+});
 
 function closeDetail() {
   detailIdx = -1;
@@ -596,8 +712,11 @@ function closeDetail() {
 document.getElementById('detail').addEventListener('click', e => {
   if (e.target.id === 'detail') closeDetail();
 });
+function setOpen() { return document.getElementById('setmodal').classList.contains('open'); }
+
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') return closeDetail();
+  if (e.key === 'Escape') return setOpen() ? closeSet() : closeDetail();
+  if (setOpen()) return;   // im Set-Modal keine Blätter-Tasten
   const inSearch = document.activeElement === document.getElementById('search');
   if (detailIdx < 0 || inSearch) return;
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); step(1); }
