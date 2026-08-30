@@ -89,7 +89,7 @@
     <b>↑</b>/<b>↓</b> Schub +/−<br>
     <b>Shift</b> Vollgas · <b>Space</b> Leerlauf<br>
     <b>C</b> Cockpit/Außenansicht<br>
-    <b>R</b> Reset · <b>Maus</b> Umschauen
+    <b>R</b> Reset · <b>Maus ziehen</b> Umschauen
   </div>
 
   <div class="panel" id="thrbox">
@@ -99,7 +99,7 @@
     <div id="thrbar"><div id="thrfill"></div></div>
   </div>
 
-  <div class="panel" id="msg">Klick ins Bild für Maussteuerung · ESC zum Lösen</div>
+  <div class="panel" id="msg">Maustaste halten und ziehen zum Umschauen</div>
 
   <div id="cross">
     <svg viewBox="0 0 42 42">
@@ -115,7 +115,7 @@
   <div class="box">
     <h1>F L Y</h1>
     <p>Ein kleiner Flugsimulator. Du startest in 400&nbsp;m Höhe mit Reiseschub.<br>
-    Fliegen mit der Tastatur, umschauen mit der Maus.</p>
+    Fliegen mit der Tastatur, zum Umschauen die Maustaste halten und ziehen.</p>
     <div class="go">START</div>
   </div>
 </div>
@@ -168,7 +168,10 @@ function height(x, z) {
   }
   // Täler abflachen, Gipfel betonen
   const ridge = Math.max(0, h);
-  return ridge * 1.35 + h * 0.25 - 40;
+  const t = ridge * 1.35 + h * 0.25 - 40;
+  // Unter der Wasserlinie steiler abfallen lassen: sonst läuft das Terrain
+  // an den Küsten flach um y=0 aus und z-fightet mit der Wasserebene
+  return t < 0 ? t * 3 : t;
 }
 
 const TILE = 4000;      // Kantenlänge einer Kachel
@@ -232,7 +235,7 @@ const water = new THREE.Mesh(
   new THREE.MeshLambertMaterial({ color: 0x2c5f86, transparent: true, opacity: 0.85 })
 );
 water.rotation.x = -Math.PI / 2;
-water.position.y = 0;
+water.position.y = -0.8;   // knapp unter der Küstenlinie, gegen Z-Fighting
 scene.add(water);
 
 /* ============================================================
@@ -472,47 +475,44 @@ function physics(dt) {
 }
 
 /* ============================================================
-   Kamera — Maus schaut sich frei um, Blick federt zurück
+   Kamera — Umschauen bei gedrückter Maustaste, Blick federt zurück
    ============================================================ */
 let camMode = 'chase';
 const look = { yaw: 0, pitch: 0 };
-let pointerLocked = false;
 
 const startEl = document.getElementById('start');
 const msgEl = document.getElementById('msg');
+const canvasEl = renderer.domElement;
 
-// Pointer Lock ist nicht überall erlaubt (eingebettete Kontexte) — dann
-// wird die Mausposition direkt auf den Blickwinkel gemappt.
-let lockDenied = false;
+// Umschauen nur mit gedrückter Maustaste — losgelassen federt der Blick zurück.
+let dragging = false;
 
-function requestLock() {
-  const el = renderer.domElement;
-  if (lockDenied || !el.requestPointerLock) { lockDenied = true; return; }
-  try {
-    const p = el.requestPointerLock();
-    if (p && p.catch) p.catch(() => { lockDenied = true; });
-  } catch (err) { lockDenied = true; }
-}
+startEl.addEventListener('click', () => startEl.classList.add('hidden'));
 
-startEl.addEventListener('click', () => { startEl.classList.add('hidden'); requestLock(); });
-renderer.domElement.addEventListener('click', () => { if (!pointerLocked) requestLock(); });
-
-document.addEventListener('pointerlockchange', () => {
-  pointerLocked = document.pointerLockElement === renderer.domElement;
+canvasEl.addEventListener('pointerdown', e => {
+  if (e.button !== 0) return;
+  dragging = true;
+  canvasEl.setPointerCapture(e.pointerId);
+  canvasEl.style.cursor = 'grabbing';
 });
-document.addEventListener('pointerlockerror', () => { lockDenied = true; });
 
-addEventListener('mousemove', e => {
-  if (pointerLocked) {
-    look.yaw   -= e.movementX * 0.0022;
-    look.pitch -= e.movementY * 0.0022;
-  } else if (lockDenied) {
-    // Absolute Position: Bildmitte = geradeaus
-    look.yaw   = -(e.clientX / innerWidth  - 0.5) * 2.6;
-    look.pitch = -(e.clientY / innerHeight - 0.5) * 1.8;
-  } else return;
+function endDrag(e) {
+  if (!dragging) return;
+  dragging = false;
+  if (e && e.pointerId !== undefined) canvasEl.releasePointerCapture?.(e.pointerId);
+  canvasEl.style.cursor = 'grab';
+}
+canvasEl.addEventListener('pointerup', endDrag);
+canvasEl.addEventListener('pointercancel', endDrag);
+addEventListener('blur', () => endDrag());
+canvasEl.style.cursor = 'grab';
+
+canvasEl.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  look.yaw   -= (e.movementX || 0) * 0.004;
+  look.pitch -= (e.movementY || 0) * 0.004;
   look.pitch = THREE.MathUtils.clamp(look.pitch, -1.2, 1.2);
-  look.yaw = THREE.MathUtils.clamp(look.yaw, -Math.PI, Math.PI);
+  look.yaw   = THREE.MathUtils.clamp(look.yaw, -Math.PI, Math.PI);
 });
 
 const camOffChase = new THREE.Vector3(0, 3.2, 14);
@@ -523,10 +523,9 @@ const camSmooth = new THREE.Vector3();
 let camInit = false;
 
 function updateCamera(dt) {
-  // Im Pointer-Lock zentriert sich der Blick langsam wieder, wenn die Maus ruht.
-  // Ohne Lock steuert die Mausposition absolut — dann darf nichts zurückfedern.
-  if (!lockDenied) {
-    const decay = Math.min(1, 1.1 * dt) * 0.35;
+  // Sobald die Maustaste los ist, zentriert sich der Blick wieder
+  if (!dragging) {
+    const decay = Math.min(1, 2.2 * dt);
     look.yaw *= (1 - decay);
     look.pitch *= (1 - decay);
   }
@@ -607,9 +606,7 @@ function updateHud(aoa, dt) {
   el.thrf.style.width = `${S.throttle * 100}%`;
 
   if (S.crashed) { msgEl.textContent = 'CRASH — R für Neustart'; msgEl.classList.remove('hidden'); }
-  else if (lockDenied) msgEl.classList.add('hidden');
-  else if (pointerLocked) msgEl.classList.add('hidden');
-  else { msgEl.textContent = 'Klick ins Bild für Maussteuerung · ESC zum Lösen'; msgEl.classList.remove('hidden'); }
+  else msgEl.classList.add('hidden');
 }
 
 /* ============================================================
@@ -633,8 +630,10 @@ function frame(now) {
   // Wolken ziehen mit, damit sie nie ausgehen
   clouds.position.x = Math.round(plane.position.x / 22000) * 22000;
   clouds.position.z = Math.round(plane.position.z / 22000) * 22000;
-  water.position.x = plane.position.x;
-  water.position.z = plane.position.z;
+  // Nur im Kachelraster nachziehen — kontinuierliches Mitschieben lässt die
+  // riesige Fläche bei großen Koordinaten sichtbar zittern
+  water.position.x = Math.round(plane.position.x / TILE) * TILE;
+  water.position.z = Math.round(plane.position.z / TILE) * TILE;
 
   tileAcc += dt;
   if (tileAcc > 0.4) { tileAcc = 0; updateTiles(plane.position.x, plane.position.z); }
