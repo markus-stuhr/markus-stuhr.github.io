@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>Fly — Flugsimulator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#0b1020" />
+<style>
+  :root {
+    --bg: #0b1020;
+    --panel: rgba(10, 16, 30, 0.66);
+    --line: rgba(140, 220, 255, 0.22);
+    --text: #dff1ff;
+    --muted: #8ba6c0;
+    --accent: #5fd0ff;
+    --warn: #ffcf5c;
+    --bad: #ff7a7a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    -webkit-font-smoothing: antialiased; overscroll-behavior: none;
+    user-select: none; -webkit-user-select: none;
+  }
+  canvas { display: block; touch-action: none; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+
+  .panel {
+    position: absolute; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; backdrop-filter: blur(8px);
+    font-size: 12px; line-height: 1.55; letter-spacing: 0.02em;
+  }
+  #inst { left: 14px; top: 14px; min-width: 190px; }
+  #inst .row { display: flex; justify-content: space-between; gap: 14px; }
+  #inst .k { color: var(--muted); }
+  #inst .v { color: var(--text); font-variant-numeric: tabular-nums; }
+  #inst .v.warn { color: var(--warn); }
+  #inst .v.bad { color: var(--bad); }
+
+  #keys { right: 14px; top: 14px; color: var(--muted); }
+  #keys b { color: var(--accent); font-weight: 600; }
+  #keys .t { color: var(--text); margin-bottom: 4px; display: block; }
+
+  #thrbox { left: 14px; bottom: 14px; width: 168px; }
+  #thrbar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.1); overflow: hidden; margin-top: 6px; }
+  #thrfill { height: 100%; width: 0%; background: linear-gradient(90deg, #2f8fbf, var(--accent)); transition: width .08s linear; }
+
+  #msg { left: 50%; bottom: 26px; transform: translateX(-50%); text-align: center; color: var(--muted); }
+  #msg.hidden { display: none; }
+
+  /* Fadenkreuz / Flightpath-Marker */
+  #cross { position: absolute; left: 50%; top: 50%; width: 42px; height: 42px; margin: -21px 0 0 -21px; opacity: .8; }
+  #cross svg { width: 100%; height: 100%; }
+
+  #start {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 40%, #16233f, #070b16 70%); z-index: 10; cursor: pointer;
+  }
+  #start .box { text-align: center; max-width: 460px; padding: 30px; }
+  #start h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: .14em; color: var(--accent); }
+  #start p { color: var(--muted); font-size: 13px; line-height: 1.7; }
+  #start .go {
+    margin-top: 18px; display: inline-block; border: 1px solid var(--accent); color: var(--accent);
+    padding: 10px 26px; border-radius: 999px; font-size: 13px; letter-spacing: .1em;
+  }
+  #start.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="panel" id="inst">
+    <div class="row"><span class="k">SPEED</span><span class="v" id="i-spd">0 kt</span></div>
+    <div class="row"><span class="k">ALT</span><span class="v" id="i-alt">0 m</span></div>
+    <div class="row"><span class="k">VARIO</span><span class="v" id="i-vs">0 m/s</span></div>
+    <div class="row"><span class="k">HDG</span><span class="v" id="i-hdg">000°</span></div>
+    <div class="row"><span class="k">AOA</span><span class="v" id="i-aoa">0°</span></div>
+    <div class="row"><span class="k">G</span><span class="v" id="i-g">1.0</span></div>
+  </div>
+
+  <div class="panel" id="keys">
+    <span class="t">STEUERUNG</span>
+    <b>W</b>/<b>S</b> Nase runter/hoch<br>
+    <b>A</b>/<b>D</b> Rollen links/rechts<br>
+    <b>Q</b>/<b>E</b> Seitenruder<br>
+    <b>↑</b>/<b>↓</b> Schub +/−<br>
+    <b>Shift</b> Vollgas · <b>Space</b> Leerlauf<br>
+    <b>C</b> Cockpit/Außenansicht<br>
+    <b>R</b> Reset · <b>Maus</b> Umschauen
+  </div>
+
+  <div class="panel" id="thrbox">
+    <div class="row" style="display:flex;justify-content:space-between">
+      <span style="color:var(--muted)">THROTTLE</span><span id="thrval">0%</span>
+    </div>
+    <div id="thrbar"><div id="thrfill"></div></div>
+  </div>
+
+  <div class="panel" id="msg">Klick ins Bild für Maussteuerung · ESC zum Lösen</div>
+
+  <div id="cross">
+    <svg viewBox="0 0 42 42">
+      <circle cx="21" cy="21" r="6" fill="none" stroke="#5fd0ff" stroke-width="1.2"/>
+      <line x1="21" y1="6" x2="21" y2="14" stroke="#5fd0ff" stroke-width="1.2"/>
+      <line x1="6" y1="21" x2="14" y2="21" stroke="#5fd0ff" stroke-width="1.2"/>
+      <line x1="28" y1="21" x2="36" y2="21" stroke="#5fd0ff" stroke-width="1.2"/>
+    </svg>
+  </div>
+</div>
+
+<div id="start">
+  <div class="box">
+    <h1>F L Y</h1>
+    <p>Ein kleiner Flugsimulator. Du startest in 400&nbsp;m Höhe mit Reiseschub.<br>
+    Fliegen mit der Tastatur, umschauen mit der Maus.</p>
+    <div class="go">START</div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
+
+/* ============================================================
+   Setup
+   ============================================================ */
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = false;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fc4e8);
+scene.fog = new THREE.Fog(0x9fcbe8, 3000, 14000);
+
+const camera = new THREE.PerspectiveCamera(65, innerWidth / innerHeight, 0.5, 40000);
+
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+sun.position.set(-0.4, 0.75, 0.3).multiplyScalar(1000);
+scene.add(sun);
+scene.add(new THREE.HemisphereLight(0xbfe0ff, 0x5a6b45, 1.1));
+
+/* ============================================================
+   Terrain — Heightfield aus Perlin-Noise, in Kacheln
+   ============================================================ */
+const noise = new ImprovedNoise();
+const SEED = 42;
+
+function height(x, z) {
+  // mehrere Oktaven, Meereshöhe bei 0
+  let h = 0, amp = 260, freq = 0.00035;
+  for (let o = 0; o < 5; o++) {
+    h += noise.noise(x * freq, z * freq, SEED + o * 13.7) * amp;
+    amp *= 0.48; freq *= 2.1;
+  }
+  // Täler abflachen, Gipfel betonen
+  const ridge = Math.max(0, h);
+  return ridge * 1.35 + h * 0.25 - 40;
+}
+
+const TILE = 4000;      // Kantenlänge einer Kachel
+const SEG = 64;         // Auflösung
+const RANGE = 2;        // Kacheln in jede Richtung (5x5)
+
+const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+
+const lowC  = new THREE.Color(0x4a7a3c);  // Wiese
+const midC  = new THREE.Color(0x6b6a4a);  // Fels
+const highC = new THREE.Color(0xe8eef2);  // Schnee
+const sandC = new THREE.Color(0xc8b58a);  // Küste
+
+function buildTile(tx, tz) {
+  const geo = new THREE.PlaneGeometry(TILE, TILE, SEG, SEG);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const ox = tx * TILE, oz = tz * TILE;
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + ox, z = pos.getZ(i) + oz;
+    const h = height(x, z);
+    pos.setY(i, h);
+    if (h < 10)       c.copy(sandC);
+    else if (h < 180) c.copy(lowC).lerp(midC, h / 320);
+    else if (h < 420) c.copy(midC).lerp(highC, (h - 180) / 240);
+    else              c.copy(highC);
+    c.toArray(colors, i * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, terrainMat);
+  m.position.set(ox, 0, oz);
+  m.userData.tile = `${tx},${tz}`;
+  return m;
+}
+
+const tiles = new Map();
+function updateTiles(px, pz) {
+  const ctx = Math.round(px / TILE), ctz = Math.round(pz / TILE);
+  const want = new Set();
+  for (let dz = -RANGE; dz <= RANGE; dz++) {
+    for (let dx = -RANGE; dx <= RANGE; dx++) {
+      const key = `${ctx + dx},${ctz + dz}`;
+      want.add(key);
+      if (!tiles.has(key)) {
+        const t = buildTile(ctx + dx, ctz + dz);
+        tiles.set(key, t); scene.add(t);
+      }
+    }
+  }
+  for (const [key, mesh] of tiles) {
+    if (!want.has(key)) { scene.remove(mesh); mesh.geometry.dispose(); tiles.delete(key); }
+  }
+}
+
+// Wasserfläche auf Meereshöhe
+const water = new THREE.Mesh(
+  new THREE.PlaneGeometry(80000, 80000),
+  new THREE.MeshLambertMaterial({ color: 0x2c5f86, transparent: true, opacity: 0.85 })
+);
+water.rotation.x = -Math.PI / 2;
+water.position.y = 0;
+scene.add(water);
+
+/* ============================================================
+   Wolken — Billboards
+   ============================================================ */
+function cloudTexture() {
+  const s = 128, cv = document.createElement('canvas');
+  cv.width = cv.height = s;
+  const g = cv.getContext('2d');
+  for (let i = 0; i < 22; i++) {
+    const r = 12 + Math.random() * 26;
+    const x = s / 2 + (Math.random() - 0.5) * 70;
+    const y = s / 2 + (Math.random() - 0.5) * 34;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, 'rgba(255,255,255,0.5)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const cloudMat = new THREE.SpriteMaterial({
+  map: cloudTexture(), transparent: true, depthWrite: false, opacity: 0.9
+});
+const clouds = new THREE.Group();
+for (let i = 0; i < 140; i++) {
+  const sp = new THREE.Sprite(cloudMat);
+  const sc = 500 + Math.random() * 1400;
+  sp.scale.set(sc, sc * 0.5, 1);
+  sp.position.set(
+    (Math.random() - 0.5) * 22000,
+    700 + Math.random() * 900,
+    (Math.random() - 0.5) * 22000
+  );
+  clouds.add(sp);
+}
+scene.add(clouds);
+
+/* ============================================================
+   Flugzeug
+   ============================================================ */
+const plane = new THREE.Object3D();
+scene.add(plane);
+
+function buildPlane() {
+  const g = new THREE.Group();
+  const body = new THREE.MeshLambertMaterial({ color: 0xdde4ea });
+  const trim = new THREE.MeshLambertMaterial({ color: 0xd2503c });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x243040 });
+
+  // Rumpf (Nase zeigt in -Z)
+  const fus = new THREE.Mesh(new THREE.CapsuleGeometry(0.62, 4.6, 6, 14), body);
+  fus.rotation.x = Math.PI / 2;
+  g.add(fus);
+
+  // Nase / Spinner
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.4, 16), trim);
+  nose.rotation.x = -Math.PI / 2;
+  nose.position.z = -3.4;
+  g.add(nose);
+
+  // Propellerscheibe
+  const prop = new THREE.Mesh(
+    new THREE.CircleGeometry(1.7, 24),
+    new THREE.MeshBasicMaterial({ color: 0x101820, transparent: true, opacity: 0.25, side: THREE.DoubleSide })
+  );
+  prop.position.z = -4.15;
+  g.add(prop);
+  g.userData.prop = prop;
+
+  // Tragfläche
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(11.5, 0.18, 1.7), body);
+  wing.position.set(0, 0.35, -0.4);
+  g.add(wing);
+  const tipL = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.2, 1.7), trim);
+  tipL.position.set(-5.7, 0.35, -0.4); g.add(tipL);
+  const tipR = tipL.clone(); tipR.position.x = 5.7; g.add(tipR);
+
+  // Höhenleitwerk
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.15, 1.0), body);
+  tail.position.set(0, 0.35, 2.7); g.add(tail);
+
+  // Seitenleitwerk
+  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 1.5, 1.2), trim);
+  fin.position.set(0, 1.0, 2.8); g.add(fin);
+
+  // Kanzel
+  const cab = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), dark);
+  cab.scale.set(1, 0.8, 1.9);
+  cab.position.set(0, 0.72, -0.9);
+  g.add(cab);
+
+  return g;
+}
+const planeMesh = buildPlane();
+plane.add(planeMesh);
+
+/* ============================================================
+   Flugphysik
+   ============================================================ */
+const S = {
+  vel: new THREE.Vector3(0, 0, -60),  // Weltgeschwindigkeit m/s
+  throttle: 0.6,
+  gLoad: 1,
+  vs: 0,
+  crashed: false,
+  crashT: 0
+};
+
+const START = { pos: new THREE.Vector3(0, 400, 0), spd: 60 };
+
+function reset() {
+  plane.position.copy(START.pos);
+  plane.quaternion.identity();
+  S.vel.set(0, 0, -START.spd);
+  S.throttle = 0.6;
+  S.crashed = false;
+  S.gLoad = 1; S.vs = 0;
+  updateTiles(0, 0);
+}
+
+const keys = Object.create(null);
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['ArrowUp','ArrowDown','Space'].includes(e.code)) e.preventDefault();
+  if (e.code === 'KeyR') reset();
+  if (e.code === 'KeyC') camMode = camMode === 'chase' ? 'cockpit' : 'chase';
+});
+addEventListener('keyup', e => { keys[e.code] = false; });
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; });
+
+// Steuerflächen-Ausschlag (geglättet, damit es sich analog anfühlt)
+const ctrl = { pitch: 0, roll: 0, yaw: 0 };
+
+function readInput(dt) {
+  const rate = 2.8;
+  const target = {
+    pitch: (keys.KeyW ? -1 : 0) + (keys.KeyS ? 1 : 0),
+    roll:  (keys.KeyA ? -1 : 0) + (keys.KeyD ? 1 : 0),
+    yaw:   (keys.KeyQ ? 1 : 0) + (keys.KeyE ? -1 : 0)
+  };
+  for (const k of ['pitch', 'roll', 'yaw']) {
+    ctrl[k] += (target[k] - ctrl[k]) * Math.min(1, rate * dt);
+  }
+  if (keys.ArrowUp)   S.throttle += 0.55 * dt;
+  if (keys.ArrowDown) S.throttle -= 0.55 * dt;
+  if (keys.ShiftLeft || keys.ShiftRight) S.throttle = 1;
+  if (keys.Space) S.throttle = 0;
+  S.throttle = THREE.MathUtils.clamp(S.throttle, 0, 1);
+}
+
+const _fwd = new THREE.Vector3(), _up = new THREE.Vector3(), _right = new THREE.Vector3();
+const _q = new THREE.Quaternion(), _v = new THREE.Vector3();
+
+// Object3D.getWorldDirection() liefert +Z — die Nase zeigt aber nach -Z
+function fwdOf(v) { return v.set(0, 0, -1).applyQuaternion(plane.quaternion); }
+
+const RHO = 1.15;      // Luftdichte (vereinfacht)
+const MASS = 1100;     // kg
+const WING = 18;       // m²
+const MAX_THRUST = 5200; // N
+
+function physics(dt) {
+  if (S.crashed) return;
+
+  fwdOf(_fwd);                            // Nase = -Z
+  _up.set(0, 1, 0).applyQuaternion(plane.quaternion);
+  _right.set(1, 0, 0).applyQuaternion(plane.quaternion);
+
+  const speed = S.vel.length();
+  const q = 0.5 * RHO * speed * speed;    // Staudruck
+
+  // Anstellwinkel: Winkel zwischen Nase und Fahrtvektor in der Rumpfebene
+  let aoa = 0;
+  if (speed > 1) {
+    const vn = _v.copy(S.vel).normalize();
+    aoa = Math.asin(THREE.MathUtils.clamp(-vn.dot(_up), -1, 1));
+  }
+
+  // Steuerwirksamkeit wächst mit Staudruck — bei niedriger Fahrt wird es träge
+  const auth = THREE.MathUtils.clamp(speed / 60, 0.15, 1.25);
+
+  _q.setFromAxisAngle(_right, ctrl.pitch * 0.9 * auth * dt); plane.quaternion.premultiply(_q);
+  _q.setFromAxisAngle(_fwd,   ctrl.roll  * 1.6 * auth * dt); plane.quaternion.premultiply(_q);
+  _q.setFromAxisAngle(_up,    ctrl.yaw   * 0.55 * auth * dt); plane.quaternion.premultiply(_q);
+  plane.quaternion.normalize();
+
+  // Richtungsvektoren nach Rotation neu holen
+  fwdOf(_fwd);
+  _up.set(0, 1, 0).applyQuaternion(plane.quaternion);
+
+  // Auftrieb — linear bis Stall bei ~16°, danach Abriss
+  const stall = 0.28;
+  let cl = 5.6 * aoa + 0.42;
+  if (Math.abs(aoa) > stall) {
+    const over = Math.abs(aoa) - stall;
+    cl = Math.sign(aoa) * Math.max(0, (5.6 * stall + 0.42) - over * 9);
+  }
+  const lift = q * WING * cl;
+
+  // Widerstand — Nullwiderstand + induziert
+  const cd = 0.075 + cl * cl * 0.055;
+  const drag = q * WING * cd;
+
+  const F = new THREE.Vector3();
+  F.addScaledVector(_fwd, S.throttle * MAX_THRUST);
+  F.addScaledVector(_up, lift);
+  if (speed > 0.1) F.addScaledVector(_v.copy(S.vel).normalize(), -drag);
+  F.y -= MASS * 9.81;
+
+  S.gLoad = lift / (MASS * 9.81);
+
+  S.vel.addScaledVector(F, dt / MASS);
+
+  // Gierstabilität: Fahrtvektor zieht langsam Richtung Nase (Wetterfahne)
+  if (speed > 5) {
+    const aligned = _v.copy(_fwd).multiplyScalar(speed);
+    S.vel.lerp(aligned, Math.min(1, 1.6 * dt));
+  }
+
+  S.vs = S.vel.y;
+  plane.position.addScaledVector(S.vel, dt);
+
+  // Bodenkollision
+  const ground = Math.max(height(plane.position.x, plane.position.z), 0);
+  if (plane.position.y < ground + 2) {
+    plane.position.y = ground + 2;
+    S.crashed = true; S.crashT = 0;
+    S.vel.multiplyScalar(0.1);
+  }
+  // Höhendeckel
+  if (plane.position.y > 6000) { plane.position.y = 6000; S.vel.y = Math.min(S.vel.y, 0); }
+
+  return aoa;
+}
+
+/* ============================================================
+   Kamera — Maus schaut sich frei um, Blick federt zurück
+   ============================================================ */
+let camMode = 'chase';
+const look = { yaw: 0, pitch: 0 };
+let pointerLocked = false;
+
+const startEl = document.getElementById('start');
+const msgEl = document.getElementById('msg');
+
+// Pointer Lock ist nicht überall erlaubt (eingebettete Kontexte) — dann
+// wird die Mausposition direkt auf den Blickwinkel gemappt.
+let lockDenied = false;
+
+function requestLock() {
+  const el = renderer.domElement;
+  if (lockDenied || !el.requestPointerLock) { lockDenied = true; return; }
+  try {
+    const p = el.requestPointerLock();
+    if (p && p.catch) p.catch(() => { lockDenied = true; });
+  } catch (err) { lockDenied = true; }
+}
+
+startEl.addEventListener('click', () => { startEl.classList.add('hidden'); requestLock(); });
+renderer.domElement.addEventListener('click', () => { if (!pointerLocked) requestLock(); });
+
+document.addEventListener('pointerlockchange', () => {
+  pointerLocked = document.pointerLockElement === renderer.domElement;
+});
+document.addEventListener('pointerlockerror', () => { lockDenied = true; });
+
+addEventListener('mousemove', e => {
+  if (pointerLocked) {
+    look.yaw   -= e.movementX * 0.0022;
+    look.pitch -= e.movementY * 0.0022;
+  } else if (lockDenied) {
+    // Absolute Position: Bildmitte = geradeaus
+    look.yaw   = -(e.clientX / innerWidth  - 0.5) * 2.6;
+    look.pitch = -(e.clientY / innerHeight - 0.5) * 1.8;
+  } else return;
+  look.pitch = THREE.MathUtils.clamp(look.pitch, -1.2, 1.2);
+  look.yaw = THREE.MathUtils.clamp(look.yaw, -Math.PI, Math.PI);
+});
+
+const camOffChase = new THREE.Vector3(0, 3.2, 14);
+const camOffCockpit = new THREE.Vector3(0, 0.85, -0.4);
+const _camPos = new THREE.Vector3();
+const _camTarget = new THREE.Vector3();
+const camSmooth = new THREE.Vector3();
+let camInit = false;
+
+function updateCamera(dt) {
+  // Im Pointer-Lock zentriert sich der Blick langsam wieder, wenn die Maus ruht.
+  // Ohne Lock steuert die Mausposition absolut — dann darf nichts zurückfedern.
+  if (!lockDenied) {
+    const decay = Math.min(1, 1.1 * dt) * 0.35;
+    look.yaw *= (1 - decay);
+    look.pitch *= (1 - decay);
+  }
+
+  const lookQ = new THREE.Quaternion().setFromEuler(
+    new THREE.Euler(look.pitch, look.yaw, 0, 'YXZ')
+  );
+
+  if (camMode === 'cockpit') {
+    _camPos.copy(camOffCockpit).applyQuaternion(plane.quaternion).add(plane.position);
+    camera.position.copy(_camPos);
+    camera.quaternion.copy(plane.quaternion).multiply(lookQ);
+    planeMesh.visible = false;
+  } else {
+    planeMesh.visible = true;
+    // Verfolgerposition rotiert mit dem Blick um das Flugzeug
+    _camPos.copy(camOffChase).applyQuaternion(lookQ).applyQuaternion(plane.quaternion).add(plane.position);
+    // Nicht durch den Boden fahren
+    const g = Math.max(height(_camPos.x, _camPos.z), 0) + 3;
+    if (_camPos.y < g) _camPos.y = g;
+
+    if (!camInit) { camSmooth.copy(_camPos); camInit = true; }
+    camSmooth.lerp(_camPos, Math.min(1, 9 * dt));
+    camera.position.copy(camSmooth);
+
+    _camTarget.set(0, 1.2, -6).applyQuaternion(plane.quaternion).add(plane.position);
+    camera.up.set(0, 1, 0).applyQuaternion(plane.quaternion);
+    camera.lookAt(_camTarget);
+  }
+
+  // FOV zieht mit der Geschwindigkeit leicht auf
+  const targetFov = 65 + THREE.MathUtils.clamp((S.vel.length() - 60) * 0.09, -4, 16);
+  camera.fov += (targetFov - camera.fov) * Math.min(1, 3 * dt);
+  camera.updateProjectionMatrix();
+}
+
+/* ============================================================
+   HUD
+   ============================================================ */
+const el = {
+  spd: document.getElementById('i-spd'), alt: document.getElementById('i-alt'),
+  vs: document.getElementById('i-vs'), hdg: document.getElementById('i-hdg'),
+  aoa: document.getElementById('i-aoa'), g: document.getElementById('i-g'),
+  thrv: document.getElementById('thrval'), thrf: document.getElementById('thrfill')
+};
+
+let hudAcc = 0;
+function updateHud(aoa, dt) {
+  hudAcc += dt;
+  if (hudAcc < 0.08) return;
+  hudAcc = 0;
+
+  const speed = S.vel.length();
+  const kt = speed * 1.94384;
+  el.spd.textContent = `${kt.toFixed(0)} kt`;
+  el.spd.className = 'v' + (kt < 60 ? ' bad' : kt < 85 ? ' warn' : '');
+
+  const ground = Math.max(height(plane.position.x, plane.position.z), 0);
+  const agl = plane.position.y - ground;
+  el.alt.textContent = `${plane.position.y.toFixed(0)} m`;
+  el.alt.className = 'v' + (agl < 80 ? ' bad' : agl < 200 ? ' warn' : '');
+
+  el.vs.textContent = `${S.vs >= 0 ? '+' : ''}${S.vs.toFixed(1)} m/s`;
+  el.vs.className = 'v' + (S.vs < -12 ? ' warn' : '');
+
+  fwdOf(_fwd);
+  let hdg = (Math.atan2(_fwd.x, -_fwd.z) * 180 / Math.PI + 360) % 360;
+  el.hdg.textContent = `${hdg.toFixed(0).padStart(3, '0')}°`;
+
+  const aoaDeg = (aoa || 0) * 180 / Math.PI;
+  el.aoa.textContent = `${aoaDeg.toFixed(1)}°`;
+  el.aoa.className = 'v' + (Math.abs(aoaDeg) > 16 ? ' bad' : Math.abs(aoaDeg) > 12 ? ' warn' : '');
+
+  el.g.textContent = S.gLoad.toFixed(1);
+  el.g.className = 'v' + (Math.abs(S.gLoad) > 5 ? ' bad' : Math.abs(S.gLoad) > 3.5 ? ' warn' : '');
+
+  el.thrv.textContent = `${(S.throttle * 100).toFixed(0)}%`;
+  el.thrf.style.width = `${S.throttle * 100}%`;
+
+  if (S.crashed) { msgEl.textContent = 'CRASH — R für Neustart'; msgEl.classList.remove('hidden'); }
+  else if (lockDenied) msgEl.classList.add('hidden');
+  else if (pointerLocked) msgEl.classList.add('hidden');
+  else { msgEl.textContent = 'Klick ins Bild für Maussteuerung · ESC zum Lösen'; msgEl.classList.remove('hidden'); }
+}
+
+/* ============================================================
+   Loop
+   ============================================================ */
+let last = performance.now();
+let tileAcc = 0;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+
+  readInput(dt);
+  const aoa = physics(dt);
+
+  // Propeller dreht mit dem Schub
+  planeMesh.userData.prop.rotation.z += (2 + S.throttle * 40) * dt;
+  planeMesh.userData.prop.material.opacity = 0.12 + S.throttle * 0.2;
+
+  // Wolken ziehen mit, damit sie nie ausgehen
+  clouds.position.x = Math.round(plane.position.x / 22000) * 22000;
+  clouds.position.z = Math.round(plane.position.z / 22000) * 22000;
+  water.position.x = plane.position.x;
+  water.position.z = plane.position.z;
+
+  tileAcc += dt;
+  if (tileAcc > 0.4) { tileAcc = 0; updateTiles(plane.position.x, plane.position.z); }
+
+  if (S.crashed) {
+    S.crashT += dt;
+    if (S.crashT > 2.5) reset();
+  }
+
+  updateCamera(dt);
+  updateHud(aoa, dt);
+  renderer.render(scene, camera);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+reset();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
