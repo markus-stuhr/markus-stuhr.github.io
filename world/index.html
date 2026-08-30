@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=5">
+<title>Weltgeschichte — Reiche, Dynastien, Epochen</title>
+<style>
+:root{
+  --bg:#0e1116; --bg2:#151a22; --line:#2a323f; --fg:#e8edf4; --dim:#8b98ab;
+  --head:#11161e;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);
+  font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  -webkit-text-size-adjust:100%}
+header{padding:18px 20px 12px;border-bottom:1px solid var(--line)}
+h1{margin:0 0 4px;font-size:22px;letter-spacing:.02em}
+header p{margin:0;color:var(--dim);font-size:12.5px;max-width:70ch}
+header a{color:#7fb2ff}
+#wrap{position:relative;overflow:auto;height:calc(100vh - 108px);
+  -webkit-overflow-scrolling:touch}
+#canvas{position:relative}
+/* Jahresachse */
+.axis{position:absolute;left:0;top:0;width:var(--axisw);z-index:3;will-change:transform;
+  background:linear-gradient(90deg,var(--bg) 72%,transparent)}
+.colband{position:absolute;top:0;border-radius:4px;background:#ffffff06;
+  border:1px solid #ffffff08;pointer-events:none}
+.tick{position:absolute;left:0;width:100%;color:var(--dim);font-size:11px;
+  font-variant-numeric:tabular-nums;padding-left:8px;transform:translateY(-50%)}
+.grid{position:absolute;left:0;right:0;border-top:1px solid var(--line);opacity:.55}
+.gridmajor{opacity:1;border-top-color:#38455a}
+/* Spaltenkopf */
+.heads{position:sticky;top:0;z-index:4;height:var(--headh);background:var(--head);
+  border-bottom:1px solid var(--line)}
+.head{position:absolute;top:0;height:var(--headh);display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;font-size:11.5px;color:var(--dim);
+  text-align:center;padding:0 4px;line-height:1.15}
+.head b{font-size:16px;line-height:1}
+/* Bloecke */
+.block{position:absolute;border-radius:3px;overflow:hidden;cursor:pointer;
+  padding:3px 5px;color:#0d1117;font-size:10.5px;font-weight:600;
+  border:1px solid rgba(0,0,0,.28);transition:filter .12s,box-shadow .12s}
+.block:hover{filter:brightness(1.18);box-shadow:0 0 0 2px #fff8;z-index:5}
+.block .yr{display:block;font-weight:500;font-size:9px;opacity:.62}
+.block.tiny{padding:1px 3px;font-size:9px}
+.block.tiny .yr{display:none}
+/* Detail */
+#panel{position:fixed;right:14px;bottom:14px;width:290px;background:var(--bg2);
+  border:1px solid var(--line);border-radius:10px;padding:14px 16px;z-index:20;
+  box-shadow:0 12px 36px #0009;display:none}
+#panel h2{margin:0 0 2px;font-size:16px}
+#panel .meta{color:var(--dim);font-size:12px;margin-bottom:8px;
+  font-variant-numeric:tabular-nums}
+#panel a{color:#7fb2ff;font-size:13px;text-decoration:none}
+#panel a:hover{text-decoration:underline}
+#panel .close{position:absolute;top:8px;right:11px;color:var(--dim);cursor:pointer;
+  font-size:18px;line-height:1}
+#panel .src{margin-top:8px;font-size:10.5px;color:var(--dim)}
+footer{padding:8px 20px;color:var(--dim);font-size:11px;border-top:1px solid var(--line)}
+@media(max-width:700px){h1{font-size:18px}header p{font-size:11.5px}
+  #panel{left:14px;right:14px;width:auto}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Weltgeschichte</h1>
+  <p>Reiche, Dynastien und Epochen nebeneinander — Zeit läuft nach unten, jede Spalte ist eine
+     Weltregion. Die Zeitachse ist bewusst gestaucht: ältere Jahrtausende bekommen weniger Platz
+     als die letzten Jahrhunderte. Block anklicken für den Wikipedia-Artikel.</p>
+</header>
+<div id="wrap"><div id="canvas">
+  <div class="heads" id="heads"></div>
+  <div class="axis" id="axis"></div>
+  <div id="blocks"></div>
+</div></div>
+<div id="panel"><span class="close" onclick="hidePanel()">×</span>
+  <h2 id="pn"></h2><div class="meta" id="pm"></div>
+  <a id="pl" target="_blank" rel="noopener">Wikipedia-Artikel öffnen →</a>
+  <div class="src" id="ps"></div>
+</div>
+<footer>Daten: Wikidata (Gründungs- bzw. Anfangs- und Enddatum), Stand 30.08.2026 ·
+  Auswahl und Einordnung redaktionell · Vorprähistorische Kulturen ohne datierte
+  Wikidata-Aussage sind mit gängigen Lehrbuchwerten angesetzt.</footer>
+<script>
+'use strict';
+const DATA = {"columns":[{"id":"usa","label":"Vereinigte Staaten","flag":"🇺🇸"},{"id":"can","label":"Kanada","flag":"🇨🇦"},{"id":"mex","label":"Mexiko","flag":"🇲🇽"},{"id":"arg","label":"Argentinien","flag":"🇦🇷"},{"id":"aus","label":"Australien","flag":"🇦🇺"},{"id":"gbr","label":"Britische Inseln","flag":"🇬🇧"},{"id":"por","label":"Portugal","flag":"🇵🇹"},{"id":"esp","label":"Spanien","flag":"🇪🇸"},{"id":"fra","label":"Frankreich","flag":"🇫🇷"},{"id":"ita","label":"Italien","flag":"🇮🇹"},{"id":"deu","label":"Deutschland","flag":"🇩🇪"},{"id":"aut","label":"Österreich","flag":"🇦🇹"},{"id":"gre","label":"Griechenland","flag":"🇬🇷"},{"id":"tur","label":"Anatolien / Türkei","flag":"🇹🇷"},{"id":"egy","label":"Ägypten","flag":"🇪🇬"},{"id":"irq","label":"Mesopotamien / Irak","flag":"🇮🇶"},{"id":"irn","label":"Iran","flag":"🇮🇷"},{"id":"ind","label":"Indien","flag":"🇮🇳"},{"id":"chn","label":"China","flag":"🇨🇳"},{"id":"jpn","label":"Japan","flag":"🇯🇵"}],"entities":[{"c":"usa","n":"Pueblo-Kultur","f":700,"t":1600,"w":"Pueblo-Kultur","q":"Q852431","s":"wikidata"},{"c":"usa","n":"Mississippi-Kultur","f":800,"t":1600,"w":"Mississippi-Kultur","q":"Q1052095","s":"wikidata"},{"c":"usa","n":"Dreizehn Kolonien","f":1732,"t":1776,"w":"Dreizehn Kolonien","q":"Q179997","s":"wikidata"},{"c":"usa","n":"Vereinigte Staaten","f":1776,"t":2026,"w":"Vereinigte Staaten","q":"Q30","s":"wikidata"},{"c":"usa","n":"Konföderierte Staaten von Amerika","f":1861,"t":1865,"w":"Konföderierte Staaten von Amerika","q":"Q81931","s":"wikidata"},{"c":"can","n":"Neufrankreich","f":1534,"t":1763,"w":"Neufrankreich","q":"Q170604","s":"wikidata"},{"c":"can","n":"Provinz Kanada","f":1841,"t":1867,"w":"Provinz Kanada","q":"Q1121436","s":"wikidata"},{"c":"can","n":"Kanada","f":1867,"t":2026,"w":"Kanada","q":"Q16","s":"wikidata"},{"c":"mex","n":"Maya","f":-2000,"t":1697,"w":"Maya (Software)","q":"Q272597","s":"korrigiert"},{"c":"mex","n":"Olmeken","f":-1400,"t":-400,"w":"Olmeken","q":"Q135364","s":"korrigiert"},{"c":"mex","n":"Teotihuacán","f":-100,"t":650,"w":"Teotihuacán","q":"Q28790384","s":"korrigiert"},{"c":"mex","n":"Tolteken","f":900,"t":1168,"w":"Tolteken","q":"Q187897","s":"korrigiert"},{"c":"mex","n":"Azteken","f":1200,"t":1523,"w":"Azteken","q":"Q12542","s":"wikidata"},{"c":"mex","n":"Vizekönigreich Neuspanien","f":1521,"t":1821,"w":"Vizekönigreich Neuspanien","q":"Q170603","s":"wikidata"},{"c":"mex","n":"Kaiserreich Mexiko (1821–1823)","f":1821,"t":1823,"w":"Kaiserreich Mexiko (1821–1823)","q":null,"s":"manuell"},{"c":"mex","n":"Mexiko","f":1821,"t":2026,"w":"Mexiko","q":"Q96","s":"wikidata"},{"c":"mex","n":"Kaiserreich Mexiko","f":1864,"t":1867,"w":"Kaiserreich Mexiko (1864–1867)","q":"Q371334","s":"wikidata"},{"c":"arg","n":"Inka","f":1438,"t":1533,"w":"Inka","q":"Q3404008","s":"korrigiert"},{"c":"arg","n":"Vizekönigreich Peru","f":1542,"t":1824,"w":"Vizekönigreich Peru","q":"Q211435","s":"wikidata"},{"c":"arg","n":"Vizekönigreich des Río de la Plata","f":1776,"t":1810,"w":"Vizekönigreich Río de la Plata","q":"Q210551","s":"wikidata"},{"c":"arg","n":"Vereinigte Provinzen des Río de la Plata","f":1810,"t":1831,"w":"Vereinigte Provinzen des Río de la Plata","q":"Q738144","s":"wikidata"},{"c":"arg","n":"Argentinien","f":1816,"t":2026,"w":"Argentinien","q":"Q414","s":"wikidata"},{"c":"aus","n":"New South Wales","f":1788,"t":2026,"w":"New South Wales","q":"Q3224","s":"wikidata"},{"c":"aus","n":"Australien","f":1901,"t":2026,"w":"Australien","q":"Q408","s":"wikidata"},{"c":"gbr","n":"Stonehenge","f":-3000,"t":-1400,"w":"Stonehenge","q":"Q39671","s":"wikidata"},{"c":"gbr","n":"Britannia (Provinz)","f":43,"t":410,"w":"Britannia (Provinz)","q":null,"s":"manuell"},{"c":"gbr","n":"Angelsachsen","f":410,"t":1066,"w":"Angelsachsen","q":"Q29581014","s":"korrigiert"},{"c":"gbr","n":"Königreich Wessex","f":519,"t":927,"w":"Königreich Wessex","q":"Q105313","s":"wikidata"},{"c":"gbr","n":"Mercia","f":527,"t":918,"w":"Mercia","q":"Q105092","s":"wikidata"},{"c":"gbr","n":"Northumbria","f":653,"t":954,"w":"Northumbria","q":"Q107299","s":"wikidata"},{"c":"gbr","n":"Königreich Schottland","f":843,"t":1707,"w":"Königreich Schottland","q":"Q230791","s":"wikidata"},{"c":"gbr","n":"Danelag","f":866,"t":954,"w":"Königreich Jórvík","q":"Q889970","s":"wikidata"},{"c":"gbr","n":"Königreich England","f":927,"t":1707,"w":"Königreich England","q":"Q179876","s":"wikidata"},{"c":"gbr","n":"Haus Plantagenet","f":1154,"t":1485,"w":"Haus Plantagenet","q":"Q106151","s":"korrigiert"},{"c":"gbr","n":"Haus Tudor","f":1485,"t":1603,"w":"Haus Tudor","q":"Q101978","s":"wikidata"},{"c":"gbr","n":"Königreich Irland","f":1542,"t":1801,"w":"Königreich Irland","q":"Q215530","s":"wikidata"},{"c":"gbr","n":"Britisches Weltreich","f":1583,"t":1997,"w":"Britisches Weltreich","q":"Q8680","s":"wikidata"},{"c":"gbr","n":"Haus Stuart","f":1603,"t":1714,"w":"Haus Stewart","q":"Q179840","s":"korrigiert"},{"c":"gbr","n":"Commonwealth of England","f":1649,"t":1653,"w":"Commonwealth of England","q":"Q330362","s":"wikidata"},{"c":"gbr","n":"Königreich Großbritannien","f":1707,"t":1801,"w":"Königreich Großbritannien","q":"Q161885","s":"wikidata"},{"c":"gbr","n":"Vereinigtes Königreich","f":1801,"t":2026,"w":"Vereinigtes Königreich","q":"Q145","s":"wikidata"},{"c":"por","n":"Königreich der Sueben","f":411,"t":585,"w":"Königreich der Sueben","q":"Q1048918","s":"wikidata"},{"c":"por","n":"Grafschaft Portucale","f":868,"t":1139,"w":"Erste Grafschaft Portucale","q":"Q1139807","s":"wikidata"},{"c":"por","n":"Königreich Portugal","f":1139,"t":1910,"w":"Königreich Portugal","q":"Q45670","s":"wikidata"},{"c":"por","n":"Portugal","f":1139,"t":2026,"w":"Portugal","q":"Q45","s":"wikidata"},{"c":"por","n":"Portugiesisches Kolonialreich","f":1415,"t":1999,"w":"Portugiesische Kolonialgeschichte","q":"Q200464","s":"wikidata"},{"c":"por","n":"Erste Portugiesische Republik","f":1910,"t":1926,"w":"Erste Portugiesische Republik","q":"Q167360","s":"wikidata"},{"c":"por","n":"Estado Novo","f":1933,"t":1974,"w":"Estado Novo (Portugal)","q":"Q824489","s":"wikidata"},{"c":"esp","n":"Tartessos","f":-1200,"t":-500,"w":"Tartessos","q":null,"s":"manuell"},{"c":"esp","n":"Keltiberer","f":-600,"t":-100,"w":"Keltiberer","q":null,"s":"manuell"},{"c":"esp","n":"Hispania","f":-218,"t":472,"w":"Spanien","q":"Q29","s":"korrigiert"},{"c":"esp","n":"Westgotenreich","f":476,"t":718,"w":"Westgotenreich","q":"Q126936","s":"wikidata"},{"c":"esp","n":"Königreich Asturien","f":718,"t":910,"w":"Königreich Asturien","q":"Q231392","s":"wikidata"},{"c":"esp","n":"Reconquista","f":733,"t":1492,"w":"Reconquista","q":"Q79791","s":"wikidata"},{"c":"esp","n":"Emirat von Córdoba","f":756,"t":929,"w":"Emirat von Córdoba","q":"Q1337854","s":"wikidata"},{"c":"esp","n":"Königreich León","f":910,"t":1230,"w":"Königreich León","q":"Q175276","s":"korrigiert"},{"c":"esp","n":"Kalifat von Córdoba","f":929,"t":1031,"w":"Kalifat von Córdoba","q":"Q171740","s":"wikidata"},{"c":"esp","n":"Taifa","f":1031,"t":1110,"w":"Taifa-Königreiche","q":"Q217177","s":"korrigiert"},{"c":"esp","n":"Königreich Aragón","f":1035,"t":1162,"w":"Königreich Aragón","q":"Q199442","s":"korrigiert"},{"c":"esp","n":"Almoraviden","f":1040,"t":1147,"w":"Almoraviden","q":"Q75613","s":"wikidata"},{"c":"esp","n":"Königreich Kastilien","f":1065,"t":1479,"w":"Königreich Kastilien","q":"Q179293","s":"korrigiert"},{"c":"esp","n":"Almohaden","f":1121,"t":1269,"w":"Almohaden","q":"Q10406562","s":"wikidata"},{"c":"esp","n":"Krone Aragón","f":1162,"t":1479,"w":"Krone von Aragonien","q":"Q204920","s":"korrigiert"},{"c":"esp","n":"Emirat von Granada","f":1238,"t":1492,"w":"Emirat von Granada","q":"Q238445","s":"wikidata"},{"c":"esp","n":"Spanisches Kolonialreich","f":1492,"t":1899,"w":"Spanisches Kolonialreich","q":"Q80702","s":"wikidata"},{"c":"esp","n":"Spanien","f":1715,"t":2026,"w":"Spanien","q":"Q29","s":"wikidata"},{"c":"esp","n":"Zweite Spanische Republik","f":1931,"t":1939,"w":"Zweite Spanische Republik","q":"Q178038","s":"wikidata"},{"c":"esp","n":"Franco-Diktatur","f":1939,"t":1975,"w":"Franco-Diktatur","q":"Q13474305","s":"wikidata"},{"c":"fra","n":"Gallien","f":-500,"t":-51,"w":"Gallien","q":null,"s":"manuell"},{"c":"fra","n":"Fränkisches Reich","f":481,"t":843,"w":"Fränkisches Reich","q":"Q146246","s":"wikidata"},{"c":"fra","n":"Neustrien","f":511,"t":751,"w":"Neustrien","q":"Q106577","s":"korrigiert"},{"c":"fra","n":"Westfrankenreich","f":843,"t":987,"w":"Westfrankenreich","q":"Q46370","s":"wikidata"},{"c":"fra","n":"Haus Kapet","f":987,"t":1328,"w":"Haus Kapet","q":null,"s":"manuell"},{"c":"fra","n":"Königreich Frankreich","f":987,"t":1792,"w":"Konstitutionelle Monarchie in Frankreich (1791–1792)","q":"Q69323","s":"korrigiert"},{"c":"fra","n":"Haus Valois","f":1328,"t":1589,"w":"Haus Valois","q":"Q182135","s":"korrigiert"},{"c":"fra","n":"Französische Kolonien","f":1534,"t":1980,"w":"Französische Kolonien","q":"Q179023","s":"wikidata"},{"c":"fra","n":"Haus Bourbon","f":1589,"t":1830,"w":"Haus Bourbon","q":"Q58389","s":"korrigiert"},{"c":"fra","n":"Erste Französische Republik","f":1792,"t":1804,"w":"Erste Französische Republik","q":"Q58296","s":"wikidata"},{"c":"fra","n":"Erstes Kaiserreich","f":1804,"t":1815,"w":"Erstes Kaiserreich","q":"Q71084","s":"wikidata"},{"c":"fra","n":"Zweite Französische Republik","f":1848,"t":1852,"w":"Zweite Französische Republik","q":"Q58326","s":"wikidata"},{"c":"fra","n":"Zweites Kaiserreich","f":1852,"t":1870,"w":"Zweites Kaiserreich","q":"Q71092","s":"wikidata"},{"c":"fra","n":"Dritte Französische Republik","f":1870,"t":1940,"w":"Dritte Französische Republik","q":"Q70802","s":"wikidata"},{"c":"fra","n":"Vichy-Regime","f":1940,"t":1944,"w":"Vichy-Regime","q":"Q69808","s":"wikidata"},{"c":"fra","n":"Vierte Französische Republik","f":1946,"t":1958,"w":"Vierte Französische Republik","q":"Q69829","s":"wikidata"},{"c":"fra","n":"Fünfte Französische Republik","f":1958,"t":2026,"w":"Fünfte Französische Republik","q":"Q200686","s":"wikidata"},{"c":"ita","n":"Etrusker","f":-900,"t":-100,"w":"Etrusker","q":null,"s":"manuell"},{"c":"ita","n":"Römische Königszeit","f":-753,"t":-509,"w":"Römische Königszeit","q":"Q201038","s":"wikidata"},{"c":"ita","n":"Römisches Reich","f":-753,"t":476,"w":"Römisches Reich","q":"Q1747689","s":"wikidata"},{"c":"ita","n":"Römische Republik","f":-509,"t":-27,"w":"Römische Republik (1849)","q":"Q1072140","s":"korrigiert"},{"c":"ita","n":"Weströmisches Reich","f":395,"t":476,"w":"Weströmisches Reich","q":"Q42834","s":"wikidata"},{"c":"ita","n":"Ostgotenreich","f":493,"t":553,"w":"Ostgotenreich","q":"Q583038","s":"wikidata"},{"c":"ita","n":"Langobardenreich","f":568,"t":774,"w":"Langobardenreich","q":"Q854415","s":"wikidata"},{"c":"ita","n":"Republik Venedig","f":697,"t":1797,"w":"Republik Venedig","q":"Q4948","s":"wikidata"},{"c":"ita","n":"Kirchenstaat","f":754,"t":1870,"w":"Kirchenstaat","q":"Q170174","s":"wikidata"},{"c":"ita","n":"Republik Genua","f":1005,"t":1797,"w":"Republik Genua","q":"Q174306","s":"wikidata"},{"c":"ita","n":"Königreich Sizilien","f":1130,"t":1282,"w":"Königreich Sizilien","q":"Q188586","s":"korrigiert"},{"c":"ita","n":"Königreich Neapel","f":1282,"t":1816,"w":"Königreich Neapel","q":"Q173065","s":"wikidata"},{"c":"ita","n":"Herzogtum Mailand","f":1395,"t":1797,"w":"Herzogtum Mailand","q":"Q153529","s":"wikidata"},{"c":"ita","n":"Königreich Sardinien","f":1720,"t":1861,"w":"Königreich Sardinien","q":"Q165154","s":"wikidata"},{"c":"ita","n":"Königreich beider Sizilien","f":1738,"t":1861,"w":"Königreich beider Sizilien","q":"Q180393","s":"wikidata"},{"c":"ita","n":"Königreich Italien","f":1861,"t":1946,"w":"Königreich Italien (1861–1946)","q":"Q172579","s":"wikidata"},{"c":"ita","n":"Italien","f":1946,"t":2026,"w":"Italien","q":"Q38","s":"wikidata"},{"c":"deu","n":"Germanen","f":-750,"t":500,"w":"Germanen","q":"Q111639837","s":"korrigiert"},{"c":"deu","n":"Ostfrankenreich","f":843,"t":962,"w":"Ostfrankenreich","q":"Q153080","s":"wikidata"},{"c":"deu","n":"Heiliges Römisches Reich","f":962,"t":1806,"w":"Heiliges Römisches Reich","q":"Q12548","s":"wikidata"},{"c":"deu","n":"Hanse","f":1356,"t":1669,"w":"Seoul","q":"Q8684","s":"korrigiert"},{"c":"deu","n":"Hohenzollern","f":1415,"t":1918,"w":"Hohenzollern","q":"Q83969","s":"korrigiert"},{"c":"deu","n":"Königreich Preußen","f":1701,"t":1918,"w":"Königreich Preußen","q":"Q27306","s":"wikidata"},{"c":"deu","n":"Rheinbund","f":1806,"t":1813,"w":"Rheinbund","q":"Q154741","s":"wikidata"},{"c":"deu","n":"Königreich Bayern","f":1806,"t":1918,"w":"Königreich Bayern","q":"Q154195","s":"wikidata"},{"c":"deu","n":"Königreich Sachsen","f":1806,"t":1918,"w":"Königreich Sachsen","q":"Q153015","s":"wikidata"},{"c":"deu","n":"Königreich Württemberg","f":1806,"t":1918,"w":"Königreich Württemberg","q":"Q159631","s":"wikidata"},{"c":"deu","n":"Königreich Hannover","f":1814,"t":1866,"w":"Königreich Hannover","q":"Q164079","s":"wikidata"},{"c":"deu","n":"Deutscher Bund","f":1815,"t":1866,"w":"Deutscher Bund","q":"Q151624","s":"wikidata"},{"c":"deu","n":"Norddeutscher Bund","f":1867,"t":1870,"w":"Norddeutscher Bund","q":"Q150981","s":"wikidata"},{"c":"deu","n":"Deutsches Kaiserreich","f":1871,"t":1918,"w":"Deutsches Kaiserreich","q":"Q43287","s":"wikidata"},{"c":"deu","n":"Deutsches Reich","f":1871,"t":1949,"w":"Deutsches Reich","q":"Q1206012","s":"wikidata"},{"c":"deu","n":"Weimarer Republik","f":1918,"t":1933,"w":"Weimarer Republik","q":"Q41304","s":"wikidata"},{"c":"deu","n":"Deutsche Demokratische Republik","f":1949,"t":1990,"w":"Deutsche Demokratische Republik","q":"Q16957","s":"wikidata"},{"c":"deu","n":"Bundesrepublik Deutschland","f":1949,"t":2026,"w":"Deutschland","q":"Q183","s":"wikidata"},{"c":"aut","n":"Noricum","f":-16,"t":476,"w":"Noricum","q":"Q131434","s":"wikidata"},{"c":"aut","n":"Mark Österreich","f":976,"t":1156,"w":"Mark Österreich","q":null,"s":"manuell"},{"c":"aut","n":"Herzogtum Österreich","f":1156,"t":1453,"w":"Herzogtum Österreich","q":"Q3624335","s":"wikidata"},{"c":"aut","n":"Königreich Böhmen","f":1198,"t":1918,"w":"Königreich Böhmen","q":"Q42585","s":"wikidata"},{"c":"aut","n":"Habsburg","f":1273,"t":1918,"w":"Habsburg","q":"Q65968","s":"korrigiert"},{"c":"aut","n":"Erzherzogtum Österreich","f":1358,"t":1918,"w":"Erzherzogtum Österreich","q":"Q699964","s":"wikidata"},{"c":"aut","n":"Habsburgermonarchie","f":1526,"t":1918,"w":"Habsburgermonarchie","q":"Q153136","s":"wikidata"},{"c":"aut","n":"Kaisertum Österreich","f":1804,"t":1867,"w":"Kaisertum Österreich","q":"Q131964","s":"wikidata"},{"c":"aut","n":"Österreich-Ungarn","f":1867,"t":1918,"w":"Österreich-Ungarn","q":"Q28513","s":"wikidata"},{"c":"aut","n":"Deutschösterreich","f":1918,"t":1919,"w":"Deutschösterreich","q":"Q268970","s":"wikidata"},{"c":"aut","n":"Österreich","f":1918,"t":2026,"w":"Österreich","q":"Q40","s":"wikidata"},{"c":"aut","n":"Erste Republik","f":1919,"t":1934,"w":"Erste Republik Österreich","q":"Q518101","s":"wikidata"},{"c":"aut","n":"Königreich Ungarn","f":1920,"t":1946,"w":"Königreich Ungarn (1920–1946)","q":"Q600018","s":"wikidata"},{"c":"gre","n":"Minoische Kultur","f":-3300,"t":-1100,"w":"Minoische Kultur","q":"Q134178","s":"wikidata"},{"c":"gre","n":"Mykenische Kultur","f":-1600,"t":-1100,"w":"Mykenische Kultur","q":"Q181264","s":"wikidata"},{"c":"gre","n":"Antikes Griechenland","f":-1200,"t":-146,"w":"Antikes Griechenland","q":"Q11772","s":"korrigiert"},{"c":"gre","n":"Dunkle Jahrhunderte","f":-1100,"t":-850,"w":"Dunkle Jahrhunderte (Antike)","q":"Q210443","s":"wikidata"},{"c":"gre","n":"Sparta","f":-900,"t":-192,"w":"Sparta","q":"Q5690","s":"wikidata"},{"c":"gre","n":"Makedonien","f":-808,"t":-167,"w":"Makedonien (antikes Königreich)","q":"Q83958","s":"wikidata"},{"c":"gre","n":"Antikes Athen","f":-508,"t":-322,"w":"Antikes Athen","q":"Q844930","s":"korrigiert"},{"c":"gre","n":"Alexanderreich","f":-336,"t":-301,"w":"Alexanderreich","q":"Q13405524","s":"wikidata"},{"c":"gre","n":"Hellenismus","f":-323,"t":-30,"w":"Hellenismus","q":"Q428995","s":"wikidata"},{"c":"gre","n":"Achaischer Bund","f":-280,"t":-146,"w":"Achaiischer Bund","q":"Q244796","s":"wikidata"},{"c":"gre","n":"Achaea (römische Provinz)","f":-146,"t":395,"w":"Achaea (römische Provinz)","q":null,"s":"manuell"},{"c":"gre","n":"Byzantinisches Reich","f":395,"t":1453,"w":"Byzantinisches Reich","q":"Q12544","s":"wikidata"},{"c":"gre","n":"Herzogtum Athen","f":1205,"t":1458,"w":"Herzogtum Athen","q":"Q334714","s":"wikidata"},{"c":"gre","n":"Griechenland","f":1821,"t":2026,"w":"Griechenland","q":"Q41","s":"wikidata"},{"c":"gre","n":"Königreich Griechenland","f":1832,"t":1973,"w":"Königreich Griechenland","q":"Q209065","s":"wikidata"},{"c":"tur","n":"Hattier","f":-2500,"t":-1700,"w":"Hattier","q":null,"s":"manuell"},{"c":"tur","n":"Hethiterreich","f":-1650,"t":-1178,"w":"Hethitische Großreichszeit","q":"Q4496560","s":"wikidata"},{"c":"tur","n":"Phrygien","f":-1200,"t":-700,"w":"Phrygien","q":null,"s":"manuell"},{"c":"tur","n":"Lydien","f":-1200,"t":-546,"w":"Lydien","q":"Q620765","s":"wikidata"},{"c":"tur","n":"Urartäisches Reich","f":-860,"t":-590,"w":"Urartäisches Reich","q":"Q185068","s":"wikidata"},{"c":"tur","n":"Bithynien","f":-322,"t":-74,"w":"Bithynien","q":"Q373189","s":"wikidata"},{"c":"tur","n":"Pergamon","f":-282,"t":-133,"w":"Pergamon","q":"Q18986","s":"korrigiert"},{"c":"tur","n":"Sultanat der Rum-Seldschuken","f":1077,"t":1307,"w":"Sultanat der Rum-Seldschuken","q":"Q975405","s":"wikidata"},{"c":"tur","n":"Kaiserreich Nikaia","f":1204,"t":1261,"w":"Kaiserreich Nikaia","q":"Q181254","s":"wikidata"},{"c":"tur","n":"Kaiserreich Trapezunt","f":1204,"t":1461,"w":"Kaiserreich Trapezunt","q":"Q178913","s":"wikidata"},{"c":"tur","n":"Osmanisches Reich","f":1302,"t":1922,"w":"Osmanisches Reich","q":"Q12560","s":"wikidata"},{"c":"tur","n":"Türkei","f":1923,"t":2026,"w":"Türkei","q":"Q43","s":"wikidata"},{"c":"egy","n":"Prädynastische Zeit","f":-6500,"t":-3100,"w":"Prädynastik","q":"Q714601","s":"wikidata"},{"c":"egy","n":"Frühdynastische Periode","f":-3032,"t":-2707,"w":"Frühdynastische Periode","q":"Q187979","s":"wikidata"},{"c":"egy","n":"Altes Reich","f":-2707,"t":-2216,"w":"Altes Reich","q":"Q177819","s":"wikidata"},{"c":"egy","n":"Erste Zwischenzeit","f":-2181,"t":-2055,"w":"Erste Zwischenzeit","q":"Q232211","s":"wikidata"},{"c":"egy","n":"Mittleres Reich","f":-2040,"t":-1782,"w":"Mittleres Reich","q":"Q191324","s":"wikidata"},{"c":"egy","n":"Zweite Zwischenzeit","f":-1782,"t":-1570,"w":"Zweite Zwischenzeit","q":"Q206715","s":"wikidata"},{"c":"egy","n":"Neues Reich","f":-1550,"t":-1070,"w":"Neues Reich","q":"Q180568","s":"wikidata"},{"c":"egy","n":"Dritte Zwischenzeit","f":-1077,"t":-656,"w":"Dritte Zwischenzeit","q":"Q212728","s":"wikidata"},{"c":"egy","n":"Spätzeit","f":-664,"t":-332,"w":"Spätzeit des Alten Ägyptens","q":"Q621917","s":"wikidata"},{"c":"egy","n":"Ptolemäisches Königreich","f":-305,"t":-30,"w":"Ptolemäerreich","q":"Q2320005","s":"wikidata"},{"c":"egy","n":"Aegyptus","f":-30,"t":642,"w":"Aegyptus","q":"Q202311","s":"wikidata"},{"c":"egy","n":"Fatimidenreich","f":909,"t":1171,"w":"Fatimidenreich","q":"Q160307","s":"wikidata"},{"c":"egy","n":"Ayyubiden","f":1171,"t":1341,"w":"Ayyubiden","q":"Q180114","s":"wikidata"},{"c":"egy","n":"Sultanat der Mameluken","f":1250,"t":1517,"w":"Sultanat der Mameluken","q":"Q282428","s":"wikidata"},{"c":"egy","n":"Khedivat Ägypten","f":1867,"t":1914,"w":"Khedivat Ägypten","q":"Q127861","s":"wikidata"},{"c":"egy","n":"Königreich Ägypten","f":1922,"t":1953,"w":"Königreich Ägypten","q":"Q124943","s":"wikidata"},{"c":"egy","n":"Ägypten","f":1922,"t":2026,"w":"Ägypten","q":"Q79","s":"wikidata"},{"c":"irq","n":"Obed-Zeit","f":-5500,"t":-3500,"w":"Obed-Zeit","q":"Q245156","s":"wikidata"},{"c":"irq","n":"Sumer","f":-5500,"t":-1900,"w":"Sumer","q":"Q35355","s":"wikidata"},{"c":"irq","n":"Uruk","f":-4000,"t":-2000,"w":"Uruk","q":"Q168518","s":"korrigiert"},{"c":"irq","n":"Reich von Akkad","f":-2334,"t":-2154,"w":"Reich von Akkad","q":"Q4461035","s":"wikidata"},{"c":"irq","n":"Ur-III-Zeit","f":-2112,"t":-2004,"w":"Ur-III-Zeit","q":"Q723587","s":"wikidata"},{"c":"irq","n":"Assyrien","f":-2025,"t":-609,"w":"Assyrisches Reich","q":"Q41137","s":"wikidata"},{"c":"irq","n":"Babylonien","f":-1900,"t":-539,"w":"Babylonien","q":"Q47690","s":"wikidata"},{"c":"irq","n":"Kassiten","f":-1531,"t":-1155,"w":"Kassiten","q":"Q243312","s":"wikidata"},{"c":"irq","n":"Assyrisches Reich","f":-911,"t":-609,"w":"Neuassyrisches Reich","q":"Q10914393","s":"wikidata"},{"c":"irq","n":"Neubabylonisches Reich","f":-626,"t":-539,"w":"Neubabylonisches Reich","q":"Q624887","s":"wikidata"},{"c":"irq","n":"Achämenidenreich","f":-550,"t":-330,"w":"Achämenidenreich","q":"Q389688","s":"wikidata"},{"c":"irq","n":"Seleukidenreich","f":-312,"t":-63,"w":"Seleukidenreich","q":"Q93180","s":"wikidata"},{"c":"irq","n":"Partherreich","f":-247,"t":224,"w":"Partherreich","q":"Q1986139","s":"wikidata"},{"c":"irq","n":"Umayyaden-Kalifat","f":661,"t":750,"w":"Umayyaden-Kalifat","q":"Q8575586","s":"wikidata"},{"c":"irq","n":"Abbasiden-Kalifat","f":750,"t":1258,"w":"Abbasiden-Kalifat","q":"Q12536","s":"wikidata"},{"c":"irq","n":"Ilchane","f":1256,"t":1335,"w":"Ilchane","q":"Q178084","s":"wikidata"},{"c":"irq","n":"Irak","f":1932,"t":2026,"w":"Irak","q":"Q796","s":"wikidata"},{"c":"irn","n":"Elam","f":-2700,"t":-539,"w":"Elam (Altertum)","q":"Q128904","s":"wikidata"},{"c":"irn","n":"Medien","f":-678,"t":-550,"w":"Medien","q":null,"s":"manuell"},{"c":"irn","n":"Achämenidenreich","f":-550,"t":-330,"w":"Achämenidenreich","q":"Q389688","s":"wikidata"},{"c":"irn","n":"Sassanidenreich","f":224,"t":651,"w":"Sassanidenreich","q":"Q83891","s":"wikidata"},{"c":"irn","n":"Buyiden","f":934,"t":1062,"w":"Buyiden","q":"Q273874","s":"wikidata"},{"c":"irn","n":"Reich der Großseldschuken","f":1037,"t":1194,"w":"Reich der Großseldschuken","q":"Q3708094","s":"wikidata"},{"c":"irn","n":"Timuridenreich","f":1370,"t":1507,"w":"Timuridenreich","q":"Q484195","s":"wikidata"},{"c":"irn","n":"Safawiden","f":1501,"t":1736,"w":"Safawiden","q":"Q161205","s":"wikidata"},{"c":"irn","n":"Afschariden","f":1736,"t":1796,"w":"Afschariden","q":"Q388739","s":"wikidata"},{"c":"irn","n":"Kadscharen","f":1785,"t":1925,"w":"Kadscharen","q":"Q189326","s":"wikidata"},{"c":"irn","n":"Pahlavi","f":1925,"t":1979,"w":"Pahlavi (Dynastie)","q":"Q207991","s":"wikidata"},{"c":"irn","n":"Iran","f":1979,"t":2026,"w":"Iran","q":"Q794","s":"wikidata"},{"c":"ind","n":"Indus-Kultur","f":-3000,"t":-1800,"w":"Indus-Kultur","q":"Q42534","s":"wikidata"},{"c":"ind","n":"Vedische Kultur","f":-1500,"t":-500,"w":"Vedische Kultur","q":null,"s":"manuell"},{"c":"ind","n":"Magadha","f":-1200,"t":-345,"w":"Magadha","q":"Q234009","s":"wikidata"},{"c":"ind","n":"Maurya-Reich","f":-322,"t":-185,"w":"Maurya-Reich","q":"Q62943","s":"wikidata"},{"c":"ind","n":"Chola","f":-300,"t":1279,"w":"Chola","q":"Q151148","s":"korrigiert"},{"c":"ind","n":"Kuschan","f":30,"t":375,"w":"Kuschana","q":"Q25979","s":"wikidata"},{"c":"ind","n":"Gupta-Reich","f":320,"t":550,"w":"Gupta-Reich","q":"Q11774","s":"wikidata"},{"c":"ind","n":"Sultanat von Delhi","f":1206,"t":1526,"w":"Sultanat von Delhi","q":"Q229411","s":"wikidata"},{"c":"ind","n":"Vijayanagar","f":1336,"t":1646,"w":"Vijayanagar","q":"Q167639","s":"wikidata"},{"c":"ind","n":"Mogulreich","f":1526,"t":1857,"w":"Mogulreich","q":"Q33296","s":"wikidata"},{"c":"ind","n":"Maratha","f":1674,"t":1818,"w":"Maratha","q":"Q83618","s":"wikidata"},{"c":"ind","n":"Reich der Sikh","f":1733,"t":1849,"w":"Reich der Sikh","q":"Q83572","s":"wikidata"},{"c":"ind","n":"Britisch-Indien","f":1858,"t":1947,"w":"Britisch-Indien","q":"Q129286","s":"wikidata"},{"c":"ind","n":"Indien","f":1947,"t":2026,"w":"Indien","q":"Q668","s":"wikidata"},{"c":"chn","n":"Xia-Dynastie","f":-2070,"t":-1600,"w":"Xia-Dynastie","q":"Q169705","s":"wikidata"},{"c":"chn","n":"Shang-Dynastie","f":-1600,"t":-1046,"w":"Shang-Dynastie","q":"Q128938","s":"wikidata"},{"c":"chn","n":"Zhou-Dynastie","f":-1046,"t":-256,"w":"Zhou-Dynastie","q":"Q35216","s":"wikidata"},{"c":"chn","n":"Qin-Dynastie","f":-221,"t":-206,"w":"Qin-Dynastie","q":"Q7183","s":"wikidata"},{"c":"chn","n":"Han-Dynastie","f":-206,"t":220,"w":"Han-Dynastie","q":"Q7209","s":"wikidata"},{"c":"chn","n":"Sui-Dynastie","f":581,"t":618,"w":"Sui-Dynastie","q":"Q7405","s":"wikidata"},{"c":"chn","n":"Tang-Dynastie","f":618,"t":907,"w":"Tang-Dynastie","q":"Q9683","s":"wikidata"},{"c":"chn","n":"Song-Dynastie","f":960,"t":1279,"w":"Song-Dynastie","q":"Q7462","s":"wikidata"},{"c":"chn","n":"Jin-Dynastie","f":1115,"t":1234,"w":"Jin-Dynastie (1125–1234)","q":"Q5066","s":"wikidata"},{"c":"chn","n":"Yuan-Dynastie","f":1271,"t":1368,"w":"Yuan-Dynastie","q":"Q7313","s":"wikidata"},{"c":"chn","n":"Ming-Dynastie","f":1368,"t":1644,"w":"Ming-Dynastie","q":"Q9903","s":"wikidata"},{"c":"chn","n":"Qing-Dynastie","f":1636,"t":1912,"w":"Qing-Dynastie","q":"Q8733","s":"wikidata"},{"c":"chn","n":"Republik China","f":1912,"t":1949,"w":"Republik China (1912–1949)","q":"Q13426199","s":"wikidata"},{"c":"chn","n":"Volksrepublik China","f":1949,"t":2026,"w":"Volksrepublik China","q":"Q148","s":"wikidata"},{"c":"jpn","n":"Jōmon-Zeit","f":-13000,"t":-400,"w":"Jōmon-Zeit","q":"Q52824","s":"wikidata"},{"c":"jpn","n":"Yayoi-Zeit","f":-300,"t":250,"w":"Yayoi-Zeit","q":"Q207858","s":"wikidata"},{"c":"jpn","n":"Kofun-Zeit","f":250,"t":538,"w":"Kofun-Zeit","q":"Q459939","s":"wikidata"},{"c":"jpn","n":"Asuka-Zeit","f":538,"t":710,"w":"Asuka-Zeit","q":"Q210688","s":"wikidata"},{"c":"jpn","n":"Nara-Zeit","f":710,"t":794,"w":"Nara-Zeit","q":"Q189178","s":"wikidata"},{"c":"jpn","n":"Heian-Zeit","f":794,"t":1185,"w":"Heian-Zeit","q":"Q193292","s":"wikidata"},{"c":"jpn","n":"Kamakura-Shōgunat","f":1200,"t":1333,"w":"Kamakura-Shōgunat","q":"Q736839","s":"wikidata"},{"c":"jpn","n":"Muromachi-Zeit","f":1336,"t":1573,"w":"Muromachi-Zeit","q":"Q334845","s":"wikidata"},{"c":"jpn","n":"Azuchi-Momoyama-Zeit","f":1568,"t":1600,"w":"Azuchi-Momoyama-Zeit","q":"Q319531","s":"wikidata"},{"c":"jpn","n":"Tokugawa-Shōgunat","f":1603,"t":1867,"w":"Tokugawa-Shōgunat","q":"Q205662","s":"wikidata"},{"c":"jpn","n":"Japanisches Kaiserreich","f":1868,"t":1947,"w":"Japanisches Kaiserreich","q":"Q188712","s":"wikidata"},{"c":"jpn","n":"Japan","f":1947,"t":2026,"w":"Japan","q":"Q17","s":"korrigiert"}]};
+
+// ── Zeitskala: stueckweise linear ────────────────────────────────────────
+const ANCHORS = [[-3500,0],[-2000,150],[-1000,290],[-500,380],[0,480],[500,610],
+                 [1000,780],[1300,940],[1500,1080],[1700,1270],[1800,1400],
+                 [1900,1580],[1950,1700],[2026,1830]];
+function y(year){
+  const A=ANCHORS;
+  if(year<=A[0][0]) return A[0][1];
+  for(let i=1;i<A.length;i++){
+    if(year<=A[i][0]){
+      const [y0,p0]=A[i-1],[y1,p1]=A[i];
+      return p0+(year-y0)/(y1-y0)*(p1-p0);
+    }
+  }
+  return A[A.length-1][1];
+}
+const Y0=y(-3500), Y1=y(2026);
+
+// ── Geometrie ────────────────────────────────────────────────────────────
+const AXISW=62, HEADH=46, LANEW=94, LGAP=2, GAP=10, PAD=10;
+const root=document.documentElement.style;
+root.setProperty('--axisw',AXISW+'px');
+root.setProperty('--headh',HEADH+'px');
+
+const cols=DATA.columns;
+
+// ── Sub-Spuren: ueberlappende Eintraege nebeneinander ────────────────────
+const byCol={};
+for(const e of DATA.entities){ (byCol[e.c]=byCol[e.c]||[]).push(e); }
+for(const id in byCol){
+  const list=byCol[id].sort((a,b)=> a.f-b.f || b.t-a.t);
+  const lanes=[];                       // lanes[i] = Endjahr der letzten Belegung
+  for(const e of list){
+    let L=lanes.findIndex(end=> end<=e.f);
+    if(L<0){ L=lanes.length; lanes.push(0); }
+    lanes[L]=e.t; e.lane=L;
+  }
+  byCol[id].laneCount=lanes.length;
+}
+// Spaltenbreite waechst mit der Zahl paralleler Spuren
+const colW=[], colXs=[];
+let x=AXISW+PAD;
+cols.forEach((c,i)=>{
+  const n=(byCol[c.id]||{laneCount:1}).laneCount||1;
+  colW[i]=n*LANEW+(n-1)*LGAP; colXs[i]=x; x+=colW[i]+GAP;
+});
+const colX = i => colXs[i];
+const totalW = x+PAD;
+
+document.getElementById('canvas').style.width  = totalW+'px';
+document.getElementById('canvas').style.height = (HEADH+Y1-Y0+40)+'px';
+
+// ── Farben: Farbton pro Spalte, Helligkeit alternierend ──────────────────
+const HUES=[205,200,25,15,145,215,40,50,225,0,35,45,190,175,45,20,265,285,10,320];
+function color(colIdx,i){
+  const h=HUES[colIdx%HUES.length];
+  const l=[62,71,55,67,59][i%5], s=[58,48,64,52,44][i%5];
+  return `hsl(${h} ${s}% ${l}%)`;
+}
+const fmt = v => v<0 ? Math.abs(v)+' v.Chr.' : (v>=2026 ? 'heute' : v+' n.Chr.');
+
+// ── Achse zeichnen ───────────────────────────────────────────────────────
+const axis=document.getElementById('axis'), blocks=document.getElementById('blocks');
+axis.style.height=(HEADH+Y1-Y0+40)+'px';
+const TICKS=[-3000,-2500,-2000,-1500,-1000,-500,0,250,500,750,1000,1250,1500,
+             1600,1700,1800,1900,1950,2000];
+for(const t of TICKS){
+  const top=HEADH+y(t)-Y0;
+  const g=document.createElement('div');
+  g.className='grid'+(t%1000===0?' gridmajor':'');
+  g.style.top=top+'px'; g.style.width=totalW+'px';
+  blocks.appendChild(g);
+  const d=document.createElement('div');
+  d.className='tick'; d.style.top=top+'px';
+  d.textContent = t<0 ? Math.abs(t)+' v.' : (t===0?'0':t);
+  axis.appendChild(d);
+}
+
+// ── Koepfe + Bloecke ─────────────────────────────────────────────────────
+const heads=document.getElementById('heads');
+heads.style.width=totalW+'px';
+cols.forEach((c,i)=>{
+  const h=document.createElement('div');
+  h.className='head'; h.style.left=colX(i)+'px'; h.style.width=colW[i]+'px';
+  h.innerHTML='<b>'+c.flag+'</b><span>'+c.label+'</span>';
+  heads.appendChild(h);
+});
+
+cols.forEach((c,ci)=>{                       // Hintergrundband je Spalte
+  const band=document.createElement('div');
+  band.className='colband';
+  band.style.cssText=`left:${colX(ci)-3}px;top:${HEADH}px;`+
+                     `width:${colW[ci]+6}px;height:${Y1-Y0+16}px`;
+  blocks.appendChild(band);
+});
+
+let n=0;
+cols.forEach((c,ci)=>{
+  const list=byCol[c.id]||[];
+  const lw=LANEW;
+  list.forEach((e,i)=>{
+    const top=HEADH+y(e.f)-Y0, h=Math.max(y(e.t)-y(e.f),9);
+    const b=document.createElement('div');
+    b.className='block'+(h<26?' tiny':'');
+    b.style.cssText=`left:${colX(ci)+e.lane*(lw+LGAP)}px;top:${top}px;`+
+                    `width:${lw}px;height:${h-1}px;background:${color(ci,i)}`;
+    b.innerHTML= h<26 ? esc(e.n)
+      : esc(e.n)+'<span class="yr">'+fmt(e.f)+' – '+fmt(e.t)+'</span>';
+    b.title=e.n+'  ('+fmt(e.f)+' – '+fmt(e.t)+')';
+    b.onclick=()=>showPanel(e);
+    blocks.appendChild(b); n++;
+  });
+});
+function esc(s){return s.replace(/[&<>]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m]));}
+
+// ── Detailpanel ──────────────────────────────────────────────────────────
+const P=document.getElementById('panel');
+function showPanel(e){
+  document.getElementById('pn').textContent=e.n;
+  document.getElementById('pm').textContent=fmt(e.f)+' – '+fmt(e.t)+
+    '  ·  '+(e.t-e.f)+' Jahre';
+  const a=document.getElementById('pl');
+  a.href='https://de.wikipedia.org/wiki/'+encodeURIComponent((e.w||e.n).replace(/ /g,'_'));
+  document.getElementById('ps').textContent =
+    e.s==='wikidata' ? 'Datierung: Wikidata '+(e.q||'')
+    : e.s==='korrigiert' ? 'Datierung: redaktionell korrigiert (Wikidata-Wert unpassend)'
+    : 'Datierung: gängiger Lehrbuchwert, nicht in Wikidata datiert';
+  P.style.display='block';
+}
+function hidePanel(){P.style.display='none';}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')hidePanel();});
+
+// Achse beim Horizontalscrollen am linken Rand halten
+const wrapEl=document.getElementById('wrap');
+wrapEl.addEventListener('scroll',()=>{
+  axis.style.transform='translateX('+wrapEl.scrollLeft+'px)';
+},{passive:true});
+
+// Start: Mittelalter im Blick
+document.getElementById('wrap').scrollTop = y(800)-Y0-120;
+console.log(n+' Bloecke in '+cols.length+' Spalten');
+</script>
+</body>
+</html>
