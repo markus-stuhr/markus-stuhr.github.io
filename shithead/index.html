@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Shithead</title>
 <style>
+  :root{
+    --cw:clamp(52px, min(12vh, 17vw), 124px);      /* Ablage, Nachziehstapel, eigene Tischkarten */
+    --ch:calc(var(--cw) * 1.5);
+    --hcw:clamp(64px, min(15vh, 21vw), 152px);     /* eigene Handkarten */
+    --hch:calc(var(--hcw) * 1.5);
+  }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{height:100%;}
   body{
@@ -38,7 +44,7 @@
   #table{flex:1;display:flex;align-items:center;justify-content:center;gap:clamp(16px,5vw,60px);min-height:0;padding:4px;}
   .slot{display:flex;flex-direction:column;align-items:center;gap:6px;}
   .slot .cap{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:#8fb3a2;}
-  #pileWrap{position:relative;width:clamp(64px,15vw,104px);height:clamp(75px,18vw,124px);}
+  #pileWrap{position:relative;width:calc(var(--cw) + 24px);height:calc(var(--ch) + 20px);}
   #pileWrap .card{position:absolute;left:0;top:0;}
   #pileEmpty{
     width:100%;height:100%;border:2px dashed rgba(255,255,255,0.16);border-radius:9px;
@@ -48,8 +54,8 @@
 
   /* ---------- Cards ---------- */
   .card{
-    width:clamp(46px,11vw,76px);height:clamp(69px,16.5vw,114px);
-    border-radius:7px;background:linear-gradient(160deg,#fff 0%,#f0f0f0 100%);
+    width:var(--cw);height:var(--ch);
+    border-radius:8px;background:linear-gradient(160deg,#fff 0%,#f0f0f0 100%);
     color:#1a1a1a;position:relative;flex:none;
     box-shadow:0 3px 9px rgba(0,0,0,.4);
     display:flex;align-items:center;justify-content:center;
@@ -68,7 +74,7 @@
     border:2px solid rgba(255,255,255,.22);
   }
   .card.mini{
-    width:clamp(24px,5.5vw,34px);height:clamp(36px,8.25vw,51px);border-radius:4px;
+    width:clamp(24px,5.5vw,31px);height:clamp(36px,8.25vw,46px);border-radius:4px;
     box-shadow:0 2px 5px rgba(0,0,0,.35);flex-direction:column;gap:1px;
   }
   .card.mini .r{font-size:clamp(.62rem,1.8vw,.9rem);line-height:1;}
@@ -90,7 +96,7 @@
   #meHand{
     display:flex;width:100%;flex:none;
     overflow-x:auto;overflow-y:hidden;
-    padding:30px 4px 26px;
+    padding:22px 4px 24px;
     scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
   }
   #meHand::-webkit-scrollbar{display:none;}
@@ -100,7 +106,7 @@
   }
   #handRow{display:flex;align-items:flex-end;margin:auto;padding:0 10px;}
   #meHand .card{
-    width:clamp(58px,14vw,97px);height:clamp(87px,21vw,146px);
+    width:var(--hcw);height:var(--hch);
     transform-origin:50% 130%;
   }
 
@@ -606,7 +612,7 @@ function render(){
   /* Nachziehstapel */
   const dw=el('deckWrap'); dw.innerHTML='';
   if(deck.length) dw.appendChild(backEl(''));
-  else{const e=document.createElement('div');e.id='pileEmpty';e.style.width='clamp(46px,11vw,76px)';e.style.height='clamp(69px,16.5vw,114px)';e.textContent='leer';dw.appendChild(e);}
+  else{const e=document.createElement('div');e.id='pileEmpty';e.style.width='var(--cw)';e.style.height='var(--ch)';e.textContent='leer';dw.appendChild(e);}
   el('deckCap').textContent=deck.length?deck.length+' Karten':'Stapel leer';
 
   /* Ablage */
@@ -618,7 +624,7 @@ function render(){
     show.forEach((c,i)=>{
       const d=cardEl(c,'');
       d.style.setProperty('--rot',((i-1.5)*3).toFixed(1)+'deg');
-      d.style.left=(i*5)+'px'; d.style.top=(-i*4)+'px';
+      d.style.left=(i*7)+'px'; d.style.top=(-i*5)+'px';
       pw.appendChild(d);
     });
   }
