@@ -37,7 +37,7 @@
   #table{flex:1;display:flex;align-items:center;justify-content:center;gap:clamp(16px,5vw,60px);min-height:0;padding:4px;}
   .slot{display:flex;flex-direction:column;align-items:center;gap:6px;}
   .slot .cap{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:#8fb3a2;}
-  #pileWrap{position:relative;width:clamp(64px,15vw,104px);height:clamp(92px,21vw,146px);}
+  #pileWrap{position:relative;width:clamp(64px,15vw,104px);height:clamp(75px,18vw,124px);}
   #pileWrap .card{position:absolute;left:0;top:0;}
   #pileEmpty{
     width:100%;height:100%;border:2px dashed rgba(255,255,255,0.16);border-radius:9px;
@@ -47,7 +47,7 @@
 
   /* ---------- Cards ---------- */
   .card{
-    width:clamp(46px,11vw,76px);height:clamp(66px,15.5vw,107px);
+    width:clamp(46px,11vw,76px);height:clamp(69px,16.5vw,114px);
     border-radius:7px;background:linear-gradient(160deg,#fff 0%,#f0f0f0 100%);
     color:#1a1a1a;position:relative;flex:none;
     box-shadow:0 3px 9px rgba(0,0,0,.4);
@@ -57,16 +57,21 @@
     transition:transform .16s ease, box-shadow .16s ease, filter .14s;
   }
   .card.red{color:#c8102e;}
+  .card .face{
+    width:100%;height:100%;display:block;border-radius:inherit;
+    pointer-events:none;-webkit-user-drag:none;
+  }
   .card .r{font-size:clamp(1.1rem,3.2vw,1.7rem);}
-  .card .s{position:absolute;bottom:4px;right:5px;font-size:clamp(.65rem,1.9vw,1rem);}
-  .card .s2{position:absolute;top:4px;left:5px;font-size:clamp(.65rem,1.9vw,1rem);}
   .card.back{
     background:repeating-linear-gradient(45deg,#1f4f8f 0 5px,#173d70 5px 10px);
     border:2px solid rgba(255,255,255,.22);
   }
-  .card.mini{width:clamp(24px,5.5vw,34px);height:clamp(34px,7.8vw,48px);border-radius:4px;box-shadow:0 2px 5px rgba(0,0,0,.35);}
-  .card.mini .r{font-size:clamp(.6rem,1.7vw,.85rem);}
-  .card.mini .s,.card.mini .s2{display:none;}
+  .card.mini{
+    width:clamp(24px,5.5vw,34px);height:clamp(36px,8.25vw,51px);border-radius:4px;
+    box-shadow:0 2px 5px rgba(0,0,0,.35);flex-direction:column;gap:1px;
+  }
+  .card.mini .r{font-size:clamp(.62rem,1.8vw,.9rem);line-height:1;}
+  .card.mini .ms{font-size:clamp(.5rem,1.4vw,.72rem);line-height:1;}
   .card.mini.back{border-width:1px;}
   .card.sel{--lift:-22px;box-shadow:0 10px 22px rgba(0,0,0,.5),0 0 0 3px #ffd76e;z-index:5;}
   .card.play{cursor:pointer;}
@@ -82,13 +87,12 @@
   .stack .card{position:relative;}
   .stack .card+.card{position:absolute;left:0;top:-7px;}
   #meHand{display:flex;gap:0;justify-content:center;align-items:flex-end;
-    min-height:clamp(84px,20vw,136px);padding-top:14px;}
+    min-height:clamp(87px,21vw,146px);padding-top:14px;}
   #meHand .card{
-    width:clamp(58px,14vw,97px);height:clamp(84px,20vw,136px);
+    width:clamp(58px,14vw,97px);height:clamp(87px,21vw,146px);
     margin:0 clamp(-10px,-1.8vw,-4px);transform-origin:50% 130%;
   }
-  #meHand .card .r{font-size:clamp(1.35rem,4vw,2.1rem);}
-  #meHand .card .s,#meHand .card .s2{font-size:clamp(.8rem,2.3vw,1.2rem);}
+
   #bar{display:flex;gap:9px;align-items:center;justify-content:center;flex-wrap:wrap;min-height:38px;}
   button{
     font:inherit;font-size:.8rem;letter-spacing:.06em;padding:9px 17px;border-radius:22px;
@@ -122,6 +126,8 @@
   .panel p b{color:#ffd76e;font-weight:600;}
   .choices{display:flex;gap:9px;justify-content:center;margin-bottom:14px;flex-wrap:wrap;}
   #ovTitle{font-size:clamp(1.4rem,5vw,2.1rem);}
+  .credit{font-size:.6rem;letter-spacing:.08em;color:rgba(160,200,180,.45);margin-top:4px;}
+  .credit i{font-style:italic;}
 </style>
 </head>
 <body>
@@ -160,6 +166,7 @@
       Erst die Hand, dann die offenen, dann die verdeckten Karten — die blind.
     </p>
     <div class="choices" id="ovChoices"></div>
+    <div class="credit">Kartenmotive: <i>English pattern</i> von Dmitry Fomin · CC0 / gemeinfrei</div>
   </div>
 </div>
 
@@ -169,7 +176,7 @@
 
 /* ============ Karten ============ */
 const SUITS=['♠','♥','♦','♣'];
-const NAMES={11:'B',12:'D',13:'K',14:'A'};
+const NAMES={11:'J',12:'Q',13:'K',14:'A'};
 const lbl=r=>NAMES[r]||String(r);
 const V=(p,du,er)=>(p.name==='Du'?'Du '+du:p.name+' '+er);
 const cname=c=>lbl(c.r)+SUITS[c.s];
@@ -213,6 +220,7 @@ function nextIdx(i){let n=i;for(let k=0;k<P.length;k++){n=(n+1)%P.length;if(!P[n
 
 /* ============ Spielstart ============ */
 function newGame(nAI){
+  preload();
   deck=makeDeck(); pile=[]; burned=0; finish=[]; sel=[]; logs=[]; el('log').innerHTML='';
   const names=['Du','Ada','Bruno','Cleo'];
   P=[];
@@ -409,11 +417,21 @@ function doPick(){
 }
 
 /* ============ Rendering ============ */
+const FILE=['S','H','D','C'];
+const code=c=>lbl(c.r)+FILE[c.s];
 function cardEl(c,cls){
   const d=document.createElement('div');
+  const mini=(cls||'').indexOf('mini')>=0;
   d.className='card '+(cls||'')+((c.s===1||c.s===2)?' red':'');
-  d.innerHTML='<div class="s2">'+SUITS[c.s]+'</div><div class="r">'+lbl(c.r)+'</div><div class="s">'+SUITS[c.s]+'</div>';
+  d.innerHTML = mini
+    ? '<div class="r">'+lbl(c.r)+'</div><div class="ms">'+SUITS[c.s]+'</div>'
+    : '<img class="face" src="cards/'+code(c)+'.svg" alt="'+lbl(c.r)+SUITS[c.s]+'" draggable="false">';
   return d;
+}
+let preloaded=false;
+function preload(){
+  if(preloaded) return; preloaded=true;
+  for(let r=2;r<=14;r++) for(let s=0;s<4;s++){ const i=new Image(); i.src='cards/'+lbl(r)+FILE[s]+'.svg'; }
 }
 function backEl(cls){const d=document.createElement('div');d.className='card back '+(cls||'');return d;}
 function msg(t){el('msg').textContent=t;}
@@ -443,7 +461,7 @@ function render(){
   /* Nachziehstapel */
   const dw=el('deckWrap'); dw.innerHTML='';
   if(deck.length) dw.appendChild(backEl(''));
-  else{const e=document.createElement('div');e.id='pileEmpty';e.style.width='clamp(46px,11vw,76px)';e.style.height='clamp(66px,15.5vw,107px)';e.textContent='leer';dw.appendChild(e);}
+  else{const e=document.createElement('div');e.id='pileEmpty';e.style.width='clamp(46px,11vw,76px)';e.style.height='clamp(69px,16.5vw,114px)';e.textContent='leer';dw.appendChild(e);}
   el('deckCap').textContent=deck.length?deck.length+' Karten':'Stapel leer';
 
   /* Ablage */
