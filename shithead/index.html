@@ -117,6 +117,11 @@
   button.primary:hover:not(:disabled){background:#ffe294;}
   #msg{flex:none;font-size:.78rem;color:#a9cbba;text-align:center;min-height:1.1em;letter-spacing:.03em;padding:0 10px;}
 
+  /* ---------- Flug-Ebene ---------- */
+  #fx{position:fixed;inset:0;pointer-events:none;z-index:40;overflow:hidden;perspective:1000px;}
+  #fx .fly{position:absolute;left:0;top:0;transform-origin:0 0;transition:none;}
+  #fx .reveal{box-shadow:0 16px 44px rgba(0,0,0,.6),0 0 0 3px rgba(255,215,110,.85);}
+
   /* ---------- Log ---------- */
   #log{
     position:fixed;right:10px;top:10px;width:190px;max-height:34vh;overflow:hidden;
@@ -162,6 +167,8 @@
     <div id="bar"></div>
   </div>
 </div>
+
+<div id="fx"></div>
 
 <div id="log"></div>
 
@@ -272,39 +279,162 @@ function startPlay(){
   render(); tick();
 }
 
+/* ============ Animation ============ */
+const R=e=>{const r=e.getBoundingClientRect();return{left:r.left,top:r.top,width:r.width,height:r.height};};
+const T=(r,s)=>'translate('+r.left+'px,'+r.top+'px) scale('+(s==null?1:s)+')';
+let SPD=1;                                  // Zeitraffer fuer Tests
+const hold=ms=>new Promise(r=>setTimeout(r,ms*SPD));
+function anim(e,kf,ms,ease){
+  const d=ms*SPD;
+  return new Promise(res=>{
+    let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
+    let a;
+    try{ a=e.animate(kf,{duration:d,easing:ease||'cubic-bezier(.25,.85,.35,1)',fill:'forwards'}); }
+    catch(err){ return fin(); }
+    a.onfinish=fin; a.oncancel=fin;
+    setTimeout(fin, d+400*Math.max(SPD,0.05));   // Notausgang: nie am Zug haengenbleiben
+  });
+}
+function ghost(c,rect,faceDown){
+  const e = faceDown ? backEl('') : cardEl(c,'');
+  e.classList.add('fly');
+  e.style.width=rect.width+'px'; e.style.height=rect.height+'px';
+  e.style.transform=T(rect);
+  el('fx').appendChild(e);
+  return e;
+}
+async function fly(c,from,to,o){
+  o=o||{};
+  const e=o.el||ghost(c,from,o.faceDown);
+  if(o.delay) await hold(o.delay);
+  await anim(e,[
+    {transform:T(from)+' rotate('+(o.r0||0)+'deg)', opacity:o.o0==null?1:o.o0},
+    {transform:T(to,to.width/from.width)+' rotate('+(o.r1||0)+'deg)', opacity:o.o1==null?1:o.o1}
+  ],o.ms||340,o.ease);
+  if(!o.keep) e.remove();
+  return e;
+}
+/* Wo eine bestimmte Karte gerade liegt — jede Karte kommt im Deck nur einmal vor */
+function rectOf(c){
+  const e=document.querySelector('.card[data-c="'+code(c)+'"]');
+  return e?R(e):null;
+}
+/* Sammelpunkt eines Spielers: eigene Hand unten, Gegner ihr Kasten */
+function boxRect(pi){
+  const b = pi===0 ? el('meHand') : document.querySelectorAll('.opp')[pi-1];
+  if(!b) return R(el('pileWrap'));
+  const r=b.getBoundingClientRect();
+  const w=Math.min(r.width*(pi===0?0.18:0.3),96), h=w*1.5;
+  return {left:r.left+r.width/2-w/2, top:r.top+r.height/2-h/2, width:w, height:h};
+}
+/* Bühne in der Tischmitte, auf der eine verdeckte Karte aufgedeckt wird */
+function stageRect(){
+  const r=el('table').getBoundingClientRect();
+  const w=Math.min(r.width*0.24,124), h=w*1.5;
+  return {left:r.left+r.width/2-w/2, top:r.top+r.height/2-h/2-6, width:w, height:h};
+}
+function pileEls(){ return [].slice.call(el('pileWrap').querySelectorAll('.card')); }
+function rotOf(e){ return parseFloat(getComputedStyle(e).getPropertyValue('--rot'))||0; }
+
+/* Gelegte Karten fliegen an ihren Platz auf dem Stapel */
+async function animPlay(cards,srcs,ghostEl){
+  const tgts=pileEls().slice(-cards.length);
+  tgts.forEach(e=>e.style.visibility='hidden');
+  await Promise.all(cards.map(function(c,i){
+    const te=tgts[i], to=te?R(te):R(el('pileWrap'));
+    return fly(c,srcs[i],to,{ms:330,r1:te?rotOf(te):0,delay:i*90,el:i===0?ghostEl:null});
+  }));
+  tgts.forEach(e=>e.style.visibility='');
+}
+/* Verbrannter Stapel stiebt auseinander */
+async function animBurn(){
+  const els=pileEls(), rects=els.map(R), cards=pile.slice(-els.length);
+  els.forEach(e=>e.style.visibility='hidden');
+  await Promise.all(rects.map(function(r,i){
+    const off=i-(rects.length-1)/2;
+    return fly(cards[i],r,{left:r.left+off*90,top:r.top-70,width:r.width,height:r.height},
+      {ms:440,o1:0,r1:off*30,ease:'cubic-bezier(.3,.1,.7,.4)'});
+  }));
+}
+/* Verdeckte Karte: erst umdrehen und zeigen, dann weiter */
+async function flipReveal(c,from){
+  const st=stageRect();
+  const b=ghost(null,from,true);
+  await anim(b,[{transform:T(from)+' rotateY(0deg)'},
+                {transform:T(st,st.width/from.width)+' rotateY(90deg)'}],300,'ease-in');
+  b.remove();
+  const f=ghost(c,st,false);
+  f.classList.add('reveal');
+  await anim(f,[{transform:T(st)+' rotateY(-90deg)'},{transform:T(st)+' rotateY(0deg)'}],220,'ease-out');
+  return {el:f,rect:st};
+}
+
 /* ============ Zugabwicklung ============ */
 function refill(p){ while(p.hand.length<3&&deck.length) p.hand.push(deck.pop()); }
 
-function commit(pi,cards,from){
+async function commit(pi,cards,from,g){
   const p=P[pi];
+  busy=true;
+  const srcs=cards.map((c,i)=> (g&&i===0) ? g.rect : (rectOf(c)||boxRect(pi)));
   if(from==='hand'||from==='up'){          // Karten aus der Quelle nehmen
     const src = from==='hand'?p.hand:p.up;
     cards.forEach(c=>{const i=src.indexOf(c); if(i>=0) src.splice(i,1);});
   }
   pile.push.apply(pile,cards);
+  sel=[]; render();
+  await animPlay(cards,srcs,g&&g.el);
   log(V(p,'legst','legt')+' '+cards.map(cname).join(' '));
   if(from==='hand') refill(p);
+  render();
 
   let burn = cards[cards.length-1].r===10 || topRun()>=4;
   if(burn){
+    await animBurn();
     burned+=pile.length; pile=[];
     log('<b>→ Stapel verbrannt</b>');
+    render();
   }
   if(isOut(p)&&!p.done){ p.done=true; finish.push(pi); log('<b>'+(p.name==='Du'?'Du bist':p.name+' ist')+' raus</b>'); }
 
   if(finishCheck()) return;
   cur = (burn && !p.done) ? pi : nextIdx(pi);
-  sel=[]; render(); tick();
+  render(); tick();
 }
 
-function pickUp(pi,extra){
+async function pickUp(pi,extra,flip){
   const p=P[pi];
+  busy=true;
+  const to=boxRect(pi);
+  const els=pileEls(), rects=els.map(R), shown=pile.slice(-els.length);
+  const extraRect = extra ? rectOf(extra) : null;
+
   if(extra){ p.up.splice(p.up.indexOf(extra),1); pile.push(extra); }
-  p.hand.push.apply(p.hand,pile);
-  log(V(p,'nimmst','nimmt')+' '+pile.length+' Karten auf');
-  pile=[];
+  if(flip) pile.push(flip.card);
+  const n=pile.length;
+  p.hand.push.apply(p.hand,pile); pile=[];
+  sel=[]; render();
+
+  const flights=rects.map((r,i)=>fly(shown[i],r,to,{ms:390,o1:.2,delay:i*60}));
+  if(extra) flights.push(fly(extra,extraRect||boxRect(pi),to,{ms:390,o1:.2,delay:els.length*60}));
+  if(flip)  flights.push(fly(null,flip.rect,to,{ms:420,o1:.2,el:flip.el}));
+  await Promise.all(flights);
+
+  log(V(p,'nimmst','nimmt')+' '+n+' Karten auf');
   if(finishCheck()) return;
-  cur=nextIdx(pi); sel=[]; render(); tick();
+  cur=nextIdx(pi); render(); tick();
+}
+
+/* Verdeckte Karte spielen: aufdecken, zeigen, dann legen oder einsammeln */
+async function playDown(pi,c,from){
+  const p=P[pi];
+  busy=true; render();
+  const g=await flipReveal(c,from);
+  const passt=isLegal(c.r);
+  msg(V(p,'drehst','dreht')+' '+cname(c)+' um — '+(passt?'passt!':'passt nicht.'));
+  log(V(p,'drehst','dreht')+' '+cname(c)+(passt?'':' — passt nicht'));
+  await hold(passt?600:850);
+  if(passt) await commit(pi,[c],'down',g);
+  else await pickUp(pi,null,{el:g.el,rect:g.rect,card:c});
 }
 
 function finishCheck(){
@@ -320,7 +450,7 @@ function finishCheck(){
 function tick(){
   const p=P[cur];
   if(phase!=='play') return;
-  if(p.ai){ busy=true; setTimeout(aiTurn,750); }
+  if(p.ai){ busy=true; msg(''); render(); setTimeout(aiTurn,550*SPD); }
   else { busy=false; msg(hintFor(p)); render(); }
 }
 
@@ -350,9 +480,8 @@ function aiTurn(){
   const g={}; src.forEach(c=>{(g[c.r]=g[c.r]||[]).push(c);});
   const legal=Object.keys(g).map(Number).filter(isLegal);
   if(!legal.length){
-    if(z==='up'){ const low=src.slice().sort((a,b)=>a.r-b.r)[0]; pickUp(pi,low); }
-    else pickUp(pi,null);
-    return;
+    const low = z==='up' ? src.slice().sort((a,b)=>a.r-b.r)[0] : null;
+    return pickUp(pi,low);
   }
   const t=topCard(), run=topRun();
   // 1) Vierling vervollständigen
@@ -375,11 +504,13 @@ function aiTurn(){
 
 /* ============ Spieler-Interaktion ============ */
 function clickHand(c){
+  if(busy) return;
   if(phase==='swap'){ sel=[c]; render(); return; }
   if(phase!=='play'||P[cur].ai||zone(P[cur])!=='hand') return;
   toggle(c);
 }
 function clickUp(c){
+  if(busy) return;
   if(phase==='swap'){
     if(sel.length){
       const h=sel[0], p=P[0];
@@ -392,17 +523,13 @@ function clickUp(c){
   toggle(c);
 }
 function clickDown(c){
-  if(phase!=='play'||P[cur].ai||zone(P[cur])!=='down'||busy) return;
-  const p=P[0];
-  p.down.splice(p.down.indexOf(c),1);
-  if(isLegal(c.r)){ msg('Umgedreht: '+cname(c)+' — passt!'); commit(0,[c],'down'); }
-  else{
-    log('Du drehst '+cname(c)+' — passt nicht');
-    pile.push(c); p.hand.push.apply(p.hand,pile); pile=[];
-    msg('Umgedreht: '+cname(c)+' — passt nicht, Stapel geht an dich.');
-    if(finishCheck())return;
-    cur=nextIdx(0); sel=[]; render(); tick();
-  }
+  if(phase!=='play'||P[cur].ai||zone(P[0])!=='down'||busy) return;
+  const p=P[0], k=p.down.indexOf(c);
+  const stack=el('meTable').children[k];
+  const back=stack&&stack.querySelector('.card.back');
+  const from=back?R(back):boxRect(0);
+  p.down.splice(k,1);
+  playDown(0,c,from);
 }
 function toggle(c){
   const i=sel.indexOf(c);
@@ -414,12 +541,13 @@ function toggle(c){
   render();
 }
 function doPlay(){
-  if(!sel.length) return;
+  if(busy||!sel.length) return;
   const p=P[0], z=zone(p);
   if(!isLegal(sel[0].r)) return;
   commit(0,sel.slice(),z);
 }
 function doPick(){
+  if(busy) return;
   const p=P[0], z=zone(p);
   if(z==='up'){
     const c = sel.length?sel[0]:p.up.slice().sort((a,b)=>a.r-b.r)[0];
@@ -434,6 +562,7 @@ function cardEl(c,cls){
   const d=document.createElement('div');
   const mini=(cls||'').indexOf('mini')>=0;
   d.className='card '+(cls||'')+((c.s===1||c.s===2)?' red':'');
+  d.dataset.c=code(c);
   d.innerHTML = mini
     ? '<div class="r">'+lbl(c.r)+'</div><div class="ms">'+SUITS[c.s]+'</div>'
     : '<img class="face" src="cards/'+code(c)+'.svg" alt="'+lbl(c.r)+SUITS[c.s]+'" draggable="false">';
@@ -539,6 +668,10 @@ function render(){
   const bar=el('bar'); bar.innerHTML='';
   if(phase==='swap'){
     bar.appendChild(btn('Los geht’s',startPlay,true));
+  }else if(phase==='play'&&busy){
+    const t=document.createElement('div'); t.style.fontSize='.78rem'; t.style.color='#7fb99b';
+    t.textContent=P[cur].ai ? P[cur].name+' ist am Zug …' : ' ';
+    bar.appendChild(t);
   }else if(phase==='play'&&!P[cur].ai&&!me.done){
     if(z==='down'){
       const t=document.createElement('div'); t.style.fontSize='.78rem'; t.style.color='#a9cbba';
@@ -608,7 +741,7 @@ function showEnd(loser){
   setTimeout(()=>el('ov').classList.remove('hide'),700);
 }
 
-window.__sh={aiTurn:aiTurn,newGame:newGame,startPlay:startPlay,
+window.__sh={aiTurn:aiTurn,newGame:newGame,startPlay:startPlay,speed:function(v){SPD=v;},busy:function(){return busy;},
   state:function(){return{P:P,pile:pile.length,deck:deck.length,burned:burned,cur:cur,phase:phase};}};
 
 let rz;
