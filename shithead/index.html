@@ -31,6 +31,7 @@
   .opp .row.tight{gap:0;}
   .opp .row.tight .card{margin-left:-14px;}
   .opp .row.tight .card:first-child{margin-left:0;}
+  .opp .more{align-self:center;font-size:.62rem;color:#cfe6d9;margin-left:5px;}
   .opp .meta{font-size:.62rem;color:#8fb3a2;margin-top:4px;letter-spacing:.08em;}
 
   /* ---------- Table centre ---------- */
@@ -82,18 +83,28 @@
 
   /* ---------- Player area ---------- */
   #me{padding:4px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;}
-  #meTable{display:flex;gap:clamp(4px,1.6vw,12px);}
+  #meTable{display:flex;gap:clamp(4px,1.6vw,12px);flex:none;}
   .stack{position:relative;}
   .stack .card{position:relative;}
   .stack .card+.card{position:absolute;left:0;top:-7px;}
-  #meHand{display:flex;gap:0;justify-content:center;align-items:flex-end;
-    min-height:clamp(87px,21vw,146px);padding-top:14px;}
+  #meHand{
+    display:flex;width:100%;flex:none;
+    overflow-x:auto;overflow-y:hidden;
+    padding:30px 4px 26px;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+  }
+  #meHand::-webkit-scrollbar{display:none;}
+  #meHand.scroll{
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
+  }
+  #handRow{display:flex;align-items:flex-end;margin:auto;padding:0 10px;}
   #meHand .card{
     width:clamp(58px,14vw,97px);height:clamp(87px,21vw,146px);
-    margin:0 clamp(-10px,-1.8vw,-4px);transform-origin:50% 130%;
+    transform-origin:50% 130%;
   }
 
-  #bar{display:flex;gap:9px;align-items:center;justify-content:center;flex-wrap:wrap;min-height:38px;}
+  #bar{flex:none;display:flex;gap:9px;align-items:center;justify-content:center;flex-wrap:wrap;min-height:38px;}
   button{
     font:inherit;font-size:.8rem;letter-spacing:.06em;padding:9px 17px;border-radius:22px;
     border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#eaf3ee;cursor:pointer;
@@ -104,7 +115,7 @@
   button:disabled{opacity:.3;cursor:default;}
   button.primary{background:#ffd76e;color:#1d2a20;border-color:#ffd76e;font-weight:600;}
   button.primary:hover:not(:disabled){background:#ffe294;}
-  #msg{font-size:.78rem;color:#a9cbba;text-align:center;min-height:1.1em;letter-spacing:.03em;padding:0 10px;}
+  #msg{flex:none;font-size:.78rem;color:#a9cbba;text-align:center;min-height:1.1em;letter-spacing:.03em;padding:0 10px;}
 
   /* ---------- Log ---------- */
   #log{
@@ -446,7 +457,12 @@ function render(){
     box.className='opp'+(cur===i&&phase==='play'?' active':'')+(p.done?' done':'');
     const rows=document.createElement('div'); rows.className='rows';
     const r1=document.createElement('div'); r1.className='row'+(p.hand.length>5?' tight':'');
-    for(let k=0;k<p.hand.length;k++) r1.appendChild(backEl('mini'));
+    const shown=Math.min(p.hand.length,8);
+    for(let k=0;k<shown;k++) r1.appendChild(backEl('mini'));
+    if(p.hand.length>shown){
+      const more=document.createElement('div'); more.className='more';
+      more.textContent='+'+(p.hand.length-shown); r1.appendChild(more);
+    }
     const r2=document.createElement('div'); r2.className='row';
     p.up.forEach(c=>r2.appendChild(cardEl(c,'mini')));
     for(let k=0;k<p.down.length-p.up.length;k++) r2.appendChild(backEl('mini'));
@@ -506,20 +522,18 @@ function render(){
 
   /* Eigene Hand */
   const mh=el('meHand'); mh.innerHTML='';
+  const row=document.createElement('div'); row.id='handRow'; mh.appendChild(row);
   const hs=me.hand.slice().sort((a,b)=>a.r-b.r||a.s-b.s);
-  const spread=Math.min(5,44/Math.max(hs.length,1));
   hs.forEach((c,hi)=>{
     let cls='';
     if(phase==='swap') cls='play'+(sel.indexOf(c)>=0?' sel':'');
     else if(z==='hand') cls='play'+(isLegal(c.r)?' hint':' dim')+(sel.indexOf(c)>=0?' sel':'');
     const e=cardEl(c,cls);
-    const off=hi-(hs.length-1)/2;
-    e.style.setProperty('--rot',(off*spread).toFixed(2)+'deg');
-    e.style.setProperty('--dy',(Math.abs(off)*Math.abs(off)*1.6).toFixed(1)+'px');
     e.style.zIndex=hi+1;
     if(phase==='swap'||z==='hand') e.onclick=()=>clickHand(c);
-    mh.appendChild(e);
+    row.appendChild(e);
   });
+  layoutHand(row);
 
   /* Buttons */
   const bar=el('bar'); bar.innerHTML='';
@@ -539,6 +553,30 @@ function render(){
     t.textContent=P[cur].name+' überlegt …'; bar.appendChild(t);
   }
 }
+/* Handfächer: Überlappung an die Bildschirmbreite anpassen,
+   und wenn selbst dicht gestapelt nichts mehr passt, seitlich scrollen lassen */
+function layoutHand(row){
+  const mh=el('meHand'), n=row.children.length;
+  if(!n){ mh.classList.remove('scroll'); return; }
+  const cw=row.children[0].getBoundingClientRect().width;
+  const avail=Math.max(mh.clientWidth-16,cw);
+  const maxStep=cw*0.62;                       // lockerer Fächer bei wenigen Karten
+  const minStep=Math.max(19,cw*0.26);          // dichtester Stapel: Index bleibt lesbar
+  let step = n>1 ? (avail-cw)/(n-1) : cw;
+  step = Math.min(maxStep, Math.max(minStep, step));
+  const spread=Math.min(5,24/Math.max(n-1,1));   // Gesamtwinkel gedeckelt
+  const half=(n-1)/2, dyMax=Math.min(12,cw*0.14);
+  for(let i=0;i<n;i++){
+    const e=row.children[i], off=i-half;
+    e.style.marginLeft = i ? (step-cw).toFixed(1)+'px' : '0';
+    e.style.setProperty('--rot',(off*spread).toFixed(2)+'deg');
+    e.style.setProperty('--dy',(half?dyMax*(off/half)*(off/half):0).toFixed(1)+'px');
+  }
+  // Scrollen erst, wenn es wirklich überläuft (Drehung braucht extra Breite)
+  const scroll = mh.scrollWidth > mh.clientWidth+1;
+  mh.classList.toggle('scroll',scroll);
+}
+
 function btn(t,fn,primary,dis){
   const b=document.createElement('button'); b.textContent=t; b.onclick=fn;
   if(primary)b.className='primary'; if(dis)b.disabled=true; return b;
@@ -572,6 +610,9 @@ function showEnd(loser){
 
 window.__sh={aiTurn:aiTurn,newGame:newGame,startPlay:startPlay,
   state:function(){return{P:P,pile:pile.length,deck:deck.length,burned:burned,cur:cur,phase:phase};}};
+
+let rz;
+window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(render,120);});
 
 showMenu();
 })();
