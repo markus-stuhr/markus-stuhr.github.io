@@ -421,14 +421,28 @@ let waterLevel = null;     // null = kein Wasser
 const waterGeo = new THREE.PlaneGeometry(SIZE, SIZE, 96, 96);
 waterGeo.rotateX(-Math.PI / 2);      // liegt danach in der xz-Ebene
 
+/* Tiefenziel: die Szene wird zusätzlich ohne Wasser in eine Depth-Textur
+   gerendert. Der Wassershader liest daraus, wie weit der Grund hinter dem
+   Pixel liegt, und macht daraus die Wassersäule entlang des Sichtstrahls —
+   ein echter Sichtweiteneffekt statt eingefärbter Vertices. */
+const depthTarget = new THREE.WebGLRenderTarget(1, 1);
+depthTarget.depthTexture = new THREE.DepthTexture();
+depthTarget.depthTexture.type = THREE.UnsignedIntType;
+
 const waterMat = new THREE.MeshPhongMaterial({
-  color: '#2f6fc4', specular: '#bfe4ff', shininess: 90,
-  transparent: true, opacity: 0.86,
-  vertexColors: true, depthWrite: false, side: THREE.DoubleSide
+  color: '#2d6ec2', specular: '#cfe9ff', shininess: 110,
+  transparent: true, depthWrite: false, side: THREE.DoubleSide
 });
-const waterUniforms = { uTime: { value: 0 } };
+const waterUniforms = {
+  uTime:  { value: 0 },
+  tDepth: { value: depthTarget.depthTexture },
+  uRes:   { value: new THREE.Vector2(1, 1) },
+  uNear:  { value: camera.near },
+  uFar:   { value: camera.far },
+  uVis:   { value: 1.8 }        // Sichtweite im Wasser, in Blöcken
+};
 waterMat.onBeforeCompile = (sh) => {
-  sh.uniforms.uTime = waterUniforms.uTime;
+  Object.assign(sh.uniforms, waterUniforms);
   sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
     '#include <begin_vertex>', `#include <begin_vertex>
       // drei sich überlagernde Wellenzüge, klein gehalten
@@ -445,6 +459,20 @@ waterMat.onBeforeCompile = (sh) => {
                + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
       objectNormal = normalize(vec3(-dx, 1.0, -dz));
       vNormal = normalize(normalMatrix * objectNormal);`);
+
+  sh.fragmentShader = `
+    uniform sampler2D tDepth;
+    uniform vec2 uRes;
+    uniform float uNear, uFar, uVis;
+    // Fenstertiefe [0,1] -> Sicht-Z (negativ vor der Kamera)
+    float toViewZ(float d) { return (uNear * uFar) / ((uFar - uNear) * d - uFar); }
+  ` + sh.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>
+    float groundZ = toViewZ(texture2D(tDepth, gl_FragCoord.xy / uRes).x);
+    float surfaceZ = toViewZ(gl_FragCoord.z);
+    float column = max(surfaceZ - groundZ, 0.0);      // Wassersäule im Sichtstrahl
+    // Beer-Lambert: je länger der Weg durchs Wasser, desto weniger Grund
+    float murk = 1.0 - exp(-column / uVis);
+    gl_FragColor.a = clamp(0.12 + murk * 0.86, 0.0, 1.0);`);
 };
 
 const waterSurface = new THREE.Mesh(waterGeo, waterMat);
@@ -453,37 +481,12 @@ waterSurface.renderOrder = 1;
 waterSurface.visible = false;
 scene.add(waterSurface);
 
-/* Vertexfarbe = Wassertiefe: flach am Ufer wird heller und durchsichtiger */
-function shadeWater() {
-  const pos = waterGeo.attributes.position;
-  let col = waterGeo.attributes.color;
-  if (!col) {
-    col = new THREE.BufferAttribute(new Float32Array(pos.count * 4), 4);
-    waterGeo.setAttribute('color', col);
-  }
-  const deep = new THREE.Color('#1d4f9e'), shallow = new THREE.Color('#7fc4e8');
-  const c = new THREE.Color();
-  for (let i = 0; i < pos.count; i++) {
-    const wx = Math.round(pos.getX(i) + waterSurface.position.x);
-    const wz = Math.round(pos.getZ(i) + waterSurface.position.z);
-    let ground = WATER_MIN;
-    for (let y = waterLevel; y >= 0; y--) {
-      if (world.has(key(wx, y, wz))) { ground = y; break; }
-    }
-    const depth = Math.min(1, Math.max(0, (waterLevel - ground) / 3));
-    c.copy(shallow).lerp(deep, depth);
-    col.setXYZW(i, c.r, c.g, c.b, 0.42 + depth * 0.50);
-  }
-  col.needsUpdate = true;
-}
-
 function applyWater() {
   if (waterLevel === null) {
     waterSurface.visible = false;
   } else {
     waterSurface.visible = true;
     waterSurface.position.y = waterLevel - 0.5 + WATER_FILL;
-    shadeWater();
   }
   save();
 }
@@ -687,16 +690,33 @@ renderer.domElement.addEventListener('pointerup', ev => {
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 
 /* --------------------------- Loop ---------------------------- */
+function sizeTargets() {
+  const dpr = renderer.getPixelRatio();
+  depthTarget.setSize(Math.round(innerWidth * dpr), Math.round(innerHeight * dpr));
+  waterUniforms.uRes.value.set(innerWidth * dpr, innerHeight * dpr);
+}
+sizeTargets();
+
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  sizeTargets();
 });
 
 const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
   waterUniforms.uTime.value = clock.getElapsedTime();
   controls.update();
+
+  // Erst die Szene ohne Wasser in die Depth-Textur, dann normal zeichnen
+  if (waterSurface.visible) {
+    waterSurface.visible = false;
+    renderer.setRenderTarget(depthTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    waterSurface.visible = true;
+  }
   renderer.render(scene, camera);
 });
 </script>
