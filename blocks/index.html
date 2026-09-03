@@ -573,6 +573,7 @@ const WATER_GAP = 0.04;
 
 function buildWaterMesh() {
   const pos = [], nrm = [], idx = [];
+  const ground = groundMap();          // für die Tiefe der Außenflächen
   for (const b of bodies) {
     const y = b.level - 0.5 + WATER_FILL;
     const mine = new Set(b.cells);
@@ -596,9 +597,13 @@ function buildWaterMesh() {
 
       // Wo das Becken an der Inselkante endet, braucht es eine senkrechte
       // Außenfläche — sonst schaut man auf eine unendlich dünne Ebene.
+      // Die Wand reicht nur bis zum Grund dieser Säule, nicht durch die
+      // ganze Insel — sonst schimmert sie an tiefer liegenden Stellen als
+      // senkrechter Streifen durch das Gelände.
+      const floor = Math.max(ground[c] + 0.5, WATER_BOTTOM);
       const wall = (ax, ay, az, bx, bz, nx, nz) => {
         const w = pos.length / 3;
-        pos.push(ax, ay, az,  bx, ay, bz,  ax, WATER_BOTTOM, az,  bx, WATER_BOTTOM, bz);
+        pos.push(ax, ay, az,  bx, ay, bz,  ax, floor, az,  bx, floor, bz);
         for (let n = 0; n < 4; n++) nrm.push(nx, 0, nz);
         idx.push(w, w + 2, w + 1, w + 1, w + 2, w + 3);
       };
