@@ -528,12 +528,14 @@ const waterUniforms = {
 waterMat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, waterUniforms);
 
-  sh.vertexShader = 'varying vec3 vWPos;\n' + sh.vertexShader.replace(
-    '#include <begin_vertex>',
-    '#include <begin_vertex>\n      vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+  sh.vertexShader = 'varying vec3 vWPos;\nvarying float vTop;\n' + sh.vertexShader.replace(
+    '#include <begin_vertex>', `#include <begin_vertex>
+      vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      vTop = objectNormal.y;        // 1 = Wasserspiegel, 0 = Außenwand`);
 
   sh.fragmentShader = `
     varying vec3 vWPos;
+    varying float vTop;
     uniform sampler2D tDepth;
     uniform vec2 uRes;
     uniform float uNear, uFar, uVis, uTime;
@@ -541,8 +543,9 @@ waterMat.onBeforeCompile = (sh) => {
     float toViewZ(float d) { return (uNear * uFar) / ((uFar - uNear) * d - uFar); }
   ` + sh.fragmentShader
     // Wellen stören nur die Normale — so hängen sie nicht an der Tessellierung
+    // Wellen spiegeln nur auf dem Wasserspiegel, nicht an der Außenwand
     .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
-      {
+      if (vTop > 0.5) {
         float t = uTime, wx = vWPos.x, wz = vWPos.z;
         float dx = 0.030 * 1.70 * cos(wx * 1.70 + t * 1.10)
                  + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
@@ -551,6 +554,9 @@ waterMat.onBeforeCompile = (sh) => {
         vec3 nW = normalize(vec3(-dx * 0.7, 1.0, -dz * 0.7));
         normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
       }`)
+    .replace('#include <color_fragment>', `#include <color_fragment>
+    // Die Außenwand etwas dunkler, damit sich die Kante zum Spiegel absetzt
+    if (vTop <= 0.5) diffuseColor.rgb *= 0.72;`)
     .replace('#include <dithering_fragment>', `#include <dithering_fragment>
     float groundZ = toViewZ(texture2D(tDepth, gl_FragCoord.xy / uRes).x);
     float surfaceZ = toViewZ(gl_FragCoord.z);
