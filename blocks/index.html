@@ -59,6 +59,10 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 
 const SIZE = 20;              // 20 x 20 Grundfläche
+// Die Insel wird etwas INNERHALB der äußersten Blockmitten abgeschnitten:
+// die Blockflanken sind gerundet, ein Schnitt exakt auf der Blockgrenze
+// träfe sie dort, wo sie schon eingezogen sind, und die Kante würde wellig.
+const INSET = 0.32;           // etwas mehr als BOX_ROUND
 const STORAGE_KEY = 'blocks.world.v1';
 const VIEW_KEY    = 'blocks.view.v1';
 const WATER_KEY   = 'blocks.water.v1';
@@ -190,7 +194,7 @@ scene.add(sun, sun.target);
 
 // Sockel unter der Bauplatte, damit die Fläche "schwebt" statt abzubrechen
 const baseMat = new THREE.MeshLambertMaterial({ map: pixelTexture('#2e3236', 0.16) });
-const base = new THREE.Mesh(new THREE.BoxGeometry(SIZE, 4, SIZE), baseMat);
+const base = new THREE.Mesh(new THREE.BoxGeometry(SIZE - 2 * INSET, 4, SIZE - 2 * INSET), baseMat);
 base.position.set(SIZE/2 - 0.5, -2.3, SIZE/2 - 0.5);
 base.receiveShadow = true;
 scene.add(base);
@@ -406,7 +410,7 @@ function rebuildTerrain() {
 
   // Die Insel wird mit einem Quader geschnitten, damit die Außenkanten
   // gerade abbrechen statt sich rundzuziehen: Schnittmenge = max(d, dBox).
-  const HALF_W = SIZE / 2;
+  const HALF_W = SIZE / 2 - INSET;
   const cxz = SIZE / 2 - 0.5;
   for (let z = 0; z < size; z++) {
     const qz = Math.abs(wzs[z] - cxz) - HALF_W;
@@ -560,7 +564,7 @@ function buildWaterMesh() {
       const outside = (nx, nz) => nx < 0 || nz < 0 || nx >= SIZE || nz >= SIZE;
       const e = (dx, dz) => {
         const nx = x + dx, nz = z + dz;
-        if (outside(nx, nz)) return 0;
+        if (outside(nx, nz)) return -INSET;       // exakt auf der Levelkante
         return mine.has(ci(nx, nz)) ? 0 : WATER_OVER;
       };
       const x0 = x - 0.5 - e(-1, 0), x1 = x + 0.5 + e(1, 0);
