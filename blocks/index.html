@@ -279,9 +279,9 @@ const grainTex = (() => {
     }
   }
   const t = new THREE.CanvasTexture(c);
-  t.magFilter = t.minFilter = THREE.NearestFilter;
+  t.magFilter = THREE.NearestFilter;                 // nah: harte Texel
+  t.minFilter = THREE.LinearMipmapLinearFilter;      // fern: kein Flimmern
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.generateMipmaps = false;
   return t;
 })();
 
@@ -304,8 +304,8 @@ terrainMat.onBeforeCompile = (sh) => {
       vec2 tuv = (an.y >= an.x && an.y >= an.z) ? vWPos.xz
                : (an.x >= an.z)                ? vWPos.zy
                                                : vWPos.xy;
-      float grain = texture2D(uGrain, tuv * 0.5).r;   // 8 Texel je Block
-      diffuseColor.rgb *= 0.70 + grain * 0.60;`);
+      float grain = texture2D(uGrain, tuv * 4.0).r;   // 64 Texel je Block
+      diffuseColor.rgb *= 0.82 + grain * 0.36;`);
 };
 
 const terrain = new MarchingCubes(MC_RES, terrainMat, false, true, 200000);
