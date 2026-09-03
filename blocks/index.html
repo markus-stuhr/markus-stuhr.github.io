@@ -59,6 +59,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const SIZE = 20;              // 20 x 20 Grundfläche
 const STORAGE_KEY = 'blocks.world.v1';
+const VIEW_KEY    = 'blocks.view.v1';
 
 /* ---------------------------------------------------------------
    Prozedurale 16x16-Pixeltexturen — Minecraft-Optik ohne Assets.
@@ -250,14 +251,31 @@ function generate() {
   save();
 }
 
-/* ------------------------ Speichern -------------------------- */
-function save() {
+/* ------------------------ Speichern --------------------------
+   Jede Änderung landet im localStorage: die Blockwelt selbst und
+   getrennt davon der Blickzustand (Kamera, gewähltes Material).
+   Geschrieben wird gebündelt am Ende des Frames, damit ein Klick
+   nicht mitten im Setzen die ganze Welt serialisiert.
+------------------------------------------------------------- */
+let savePending = 0;
+function saveNow() {
+  savePending = 0;
   try {
     const data = [];
     for (const [k, b] of world) data.push(k + ':' + b.type);
     localStorage.setItem(STORAGE_KEY, data.join('|'));
+    localStorage.setItem(VIEW_KEY, JSON.stringify({
+      cam: camera.position.toArray().map(n => +n.toFixed(3)),
+      target: controls.target.toArray().map(n => +n.toFixed(3)),
+      type: selected
+    }));
   } catch (e) { /* privater Modus o. Ä. */ }
 }
+function save() {
+  if (savePending) return;
+  savePending = requestAnimationFrame(saveNow);
+}
+
 function load() {
   let raw = null;
   try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) {}
@@ -270,10 +288,28 @@ function load() {
   }
   return world.size > 0;
 }
+
+let savedView = null;
+try { savedView = JSON.parse(localStorage.getItem(VIEW_KEY) || 'null'); } catch (e) {}
+if (savedView && savedView.cam && savedView.target) {
+  camera.position.fromArray(savedView.cam);
+  controls.target.fromArray(savedView.target);
+  controls.update();
+}
+
 if (!load()) generate();
 
+// Kameradrehung/Zoom ebenfalls sichern, aber erst wenn sie zur Ruhe kommt
+controls.addEventListener('end', save);
+
+// Tabwechsel oder Schließen: sofort schreiben, bevor der Frame nie kommt
+addEventListener('pagehide', saveNow);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveNow();
+});
+
 /* ------------------------ Auswahl-HUD ------------------------ */
-let selected = 'grass';
+let selected = (savedView && BLOCKS[savedView.type]) ? savedView.type : 'grass';
 const hud = document.getElementById('hud');
 TYPES.forEach((type, i) => {
   const slot = document.createElement('div');
@@ -287,6 +323,7 @@ TYPES.forEach((type, i) => {
 function select(type) {
   selected = type;
   for (const s of hud.children) s.classList.toggle('active', s.dataset.type === type);
+  save();
 }
 addEventListener('keydown', e => {
   const n = parseInt(e.key, 10);
