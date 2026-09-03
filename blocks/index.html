@@ -203,7 +203,7 @@ const key = (x,y,z) => x+','+y+','+z;
 
 function addBlock(x, y, z, type, silent) {
   if (world.has(key(x,y,z))) return;
-  if (x < 0 || z < 0 || x >= SIZE || z >= SIZE || y < 0 || y > 24) return;
+  if (x < 0 || z < 0 || x >= SIZE || z >= SIZE || y < 0 || y > 10) return;
   const mesh = new THREE.Mesh(geo, BLOCKS[type].materials);
   mesh.position.set(x, y, z);
   mesh.castShadow = true;
@@ -244,19 +244,26 @@ function removeBlock(x, y, z) {
 
    Umgesetzt als Distanzfeld + Marching Cubes.
 ------------------------------------------------------------------- */
-const MC_RES    = 64;     // Feldauflösung (64 Punkte über 20 Blöcke)
-const MC_SPAN   = 20;     // Weltausdehnung des Feldwürfels
-const BOX_FLAT  = 0.20;   // halbe Kantenlänge des flachen Kerns
-const BOX_ROUND = 0.30;   // Rundungsradius drumherum (0.20 + 0.30 = 0.5)
+const MC_RES    = 64;     // Feldauflösung je Achse
+const MC_SPAN_XZ = 20;    // abgedeckte Weltbreite
+const MC_SPAN_Y  = 12;    // abgedeckte Welthöhe — enger als die Breite,
+                          // damit die Samples vertikal dichter liegen und
+                          // die feine Deckelkante überhaupt auflösbar ist
+const BOX_ROUND = 0.30;   // Rundungsradius der senkrechten Kanten
+const ROUND_Y   = 0.03;   // Rundung der waagerechten Kanten (10% davon)
 const BLEND     = 0.32;   // Weichheit der Verschmelzung
 
-const mcCenter = new THREE.Vector3(9.5, 8.5, 9.5);
-const mcScale  = MC_SPAN / 2;
+const BOX_FLAT   = 0.5 - BOX_ROUND;   // flacher Kern in x/z
+const BOX_FLAT_Y = 0.5 - ROUND_Y;     // flacher Kern in y
+const Y_SQUEEZE  = BOX_ROUND / ROUND_Y;
+
+const mcCenter = new THREE.Vector3(9.5, 5.5, 9.5);
+const mcScale  = new THREE.Vector3(MC_SPAN_XZ / 2, MC_SPAN_Y / 2, MC_SPAN_XZ / 2);
 
 const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true });
 const terrain = new MarchingCubes(MC_RES, terrainMat, false, true, 200000);
 terrain.position.copy(mcCenter);
-terrain.scale.setScalar(mcScale);
+terrain.scale.copy(mcScale);
 terrain.isolation = 0;
 terrain.castShadow = true;
 terrain.receiveShadow = true;
@@ -266,8 +273,10 @@ const HALF = MC_RES / 2;
 const dist = new Float32Array(terrain.size3);      // Distanz zum nächsten Block
 
 // Feldindex <-> Weltkoordinate
-const gridToWorld = (i, axis) => (i / HALF - 1) * mcScale + mcCenter.getComponent(axis);
-const worldToGrid = (w, axis) => ((w - mcCenter.getComponent(axis)) / mcScale + 1) * HALF;
+const gridToWorld = (i, axis) =>
+  (i / HALF - 1) * mcScale.getComponent(axis) + mcCenter.getComponent(axis);
+const worldToGrid = (w, axis) =>
+  ((w - mcCenter.getComponent(axis)) / mcScale.getComponent(axis) + 1) * HALF;
 
 // Weiches Minimum: verschmilzt zwei Distanzen ohne harte Naht
 function smin(a, b, k) {
@@ -275,11 +284,13 @@ function smin(a, b, k) {
   return b * (1 - h) + a * h - k * h * (1 - h);
 }
 
-// Abgerundete Box um den Ursprung
+// Abgerundete Box um den Ursprung. Die y-Komponente wird gestaucht, damit
+// die waagerechten Kanten mit einem viel kleineren Radius runden als die
+// senkrechten — Deckel und Boden bleiben so scharf, die Seiten rund.
 function sdRoundBox(dx, dy, dz) {
-  const qx = Math.max(Math.abs(dx) - BOX_FLAT, 0);
-  const qy = Math.max(Math.abs(dy) - BOX_FLAT, 0);
-  const qz = Math.max(Math.abs(dz) - BOX_FLAT, 0);
+  const qx = Math.max(Math.abs(dx) - BOX_FLAT,   0);
+  const qy = Math.max(Math.abs(dy) - BOX_FLAT_Y, 0) * Y_SQUEEZE;
+  const qz = Math.max(Math.abs(dz) - BOX_FLAT,   0);
   return Math.sqrt(qx*qx + qy*qy + qz*qz) - BOX_ROUND;
 }
 
@@ -297,9 +308,9 @@ function rebuildTerrain() {
   palette.fill(0);
   terrain.normal_cache.fill(0);
 
-  // Reichweite eines Blocks in Feldpunkten
-  const step = MC_SPAN / MC_RES;
-  const reach = Math.ceil((0.5 + BLEND) / step) + 1;
+  // Reichweite eines Blocks in Feldpunkten (je Achse, das Feld ist in y feiner)
+  const reachXZ = Math.ceil((0.5 + BLEND) / (MC_SPAN_XZ / MC_RES)) + 1;
+  const reachY  = Math.ceil((0.5 + BLEND) / (MC_SPAN_Y  / MC_RES)) + 1;
 
   for (const [k, b] of world) {
     if (b.type === 'water') continue;              // Wasser hat eine eigene Fläche
@@ -308,9 +319,9 @@ function rebuildTerrain() {
     const covered = world.has(key(bx, by + 1, bz));
 
     const gx = worldToGrid(bx, 0), gy = worldToGrid(by, 1), gz = worldToGrid(bz, 2);
-    const x0 = Math.max(0, Math.floor(gx - reach)), x1 = Math.min(size - 1, Math.ceil(gx + reach));
-    const y0 = Math.max(0, Math.floor(gy - reach)), y1 = Math.min(size - 1, Math.ceil(gy + reach));
-    const z0 = Math.max(0, Math.floor(gz - reach)), z1 = Math.min(size - 1, Math.ceil(gz + reach));
+    const x0 = Math.max(0, Math.floor(gx - reachXZ)), x1 = Math.min(size - 1, Math.ceil(gx + reachXZ));
+    const y0 = Math.max(0, Math.floor(gy - reachY)),  y1 = Math.min(size - 1, Math.ceil(gy + reachY));
+    const z0 = Math.max(0, Math.floor(gz - reachXZ)), z1 = Math.min(size - 1, Math.ceil(gz + reachXZ));
 
     for (let z = z0; z <= z1; z++) {
       const wz = gridToWorld(z, 2) - bz;
