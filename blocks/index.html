@@ -188,7 +188,7 @@ sun.target.position.set(SIZE/2, 0, SIZE/2);
 scene.add(sun, sun.target);
 
 // Sockel unter der Bauplatte, damit die Fläche "schwebt" statt abzubrechen
-const baseMat = new THREE.MeshLambertMaterial({ map: pixelTexture('#6b5a45', 0.2) });
+const baseMat = new THREE.MeshLambertMaterial({ map: pixelTexture('#2e3236', 0.16) });
 const base = new THREE.Mesh(new THREE.BoxGeometry(SIZE, 4, SIZE), baseMat);
 base.position.set(SIZE/2 - 0.5, -2.3, SIZE/2 - 0.5);
 base.receiveShadow = true;
