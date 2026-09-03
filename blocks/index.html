@@ -260,7 +260,54 @@ const Y_SQUEEZE  = BOX_ROUND / ROUND_Y;
 const mcCenter = new THREE.Vector3(9.5, 5.5, 9.5);
 const mcScale  = new THREE.Vector3(MC_SPAN_XZ / 2, MC_SPAN_Y / 2, MC_SPAN_XZ / 2);
 
+/* Struktur-Textur: 16x16 Graustufen, die triplanar aus den Weltkoordinaten
+   gesampelt wird. Genau ein Block pro Wiederholung, NearestFilter und eine
+   harte Achsenwahl statt weicher Überblendung — dadurch bleiben die Pixel
+   überall gestochen scharf, auch auf den gerundeten Flanken. */
+const grainTex = (() => {
+  const N = 16;
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d');
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      let v = 0.5 + (Math.random() - 0.5) * 0.55;
+      if ((x ^ y) % 7 === 0) v -= 0.10;          // etwas gröbere Sprenkel
+      if ((x + y * 3) % 11 === 0) v += 0.08;
+      g.fillStyle = 'rgb(' + [v, v, v].map(n => Math.round(n * 255)).join(',') + ')';
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = t.minFilter = THREE.NearestFilter;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.generateMipmaps = false;
+  return t;
+})();
+
 const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+terrainMat.onBeforeCompile = (sh) => {
+  sh.uniforms.uGrain = { value: grainTex };
+  sh.uniforms.uScale = { value: mcScale };
+
+  sh.vertexShader = 'varying vec3 vWPos;\nvarying vec3 vWNrm;\nuniform vec3 uScale;\n'
+    + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      // Das Objekt ist ungleichmäßig skaliert — die Normale muss mit dem
+      // Kehrwert der Skalierung zurückgerechnet werden, sonst kippt die
+      // Achsenwahl auf den Flanken.
+      vWNrm = normalize(objectNormal / uScale);`);
+
+  sh.fragmentShader = 'varying vec3 vWPos;\nvarying vec3 vWNrm;\nuniform sampler2D uGrain;\n'
+    + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      vec3 an = abs(vWNrm);
+      vec2 tuv = (an.y >= an.x && an.y >= an.z) ? vWPos.xz
+               : (an.x >= an.z)                ? vWPos.zy
+                                               : vWPos.xy;
+      float grain = texture2D(uGrain, tuv * 0.5).r;   // 8 Texel je Block
+      diffuseColor.rgb *= 0.70 + grain * 0.60;`);
+};
+
 const terrain = new MarchingCubes(MC_RES, terrainMat, false, true, 200000);
 terrain.position.copy(mcCenter);
 terrain.scale.copy(mcScale);
