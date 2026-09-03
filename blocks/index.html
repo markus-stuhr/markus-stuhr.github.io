@@ -691,15 +691,217 @@ function buildWaterMesh() {
   waterSurface.visible = idx.length > 0;
 }
 
+/* ------------------------- Detail-Layer -------------------------
+   Aufsatz über Gelände und Wasser: Dinge, die sich aus dem Level
+   ableiten, statt gebaut zu werden. Sie halten sich an den Zustand der
+   Welt und werden nachgeführt, wenn er sich ändert.
+
+   Erster Bewohner: Fische. Sie leben in den Becken, schwimmen frei
+   umher und drehen ab, bevor sie ans Ufer stoßen.
+----------------------------------------------------------------- */
+const FISH_KINDS = [
+  { name: 'Elritze',  color: '#e8c45a', belly: '#fff1c0', len: 0.50, speed: 0.85, beat: 13 },
+  { name: 'Rotfeder', color: '#d9603c', belly: '#f6b49a', len: 0.68, speed: 0.68, beat: 10 },
+  { name: 'Schleie',  color: '#4e7d46', belly: '#a8c98f', len: 0.88, speed: 0.52, beat: 7.5 },
+  { name: 'Blaufisch',color: '#4a86c8', belly: '#bcdcf2', len: 0.58, speed: 0.95, beat: 15 }
+];
+const FISH_PER_CELLS = 14;     // ein Fisch je so vielen Wasserfeldern
+const FISH_MAX = 24;
+
+/* Fischkörper: Ringe entlang der Längsachse, dazu Schwanz- und Rückenflosse.
+   Die Schlängelbewegung macht der Vertexshader, die Geometrie bleibt starr. */
+function makeFishGeometry() {
+  const RINGS = 12, SIDES = 8;
+  const pos = [], col = [], idx = [];
+  const body = new THREE.Color(), belly = new THREE.Color();
+
+  // Profil: schlank am Schwanz, bauchig hinter dem Kopf, vorn gerundet
+  const radiusAt = (t) => 0.055 + 0.42 * Math.sin(Math.PI * Math.pow(t, 0.75)) * (1 - 0.25 * t);
+
+  for (let i = 0; i <= RINGS; i++) {
+    const t = i / RINGS;                 // 0 = Schwanz, 1 = Kopf
+    const x = -0.5 + t;
+    const r = radiusAt(t);
+    for (let j = 0; j < SIDES; j++) {
+      const a = (j / SIDES) * Math.PI * 2;
+      const cy = Math.cos(a), cz = Math.sin(a);
+      pos.push(x, cy * r, cz * r * 0.62);      // seitlich abgeflacht
+      // Bauch heller als der Rücken
+      col.push(cy < 0 ? 1 : 0, 0, 0);
+    }
+  }
+  for (let i = 0; i < RINGS; i++) {
+    for (let j = 0; j < SIDES; j++) {
+      const a = i * SIDES + j, b = i * SIDES + (j + 1) % SIDES;
+      idx.push(a, b, a + SIDES,  b, b + SIDES, a + SIDES);
+    }
+  }
+
+  // Flossen als flache Dreiecke
+  const fin = (ax, ay, bx, by, cx2, cy2) => {
+    const v = pos.length / 3;
+    pos.push(ax, ay, 0,  bx, by, 0,  cx2, cy2, 0);
+    for (let n = 0; n < 3; n++) col.push(0.5, 0, 0);
+    idx.push(v, v + 1, v + 2,  v, v + 2, v + 1);   // beidseitig sichtbar
+  };
+  fin(-0.46, 0, -0.72,  0.30, -0.72, -0.30);       // Schwanzflosse
+  fin(-0.02, 0.16, -0.20, 0.42, -0.34, 0.14);      // Rückenflosse
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+const fishGeo = makeFishGeometry();
+
+function makeFishMaterial(kind) {
+  // Etwas Eigenleuchten: sonst verschluckt sie der Tiefeneffekt des Wassers.
+  const m = new THREE.MeshLambertMaterial({
+    color: kind.color, vertexColors: true, side: THREE.DoubleSide,
+    emissive: new THREE.Color(kind.color).multiplyScalar(0.35)
+  });
+  const uniforms = { uTime: { value: 0 }, uPhase: { value: Math.random() * 6.28 },
+                     uBeat: { value: kind.beat }, uBelly: { value: new THREE.Color(kind.belly) } };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = 'uniform float uTime, uPhase, uBeat;\n' + sh.vertexShader.replace(
+      '#include <begin_vertex>', `#include <begin_vertex>
+        // Schlängeln: eine Welle läuft von vorn nach hinten und wird zum
+        // Schwanz hin stärker. Der Kopf bleibt fast ruhig.
+        float head = transformed.x + 0.5;                 // 0 = Schwanz, 1 = Kopf
+        float amp = pow(1.0 - head, 1.6) * 0.30;
+        float wave = sin(uPhase + uTime * uBeat - head * 4.2);
+        transformed.z += wave * amp;
+        transformed.x -= abs(wave) * amp * 0.10;          // leichte Stauchung
+        objectNormal.z += wave * amp * 1.2;`);
+    sh.fragmentShader = 'uniform vec3 uBelly;\n' + sh.fragmentShader.replace(
+      '#include <color_fragment>',
+      'diffuseColor.rgb = mix(diffuseColor.rgb, uBelly, vColor.r);');
+  };
+  m.userData.uniforms = uniforms;
+  return m;
+}
+
+const fishGroup = new THREE.Group();
+scene.add(fishGroup);
+const fishes = [];
+
+function spawnFish() {
+  const kind = FISH_KINDS[(Math.random() * FISH_KINDS.length) | 0];
+  const mesh = new THREE.Mesh(fishGeo, makeFishMaterial(kind));
+  mesh.scale.setScalar(kind.len);
+  fishGroup.add(mesh);
+  const f = { kind, mesh, x: 0, y: 0, z: 0, dir: Math.random() * 6.28,
+              want: 0, rise: 0, think: 0, speed: kind.speed * (0.8 + Math.random() * 0.4) };
+  f.want = f.dir;
+  fishes.push(f);
+  return f;
+}
+
+/* Wo darf ein Fisch sein? Nur in einer Wasserzelle, zwischen Grund und
+   Spiegel — und mit etwas Abstand zu beidem. */
+function fishSpot(x, z) {
+  const gx = Math.round(x), gz = Math.round(z);
+  if (gx < 0 || gz < 0 || gx >= SIZE || gz >= SIZE) return null;
+  const id = cellOwner[ci(gx, gz)];
+  if (id === -1 || !bodies[id]) return null;
+  const top = bodies[id].level - 0.5 + WATER_FILL - 0.18;
+  const bottom = groundCache[ci(gx, gz)] + 0.5 + 0.16;
+  return bottom + 0.05 < top ? { top, bottom } : null;
+}
+
+function placeFish(f) {
+  for (let tries = 0; tries < 60; tries++) {
+    const b = bodies[(Math.random() * bodies.length) | 0];
+    if (!b) return false;
+    const c = b.cells[(Math.random() * b.cells.length) | 0];
+    const x = c % SIZE + (Math.random() - 0.5) * 0.6;
+    const z = ((c / SIZE) | 0) + (Math.random() - 0.5) * 0.6;
+    const spot = fishSpot(x, z);
+    if (!spot) continue;
+    f.x = x; f.z = z;
+    // eher in der oberen Hälfte — dort sieht man sie durch das Wasser
+    f.y = spot.bottom + (0.45 + Math.random() * 0.5) * (spot.top - spot.bottom);
+    return true;
+  }
+  return false;
+}
+
+/* Bestand an die Wasserfläche anpassen — nach jeder Änderung am Level */
+function syncFish() {
+  let cells = 0;
+  for (const b of bodies) cells += b.cells.length;
+  const want = Math.min(FISH_MAX, Math.floor(cells / FISH_PER_CELLS));
+
+  while (fishes.length > want) {
+    const f = fishes.pop();
+    fishGroup.remove(f.mesh);
+    f.mesh.material.dispose();
+  }
+  while (fishes.length < want) {
+    const f = spawnFish();
+    if (!placeFish(f)) { fishes.pop(); fishGroup.remove(f.mesh); break; }
+  }
+  // Wer durch einen gesetzten Block auf dem Trockenen sitzt, zieht um
+  for (const f of fishes) if (!fishSpot(f.x, f.z)) placeFish(f);
+}
+
+function updateFish(t, dt) {
+  for (const f of fishes) {
+    f.mesh.material.userData.uniforms.uTime.value = t;
+
+    // ab und zu ein neues Ziel, dazu ein sanftes Auf und Ab
+    f.think -= dt;
+    if (f.think <= 0) {
+      f.think = 1.5 + Math.random() * 3;
+      f.want = f.dir + (Math.random() - 0.5) * 2.2;
+      f.rise = (Math.random() - 0.5) * 0.35;
+    }
+
+    // vorausschauen: läuft der Weg ans Ufer, rechtzeitig abdrehen
+    const look = 0.55 + f.speed * 0.35;
+    const ahead = fishSpot(f.x + Math.cos(f.dir) * look, f.z + Math.sin(f.dir) * look);
+    if (!ahead) {
+      f.want = f.dir + (Math.random() < 0.5 ? 1 : -1) * (1.4 + Math.random());
+      f.think = 0.8;
+    }
+
+    // weich einlenken
+    let d = ((f.want - f.dir + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    f.dir += Math.max(-2.2 * dt, Math.min(2.2 * dt, d));
+
+    const step = f.speed * dt;
+    const nx = f.x + Math.cos(f.dir) * step, nz = f.z + Math.sin(f.dir) * step;
+    if (fishSpot(nx, nz)) { f.x = nx; f.z = nz; }
+    else f.dir += Math.PI * 0.6;                    // Notbremse am Ufer
+
+    const spot = fishSpot(f.x, f.z);
+    if (spot) {
+      f.y = Math.min(spot.top, Math.max(spot.bottom, f.y + f.rise * dt));
+      if (f.y <= spot.bottom + 1e-3 || f.y >= spot.top - 1e-3) f.rise *= -1;
+    }
+
+    f.mesh.position.set(f.x, f.y, f.z);
+    f.mesh.rotation.set(0, -f.dir, 0);
+    f.mesh.rotateZ(Math.max(-0.5, Math.min(0.5, f.rise * 0.9)));   // Nase hoch/runter
+  }
+}
+
 let waterPending = 0;
 function scheduleWater() {
   if (waterPending) return;
   waterPending = requestAnimationFrame(() => { waterPending = 0; applyWater(); });
 }
 
+let groundCache = new Int16Array(SIZE * SIZE);
+
 function applyWater() {
   resolvePools();
+  groundCache = groundMap();
   buildWaterMesh();
+  syncFish();
   save();
 }
 
@@ -930,8 +1132,15 @@ addEventListener('resize', () => {
 });
 
 const clock = new THREE.Clock();
+let simTime = 0;
 renderer.setAnimationLoop(() => {
-  waterUniforms.uTime.value = clock.getElapsedTime();
+  // getElapsedTime() würde den Delta-Zähler mitverbrauchen — deshalb nur
+  // getDelta() abfragen und die Zeit selbst mitführen.
+  const dt = Math.min(0.05, clock.getDelta());
+  simTime += dt;
+  const t = simTime;
+  waterUniforms.uTime.value = t;
+  updateFish(t, dt);
   controls.update();
 
   // Erst die Szene ohne Wasser in die Depth-Textur, dann normal zeichnen
