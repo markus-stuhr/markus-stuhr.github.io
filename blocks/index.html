@@ -244,9 +244,12 @@ function removeBlock(x, y, z) {
 
    Umgesetzt als Distanzfeld + Marching Cubes.
 ------------------------------------------------------------------- */
-const MC_RES    = 64;     // Feldauflösung je Achse
-const MC_SPAN_XZ = 20;    // abgedeckte Weltbreite
-const MC_SPAN_Y  = 12;    // abgedeckte Welthöhe — enger als die Breite,
+const MC_RES    = 72;     // Feldauflösung je Achse
+// Das Feld muss RINGS UM die Welt herum Luft haben: MarchingCubes lässt an
+// jeder Feldgrenze eine Zelle unbearbeitet, sonst werden die Randblöcke und
+// die unterste Schicht aufgeschnitten.
+const MC_SPAN_XZ = 22;    // abgedeckte Weltbreite (20 Blöcke + 1 Rand je Seite)
+const MC_SPAN_Y  = 13;    // abgedeckte Welthöhe — enger als die Breite,
                           // damit die Samples vertikal dichter liegen und
                           // die feine Deckelkante überhaupt auflösbar ist
 const BOX_ROUND = 0.30;   // Rundungsradius der senkrechten Kanten
@@ -257,7 +260,7 @@ const BOX_FLAT   = 0.5 - BOX_ROUND;   // flacher Kern in x/z
 const BOX_FLAT_Y = 0.5 - ROUND_Y;     // flacher Kern in y
 const Y_SQUEEZE  = BOX_ROUND / ROUND_Y;
 
-const mcCenter = new THREE.Vector3(9.5, 5.5, 9.5);
+const mcCenter = new THREE.Vector3(9.5, 5.0, 9.5);   // deckt y −1.5 … 11.5
 const mcScale  = new THREE.Vector3(MC_SPAN_XZ / 2, MC_SPAN_Y / 2, MC_SPAN_XZ / 2);
 
 /* Struktur-Textur: 16x16 Graustufen, die triplanar aus den Weltkoordinaten
