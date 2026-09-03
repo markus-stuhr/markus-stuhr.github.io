@@ -61,6 +61,7 @@ import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 const SIZE = 20;              // 20 x 20 Grundfläche
 const STORAGE_KEY = 'blocks.world.v1';
 const VIEW_KEY    = 'blocks.view.v1';
+const WATER_KEY   = 'blocks.water.v1';
 
 /* ---------------------------------------------------------------
    Prozedurale 16x16-Pixeltexturen — Minecraft-Optik ohne Assets.
@@ -202,6 +203,7 @@ const meshes = [];              // Raycast-Ziele
 const key = (x,y,z) => x+','+y+','+z;
 
 function addBlock(x, y, z, type, silent) {
+  if (type === 'water') return;          // Wasser ist ein Pegel, kein Block
   if (world.has(key(x,y,z))) return;
   if (x < 0 || z < 0 || x >= SIZE || z >= SIZE || y < 0 || y > 10) return;
   const mesh = new THREE.Mesh(geo, BLOCKS[type].materials);
@@ -216,7 +218,6 @@ function addBlock(x, y, z, type, silent) {
   mesh.updateMatrixWorld();   // Raycast-Ziel, kommt nicht in die Szene
   meshes.push(mesh);
   world.set(key(x,y,z), { mesh, type });
-  scheduleWater();
   scheduleTerrain();
   if (!silent) save();
 }
@@ -227,7 +228,6 @@ function removeBlock(x, y, z) {
   if (!b) return;
   meshes.splice(meshes.indexOf(b.mesh), 1);
   world.delete(k);
-  scheduleWater();
   scheduleTerrain();
   save();
 }
@@ -401,180 +401,140 @@ function rebuildTerrain() {
   terrain.update();
 }
 
-/* ---------------------- Geglättete Wasserfläche ----------------------
-   Die Welt bleibt ein reines Voxelraster — nur gezeichnet wird das
-   Wasser nicht als Würfel, sondern als eine Fläche, deren Uferlinie
-   aus dem Belegungsfeld weichgezeichnet wird.
+/* -------------------------- Wasserspiegel --------------------------
+   Wasser ist kein Block mehr, sondern ein globaler Pegel: eine einzige
+   Fläche über der ganzen Insel auf Höhe `waterLevel + 0.5`. Wo das
+   Gelände höher liegt, verdeckt es die Fläche von selbst — dadurch füllt
+   ein Klick automatisch die ganze Ebene und jede Senke darin.
 
-   Ablauf pro Wasserhöhe:
-     1. Belegung o(x,z) = 1, wo an dieser Höhe Wasser oben liegt
-     2. zweimal ein 3x3-Kernel darüber -> weiches Feld f
-     3. Feld auf einem 4x feineren Gitter bilinear abtasten
-     4. f steuert Höhe (Ufer sackt ab) und Alpha (Ufer läuft aus)
---------------------------------------------------------------------- */
-const WATER_SUB   = 4;      // Untergitterpunkte pro Block
-const WATER_EDGE  = 0.30;   // darunter gilt eine Ecke als "kein Wasser"
-const WATER_FULL  = 0.62;   // darüber volle Deckkraft
-const WATER_DROP  = 0.28;   // wie tief die Uferkante absackt
+   Werkzeug "Wasser": Linksklick hebt den Pegel um eine Stufe (der erste
+   Klick setzt ihn auf die angeklickte Höhe), Rechtsklick senkt ihn.
+   Fällt er unter das tiefste Gelände, verschwindet das Wasser.
+------------------------------------------------------------------- */
+const WATER_MIN = -1;      // darunter ist nichts mehr zu sehen
+let waterLevel = null;     // null = kein Wasser
 
-const waterTex = pixelTexture('#3b7bd4', 0.18);
-waterTex.wrapS = waterTex.wrapT = THREE.RepeatWrapping;
-const waterMat = new THREE.MeshLambertMaterial({
-  map: waterTex, vertexColors: true, transparent: true,
-  depthWrite: false, side: THREE.DoubleSide
+const waterGeo = new THREE.PlaneGeometry(SIZE, SIZE, 96, 96);
+waterGeo.rotateX(-Math.PI / 2);      // liegt danach in der xz-Ebene
+
+const waterMat = new THREE.MeshPhongMaterial({
+  color: '#2f6fc4', specular: '#bfe4ff', shininess: 90,
+  transparent: true, opacity: 0.86,
+  vertexColors: true, depthWrite: false, side: THREE.DoubleSide
 });
-let waterMesh = null;
-let waterPending = 0;
-
-function scheduleWater() {
-  if (waterPending) return;
-  waterPending = requestAnimationFrame(() => { waterPending = 0; rebuildWater(); });
-}
-
-const smoothstep = (a, b, t) => {
-  t = Math.min(1, Math.max(0, (t - a) / (b - a)));
-  return t * t * (3 - 2 * t);
+const waterUniforms = { uTime: { value: 0 } };
+waterMat.onBeforeCompile = (sh) => {
+  sh.uniforms.uTime = waterUniforms.uTime;
+  sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
+    '#include <begin_vertex>', `#include <begin_vertex>
+      // drei sich überlagernde Wellenzüge, klein gehalten
+      float t = uTime;
+      float wx = transformed.x, wz = transformed.z;
+      float h = 0.030 * sin(wx * 1.70 + t * 1.10)
+              + 0.024 * sin(wz * 2.30 - t * 0.90)
+              + 0.016 * sin((wx + wz) * 1.30 + t * 1.70);
+      transformed.y += h;
+      // Normale analytisch aus der Ableitung — sonst bleibt die Fläche flach beleuchtet
+      float dx = 0.030 * 1.70 * cos(wx * 1.70 + t * 1.10)
+               + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
+      float dz = -0.024 * 2.30 * cos(wz * 2.30 - t * 0.90)
+               + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
+      objectNormal = normalize(vec3(-dx, 1.0, -dz));
+      vNormal = normalize(normalMatrix * objectNormal);`);
 };
 
-function rebuildWater() {
-  if (waterMesh) {
-    scene.remove(waterMesh);
-    waterMesh.geometry.dispose();
-    waterMesh = null;
+const waterSurface = new THREE.Mesh(waterGeo, waterMat);
+waterSurface.position.set(SIZE / 2 - 0.5, 0, SIZE / 2 - 0.5);
+waterSurface.renderOrder = 1;
+waterSurface.visible = false;
+scene.add(waterSurface);
+
+/* Vertexfarbe = Wassertiefe: flach am Ufer wird heller und durchsichtiger */
+function shadeWater() {
+  const pos = waterGeo.attributes.position;
+  let col = waterGeo.attributes.color;
+  if (!col) {
+    col = new THREE.BufferAttribute(new Float32Array(pos.count * 4), 4);
+    waterGeo.setAttribute('color', col);
   }
-
-  // Nur die jeweils oberste Wasserzelle einer Säule bildet Oberfläche
-  const layers = new Map();               // y -> Set("x,z")
-  for (const [k, b] of world) {
-    if (b.type !== 'water') continue;
-    const [x, y, z] = k.split(',').map(Number);
-    if (world.get(key(x, y + 1, z))?.type === 'water') continue;
-    if (!layers.has(y)) layers.set(y, new Set());
-    layers.get(y).add(x + ',' + z);
+  const deep = new THREE.Color('#1d4f9e'), shallow = new THREE.Color('#7fc4e8');
+  const c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const wx = Math.round(pos.getX(i) + waterSurface.position.x);
+    const wz = Math.round(pos.getZ(i) + waterSurface.position.z);
+    let ground = WATER_MIN;
+    for (let y = waterLevel; y >= 0; y--) {
+      if (world.has(key(wx, y, wz))) { ground = y; break; }
+    }
+    const depth = Math.min(1, Math.max(0, (waterLevel - ground) / 3));
+    c.copy(shallow).lerp(deep, depth);
+    col.setXYZW(i, c.r, c.g, c.b, 0.42 + depth * 0.50);
   }
-  if (!layers.size) return;
-
-  const pos = [], col = [], uv = [], idx = [];
-  const base = new THREE.Color('#4a8fe0');
-
-  for (const [y, cells] of layers) {
-    // Feld mit 2 Blöcken Rand, damit das Wasser unter das Ufer laufen kann
-    const PAD = 2;
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
-    for (const c of cells) {
-      const [x, z] = c.split(',').map(Number);
-      x0 = Math.min(x0, x); x1 = Math.max(x1, x);
-      z0 = Math.min(z0, z); z1 = Math.max(z1, z);
-    }
-    x0 -= PAD; z0 -= PAD; x1 += PAD; z1 += PAD;
-    const W = x1 - x0 + 1, H = z1 - z0 + 1;
-
-    let f = new Float32Array(W * H);
-    for (const c of cells) {
-      const [x, z] = c.split(',').map(Number);
-      f[(x - x0) + (z - z0) * W] = 1;
-    }
-    // zweimal weichzeichnen -> runde Uferlinie statt Treppenstufen
-    for (let pass = 0; pass < 2; pass++) {
-      const g = new Float32Array(W * H);
-      for (let j = 0; j < H; j++) {
-        for (let i = 0; i < W; i++) {
-          let sum = 0, wsum = 0;
-          for (let dj = -1; dj <= 1; dj++) {
-            for (let di = -1; di <= 1; di++) {
-              const ii = i + di, jj = j + dj;
-              if (ii < 0 || jj < 0 || ii >= W || jj >= H) continue;
-              const w = (di === 0 ? 2 : 1) * (dj === 0 ? 2 : 1);
-              sum += f[ii + jj * W] * w; wsum += w;
-            }
-          }
-          g[i + j * W] = sum / wsum;
-        }
-      }
-      f = g;
-    }
-    const sample = (i, j) => (i < 0 || j < 0 || i >= W || j >= H) ? 0 : f[i + j * W];
-
-    // Bilineare Abtastung auf dem feinen Gitter
-    const NX = (W - 1) * WATER_SUB, NZ = (H - 1) * WATER_SUB;
-    const start = pos.length / 3;
-    const vals = new Float32Array((NX + 1) * (NZ + 1));
-
-    for (let j = 0; j <= NZ; j++) {
-      for (let i = 0; i <= NX; i++) {
-        const fx = i / WATER_SUB, fz = j / WATER_SUB;
-        const ix = Math.floor(fx), iz = Math.floor(fz);
-        const tx = fx - ix, tz = fz - iz;
-        const v =
-          sample(ix,     iz    ) * (1 - tx) * (1 - tz) +
-          sample(ix + 1, iz    ) * tx       * (1 - tz) +
-          sample(ix,     iz + 1) * (1 - tx) * tz +
-          sample(ix + 1, iz + 1) * tx       * tz;
-        vals[i + j * (NX + 1)] = v;
-
-        const wx = x0 + fx, wz = z0 + fz;
-        const edge = smoothstep(WATER_EDGE, WATER_FULL, v);
-        pos.push(wx, y + 0.46 - (1 - edge) * WATER_DROP, wz);
-        uv.push(wx * 0.5, wz * 0.5);
-        // zum Ufer hin heller und durchsichtiger — flaches Wasser
-        const shade = 0.85 + edge * 0.15;
-        col.push(base.r * shade, base.g * shade, base.b * shade, 0.30 + edge * 0.52);
-      }
-    }
-
-    for (let j = 0; j < NZ; j++) {
-      for (let i = 0; i < NX; i++) {
-        const a = start + i + j * (NX + 1);
-        const b = a + 1, c = a + (NX + 1), d = c + 1;
-        const m = Math.max(
-          vals[i + j * (NX + 1)], vals[i + 1 + j * (NX + 1)],
-          vals[i + (j + 1) * (NX + 1)], vals[i + 1 + (j + 1) * (NX + 1)]
-        );
-        if (m <= WATER_EDGE) continue;   // vollständig trockene Zelle
-        idx.push(a, c, b, b, c, d);
-      }
-    }
-  }
-
-  if (!idx.length) return;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('color',    new THREE.Float32BufferAttribute(col, 4));
-  g.setAttribute('uv',       new THREE.Float32BufferAttribute(uv, 2));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-
-  waterMesh = new THREE.Mesh(g, waterMat);
-  waterMesh.receiveShadow = true;
-  waterMesh.renderOrder = 1;
-  scene.add(waterMesh);
+  col.needsUpdate = true;
 }
 
-/* Startwelt: sanfte Hügel, ein Wassertümpel, etwas Sand am Ufer */
+function applyWater() {
+  if (waterLevel === null) {
+    waterSurface.visible = false;
+  } else {
+    waterSurface.visible = true;
+    waterSurface.position.y = waterLevel + 0.46;
+    shadeWater();
+  }
+  save();
+}
+
+// Ist bei diesem Pegel überhaupt noch Wasser zu sehen?
+function waterVisible(level) {
+  if (level < WATER_MIN) return false;
+  for (let x = 0; x < SIZE; x++) {
+    for (let z = 0; z < SIZE; z++) {
+      let top = WATER_MIN;
+      for (let y = 10; y >= 0; y--) if (world.has(key(x, y, z))) { top = y; break; }
+      if (top < level) return true;      // hier steht Wasser über dem Grund
+    }
+  }
+  return false;
+}
+
+function raiseWater(atY) {
+  const next = waterLevel === null ? atY : waterLevel + 1;
+  if (next > 10) return;
+  waterLevel = next;
+  applyWater();
+}
+
+function lowerWater() {
+  if (waterLevel === null) return;
+  const next = waterLevel - 1;
+  waterLevel = waterVisible(next) ? next : null;
+  applyWater();
+}
+
+/* Startwelt: sanfte Hügel, eine Senke für den See, Sand am Ufer */
 function generate() {
   world.clear(); meshes.length = 0;
-  scheduleWater();
   scheduleTerrain();
 
   const WATER_LEVEL = 1;
+  const cx = SIZE / 2 - 0.5, cz = SIZE / 2 - 0.5;
   for (let x = 0; x < SIZE; x++) {
     for (let z = 0; z < SIZE; z++) {
-      const h = Math.round(
-        1.8 +
-        Math.sin(x * 0.45) * 0.9 +
-        Math.cos(z * 0.38) * 0.9 +
-        Math.sin((x + z) * 0.22) * 0.7
-      );
-      const top = Math.max(0, h);
+      // sanfte Hügel, in die eine runde Mulde für den See geschnitten ist —
+      // der Pegel füllt sonst jede flache Stelle der Insel
+      const r = Math.hypot(x - cx, z - cz);
+      const hills = 3.2 +
+        Math.sin(x * 0.45) * 0.8 +
+        Math.cos(z * 0.38) * 0.8 +
+        Math.sin((x + z) * 0.22) * 0.6;
+      const bowl = Math.max(0, 6.0 - r) * 0.8;
+      const top = Math.max(0, Math.round(hills - bowl));
       for (let y = 0; y < top; y++) addBlock(x, y, z, y >= top - 1 ? 'dirt' : 'stone', true);
-      if (top <= WATER_LEVEL) {
-        addBlock(x, top, z, 'sand', true);
-        for (let y = top + 1; y <= WATER_LEVEL; y++) addBlock(x, y, z, 'water', true);
-      } else {
-        addBlock(x, top, z, 'grass', true);
-      }
+      addBlock(x, top, z, top <= WATER_LEVEL + 1 ? 'sand' : 'grass', true);
     }
   }
+  waterLevel = WATER_LEVEL;
+  applyWater();
   save();
 }
 
@@ -591,6 +551,7 @@ function saveNow() {
     const data = [];
     for (const [k, b] of world) data.push(k + ':' + b.type);
     localStorage.setItem(STORAGE_KEY, data.join('|'));
+    localStorage.setItem(WATER_KEY, waterLevel === null ? '' : String(waterLevel));
     localStorage.setItem(VIEW_KEY, JSON.stringify({
       cam: camera.position.toArray().map(n => +n.toFixed(3)),
       target: controls.target.toArray().map(n => +n.toFixed(3)),
@@ -604,15 +565,23 @@ function save() {
 }
 
 function load() {
-  let raw = null;
-  try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+  let raw = null, lvl = null;
+  try {
+    raw = localStorage.getItem(STORAGE_KEY);
+    lvl = localStorage.getItem(WATER_KEY);
+  } catch (e) {}
   if (!raw) return false;
+
+  let fromBlocks = null;      // Wasser aus alten Ständen: höchster Wasserblock
   for (const entry of raw.split('|')) {
     const [pos, type] = entry.split(':');
     if (!BLOCKS[type]) continue;
     const [x, y, z] = pos.split(',').map(Number);
+    if (type === 'water') { fromBlocks = Math.max(fromBlocks ?? y, y); continue; }
     addBlock(x, y, z, type, true);
   }
+  waterLevel = lvl === null ? fromBlocks : (lvl === '' ? null : Number(lvl));
+  applyWater();
   return world.size > 0;
 }
 
@@ -700,7 +669,10 @@ renderer.domElement.addEventListener('pointerup', ev => {
   if (!hit) return;
   const p = hit.object.userData;
 
-  if (ev.button === 2) {
+  if (selected === 'water') {
+    if (ev.button === 2) lowerWater();
+    else raiseWater(p.y + hit.face.normal.y);
+  } else if (ev.button === 2) {
     removeBlock(p.x, p.y, p.z);
     highlight.visible = false;
   } else if (ev.button === 0) {
@@ -717,7 +689,9 @@ addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
 });
 
+const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
+  waterUniforms.uTime.value = clock.getElapsedTime();
   controls.update();
   renderer.render(scene, camera);
 });
