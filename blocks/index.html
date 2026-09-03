@@ -427,7 +427,10 @@ function rebuildTerrain() {
 
   // Die Insel wird mit einem Quader geschnitten, damit die Außenkanten
   // gerade abbrechen statt sich rundzuziehen: Schnittmenge = max(d, dBox).
-  const HALF_W = SIZE / 2 - INSET;
+  // Ein Hauch nach außen: liegt das Kanten-Sample exakt auf der Iso, hängt es
+  // vom Rundungsfehler ab, ob es als innen gilt — dann fehlt die Ecke und
+  // Marching Cubes fast sie ab. So ist sie eindeutig innen und bleibt scharf.
+  const HALF_W = SIZE / 2 - INSET + 1e-3;
   const cxz = SIZE / 2 - 0.5;
   for (let z = 0; z < size; z++) {
     const qz = Math.abs(wzs[z] - cxz) - HALF_W;
@@ -454,7 +457,9 @@ function rebuildTerrain() {
    zieht das niedrigere auf seinen Stand.
 ----------------------------------------------------------------- */
 const WATER_FILL = 2 / 3;    // Pegel steht auf 2/3 der Blockhöhe
-const WATER_OVER = 0.20;     // so weit ragt die Fläche in die Uferwand
+// Muss größer als BOX_ROUND sein: die Uferflanken sind gerundet, ein kleinerer
+// Überstand erreicht sie nicht und es bleibt ein Spalt neben dem Wasser.
+const WATER_OVER = 0.38;     // so weit ragt die Fläche in die Uferwand
 const MAX_Y = 10;
 
 let pools  = [];   // [{x, z, level}] — je Becken eine Saatzelle
@@ -515,7 +520,8 @@ depthTarget.depthTexture.type = THREE.UnsignedIntType;
 
 const waterMat = new THREE.MeshPhongMaterial({
   color: '#2d6ec2', specular: '#6d9ec9', shininess: 45,
-  transparent: true, depthWrite: false, side: THREE.DoubleSide
+  transparent: true, depthWrite: false, side: THREE.DoubleSide,
+  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2
 });
 const waterUniforms = {
   uTime:  { value: 0 },
@@ -573,9 +579,10 @@ waterSurface.frustumCulled = false;
 scene.add(waterSurface);
 
 const WATER_BOTTOM = -0.5;     // Unterkante der Insel
-// Die Außenfläche des Wassers sitzt ein Stück INNERHALB der Levelkante —
-// exakt auf derselben Ebene würden beide Flächen um jedes Pixel streiten.
-const WATER_GAP = 0.04;
+// Die Außenfläche liegt exakt auf der Levelkante. Damit sie sich dort nicht
+// mit der Terrainwand um jedes Pixel streitet, gewinnt sie über polygonOffset
+// statt über einen sichtbaren Versatz.
+const WATER_GAP = 0;
 
 function buildWaterMesh() {
   const pos = [], nrm = [], idx = [];
