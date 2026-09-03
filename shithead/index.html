@@ -148,6 +148,12 @@
   .panel p b{color:#ffd76e;font-weight:600;}
   .choices{display:flex;gap:9px;justify-content:center;margin-bottom:14px;flex-wrap:wrap;}
   #ovTitle{font-size:clamp(1.4rem,5vw,2.1rem);}
+  .brk{
+    display:none;margin:0 0 16px;padding:12px 15px;border-radius:12px;
+    background:rgba(255,215,110,.12);border:1px solid rgba(255,215,110,.35);
+    color:#ffd76e;font-size:.78rem;line-height:1.55;text-align:left;
+  }
+  .brk b{font-weight:600;}
   .credit{font-size:.6rem;letter-spacing:.08em;color:rgba(160,200,180,.45);margin-top:4px;}
   .credit i{font-style:italic;}
 </style>
@@ -189,6 +195,7 @@
       <b>2</b> geht immer und setzt zurück · <b>10</b> geht immer und verbrennt den Stapel · <b>Vier gleiche</b> verbrennen ihn auch. Danach bist du nochmal dran.<br><br>
       Erst die Hand, dann die offenen, dann die verdeckten Karten — die blind.
     </p>
+    <div class="brk" id="ovBreak"></div>
     <div class="choices" id="ovChoices"></div>
     <div class="credit">Kartenmotive: <i>English pattern</i> von Dmitry Fomin · CC0 / gemeinfrei</div>
   </div>
@@ -214,6 +221,7 @@ function makeDeck(){
 
 /* ============ Zustand ============ */
 let P=[], deck=[], pile=[], burned=0, cur=0, phase='menu', finish=[], sel=[], logs=[], busy=false;
+let played=0;                               // beendete Partien in dieser Sitzung
 
 const el=id=>document.getElementById(id);
 function log(t){logs.unshift(t); if(logs.length>14) logs.pop(); el('log').innerHTML=logs.map((l,i)=>'<div style="opacity:'+(1-i*0.07).toFixed(2)+'">'+l+'</div>').join('');}
@@ -724,6 +732,7 @@ function btn(t,fn,primary,dis){
 /* ============ Menü / Ende ============ */
 function showMenu(){
   phase='menu';
+  el('ovBreak').style.display='none';
   el('ovTitle').textContent='Shithead';
   el('ovSub').textContent='Das Kartenspiel';
   el('ovText').style.display='block';
@@ -734,6 +743,13 @@ function showMenu(){
   el('ov').classList.remove('hide');
 }
 function showEnd(loser){
+  played++;
+  const brk=el('ovBreak');
+  if(played%3===0){
+    brk.innerHTML='<b>Zeit für eine Pause.</b> Du hast '+played+' Partien am Stück gespielt — '+
+                  'kurz aufstehen, Augen vom Bildschirm nehmen, was trinken.';
+    brk.style.display='block';
+  } else brk.style.display='none';
   el('ovTitle').textContent = loser===P[0] ? 'Shithead.' : 'Gewonnen!';
   el('ovSub').textContent = loser===P[0]
     ? 'Du bleibst als Letzter auf deinen Karten sitzen'
@@ -747,7 +763,7 @@ function showEnd(loser){
   setTimeout(()=>el('ov').classList.remove('hide'),700);
 }
 
-window.__sh={aiTurn:aiTurn,newGame:newGame,startPlay:startPlay,speed:function(v){SPD=v;},busy:function(){return busy;},
+window.__sh={aiTurn:aiTurn,newGame:newGame,startPlay:startPlay,speed:function(v){SPD=v;},busy:function(){return busy;},played:function(){return played;},
   state:function(){return{P:P,pile:pile.length,deck:deck.length,burned:burned,cur:cur,phase:phase};}};
 
 let rz;
