@@ -56,6 +56,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 
 const SIZE = 20;              // 20 x 20 Grundfläche
 const STORAGE_KEY = 'blocks.world.v1';
@@ -115,32 +116,32 @@ function mats(defs) {
   return defs.map(d => new THREE.MeshLambertMaterial(d));
 }
 const BLOCKS = {
-  grass: { name: 'Wiese',  icon: '#6aae42',
+  grass: { top: '#6aae42', side: '#8b6b4a', name: 'Wiese',  icon: '#6aae42',
     build: () => {
       const top  = pixelTexture('#6aae42', 0.22);
       const side = pixelTexture('#8b6b4a', 0.20, grassSide);
       const bot  = pixelTexture('#8b6b4a', 0.20);
       return mats([{map:side},{map:side},{map:top},{map:bot},{map:side},{map:side}]);
     } },
-  dirt: { name: 'Erde', icon: '#8b6b4a',
+  dirt: { top: '#8b6b4a', side: '#7d5f42', name: 'Erde', icon: '#8b6b4a',
     build: () => { const t = pixelTexture('#8b6b4a', 0.22); return mats(Array(6).fill({map:t})); } },
-  stone: { name: 'Stein', icon: '#8a8a90',
+  stone: { top: '#8a8a90', side: '#7e7e85', name: 'Stein', icon: '#8a8a90',
     build: () => { const t = pixelTexture('#8a8a90', 0.28); return mats(Array(6).fill({map:t})); } },
-  sand: { name: 'Sand', icon: '#ded1a0',
+  sand: { top: '#ded1a0', side: '#d2c391', name: 'Sand', icon: '#ded1a0',
     build: () => { const t = pixelTexture('#ded1a0', 0.16); return mats(Array(6).fill({map:t})); } },
-  water: { name: 'Wasser', icon: '#3b7bd4', transparent: true,
+  water: { top: '#3b7bd4', side: '#3b7bd4', name: 'Wasser', icon: '#3b7bd4', transparent: true,
     build: () => { const t = pixelTexture('#3b7bd4', 0.18);
       return mats(Array(6).fill({map:t, transparent:true, opacity:0.72})); } },
-  wood: { name: 'Holz', icon: '#7a5a32',
+  wood: { top: '#a8804d', side: '#7a5a32', name: 'Holz', icon: '#7a5a32',
     build: () => {
       const top  = pixelTexture('#a8804d', 0.18);
       const side = pixelTexture('#7a5a32', 0.18, woodGrain);
       return mats([{map:side},{map:side},{map:top},{map:top},{map:side},{map:side}]);
     } },
-  leaves: { name: 'Laub', icon: '#3f7a2e',
+  leaves: { top: '#4a8c36', side: '#3f7a2e', name: 'Laub', icon: '#3f7a2e',
     build: () => { const t = pixelTexture('#3f7a2e', 0.45);
       return mats(Array(6).fill({map:t})); } },
-  snow: { name: 'Schnee', icon: '#eef4f8',
+  snow: { top: '#eef4f8', side: '#cfd8de', name: 'Schnee', icon: '#eef4f8',
     build: () => {
       const top  = pixelTexture('#eef4f8', 0.10);
       const side = pixelTexture('#cfd8de', 0.12);
@@ -189,7 +190,7 @@ scene.add(sun, sun.target);
 // Sockel unter der Bauplatte, damit die Fläche "schwebt" statt abzubrechen
 const baseMat = new THREE.MeshLambertMaterial({ map: pixelTexture('#6b5a45', 0.2) });
 const base = new THREE.Mesh(new THREE.BoxGeometry(SIZE, 4, SIZE), baseMat);
-base.position.set(SIZE/2 - 0.5, -3, SIZE/2 - 0.5);
+base.position.set(SIZE/2 - 0.5, -2.3, SIZE/2 - 0.5);
 base.receiveShadow = true;
 scene.add(base);
 
@@ -212,11 +213,11 @@ function addBlock(x, y, z, type, silent) {
   // Oberfläche (siehe rebuildWater). Der Würfel bleibt trotzdem als
   // Raycast-Ziel bestehen — damit funktioniert Setzen/Entfernen exakt
   // wie bei jedem anderen Block, er kommt nur nie in die Szene.
-  if (type === 'water') mesh.updateMatrixWorld();
-  else scene.add(mesh);
+  mesh.updateMatrixWorld();   // Raycast-Ziel, kommt nicht in die Szene
   meshes.push(mesh);
   world.set(key(x,y,z), { mesh, type });
   scheduleWater();
+  scheduleTerrain();
   if (!silent) save();
 }
 
@@ -224,13 +225,120 @@ function removeBlock(x, y, z) {
   const k = key(x,y,z);
   const b = world.get(k);
   if (!b) return;
-  scene.remove(b.mesh);
   meshes.splice(meshes.indexOf(b.mesh), 1);
   world.delete(k);
   scheduleWater();
+  scheduleTerrain();
   save();
 }
 
+
+
+/* ------------------- Abgerundetes Gelände (SDF) -------------------
+   Die Welt bleibt ein Voxelraster — gezeichnet wird sie aber nicht als
+   Würfel, sondern als eine einzige Oberfläche. Jeder Block ist darin
+   eine abgerundete Box (fast ein Zylinder: flach oben und unten, an den
+   Seiten stark gerundet). Die Blöcke werden über ein weiches Minimum
+   verschmolzen, also wachsen Nachbarn ohne Lücke zusammen — auch
+   diagonal, dort entsteht automatisch eine schräge Verbindung.
+
+   Umgesetzt als Distanzfeld + Marching Cubes.
+------------------------------------------------------------------- */
+const MC_RES    = 64;     // Feldauflösung (64 Punkte über 20 Blöcke)
+const MC_SPAN   = 20;     // Weltausdehnung des Feldwürfels
+const BOX_FLAT  = 0.20;   // halbe Kantenlänge des flachen Kerns
+const BOX_ROUND = 0.30;   // Rundungsradius drumherum (0.20 + 0.30 = 0.5)
+const BLEND     = 0.32;   // Weichheit der Verschmelzung
+
+const mcCenter = new THREE.Vector3(9.5, 8.5, 9.5);
+const mcScale  = MC_SPAN / 2;
+
+const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const terrain = new MarchingCubes(MC_RES, terrainMat, false, true, 200000);
+terrain.position.copy(mcCenter);
+terrain.scale.setScalar(mcScale);
+terrain.isolation = 0;
+terrain.castShadow = true;
+terrain.receiveShadow = true;
+scene.add(terrain);
+
+const HALF = MC_RES / 2;
+const dist = new Float32Array(terrain.size3);      // Distanz zum nächsten Block
+
+// Feldindex <-> Weltkoordinate
+const gridToWorld = (i, axis) => (i / HALF - 1) * mcScale + mcCenter.getComponent(axis);
+const worldToGrid = (w, axis) => ((w - mcCenter.getComponent(axis)) / mcScale + 1) * HALF;
+
+// Weiches Minimum: verschmilzt zwei Distanzen ohne harte Naht
+function smin(a, b, k) {
+  const h = Math.min(1, Math.max(0, 0.5 + 0.5 * (b - a) / k));
+  return b * (1 - h) + a * h - k * h * (1 - h);
+}
+
+// Abgerundete Box um den Ursprung
+function sdRoundBox(dx, dy, dz) {
+  const qx = Math.max(Math.abs(dx) - BOX_FLAT, 0);
+  const qy = Math.max(Math.abs(dy) - BOX_FLAT, 0);
+  const qz = Math.max(Math.abs(dz) - BOX_FLAT, 0);
+  return Math.sqrt(qx*qx + qy*qy + qz*qz) - BOX_ROUND;
+}
+
+let terrainPending = 0;
+function scheduleTerrain() {
+  if (terrainPending) return;
+  terrainPending = requestAnimationFrame(() => { terrainPending = 0; rebuildTerrain(); });
+}
+
+const _c = new THREE.Color();
+function rebuildTerrain() {
+  const { field, palette, size, size2 } = terrain;
+  dist.fill(2);
+  field.fill(-2);
+  palette.fill(0);
+  terrain.normal_cache.fill(0);
+
+  // Reichweite eines Blocks in Feldpunkten
+  const step = MC_SPAN / MC_RES;
+  const reach = Math.ceil((0.5 + BLEND) / step) + 1;
+
+  for (const [k, b] of world) {
+    if (b.type === 'water') continue;              // Wasser hat eine eigene Fläche
+    const [bx, by, bz] = k.split(',').map(Number);
+    const top = BLOCKS[b.type].top, side = BLOCKS[b.type].side;
+    const covered = world.has(key(bx, by + 1, bz));
+
+    const gx = worldToGrid(bx, 0), gy = worldToGrid(by, 1), gz = worldToGrid(bz, 2);
+    const x0 = Math.max(0, Math.floor(gx - reach)), x1 = Math.min(size - 1, Math.ceil(gx + reach));
+    const y0 = Math.max(0, Math.floor(gy - reach)), y1 = Math.min(size - 1, Math.ceil(gy + reach));
+    const z0 = Math.max(0, Math.floor(gz - reach)), z1 = Math.min(size - 1, Math.ceil(gz + reach));
+
+    for (let z = z0; z <= z1; z++) {
+      const wz = gridToWorld(z, 2) - bz;
+      for (let y = y0; y <= y1; y++) {
+        const wy = gridToWorld(y, 1) - by;
+        const rowBase = z * size2 + y * size;
+        for (let x = x0; x <= x1; x++) {
+          const wx = gridToWorld(x, 0) - bx;
+          const d = sdRoundBox(wx, wy, wz);
+          const i = rowBase + x;
+          const prev = dist[i];
+          const merged = smin(prev, d, BLEND);
+          dist[i] = merged;
+          field[i] = -merged;
+          // Farbe vom jeweils nächstgelegenen Block; die Oberseite bekommt
+          // die Deckfarbe (Gras auf Erde), sofern nichts darüber liegt
+          if (d < prev) {
+            _c.set(!covered && wy > 0.1 ? top : side);
+            palette[i * 3]     = _c.r;
+            palette[i * 3 + 1] = _c.g;
+            palette[i * 3 + 2] = _c.b;
+          }
+        }
+      }
+    }
+  }
+  terrain.update();
+}
 
 /* ---------------------- Geglättete Wasserfläche ----------------------
    Die Welt bleibt ein reines Voxelraster — nur gezeichnet wird das
@@ -383,9 +491,9 @@ function rebuildWater() {
 
 /* Startwelt: sanfte Hügel, ein Wassertümpel, etwas Sand am Ufer */
 function generate() {
-  for (const [, b] of world) { scene.remove(b.mesh); }
   world.clear(); meshes.length = 0;
   scheduleWater();
+  scheduleTerrain();
 
   const WATER_LEVEL = 1;
   for (let x = 0; x < SIZE; x++) {
