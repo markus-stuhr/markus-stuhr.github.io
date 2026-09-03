@@ -6,9 +6,9 @@
 <title>Shithead</title>
 <style>
   :root{
-    --cw:clamp(52px, min(12vh, 17vw), 124px);      /* Ablage, Nachziehstapel, eigene Tischkarten */
+    --cw:clamp(50px, min(10.8vh, 17vw), 124px);      /* Ablage, Nachziehstapel, eigene Tischkarten */
     --ch:calc(var(--cw) * 1.5);
-    --hcw:clamp(64px, min(15vh, 21vw), 152px);     /* eigene Handkarten */
+    --hcw:clamp(62px, min(13.6vh, 21vw), 152px);     /* eigene Handkarten */
     --hch:calc(var(--hcw) * 1.5);
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
@@ -88,7 +88,7 @@
   .card.dim{filter:brightness(.55) saturate(.6);}
 
   /* ---------- Player area ---------- */
-  #me{padding:4px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;}
+  #me{padding:2px 8px 26px;display:flex;flex-direction:column;align-items:center;gap:5px;}
   #meTable{display:flex;gap:clamp(4px,1.6vw,12px);flex:none;position:relative;z-index:1;}
   .stack{position:relative;}
   .stack .card{position:relative;}
@@ -97,7 +97,7 @@
     display:flex;width:100%;flex:none;
     position:relative;z-index:2;      /* Handkarten immer vor den Tischkarten */
     overflow:visible;                 /* nur wenn wirklich gescrollt wird, wird geclippt */
-    padding:22px 4px 24px;
+    padding:20px 4px 21px;
     scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
   }
   #meHand::-webkit-scrollbar{display:none;}
@@ -225,6 +225,7 @@
 const SUITS=['♠','♥','♦','♣'];
 const NAMES={11:'J',12:'Q',13:'K',14:'A'};
 const lbl=r=>NAMES[r]||String(r);
+const karten=n=>n+(n===1?' Karte':' Karten');
 const V=(p,du,er)=>(p.name==='Du'?'Du '+du:p.name+' '+er);
 const cname=c=>lbl(c.r)+SUITS[c.s];
 
@@ -490,7 +491,7 @@ async function pickUp(pi,extra,flip){
   if(flip)  flights.push(fly(null,flip.rect,to,{ms:420,o1:.2,el:flip.el}));
   await Promise.all(flights);
 
-  log(V(p,'nimmst','nimmt')+' '+n+' Karten auf');
+  log(V(p,'nimmst','nimmt')+' '+karten(n)+' auf');
   if(finishCheck()) return;
   cur=nextIdx(pi); render(); tick();
 }
@@ -681,7 +682,7 @@ function render(){
     if(dn){ for(let i=0;i<dn;i++) dw.appendChild(stackPos(backEl(''),dn-1-i)); }
     else{ const e=document.createElement('div'); e.className='empty'; e.textContent='leer'; dw.appendChild(e); }
   }
-  el('deckCap').textContent=deck.length?deck.length+' Karten':'Stapel leer';
+  el('deckCap').textContent=deck.length?karten(deck.length):'Stapel leer';
 
   /* Ablage — genauso ordentlich gestapelt */
   const pw=el('pileWrap'), show=pile.slice(-4);
@@ -694,7 +695,7 @@ function render(){
       show.forEach((c,i)=>pw.appendChild(stackPos(cardEl(c,''),show.length-1-i)));
     }
   }
-  el('pileCap').textContent = (pile.length?pile.length+' Karten':'Ablage') + (burned?' · '+burned+' verbrannt':'');
+  el('pileCap').textContent = (pile.length?karten(pile.length):'Ablage') + (burned?' · '+burned+' verbrannt':'');
 
   /* Eigene Tischkarten */
   const mt=el('meTable');
@@ -791,7 +792,7 @@ function layoutHand(row){
   let step = n>1 ? (avail-cw)/(n-1) : cw;
   step = Math.min(maxStep, Math.max(minStep, step));
   const spread=Math.min(5,24/Math.max(n-1,1));   // Gesamtwinkel gedeckelt
-  const half=(n-1)/2, dyMax=Math.min(12,cw*0.14);
+  const half=(n-1)/2, dyMax=Math.min(9,cw*0.11);
   for(let i=0;i<n;i++){
     const e=row.children[i], off=i-half;
     e.style.marginLeft = i ? (step-cw).toFixed(1)+'px' : '0';
@@ -828,7 +829,7 @@ function showMenu(){
   el('ovText').style.display='block';
   const ch=el('ovChoices'); ch.innerHTML='';
   [1,2,3].forEach(n=>{
-    ch.appendChild(btn(n+' Gegner'+(n>1?'':''),()=>newGame(n),n===2));
+    ch.appendChild(btn(n+' Gegner',()=>newGame(n),true));
   });
   tickPause();
   el('ov').classList.remove('hide');
