@@ -636,7 +636,19 @@ function buildWaterMesh() {
       // unten ins Gestein ein; endete sie auf der Blockoberkante, ließe jede
       // kleine Abweichung der SDF-Fläche eine Fuge entstehen.
       const floorOf = (i) => Math.max(ground[i] + 0.5 - WATER_SINK, WATER_BOTTOM);
-      const floor = floorOf(c);
+      // Der Grund einer Uferzelle liegt über dem Spiegel — nähme man ihn,
+      // baute sie gar keine Wand, und die Wasserzelle daneben baut auch
+      // keine (der Ufernachbar gehört ja zur Fläche). Zwischen beiden fehlte
+      // die Fläche, und man schaut an der Blockkante vorbei hindurch.
+      // Also gilt der tiefste Grund der Nachbarschaft: an einem Uferblock
+      // reicht die Wand damit so tief wie das Wasser daneben.
+      let floor = floorOf(c);
+      for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = x + dx, nz = z + dz;
+        if (nx < 0 || nz < 0 || nx >= SIZE || nz >= SIZE) continue;
+        const n = ci(nx, nz);
+        if (paint.has(n)) floor = Math.min(floor, floorOf(n));
+      }
       if (floor >= y - 1e-3) continue;
 
       // Die Wand läuft längs bis in die Mitte des Nachbarn hinein, wenn der
