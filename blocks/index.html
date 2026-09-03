@@ -461,6 +461,9 @@ function rebuildTerrain() {
 const WATER_FILL = 2 / 3;    // Pegel steht auf 2/3 der Blockhöhe
 // Wie tief die Seitenflächen unten ins Gestein tauchen.
 const WATER_SINK = 0.40;
+// Die tatsächliche Außenkante des Levels — die Randzellen sind um INSET
+// beschnitten, ihre Zellgrenze liegt also weiter außen als das Level selbst.
+const LEVEL_LO = -0.5 + INSET, LEVEL_HI = SIZE - 0.5 - INSET;
 const MAX_Y = 10;
 
 let pools  = [];   // [{x, z, level}] — je Becken eine Saatzelle
@@ -594,7 +597,7 @@ function buildWaterMesh() {
   const pos = [], nrm = [], idx = [];
   const ground = groundMap();
   // Harte Schranke: nichts vom Wasser ragt über die Levelkante hinaus.
-  const LO = -0.5 + INSET + WATER_GAP, HI = SIZE - 0.5 - INSET - WATER_GAP;
+  const LO = LEVEL_LO + WATER_GAP, HI = LEVEL_HI - WATER_GAP;
   const clamp = (v) => Math.min(HI, Math.max(LO, v));
 
   for (const b of bodies) {
@@ -813,6 +816,10 @@ function spawnFish() {
    liegen. Sonst steckt der Körper in der Wand, obwohl die Mitte noch frei
    ist. Das deckt auch den Levelrand ab — dort gibt es keine Zelle. */
 function fishSpot(x, z, r) {
+  // Zuerst die echte Levelkante: eine gültige Zelle allein genügt nicht,
+  // die Randzellen ragen um INSET über das geschnittene Level hinaus.
+  const m = r + 0.12;
+  if (x - m < LEVEL_LO || x + m > LEVEL_HI || z - m < LEVEL_LO || z + m > LEVEL_HI) return null;
   let top = Infinity, bottom = -Infinity;
   for (const [ox, oz] of [[0,0],[-r,-r],[r,-r],[-r,r],[r,r]]) {
     const gx = Math.round(x + ox), gz = Math.round(z + oz);
