@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Blocks</title>
+<script defer src="/analytics.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#0d1117;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#e6edf3; }
+  canvas { display:block; touch-action:none; }
+  #hud { position:fixed; left:0; right:0; bottom:0; padding:14px 10px 18px;
+    display:flex; justify-content:center; gap:8px; pointer-events:none; }
+  .slot { pointer-events:auto; width:54px; height:54px; border-radius:8px; cursor:pointer;
+    border:2px solid rgba(255,255,255,.25); background:#222; position:relative;
+    display:flex; align-items:flex-end; justify-content:center; overflow:hidden;
+    image-rendering: pixelated; transition: transform .08s, border-color .08s; }
+  .slot canvas { width:100%; height:100%; }
+  .slot span { position:absolute; top:2px; left:4px; font-size:10px; opacity:.7;
+    text-shadow:0 1px 2px #000; }
+  .slot b { position:absolute; bottom:2px; font-size:10px; font-weight:600;
+    text-shadow:0 1px 3px #000; letter-spacing:.02em; }
+  .slot.active { border-color:#ffd166; transform:translateY(-6px); }
+  #info { position:fixed; top:12px; left:12px; font-size:12px; line-height:1.5;
+    background:rgba(13,17,23,.6); padding:10px 12px; border-radius:8px;
+    backdrop-filter: blur(6px); max-width:260px; }
+  #info b { color:#ffd166; }
+  #tools { position:fixed; top:12px; right:12px; display:flex; gap:6px; }
+  #tools button { pointer-events:auto; font:inherit; font-size:12px; color:#e6edf3;
+    background:rgba(13,17,23,.6); border:1px solid rgba(255,255,255,.2);
+    padding:7px 10px; border-radius:8px; cursor:pointer; backdrop-filter: blur(6px); }
+  #tools button:hover { border-color:#ffd166; }
+</style>
+</head>
+<body>
+<div id="info">
+  <b>Blocks</b><br>
+  Ziehen = drehen · Scrollen = Zoom<br>
+  Linksklick = setzen · Rechtsklick = entfernen<br>
+  Tasten 1–8 = Material
+</div>
+<div id="tools">
+  <button id="btnReset">Neu</button>
+</div>
+<div id="hud"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const SIZE = 20;              // 20 x 20 Grundfläche
+const STORAGE_KEY = 'blocks.world.v1';
+
+/* ---------------------------------------------------------------
+   Prozedurale 16x16-Pixeltexturen — Minecraft-Optik ohne Assets.
+   Jede Textur ist eine kleine Rauschfläche um eine Basisfarbe.
+--------------------------------------------------------------- */
+const texCache = new Map();
+function pixelTexture(base, spread, draw) {
+  const key = base + ':' + spread + ':' + (draw ? draw.name : '');
+  if (texCache.has(key)) return texCache.get(key);
+  const N = 16;
+  const c = document.createElement('canvas');
+  c.width = c.height = N;
+  const g = c.getContext('2d');
+  const col = new THREE.Color(base);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const n = 1 + (Math.random() - 0.5) * spread;
+      g.fillStyle = '#' + col.clone().multiplyScalar(n).getHexString();
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  if (draw) draw(g, N, col);
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.colorSpace = THREE.SRGBColorSpace;
+  texCache.set(key, t);
+  return t;
+}
+
+// Grasrand: oberer Teil der Seitenfläche grün überzeichnet
+function grassSide(g, N) {
+  const green = new THREE.Color('#5a9e3a');
+  for (let x = 0; x < N; x++) {
+    const h = 3 + (Math.random() * 2 | 0);
+    for (let y = 0; y < h; y++) {
+      const n = 1 + (Math.random() - 0.5) * 0.25;
+      g.fillStyle = '#' + green.clone().multiplyScalar(n).getHexString();
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+}
+// Holzmaserung: senkrechte dunkle Streifen
+function woodGrain(g, N, col) {
+  for (let x = 0; x < N; x += 3 + (Math.random() * 2 | 0)) {
+    g.fillStyle = '#' + col.clone().multiplyScalar(0.75).getHexString();
+    g.fillRect(x, 0, 1, N);
+  }
+}
+
+/* Materialdefinition: [top, side, bottom] Texturen */
+function mats(defs) {
+  return defs.map(d => new THREE.MeshLambertMaterial(d));
+}
+const BLOCKS = {
+  grass: { name: 'Wiese',  icon: '#6aae42',
+    build: () => {
+      const top  = pixelTexture('#6aae42', 0.22);
+      const side = pixelTexture('#8b6b4a', 0.20, grassSide);
+      const bot  = pixelTexture('#8b6b4a', 0.20);
+      return mats([{map:side},{map:side},{map:top},{map:bot},{map:side},{map:side}]);
+    } },
+  dirt: { name: 'Erde', icon: '#8b6b4a',
+    build: () => { const t = pixelTexture('#8b6b4a', 0.22); return mats(Array(6).fill({map:t})); } },
+  stone: { name: 'Stein', icon: '#8a8a90',
+    build: () => { const t = pixelTexture('#8a8a90', 0.28); return mats(Array(6).fill({map:t})); } },
+  sand: { name: 'Sand', icon: '#ded1a0',
+    build: () => { const t = pixelTexture('#ded1a0', 0.16); return mats(Array(6).fill({map:t})); } },
+  water: { name: 'Wasser', icon: '#3b7bd4', transparent: true,
+    build: () => { const t = pixelTexture('#3b7bd4', 0.18);
+      return mats(Array(6).fill({map:t, transparent:true, opacity:0.72})); } },
+  wood: { name: 'Holz', icon: '#7a5a32',
+    build: () => {
+      const top  = pixelTexture('#a8804d', 0.18);
+      const side = pixelTexture('#7a5a32', 0.18, woodGrain);
+      return mats([{map:side},{map:side},{map:top},{map:top},{map:side},{map:side}]);
+    } },
+  leaves: { name: 'Laub', icon: '#3f7a2e',
+    build: () => { const t = pixelTexture('#3f7a2e', 0.45);
+      return mats(Array(6).fill({map:t})); } },
+  snow: { name: 'Schnee', icon: '#eef4f8',
+    build: () => {
+      const top  = pixelTexture('#eef4f8', 0.10);
+      const side = pixelTexture('#cfd8de', 0.12);
+      return mats([{map:side},{map:side},{map:top},{map:side},{map:side},{map:side}]);
+    } }
+};
+const TYPES = Object.keys(BLOCKS);
+for (const t of TYPES) BLOCKS[t].materials = BLOCKS[t].build();
+
+/* --------------------------- Szene --------------------------- */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#8fc4e8');
+scene.fog = new THREE.Fog('#8fc4e8', 40, 110);
+
+const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 500);
+camera.position.set(24, 20, 24);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.target.set(SIZE/2, 2, SIZE/2);
+controls.minDistance = 6;
+controls.maxDistance = 90;
+controls.maxPolarAngle = Math.PI * 0.495;   // nicht unter den Boden
+controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
+controls.update();
+
+scene.add(new THREE.HemisphereLight('#cfe6ff', '#4b5540', 0.85));
+const sun = new THREE.DirectionalLight('#fff4dd', 1.15);
+sun.position.set(30, 45, 18);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+const S = SIZE * 0.9;
+Object.assign(sun.shadow.camera, { left:-S, right:S, top:S, bottom:-S, near:1, far:140 });
+sun.shadow.camera.updateProjectionMatrix();
+sun.target.position.set(SIZE/2, 0, SIZE/2);
+scene.add(sun, sun.target);
+
+// Sockel unter der Bauplatte, damit die Fläche "schwebt" statt abzubrechen
+const baseMat = new THREE.MeshLambertMaterial({ map: pixelTexture('#6b5a45', 0.2) });
+const base = new THREE.Mesh(new THREE.BoxGeometry(SIZE, 4, SIZE), baseMat);
+base.position.set(SIZE/2 - 0.5, -3, SIZE/2 - 0.5);
+base.receiveShadow = true;
+scene.add(base);
+
+/* ------------------------- Voxel-Welt ------------------------- */
+const geo = new THREE.BoxGeometry(1, 1, 1);
+const world = new Map();        // "x,y,z" -> { mesh, type }
+const meshes = [];              // Raycast-Ziele
+
+const key = (x,y,z) => x+','+y+','+z;
+
+function addBlock(x, y, z, type, silent) {
+  if (world.has(key(x,y,z))) return;
+  if (x < 0 || z < 0 || x >= SIZE || z >= SIZE || y < 0 || y > 24) return;
+  const mesh = new THREE.Mesh(geo, BLOCKS[type].materials);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData = { x, y, z, type };
+  scene.add(mesh);
+  meshes.push(mesh);
+  world.set(key(x,y,z), { mesh, type });
+  if (!silent) save();
+}
+
+function removeBlock(x, y, z) {
+  const k = key(x,y,z);
+  const b = world.get(k);
+  if (!b) return;
+  scene.remove(b.mesh);
+  meshes.splice(meshes.indexOf(b.mesh), 1);
+  world.delete(k);
+  save();
+}
+
+/* Startwelt: sanfte Hügel, ein Wassertümpel, etwas Sand am Ufer */
+function generate() {
+  for (const [, b] of world) { scene.remove(b.mesh); }
+  world.clear(); meshes.length = 0;
+
+  const WATER_LEVEL = 1;
+  for (let x = 0; x < SIZE; x++) {
+    for (let z = 0; z < SIZE; z++) {
+      const h = Math.round(
+        1.8 +
+        Math.sin(x * 0.45) * 0.9 +
+        Math.cos(z * 0.38) * 0.9 +
+        Math.sin((x + z) * 0.22) * 0.7
+      );
+      const top = Math.max(0, h);
+      for (let y = 0; y < top; y++) addBlock(x, y, z, y >= top - 1 ? 'dirt' : 'stone', true);
+      if (top <= WATER_LEVEL) {
+        addBlock(x, top, z, 'sand', true);
+        for (let y = top + 1; y <= WATER_LEVEL; y++) addBlock(x, y, z, 'water', true);
+      } else {
+        addBlock(x, top, z, 'grass', true);
+      }
+    }
+  }
+  save();
+}
+
+/* ------------------------ Speichern -------------------------- */
+function save() {
+  try {
+    const data = [];
+    for (const [k, b] of world) data.push(k + ':' + b.type);
+    localStorage.setItem(STORAGE_KEY, data.join('|'));
+  } catch (e) { /* privater Modus o. Ä. */ }
+}
+function load() {
+  let raw = null;
+  try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+  if (!raw) return false;
+  for (const entry of raw.split('|')) {
+    const [pos, type] = entry.split(':');
+    if (!BLOCKS[type]) continue;
+    const [x, y, z] = pos.split(',').map(Number);
+    addBlock(x, y, z, type, true);
+  }
+  return world.size > 0;
+}
+if (!load()) generate();
+
+/* ------------------------ Auswahl-HUD ------------------------ */
+let selected = 'grass';
+const hud = document.getElementById('hud');
+TYPES.forEach((type, i) => {
+  const slot = document.createElement('div');
+  slot.className = 'slot' + (type === selected ? ' active' : '');
+  slot.dataset.type = type;
+  slot.style.background = BLOCKS[type].icon;
+  slot.innerHTML = '<span>' + (i + 1) + '</span><b>' + BLOCKS[type].name + '</b>';
+  slot.addEventListener('click', () => select(type));
+  hud.appendChild(slot);
+});
+function select(type) {
+  selected = type;
+  for (const s of hud.children) s.classList.toggle('active', s.dataset.type === type);
+}
+addEventListener('keydown', e => {
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= TYPES.length) select(TYPES[n - 1]);
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  if (confirm('Welt zurücksetzen?')) generate();
+});
+
+/* ------------------- Highlight & Interaktion ------------------ */
+const highlight = new THREE.Mesh(
+  new THREE.BoxGeometry(1.02, 1.02, 1.02),
+  new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent: true, opacity: 0.45 })
+);
+highlight.visible = false;
+scene.add(highlight);
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+function pick(ev) {
+  pointer.x = (ev.clientX / innerWidth) * 2 - 1;
+  pointer.y = -(ev.clientY / innerHeight) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(meshes, false);
+  return hits.length ? hits[0] : null;
+}
+
+renderer.domElement.addEventListener('pointermove', ev => {
+  const hit = pick(ev);
+  if (hit) { highlight.position.copy(hit.object.position); highlight.visible = true; }
+  else highlight.visible = false;
+});
+
+// Klick zählt nur, wenn zwischen down/up kaum gezogen wurde (sonst: Orbit)
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', ev => {
+  downAt = { x: ev.clientX, y: ev.clientY, btn: ev.button };
+});
+renderer.domElement.addEventListener('pointerup', ev => {
+  if (!downAt || downAt.btn !== ev.button) { downAt = null; return; }
+  const moved = Math.hypot(ev.clientX - downAt.x, ev.clientY - downAt.y);
+  downAt = null;
+  if (moved > 5) return;
+
+  const hit = pick(ev);
+  if (!hit) return;
+  const p = hit.object.userData;
+
+  if (ev.button === 2) {
+    removeBlock(p.x, p.y, p.z);
+    highlight.visible = false;
+  } else if (ev.button === 0) {
+    const n = hit.face.normal;
+    addBlock(p.x + n.x, p.y + n.y, p.z + n.z, selected);
+  }
+});
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+/* --------------------------- Loop ---------------------------- */
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+renderer.setAnimationLoop(() => {
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
