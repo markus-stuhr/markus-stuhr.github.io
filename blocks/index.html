@@ -635,20 +635,38 @@ function buildWaterMesh() {
       // Seitenfläche an jeder Kante, hinter der die Fläche endet. Sie taucht
       // unten ins Gestein ein; endete sie auf der Blockoberkante, ließe jede
       // kleine Abweichung der SDF-Fläche eine Fuge entstehen.
-      const floor = Math.max(ground[c] + 0.5 - WATER_SINK, WATER_BOTTOM);
+      const floorOf = (i) => Math.max(ground[i] + 0.5 - WATER_SINK, WATER_BOTTOM);
+      const floor = floorOf(c);
       if (floor >= y - 1e-3) continue;
-      const side = (dx, dz, ax, az, bx, bz) => {
+
+      // Die Wand läuft längs bis in die Mitte des Nachbarn hinein, wenn der
+      // selbst keine baut (weil er massiv über dem Spiegel steht). Endete sie
+      // an der Zellgrenze, schaut man direkt daneben am eingezogenen Block
+      // vorbei. Baut der Nachbar eine eigene Wand, bleibt sie bündig — sonst
+      // lägen zwei transparente Flächen übereinander.
+      const ext = (lx, lz) => {
+        if (lx < 0 || lz < 0 || lx >= SIZE || lz >= SIZE) return 0;
+        const n = ci(lx, lz);
+        if (!paint.has(n)) return 0;
+        return floorOf(n) >= y - 1e-3 ? 0.5 : 0;
+      };
+      const side = (dx, dz) => {
         const nx = x + dx, nz = z + dz;
         if (nx >= 0 && nz >= 0 && nx < SIZE && nz < SIZE && paint.has(ci(nx, nz))) return;
+        // Ebene der Wand und Verlauf entlang der Querachse
+        const lo = dx !== 0 ? clamp(z - 0.5 - ext(x, z - 1)) : clamp(x - 0.5 - ext(x - 1, z));
+        const hi = dx !== 0 ? clamp(z + 0.5 + ext(x, z + 1)) : clamp(x + 0.5 + ext(x + 1, z));
+        const p = dx < 0 ? x0 : dx > 0 ? x1 : (dz < 0 ? z0 : z1);
+        const a = dx !== 0 ? [p, lo] : [lo, p];
+        const b = dx !== 0 ? [p, hi] : [hi, p];
+        const [u, v2] = (dx > 0 || dz < 0) ? [b, a] : [a, b];
         const w = pos.length / 3;
-        pos.push(ax, y, az,  bx, y, bz,  ax, floor, az,  bx, floor, bz);
+        pos.push(u[0], y, u[1],  v2[0], y, v2[1],
+                 u[0], floor, u[1],  v2[0], floor, v2[1]);
         for (let n = 0; n < 4; n++) nrm.push(dx, 0, dz);
         idx.push(w, w + 2, w + 1, w + 1, w + 2, w + 3);
       };
-      side(-1, 0, x0, z0, x0, z1);
-      side( 1, 0, x1, z1, x1, z0);
-      side( 0, -1, x1, z0, x0, z0);
-      side( 0,  1, x0, z1, x1, z1);
+      side(-1, 0); side(1, 0); side(0, -1); side(0, 1);
     }
   }
 
