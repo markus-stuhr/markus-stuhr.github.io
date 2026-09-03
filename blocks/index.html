@@ -560,12 +560,15 @@ waterMat.onBeforeCompile = (sh) => {
     // Wellen spiegeln nur auf dem Wasserspiegel, nicht an der Außenwand
     .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
       if (vTop > 0.5) {
+        // Kurze, etwas steilere Wellen: hohe Ortsfrequenzen bei kleiner
+        // Amplitude. Der Faktor am Schluss bremst die Normale wieder ein —
+        // die Steigung ist Amplitude MAL Frequenz und wächst sonst mit.
         float t = uTime, wx = vWPos.x, wz = vWPos.z;
-        float dx = 0.030 * 1.70 * cos(wx * 1.70 + t * 1.10)
-                 + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
-        float dz = -0.024 * 2.30 * cos(wz * 2.30 - t * 0.90)
-                 + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
-        vec3 nW = normalize(vec3(-dx * 0.7, 1.0, -dz * 0.7));
+        float dx = 0.045 * 5.00 * cos(wx * 5.00 + t * 1.80)
+                 + 0.024 * 4.00 * cos((wx + wz) * 4.00 + t * 2.40);
+        float dz = -0.036 * 6.50 * cos(wz * 6.50 - t * 1.50)
+                 + 0.024 * 4.00 * cos((wx + wz) * 4.00 + t * 2.40);
+        vec3 nW = normalize(vec3(-dx * 0.25, 1.0, -dz * 0.25));
         normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
       }`)
     .replace('#include <color_fragment>', `#include <color_fragment>
