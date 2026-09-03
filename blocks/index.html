@@ -700,12 +700,13 @@ function buildWaterMesh() {
    umher und drehen ab, bevor sie ans Ufer stoßen.
 ----------------------------------------------------------------- */
 const FISH_KINDS = [
-  { name: 'Elritze',  color: '#e8c45a', belly: '#fff1c0', len: 0.20, speed: 0.85, beat: 13 },
-  { name: 'Rotfeder', color: '#d9603c', belly: '#f6b49a', len: 0.28, speed: 0.68, beat: 10 },
-  { name: 'Schleie',  color: '#4e7d46', belly: '#a8c98f', len: 0.36, speed: 0.52, beat: 7.5 },
-  { name: 'Blaufisch',color: '#4a86c8', belly: '#bcdcf2', len: 0.24, speed: 0.95, beat: 15 }
+  { name: 'Elritze',  color: '#e8c45a', belly: '#fff1c0', len: 0.13, speed: 0.85, beat: 13 },
+  { name: 'Rotfeder', color: '#d9603c', belly: '#f6b49a', len: 0.18, speed: 0.68, beat: 10 },
+  { name: 'Schleie',  color: '#4e7d46', belly: '#a8c98f', len: 0.24, speed: 0.52, beat: 7.5 },
+  { name: 'Blaufisch',color: '#4a86c8', belly: '#bcdcf2', len: 0.16, speed: 0.95, beat: 15 }
 ];
-const FISH_PER_CELLS = 14;     // ein Fisch je so vielen Wasserfeldern
+const FISH_PER_CELLS = 16;     // ein Fisch je so vielen Wasserfeldern
+const FISH_PER_BODY = 8;       // aber nie zu viele in einem Becken
 const FISH_MAX = 24;
 
 /* Fischkörper: Ringe entlang der Längsachse, dazu Schwanz- und Rückenflosse.
@@ -804,8 +805,7 @@ function spawnFish() {
               want: 0, rise: 0, think: 0, r: kind.len * 0.55,
               speed: kind.speed * (0.8 + Math.random() * 0.4) };
   f.want = f.dir;
-  fishes.push(f);
-  return f;
+  return f;                     // in die Liste kommt er über syncFish()
 }
 
 /* Wo darf ein Fisch sein? Geprüft wird nicht der Mittelpunkt, sondern der
@@ -826,9 +826,10 @@ function fishSpot(x, z, r) {
   return bottom + 0.03 < top ? { top, bottom } : null;
 }
 
-function placeFish(f) {
+function placeFish(f, bodyIndex) {
   for (let tries = 0; tries < 60; tries++) {
-    const b = bodies[(Math.random() * bodies.length) | 0];
+    const b = bodyIndex === undefined
+      ? bodies[(Math.random() * bodies.length) | 0] : bodies[bodyIndex];
     if (!b) return false;
     const c = b.cells[(Math.random() * b.cells.length) | 0];
     const x = c % SIZE + (Math.random() - 0.5) * 0.6;
@@ -843,23 +844,44 @@ function placeFish(f) {
   return false;
 }
 
-/* Bestand an die Wasserfläche anpassen — nach jeder Änderung am Level */
+/* Bestand an die Wasserfläche anpassen — nach jeder Änderung am Level.
+   Verteilt wird pro Becken, nicht global: sonst sammeln sich in einem
+   kleinen Tümpel genauso viele Fische wie im großen See. */
 function syncFish() {
-  let cells = 0;
-  for (const b of bodies) cells += b.cells.length;
-  const want = Math.min(FISH_MAX, Math.floor(cells / FISH_PER_CELLS));
+  const homeOf = (f) => {
+    const gx = Math.round(f.x), gz = Math.round(f.z);
+    if (gx < 0 || gz < 0 || gx >= SIZE || gz >= SIZE) return -1;
+    return cellOwner[ci(gx, gz)];
+  };
 
-  while (fishes.length > want) {
-    const f = fishes.pop();
-    fishGroup.remove(f.mesh);
-    f.mesh.material.dispose();
+  const have = bodies.map(() => []);
+  const spare = [];
+  for (const f of fishes) {
+    const id = homeOf(f);
+    if (id === -1 || !fishSpot(f.x, f.z, f.r)) spare.push(f);
+    else have[id].push(f);
   }
-  while (fishes.length < want) {
-    const f = spawnFish();
-    if (!placeFish(f)) { fishes.pop(); fishGroup.remove(f.mesh); break; }
+
+  fishes.length = 0;
+  let budget = FISH_MAX;
+  for (let i = 0; i < bodies.length && budget > 0; i++) {
+    const cells = bodies[i].cells.length;
+    const want = Math.min(budget, FISH_PER_BODY,
+                          Math.max(cells >= 6 ? 1 : 0, Math.round(cells / FISH_PER_CELLS)));
+    budget -= want;
+
+    const here = have[i];
+    while (here.length > want) spare.push(here.pop());
+    fishes.push(...here);
+
+    for (let n = here.length; n < want; n++) {
+      const f = spare.pop() || spawnFish();
+      if (placeFish(f, i)) fishes.push(f);
+      else spare.push(f);
+    }
   }
-  // Wer durch einen gesetzten Block auf dem Trockenen sitzt, zieht um
-  for (const f of fishes) if (!fishSpot(f.x, f.z, f.r)) placeFish(f);
+
+  for (const f of spare) { fishGroup.remove(f.mesh); f.mesh.material.dispose(); }
 }
 
 function updateFish(t, dt) {
