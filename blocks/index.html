@@ -472,7 +472,8 @@ waterMat.onBeforeCompile = (sh) => {
     float column = max(surfaceZ - groundZ, 0.0);      // Wassersäule im Sichtstrahl
     // Beer-Lambert: je länger der Weg durchs Wasser, desto weniger Grund
     float murk = 1.0 - exp(-column / uVis);
-    gl_FragColor.a = clamp(0.12 + murk * 0.86, 0.0, 1.0);`);
+    // Grundschleier, damit die Wasserkante am Ufer sichtbar bleibt
+    gl_FragColor.a = clamp(0.34 + murk * 0.64, 0.0, 1.0);`);
 };
 
 const waterSurface = new THREE.Mesh(waterGeo, waterMat);
