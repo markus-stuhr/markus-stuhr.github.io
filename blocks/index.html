@@ -700,10 +700,10 @@ function buildWaterMesh() {
    umher und drehen ab, bevor sie ans Ufer stoßen.
 ----------------------------------------------------------------- */
 const FISH_KINDS = [
-  { name: 'Elritze',  color: '#e8c45a', belly: '#fff1c0', len: 0.50, speed: 0.85, beat: 13 },
-  { name: 'Rotfeder', color: '#d9603c', belly: '#f6b49a', len: 0.68, speed: 0.68, beat: 10 },
-  { name: 'Schleie',  color: '#4e7d46', belly: '#a8c98f', len: 0.88, speed: 0.52, beat: 7.5 },
-  { name: 'Blaufisch',color: '#4a86c8', belly: '#bcdcf2', len: 0.58, speed: 0.95, beat: 15 }
+  { name: 'Elritze',  color: '#e8c45a', belly: '#fff1c0', len: 0.20, speed: 0.85, beat: 13 },
+  { name: 'Rotfeder', color: '#d9603c', belly: '#f6b49a', len: 0.28, speed: 0.68, beat: 10 },
+  { name: 'Schleie',  color: '#4e7d46', belly: '#a8c98f', len: 0.36, speed: 0.52, beat: 7.5 },
+  { name: 'Blaufisch',color: '#4a86c8', belly: '#bcdcf2', len: 0.24, speed: 0.95, beat: 15 }
 ];
 const FISH_PER_CELLS = 14;     // ein Fisch je so vielen Wasserfeldern
 const FISH_MAX = 24;
@@ -768,14 +768,21 @@ function makeFishMaterial(kind) {
     Object.assign(sh.uniforms, uniforms);
     sh.vertexShader = 'uniform float uTime, uPhase, uBeat;\n' + sh.vertexShader.replace(
       '#include <begin_vertex>', `#include <begin_vertex>
-        // Schlängeln: eine Welle läuft von vorn nach hinten und wird zum
-        // Schwanz hin stärker. Der Kopf bleibt fast ruhig.
+        // Carangiform: eine Welle läuft VOM KOPF nach hinten und wächst
+        // dabei — der Schwanz schleppt der Bewegung also nach, statt sie
+        // anzuführen. Deshalb eilt die Phase mit dem Abstand zum Kopf nach.
         float head = transformed.x + 0.5;                 // 0 = Schwanz, 1 = Kopf
-        float amp = pow(1.0 - head, 1.6) * 0.30;
-        float wave = sin(uPhase + uTime * uBeat - head * 4.2);
+        float tail = 1.0 - head;
+        float ph = uPhase + uTime * uBeat - tail * 5.0;
+        float wave = sin(ph);
+        // Der Rumpf bleibt fast ruhig, erst hinten wird es deutlich.
+        float amp = 0.035 + pow(tail, 2.2) * 0.42;
         transformed.z += wave * amp;
-        transformed.x -= abs(wave) * amp * 0.10;          // leichte Stauchung
-        objectNormal.z += wave * amp * 1.2;`);
+        // Der Kopf giert leicht gegen die Schwanzbewegung — sonst wirkt der
+        // Fisch, als würde er geschoben statt zu schwimmen.
+        transformed.z -= sin(uPhase + uTime * uBeat) * 0.05 * pow(head, 2.0);
+        transformed.x -= abs(wave) * amp * 0.12;          // Längenausgleich
+        objectNormal.z += cos(ph) * amp * 2.0;`);
     sh.fragmentShader = 'uniform vec3 uBelly;\n' + sh.fragmentShader.replace(
       '#include <color_fragment>',
       'diffuseColor.rgb = mix(diffuseColor.rgb, uBelly, vColor.r);');
@@ -794,22 +801,29 @@ function spawnFish() {
   mesh.scale.setScalar(kind.len);
   fishGroup.add(mesh);
   const f = { kind, mesh, x: 0, y: 0, z: 0, dir: Math.random() * 6.28,
-              want: 0, rise: 0, think: 0, speed: kind.speed * (0.8 + Math.random() * 0.4) };
+              want: 0, rise: 0, think: 0, r: kind.len * 0.55,
+              speed: kind.speed * (0.8 + Math.random() * 0.4) };
   f.want = f.dir;
   fishes.push(f);
   return f;
 }
 
-/* Wo darf ein Fisch sein? Nur in einer Wasserzelle, zwischen Grund und
-   Spiegel — und mit etwas Abstand zu beidem. */
-function fishSpot(x, z) {
-  const gx = Math.round(x), gz = Math.round(z);
-  if (gx < 0 || gz < 0 || gx >= SIZE || gz >= SIZE) return null;
-  const id = cellOwner[ci(gx, gz)];
-  if (id === -1 || !bodies[id]) return null;
-  const top = bodies[id].level - 0.5 + WATER_FILL - 0.18;
-  const bottom = groundCache[ci(gx, gz)] + 0.5 + 0.16;
-  return bottom + 0.05 < top ? { top, bottom } : null;
+/* Wo darf ein Fisch sein? Geprüft wird nicht der Mittelpunkt, sondern der
+   ganze Umriss: alle vier Ecken seiner Ausdehnung müssen in Wasserzellen
+   liegen. Sonst steckt der Körper in der Wand, obwohl die Mitte noch frei
+   ist. Das deckt auch den Levelrand ab — dort gibt es keine Zelle. */
+function fishSpot(x, z, r) {
+  let top = Infinity, bottom = -Infinity;
+  for (const [ox, oz] of [[0,0],[-r,-r],[r,-r],[-r,r],[r,r]]) {
+    const gx = Math.round(x + ox), gz = Math.round(z + oz);
+    if (gx < 0 || gz < 0 || gx >= SIZE || gz >= SIZE) return null;
+    const i = ci(gx, gz);
+    const id = cellOwner[i];
+    if (id === -1 || !bodies[id]) return null;
+    top = Math.min(top, bodies[id].level - 0.5 + WATER_FILL - 0.12 - r);
+    bottom = Math.max(bottom, groundCache[i] + 0.5 + 0.10 + r);
+  }
+  return bottom + 0.03 < top ? { top, bottom } : null;
 }
 
 function placeFish(f) {
@@ -819,7 +833,7 @@ function placeFish(f) {
     const c = b.cells[(Math.random() * b.cells.length) | 0];
     const x = c % SIZE + (Math.random() - 0.5) * 0.6;
     const z = ((c / SIZE) | 0) + (Math.random() - 0.5) * 0.6;
-    const spot = fishSpot(x, z);
+    const spot = fishSpot(x, z, f.r);
     if (!spot) continue;
     f.x = x; f.z = z;
     // eher in der oberen Hälfte — dort sieht man sie durch das Wasser
@@ -845,7 +859,7 @@ function syncFish() {
     if (!placeFish(f)) { fishes.pop(); fishGroup.remove(f.mesh); break; }
   }
   // Wer durch einen gesetzten Block auf dem Trockenen sitzt, zieht um
-  for (const f of fishes) if (!fishSpot(f.x, f.z)) placeFish(f);
+  for (const f of fishes) if (!fishSpot(f.x, f.z, f.r)) placeFish(f);
 }
 
 function updateFish(t, dt) {
@@ -861,8 +875,8 @@ function updateFish(t, dt) {
     }
 
     // vorausschauen: läuft der Weg ans Ufer, rechtzeitig abdrehen
-    const look = 0.55 + f.speed * 0.35;
-    const ahead = fishSpot(f.x + Math.cos(f.dir) * look, f.z + Math.sin(f.dir) * look);
+    const look = f.r + 0.35 + f.speed * 0.35;
+    const ahead = fishSpot(f.x + Math.cos(f.dir) * look, f.z + Math.sin(f.dir) * look, f.r);
     if (!ahead) {
       f.want = f.dir + (Math.random() < 0.5 ? 1 : -1) * (1.4 + Math.random());
       f.think = 0.8;
@@ -874,10 +888,10 @@ function updateFish(t, dt) {
 
     const step = f.speed * dt;
     const nx = f.x + Math.cos(f.dir) * step, nz = f.z + Math.sin(f.dir) * step;
-    if (fishSpot(nx, nz)) { f.x = nx; f.z = nz; }
+    if (fishSpot(nx, nz, f.r)) { f.x = nx; f.z = nz; }
     else f.dir += Math.PI * 0.6;                    // Notbremse am Ufer
 
-    const spot = fishSpot(f.x, f.z);
+    const spot = fishSpot(f.x, f.z, f.r);
     if (spot) {
       f.y = Math.min(spot.top, Math.max(spot.bottom, f.y + f.rise * dt));
       if (f.y <= spot.bottom + 1e-3 || f.y >= spot.top - 1e-3) f.rise *= -1;
