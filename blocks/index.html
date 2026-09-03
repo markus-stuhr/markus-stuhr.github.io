@@ -459,14 +459,7 @@ function rebuildTerrain() {
    zieht das niedrigere auf seinen Stand.
 ----------------------------------------------------------------- */
 const WATER_FILL = 2 / 3;    // Pegel steht auf 2/3 der Blockhöhe
-// Überstand ins Ufer hinein. Höchstens bis zur Blockmitte — mehr, und der
-// Spiegel springt über schmale Dämme und liegt sichtbar auf dem Gelände
-// dahinter.
-const WATER_OVER = 0.48;
-// Soweit dürfen die Seitenflächen längs in einen NACHBARBLOCK ragen, der
-// höher als der Spiegel ist: der Überstand steckt dann sicher im Gestein.
-const WATER_DEEP = 1.20;
-// Nach unten genügt weniger; die Blockoberseiten sind kaum gerundet.
+// Wie tief die Seitenflächen unten ins Gestein tauchen.
 const WATER_SINK = 0.40;
 const MAX_Y = 10;
 
@@ -599,90 +592,66 @@ const WATER_GAP = 0.01;
 
 function buildWaterMesh() {
   const pos = [], nrm = [], idx = [];
-  const ground = groundMap();          // für die Tiefe der Außenflächen
-  // Harte Schranke: egal wie groß ein Überstand ausfällt, das Wasser endet
-  // an der Levelkante (einen Hauch dahinter).
+  const ground = groundMap();
+  // Harte Schranke: nichts vom Wasser ragt über die Levelkante hinaus.
   const LO = -0.5 + INSET + WATER_GAP, HI = SIZE - 0.5 - INSET - WATER_GAP;
   const clamp = (v) => Math.min(HI, Math.max(LO, v));
+
   for (const b of bodies) {
     const y = b.level - 0.5 + WATER_FILL;
-    const mine = new Set(b.cells);
+
+    // Gezeichnet wird nicht nur das Becken selbst, sondern zusätzlich ein
+    // Ring aus Uferzellen (auch diagonal). Jede Zelle bekommt genau ein
+    // zellgroßes Quad — dadurch kann sich nichts überlappen.
+    //
+    // Der Ring ersetzt die früheren Überstände: die ragten von jeder Seite
+    // in den Uferblock und trafen sich an dessen Ecken, wo die Rundung ihn
+    // zurückzieht — dort lagen dann zwei Flächen übereinander. Über einer
+    // Uferzelle liegt der Spiegel immer im Gestein und ist unsichtbar; er
+    // schließt aber jede Lücke an der gerundeten Blockkante.
+    const paint = new Set(b.cells);
     for (const c of b.cells) {
+      const cx = c % SIZE, cz = (c / SIZE) | 0;
+      for (let dz = -1; dz <= 1; dz++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = cx + dx, nz = cz + dz;
+          if (nx < 0 || nz < 0 || nx >= SIZE || nz >= SIZE) continue;
+          const n = ci(nx, nz);
+          if (cellOwner[n] === -1) paint.add(n);      // Ufer, kein fremdes Becken
+        }
+      }
+    }
+
+    for (const c of paint) {
       const x = c % SIZE, z = (c / SIZE) | 0;
-      // nach außen ragt die Fläche ein Stück unter die Uferwand, innen
-      // stoßen die Zellen exakt aneinander (sonst doppelte Deckkraft)
-      // am Inselrand bündig abschneiden, sonst ein Stück unter die Uferwand
-      const outside = (nx, nz) => nx < 0 || nz < 0 || nx >= SIZE || nz >= SIZE;
-      const e = (dx, dz) => {
-        const nx = x + dx, nz = z + dz;
-        if (outside(nx, nz)) return -(INSET + WATER_GAP);   // knapp hinter der Levelkante
-        return mine.has(ci(nx, nz)) ? 0 : WATER_OVER;
-      };
-      const x0 = clamp(x - 0.5 - e(-1, 0)), x1 = clamp(x + 0.5 + e(1, 0));
-      const z0 = clamp(z - 0.5 - e(0, -1)), z1 = clamp(z + 0.5 + e(0, 1));
+      const x0 = clamp(x - 0.5), x1 = clamp(x + 0.5);
+      const z0 = clamp(z - 0.5), z1 = clamp(z + 0.5);
+
       const v = pos.length / 3;
       pos.push(x0, y, z0,  x1, y, z0,  x0, y, z1,  x1, y, z1);
       nrm.push(0,1,0,  0,1,0,  0,1,0,  0,1,0);
       idx.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
 
-      // Das Wasser ist ein geschlossener Körper: überall dort, wo das Becken
-      // aufhört, bekommt er eine senkrechte Seitenfläche. Gegen Gestein
-      // steckt sie im Block und ist unsichtbar — sichtbar wird sie nur an
-      // der Levelaußenkante, wo das Volumen aufgeschnitten ist. Ohne sie
-      // schaut man dort seitlich an einem Uferblock vorbei ins Leere.
-      //
-      // Nach unten taucht sie wie der Spiegel ein Stück ins Gestein ein.
-      // Genau auf der Blockoberkante zu enden ließe bei jeder kleinen
-      // Abweichung der SDF-Fläche eine Fuge entstehen.
+      // Seitenfläche an jeder Kante, hinter der die Fläche endet. Sie taucht
+      // unten ins Gestein ein; endete sie auf der Blockoberkante, ließe jede
+      // kleine Abweichung der SDF-Fläche eine Fuge entstehen.
       const floor = Math.max(ground[c] + 0.5 - WATER_SINK, WATER_BOTTOM);
-      const side = (dx, dz) => {
-        const nX = x + dx, nZ = z + dz;
-        // Erst die Weltgrenze prüfen: ci(-1, z) wäre kein ungültiger Index,
-        // sondern die letzte Zelle der Zeile davor — der Test würde die Wand
-        // an der ganzen Kante fälschlich unterdrücken.
-        if (!outside(nX, nZ) && mine.has(ci(nX, nZ))) return;
-        if (floor >= y - 1e-3) return;
-
-        // Wie weit die Wand über ihre Zelle hinaus verlängert wird. Endet sie
-        // an der Zellgrenze, schaut man direkt daneben in den Spalt an einem
-        // gerundeten Block. Nur wenn der Längsnachbar hier selbst eine Wand
-        // baut, bleibt sie bündig — sonst lägen zwei Flächen übereinander.
-        const ux = dz !== 0 ? 1 : 0, uz = dx !== 0 ? 1 : 0;
-        const ext = (sgn) => {
-          const lx = x + ux * sgn, lz = z + uz * sgn;   // Nachbar in der eigenen Reihe
-          const ex = lx + dx, ez = lz + dz;             // dorthin ragt die Verlängerung
-          if (outside(lx, lz)) return -(INSET + WATER_GAP);   // Levelkante
-
-          // Der Nachbar in der eigenen Reihe baut hier selbst eine Wand?
-          // Dann bündig bleiben, sonst lägen zwei transparente Flächen
-          // übereinander (dunklere senkrechte Streifen).
-          if (mine.has(ci(lx, lz)) && (outside(ex, ez) || !mine.has(ci(ex, ez)))) return 0;
-
-          // Sonst nur so weit, wie die Verlängerung in massivem Gestein
-          // steckt — ragt sie ins offene Wasser, steht sie dort als dunkle
-          // Fläche mitten im Becken.
-          if (outside(ex, ez)) return 0;
-          return ground[ci(ex, ez)] + 0.5 > y ? WATER_DEEP : 0;
-        };
-        const lo = -0.5 - ext(-1), hi = 0.5 + ext(1);
-
-        // Wandebene und Verlauf entlang der Querachse
-        const px = dx < 0 ? x0 : dx > 0 ? x1 : 0;
-        const pz = dz < 0 ? z0 : dz > 0 ? z1 : 0;
-        const a = dx !== 0 ? [px, clamp(z + lo)] : [clamp(x + lo), pz];
-        const b = dx !== 0 ? [px, clamp(z + hi)] : [clamp(x + hi), pz];
-        // Umlaufsinn so, dass die Normale nach außen zeigt
-        const [p, q] = (dx > 0 || dz < 0) ? [b, a] : [a, b];
-
+      if (floor >= y - 1e-3) continue;
+      const side = (dx, dz, ax, az, bx, bz) => {
+        const nx = x + dx, nz = z + dz;
+        if (nx >= 0 && nz >= 0 && nx < SIZE && nz < SIZE && paint.has(ci(nx, nz))) return;
         const w = pos.length / 3;
-        pos.push(p[0], y, p[1],  q[0], y, q[1],
-                 p[0], floor, p[1],  q[0], floor, q[1]);
+        pos.push(ax, y, az,  bx, y, bz,  ax, floor, az,  bx, floor, bz);
         for (let n = 0; n < 4; n++) nrm.push(dx, 0, dz);
         idx.push(w, w + 2, w + 1, w + 1, w + 2, w + 3);
       };
-      side(-1, 0); side(1, 0); side(0, -1); side(0, 1);
+      side(-1, 0, x0, z0, x0, z1);
+      side( 1, 0, x1, z1, x1, z0);
+      side( 0, -1, x1, z0, x0, z0);
+      side( 0,  1, x0, z1, x1, z1);
     }
   }
+
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
