@@ -461,6 +461,7 @@ function rebuildTerrain() {
 const WATER_FILL = 2 / 3;    // Pegel steht auf 2/3 der Blockhöhe
 // Wie tief die Seitenflächen unten ins Gestein tauchen.
 const WATER_SINK = 0.40;
+const WAVE_SUB = 3;            // Unterteilung der Spiegelfläche je Zelle
 // Die tatsächliche Außenkante des Levels — die Randzellen sind um INSET
 // beschnitten, ihre Zellgrenze liegt also weiter außen als das Level selbst.
 const LEVEL_LO = -0.5 + INSET, LEVEL_HI = SIZE - 0.5 - INSET;
@@ -542,8 +543,15 @@ const waterUniforms = {
 waterMat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, waterUniforms);
 
-  sh.vertexShader = 'varying vec3 vWPos;\nvarying float vTop;\n' + sh.vertexShader.replace(
-    '#include <begin_vertex>', `#include <begin_vertex>
+  sh.vertexShader = 'varying vec3 vWPos;\nvarying float vTop;\nattribute float aWave;\nuniform float uTime;\n'
+    + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      // Echte Auslenkung, nicht nur Beleuchtung: sonst bleibt die Kante
+      // schnurgerade und die Wellen sind nur an der Fläche zu ahnen.
+      float wx0 = transformed.x, wz0 = transformed.z;
+      float h = 0.045 * sin(wx0 * 5.00 + uTime * 1.80)
+              + 0.036 * sin(wz0 * 6.50 - uTime * 1.50)
+              + 0.024 * sin((wx0 + wz0) * 4.00 + uTime * 2.40);
+      transformed.y += h * aWave;
       vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
       vTop = objectNormal.y;        // 1 = Wasserspiegel, 0 = Außenwand`);
 
@@ -597,7 +605,7 @@ const WATER_BOTTOM = -0.5;     // Unterkante der Insel
 const WATER_GAP = 0.01;
 
 function buildWaterMesh() {
-  const pos = [], nrm = [], idx = [];
+  const pos = [], nrm = [], wav = [], idx = [];
   const ground = groundMap();
   // Harte Schranke: nichts vom Wasser ragt über die Levelkante hinaus.
   const LO = LEVEL_LO + WATER_GAP, HI = LEVEL_HI - WATER_GAP;
@@ -633,10 +641,22 @@ function buildWaterMesh() {
       const x0 = clamp(x - 0.5), x1 = clamp(x + 0.5);
       const z0 = clamp(z - 0.5), z1 = clamp(z + 0.5);
 
-      const v = pos.length / 3;
-      pos.push(x0, y, z0,  x1, y, z0,  x0, y, z1,  x1, y, z1);
-      nrm.push(0,1,0,  0,1,0,  0,1,0,  0,1,0);
-      idx.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+      // In Subquads unterteilt, damit die Wellen die Fläche wirklich
+      // verformen können — ein einzelnes Quad hätte nur vier Stützpunkte
+      // und bliebe an der Silhouette schnurgerade.
+      for (let sj = 0; sj < WAVE_SUB; sj++) {
+        for (let si = 0; si < WAVE_SUB; si++) {
+          const ax = x0 + (x1 - x0) * (si / WAVE_SUB);
+          const bx = x0 + (x1 - x0) * ((si + 1) / WAVE_SUB);
+          const az = z0 + (z1 - z0) * (sj / WAVE_SUB);
+          const bz = z0 + (z1 - z0) * ((sj + 1) / WAVE_SUB);
+          const v = pos.length / 3;
+          pos.push(ax, y, az,  bx, y, az,  ax, y, bz,  bx, y, bz);
+          nrm.push(0,1,0,  0,1,0,  0,1,0,  0,1,0);
+          wav.push(1, 1, 1, 1);
+          idx.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+        }
+      }
 
       // Seitenfläche an jeder Kante, hinter der die Fläche endet. Sie taucht
       // unten ins Gestein ein; endete sie auf der Blockoberkante, ließe jede
@@ -682,6 +702,7 @@ function buildWaterMesh() {
         pos.push(u[0], y, u[1],  v2[0], y, v2[1],
                  u[0], floor, u[1],  v2[0], floor, v2[1]);
         for (let n = 0; n < 4; n++) nrm.push(dx, 0, dz);
+        wav.push(1, 1, 0, 0);          // nur die Oberkante bewegt sich
         idx.push(w, w + 2, w + 1, w + 1, w + 2, w + 3);
       };
       side(-1, 0); side(1, 0); side(0, -1); side(0, 1);
@@ -691,6 +712,7 @@ function buildWaterMesh() {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setAttribute('aWave', new THREE.Float32BufferAttribute(wav, 1));
   g.setIndex(idx);
   waterSurface.geometry.dispose();
   waterSurface.geometry = g;
