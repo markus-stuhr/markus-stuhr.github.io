@@ -44,10 +44,10 @@
   #table{flex:1;display:flex;align-items:center;justify-content:center;gap:clamp(16px,5vw,60px);min-height:0;padding:4px;}
   .slot{display:flex;flex-direction:column;align-items:center;gap:6px;}
   .slot .cap{font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;color:#8fb3a2;}
-  #pileWrap{position:relative;width:calc(var(--cw) + 24px);height:calc(var(--ch) + 20px);}
-  #pileWrap .card{position:absolute;left:0;top:0;}
-  #pileEmpty{
-    width:100%;height:100%;border:2px dashed rgba(255,255,255,0.16);border-radius:9px;
+  #deckWrap,#pileWrap{position:relative;width:calc(var(--cw) + 8px);height:calc(var(--ch) + 8px);}
+  #deckWrap .card,#pileWrap .card{position:absolute;}
+  .empty{
+    width:var(--cw);height:var(--ch);border:2px dashed rgba(255,255,255,0.16);border-radius:9px;
     display:flex;align-items:center;justify-content:center;font-size:.62rem;color:rgba(255,255,255,.28);
     letter-spacing:.1em;text-align:center;padding:6px;
   }
@@ -55,7 +55,8 @@
   /* ---------- Cards ---------- */
   .card{
     width:var(--cw);height:var(--ch);
-    border-radius:8px;background:linear-gradient(160deg,#fff 0%,#f0f0f0 100%);
+    border-radius:8.32% / 5.55%;   /* deckt sich mit dem rx im Kartenmotiv */
+    overflow:hidden;background:linear-gradient(160deg,#fff 0%,#f0f0f0 100%);
     color:#1a1a1a;position:relative;flex:none;
     box-shadow:0 3px 9px rgba(0,0,0,.4);
     display:flex;align-items:center;justify-content:center;
@@ -65,7 +66,7 @@
   }
   .card.red{color:#c8102e;}
   .card .face{
-    width:100%;height:100%;display:block;border-radius:inherit;
+    width:100%;height:100%;display:block;
     pointer-events:none;-webkit-user-drag:none;
   }
   .card .r{font-size:clamp(1.1rem,3.2vw,1.7rem);}
@@ -74,7 +75,7 @@
     border:2px solid rgba(255,255,255,.22);
   }
   .card.mini{
-    width:clamp(24px,5.5vw,31px);height:clamp(36px,8.25vw,46px);border-radius:4px;
+    width:clamp(24px,5.5vw,31px);height:clamp(36px,8.25vw,46px);
     box-shadow:0 2px 5px rgba(0,0,0,.35);flex-direction:column;gap:1px;
   }
   .card.mini .r{font-size:clamp(.62rem,1.8vw,.9rem);line-height:1;}
@@ -85,7 +86,6 @@
   .card.play:hover{--lift:-12px;z-index:6;}
   .card.sel.play:hover{--lift:-28px;}
   .card.dim{filter:brightness(.55) saturate(.6);}
-  .card.hint{box-shadow:0 3px 9px rgba(0,0,0,.4),0 0 0 2px rgba(120,255,190,.55);}
 
   /* ---------- Player area ---------- */
   #me{padding:4px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;}
@@ -105,6 +105,7 @@
     mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
   }
   #handRow{display:flex;align-items:flex-end;margin:auto;padding:0 10px;}
+  #handRow.nofx .card{transition:none;}
   #meHand .card{
     width:var(--hcw);height:var(--hch);
     transform-origin:50% 130%;
@@ -303,6 +304,7 @@ function nextIdx(i){let n=i;for(let k=0;k<P.length;k++){n=(n+1)%P.length;if(!P[n
 /* ============ Spielstart ============ */
 function newGame(nAI){
   preload();
+  ['meHand','meTable','deckWrap','pileWrap'].forEach(id=>{const e=el(id); if(e) e.dataset.sig='';});
   deck=makeDeck(); pile=[]; burned=0; finish=[]; sel=[]; logs=[]; el('log').innerHTML='';
   const names=['Du','Ada','Bruno','Cleo'];
   P=[];
@@ -667,30 +669,36 @@ function render(){
     box.appendChild(m); o.appendChild(box);
   }
 
-  /* Nachziehstapel */
-  const dw=el('deckWrap'); dw.innerHTML='';
-  if(deck.length) dw.appendChild(backEl(''));
-  else{const e=document.createElement('div');e.id='pileEmpty';e.style.width='var(--cw)';e.style.height='var(--ch)';e.textContent='leer';dw.appendChild(e);}
+  /* Nachziehstapel — ein paar Rueckseiten uebereinander, damit man die Dicke sieht */
+  const dw=el('deckWrap'), dn=deck.length?Math.min(5,Math.max(1,Math.ceil(deck.length/6))):0;
+  if(dw.dataset.sig!==String(dn)){
+    dw.dataset.sig=String(dn); dw.innerHTML='';
+    if(dn){ for(let i=0;i<dn;i++) dw.appendChild(stackPos(backEl(''),dn-1-i)); }
+    else{ const e=document.createElement('div'); e.className='empty'; e.textContent='leer'; dw.appendChild(e); }
+  }
   el('deckCap').textContent=deck.length?deck.length+' Karten':'Stapel leer';
 
-  /* Ablage */
-  const pw=el('pileWrap'); pw.innerHTML='';
-  if(!pile.length){
-    const e=document.createElement('div'); e.id='pileEmpty'; e.textContent='alles erlaubt'; pw.appendChild(e);
-  }else{
-    const show=pile.slice(-4);
-    show.forEach((c,i)=>{
-      const d=cardEl(c,'');
-      d.style.setProperty('--rot',((i-1.5)*3).toFixed(1)+'deg');
-      d.style.left=(i*7)+'px'; d.style.top=(-i*5)+'px';
-      pw.appendChild(d);
-    });
+  /* Ablage — genauso ordentlich gestapelt */
+  const pw=el('pileWrap'), show=pile.slice(-4);
+  const psig=show.map(code).join(',');
+  if(pw.dataset.sig!==psig){
+    pw.dataset.sig=psig; pw.innerHTML='';
+    if(!show.length){
+      const e=document.createElement('div'); e.className='empty'; e.textContent='alles erlaubt'; pw.appendChild(e);
+    }else{
+      show.forEach((c,i)=>pw.appendChild(stackPos(cardEl(c,''),show.length-1-i)));
+    }
   }
   el('pileCap').textContent = (pile.length?pile.length+' Karten':'Ablage') + (burned?' · '+burned+' verbrannt':'');
 
   /* Eigene Tischkarten */
-  const mt=el('meTable'); mt.innerHTML='';
+  const mt=el('meTable');
   const me=P[0], z=phase==='play'?zone(me):null;
+  const tsig=me.up.map(code).join(',')+'|'+me.down.length+'|'+phase+'|'+z+'|'+
+             me.up.filter(c=>sel.indexOf(c)>=0).map(code).join(',');
+  if(mt.dataset.sig===tsig){ /* unveraendert — nichts anfassen */ }
+  else{
+  mt.dataset.sig=tsig; mt.innerHTML='';
   for(let k=0;k<3;k++){
     const st=document.createElement('div'); st.className='stack';
     const dn=me.down[k];
@@ -705,28 +713,44 @@ function render(){
     if(up){
       let cls='';
       if(phase==='swap') cls='play';
-      else if(z==='up'){ cls='play'+(isLegal(up.r)?' hint':' dim')+(sel.indexOf(up)>=0?' sel':''); }
+      else if(z==='up'){ cls='play'+(isLegal(up.r)?'':' dim')+(sel.indexOf(up)>=0?' sel':''); }
       const e=cardEl(up,cls);
       if(phase==='swap'||z==='up') e.onclick=()=>clickUp(up);
       st.appendChild(e);
     }
     mt.appendChild(st);
   }
+  }
 
-  /* Eigene Hand */
-  const mh=el('meHand'); mh.innerHTML='';
-  const row=document.createElement('div'); row.id='handRow'; mh.appendChild(row);
+  /* Eigene Hand: Elemente bleiben stehen, solange sich die Karten nicht aendern.
+     Sonst wuerde bei jedem Zug der Gegner der ganze Faecher neu aufgebaut und
+     die Karten zappelten von 0 in ihre Fächerstellung. */
+  const mh=el('meHand');
   const hs=me.hand.slice().sort((a,b)=>a.r-b.r||a.s-b.s);
-  hs.forEach((c,hi)=>{
-    let cls='';
-    if(phase==='swap') cls='play'+(sel.indexOf(c)>=0?' sel':'');
-    else if(z==='hand') cls='play'+(isLegal(c.r)?' hint':' dim')+(sel.indexOf(c)>=0?' sel':'');
-    const e=cardEl(c,cls);
-    e.style.zIndex=hi+1;
-    if(phase==='swap'||z==='hand') e.onclick=()=>clickHand(c);
-    row.appendChild(e);
-  });
-  layoutHand(row);
+  const hsig=hs.map(code).join(',')+'|'+phase+'|'+z;
+  const klasse=c=>{
+    let cls='card'+((c.s===1||c.s===2)?' red':'');
+    if(phase==='swap') cls+=' play'+(sel.indexOf(c)>=0?' sel':'');
+    else if(z==='hand') cls+=' play'+(isLegal(c.r)?'':' dim')+(sel.indexOf(c)>=0?' sel':'');
+    return cls;
+  };
+  let row=el('handRow');
+  if(!row||mh.dataset.sig!==hsig){
+    mh.dataset.sig=hsig; mh.innerHTML='';
+    row=document.createElement('div'); row.id='handRow'; row.className='nofx';
+    hs.forEach((c,hi)=>{
+      const e=cardEl(c,'');
+      e.className=klasse(c);
+      e.style.zIndex=hi+1;
+      if(phase==='swap'||z==='hand') e.onclick=()=>clickHand(c);
+      row.appendChild(e);
+    });
+    mh.appendChild(row);
+    layoutHand(row);
+    requestAnimationFrame(()=>row.classList.remove('nofx'));
+  }else{
+    hs.forEach((c,hi)=>{ const e=row.children[hi]; if(e) e.className=klasse(c); });
+  }
 
   /* Buttons */
   const bar=el('bar'); bar.innerHTML='';
@@ -772,6 +796,12 @@ function layoutHand(row){
   // Scrollen erst, wenn es wirklich überläuft (Drehung braucht extra Breite)
   const scroll = mh.scrollWidth > mh.clientWidth+1;
   mh.classList.toggle('scroll',scroll);
+}
+
+/* d = 0 ist die oberste Karte; darunterliegende schauen rechts und unten heraus */
+function stackPos(e,d){
+  e.style.left=(d*3)+'px'; e.style.top=(d*3)+'px'; e.style.zIndex=String(20-d);
+  return e;
 }
 
 function btn(t,fn,primary,dis){
@@ -824,7 +854,14 @@ window.__sh={aiTurn:aiTurn,newGame:newGame,startPlay:startPlay,speed:function(v)
   state:function(){return{P:P,pile:pile.length,deck:deck.length,burned:burned,cur:cur,phase:phase};}};
 
 let rz;
-window.addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(render,120);});
+window.addEventListener('resize',function(){
+  clearTimeout(rz);
+  rz=setTimeout(function(){
+    el('meHand').dataset.sig=''; el('meTable').dataset.sig='';   // Layout neu rechnen
+    el('deckWrap').dataset.sig=''; el('pileWrap').dataset.sig='';
+    render();
+  },120);
+});
 
 showMenu();
 })();
