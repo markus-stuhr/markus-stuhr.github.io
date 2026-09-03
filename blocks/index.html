@@ -612,7 +612,11 @@ function buildWaterMesh() {
       // es nur dort, wo die Welt endet und das Volumen aufgeschnitten ist.
       // Also genau eine senkrechte Fläche je Levelaußenkante, von der
       // Oberfläche bis zur Oberkante dieser Randsäule.
-      const floor = Math.max(ground[c] + 0.5, WATER_BOTTOM);
+      // Wie der Spiegel zur Seite, so taucht die Schnittfläche nach unten ein
+      // Stück ins Gestein ein. Genau auf der Blockoberkante zu enden lässt
+      // bei jeder kleinen Abweichung der SDF-Fläche eine Fuge entstehen; der
+      // Überstand steckt im opaken Gelände und ist nie zu sehen.
+      const floor = Math.max(ground[c] + 0.5 - WATER_OVER, WATER_BOTTOM);
       const cut = (ax, az, bx, bz, nx, nz) => {
         if (floor >= y - 1e-3) return;
         const w = pos.length / 3;
