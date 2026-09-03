@@ -649,19 +649,20 @@ function buildWaterMesh() {
         // baut, bleibt sie bündig — sonst lägen zwei Flächen übereinander.
         const ux = dz !== 0 ? 1 : 0, uz = dx !== 0 ? 1 : 0;
         const ext = (sgn) => {
-          const lx = x + ux * sgn, lz = z + uz * sgn;
+          const lx = x + ux * sgn, lz = z + uz * sgn;   // Nachbar in der eigenen Reihe
+          const ex = lx + dx, ez = lz + dz;             // dorthin ragt die Verlängerung
           if (outside(lx, lz)) return -(INSET + WATER_GAP);   // Levelkante
-          const li = ci(lx, lz);
-          // Der Längsnachbar baut hier selbst eine Wand -> bündig bleiben,
-          // sonst lägen zwei transparente Flächen übereinander (sichtbar als
-          // dunklere Streifen). Er baut eine, wenn hinter ihm die Welt endet
-          // oder Gestein steht — nur wenn dort Wasser weitergeht, nicht.
-          if (mine.has(li)) {
-            const dOut = outside(lx + dx, lz + dz);
-            if (dOut || !mine.has(ci(lx + dx, lz + dz))) return 0;
-          }
-          // Steckt der Überstand in massivem Gestein, darf er weit gehen.
-          return ground[li] + 0.5 > y ? WATER_DEEP : WATER_OVER;
+
+          // Der Nachbar in der eigenen Reihe baut hier selbst eine Wand?
+          // Dann bündig bleiben, sonst lägen zwei transparente Flächen
+          // übereinander (dunklere senkrechte Streifen).
+          if (mine.has(ci(lx, lz)) && (outside(ex, ez) || !mine.has(ci(ex, ez)))) return 0;
+
+          // Sonst nur so weit, wie die Verlängerung in massivem Gestein
+          // steckt — ragt sie ins offene Wasser, steht sie dort als dunkle
+          // Fläche mitten im Becken.
+          if (outside(ex, ez)) return 0;
+          return ground[ci(ex, ez)] + 0.5 > y ? WATER_DEEP : 0;
         };
         const lo = -0.5 - ext(-1), hi = 0.5 + ext(1);
 
