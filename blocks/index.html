@@ -538,7 +538,7 @@ const waterUniforms = {
   uRes:   { value: new THREE.Vector2(1, 1) },
   uNear:  { value: camera.near },
   uFar:   { value: camera.far },
-  uVis:   { value: 1.8 }        // Sichtweite im Wasser, in Blöcken
+  uVis:   { value: 3.4 }        // Sichtweite im Wasser, in Blöcken
 };
 waterMat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, waterUniforms);
@@ -589,7 +589,7 @@ waterMat.onBeforeCompile = (sh) => {
     // Beer-Lambert: je länger der Weg durchs Wasser, desto weniger Grund
     float murk = 1.0 - exp(-column / uVis);
     // Grundschleier, damit die Wasserkante am Ufer sichtbar bleibt
-    gl_FragColor.a = clamp(0.34 + murk * 0.64, 0.0, 1.0);`);
+    gl_FragColor.a = clamp(0.30 + murk * 0.62, 0.0, 1.0);`);
 };
 
 const waterSurface = new THREE.Mesh(new THREE.BufferGeometry(), waterMat);
