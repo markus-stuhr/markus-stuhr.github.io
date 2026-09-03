@@ -89,21 +89,26 @@
 
   /* ---------- Player area ---------- */
   #me{padding:4px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:7px;}
-  #meTable{display:flex;gap:clamp(4px,1.6vw,12px);flex:none;}
+  #meTable{display:flex;gap:clamp(4px,1.6vw,12px);flex:none;position:relative;z-index:1;}
   .stack{position:relative;}
   .stack .card{position:relative;}
   .stack .card+.card{position:absolute;left:0;top:-7px;}
   #meHand{
     display:flex;width:100%;flex:none;
-    overflow-x:auto;overflow-y:hidden;
+    position:relative;z-index:2;      /* Handkarten immer vor den Tischkarten */
+    overflow:visible;                 /* nur wenn wirklich gescrollt wird, wird geclippt */
     padding:22px 4px 24px;
     scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
   }
   #meHand::-webkit-scrollbar{display:none;}
   #meHand.scroll{
+    overflow-x:auto;overflow-y:hidden;
     -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
     mask-image:linear-gradient(90deg,transparent 0,#000 20px,#000 calc(100% - 20px),transparent 100%);
   }
+  #meHand.scroll .card.sel{--lift:-16px;}
+  #meHand.scroll .card.play:hover{--lift:-10px;}
+  #meHand.scroll .card.sel.play:hover{--lift:-19px;}
   #handRow{display:flex;align-items:flex-end;margin:auto;padding:0 10px;}
   #handRow.nofx .card{transition:none;}
   #meHand .card{
@@ -793,9 +798,10 @@ function layoutHand(row){
     e.style.setProperty('--rot',(off*spread).toFixed(2)+'deg');
     e.style.setProperty('--dy',(half?dyMax*(off/half)*(off/half):0).toFixed(1)+'px');
   }
-  // Scrollen erst, wenn es wirklich überläuft (Drehung braucht extra Breite)
-  const scroll = mh.scrollWidth > mh.clientWidth+1;
-  mh.classList.toggle('scroll',scroll);
+  // Scrollen erst, wenn es wirklich überläuft. Rechnerisch, weil scrollWidth
+  // bei overflow:visible den Überhang nach links nicht mitzählt.
+  const noetig=(n-1)*step+cw+24;
+  mh.classList.toggle('scroll', noetig>mh.clientWidth);
 }
 
 /* d = 0 ist die oberste Karte; darunterliegende schauen rechts und unten heraus */
