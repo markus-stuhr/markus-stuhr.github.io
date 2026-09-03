@@ -154,6 +154,15 @@
     color:#ffd76e;font-size:.78rem;line-height:1.55;text-align:left;
   }
   .brk b{font-weight:600;}
+  .brk .cd{
+    margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,215,110,.25);
+    font-size:1.5rem;font-weight:200;letter-spacing:.12em;
+    font-variant-numeric:tabular-nums;text-align:center;
+  }
+  .brk .cd small{display:block;font-size:.6rem;letter-spacing:.2em;
+    text-transform:uppercase;opacity:.6;margin-top:3px;font-weight:400;}
+  .brk.over{background:rgba(120,255,190,.1);border-color:rgba(120,255,190,.35);color:#8ff0c2;}
+  .brk.over .cd{border-top:0;margin-top:0;padding-top:0;font-size:.85rem;letter-spacing:.06em;}
   .credit{font-size:.6rem;letter-spacing:.08em;color:rgba(160,200,180,.45);margin-top:4px;}
   .credit i{font-style:italic;}
 </style>
@@ -195,7 +204,7 @@
       <b>2</b> geht immer und setzt zurück · <b>10</b> geht immer und verbrennt den Stapel · <b>Vier gleiche</b> verbrennen ihn auch. Danach bist du nochmal dran.<br><br>
       Erst die Hand, dann die offenen, dann die verdeckten Karten — die blind.
     </p>
-    <div class="brk" id="ovBreak"></div>
+    <div class="brk" id="ovBreak"><div id="brkText"></div><div class="cd" id="brkCd"></div></div>
     <div class="choices" id="ovChoices"></div>
     <div class="credit">Kartenmotive: <i>English pattern</i> von Dmitry Fomin · CC0 / gemeinfrei</div>
   </div>
@@ -222,6 +231,46 @@ function makeDeck(){
 /* ============ Zustand ============ */
 let P=[], deck=[], pile=[], burned=0, cur=0, phase='menu', finish=[], sel=[], logs=[], busy=false;
 let played=0;                               // beendete Partien in dieser Sitzung
+
+/* ============ Pause ============ */
+/* Endzeitpunkt liegt im localStorage, damit die Pause ein Neuladen
+   oder das Verlassen der Seite ueberlebt — gerechnet wird immer
+   gegen Date.now(), nie hochgezaehlt. */
+const PAUSE_KEY='shithead:pauseUntil', PAUSE_MS=5*60*1000;
+let pauseMem=0, cdTimer=null;
+function pauseUntil(){
+  let gespeichert=0;
+  try{ gespeichert=parseInt(localStorage.getItem(PAUSE_KEY),10)||0; }catch(e){}
+  return Math.max(gespeichert,pauseMem);   // haelt auch ohne localStorage
+}
+function startPause(){
+  if(pauseLeft()>0) return;                 // laufende Pause nicht verlaengern
+  const t=Date.now()+PAUSE_MS;
+  pauseMem=t;
+  try{ localStorage.setItem(PAUSE_KEY,String(t)); }catch(e){}
+}
+function pauseLeft(){ return Math.max(0,pauseUntil()-Date.now()); }
+function mmss(ms){
+  const t=Math.ceil(ms/1000);
+  return Math.floor(t/60)+':'+('0'+(t%60)).slice(-2);
+}
+/* Zeigt Restzeit an und sperrt solange alle Overlay-Buttons */
+function tickPause(){
+  const brk=el('ovBreak'), cd=el('brkCd'), on=brk.dataset.on==='1';
+  const left=pauseLeft();
+  brk.style.display = on ? 'block' : 'none';
+  el('brkText').style.display = left>0 ? 'block' : 'none';
+  [].forEach.call(el('ovChoices').querySelectorAll('button'), b=>{ b.disabled = left>0; });
+  if(left>0){
+    brk.classList.remove('over');
+    cd.innerHTML=mmss(left)+'<small>bis es weitergeht</small>';
+    if(!cdTimer) cdTimer=setInterval(tickPause,500);
+  }else{
+    if(cdTimer){ clearInterval(cdTimer); cdTimer=null; }
+    if(on){ brk.classList.add('over'); cd.innerHTML='Pause vorbei — weiter geht’s.'; }
+  }
+}
+document.addEventListener('visibilitychange',function(){ if(!document.hidden) tickPause(); });
 
 const el=id=>document.getElementById(id);
 function log(t){logs.unshift(t); if(logs.length>14) logs.pop(); el('log').innerHTML=logs.map((l,i)=>'<div style="opacity:'+(1-i*0.07).toFixed(2)+'">'+l+'</div>').join('');}
@@ -732,7 +781,11 @@ function btn(t,fn,primary,dis){
 /* ============ Menü / Ende ============ */
 function showMenu(){
   phase='menu';
-  el('ovBreak').style.display='none';
+  const brk=el('ovBreak');
+  if(pauseLeft()>0){
+    el('brkText').innerHTML='<b>Die Pause läuft noch.</b> Nimm dir die Zeit — das Spiel wartet.';
+    brk.dataset.on='1';
+  } else brk.dataset.on='0';
   el('ovTitle').textContent='Shithead';
   el('ovSub').textContent='Das Kartenspiel';
   el('ovText').style.display='block';
@@ -740,16 +793,18 @@ function showMenu(){
   [1,2,3].forEach(n=>{
     ch.appendChild(btn(n+' Gegner'+(n>1?'':''),()=>newGame(n),n===2));
   });
+  tickPause();
   el('ov').classList.remove('hide');
 }
 function showEnd(loser){
   played++;
   const brk=el('ovBreak');
   if(played%3===0){
-    brk.innerHTML='<b>Zeit für eine Pause.</b> Du hast '+played+' Partien am Stück gespielt — '+
-                  'kurz aufstehen, Augen vom Bildschirm nehmen, was trinken.';
-    brk.style.display='block';
-  } else brk.style.display='none';
+    startPause();
+    el('brkText').innerHTML='<b>Zeit für eine Pause.</b> Du hast '+played+' Partien am Stück gespielt — '+
+                            'kurz aufstehen, Augen vom Bildschirm nehmen, was trinken.';
+    brk.dataset.on='1';
+  } else brk.dataset.on='0';
   el('ovTitle').textContent = loser===P[0] ? 'Shithead.' : 'Gewonnen!';
   el('ovSub').textContent = loser===P[0]
     ? 'Du bleibst als Letzter auf deinen Karten sitzen'
@@ -760,10 +815,11 @@ function showEnd(loser){
   const ch=el('ovChoices'); ch.innerHTML='';
   ch.appendChild(btn('Nochmal',()=>newGame(P.length-1),true));
   ch.appendChild(btn('Menü',showMenu,false));
+  tickPause();
   setTimeout(()=>el('ov').classList.remove('hide'),700);
 }
 
-window.__sh={aiTurn:aiTurn,newGame:newGame,startPlay:startPlay,speed:function(v){SPD=v;},busy:function(){return busy;},played:function(){return played;},
+window.__sh={aiTurn:aiTurn,newGame:newGame,startPlay:startPlay,speed:function(v){SPD=v;},busy:function(){return busy;},played:function(){return played;},pauseLeft:pauseLeft,
   state:function(){return{P:P,pile:pile.length,deck:deck.length,burned:burned,cur:cur,phase:phase};}};
 
 let rz;
