@@ -619,7 +619,11 @@ function buildWaterMesh() {
       // Abweichung der SDF-Fläche eine Fuge entstehen.
       const floor = Math.max(ground[c] + 0.5 - WATER_OVER, WATER_BOTTOM);
       const side = (dx, dz, ax, az, bx, bz, nx, nz) => {
-        if (mine.has(ci(x + dx, z + dz))) return;      // Nachbar ist dasselbe Becken
+        const nX = x + dx, nZ = z + dz;
+        // Erst die Weltgrenze prüfen: ci(-1, z) wäre kein ungültiger Index,
+        // sondern die letzte Zelle der Zeile davor — der Test würde die Wand
+        // an der ganzen Kante fälschlich unterdrücken.
+        if (!outside(nX, nZ) && mine.has(ci(nX, nZ))) return;
         if (floor >= y - 1e-3) return;
         const w = pos.length / 3;
         pos.push(ax, y, az,  bx, y, bz,  ax, floor, az,  bx, floor, bz);
