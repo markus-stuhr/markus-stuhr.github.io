@@ -412,6 +412,10 @@ function rebuildTerrain() {
    Fällt er unter das tiefste Gelände, verschwindet das Wasser.
 ------------------------------------------------------------------- */
 const WATER_MIN = -1;      // darunter ist nichts mehr zu sehen
+// Der Spiegel steht auf 2/3 der Blockhöhe, nicht an der Oberkante: so trifft
+// er die Seitenflächen sauber, statt genau an der gerundeten Blockkante zu
+// enden.
+const WATER_FILL = 2 / 3;
 let waterLevel = null;     // null = kein Wasser
 
 const waterGeo = new THREE.PlaneGeometry(SIZE, SIZE, 96, 96);
@@ -478,7 +482,7 @@ function applyWater() {
     waterSurface.visible = false;
   } else {
     waterSurface.visible = true;
-    waterSurface.position.y = waterLevel + 0.46;
+    waterSurface.position.y = waterLevel - 0.5 + WATER_FILL;
     shadeWater();
   }
   save();
