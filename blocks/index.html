@@ -362,6 +362,12 @@ function rebuildTerrain() {
   const reachXZ = Math.ceil((0.5 + BLEND) / (MC_SPAN_XZ / MC_RES)) + 1;
   const reachY  = Math.ceil((0.5 + BLEND) / (MC_SPAN_Y  / MC_RES)) + 1;
 
+  // Weltkoordinaten der Feldachsen einmal vorberechnen
+  const wxs = new Float32Array(size), wys = new Float32Array(size), wzs = new Float32Array(size);
+  for (let i = 0; i < size; i++) {
+    wxs[i] = gridToWorld(i, 0); wys[i] = gridToWorld(i, 1); wzs[i] = gridToWorld(i, 2);
+  }
+
   for (const [k, b] of world) {
     if (b.type === 'water') continue;              // Wasser hat eine eigene Fläche
     const [bx, by, bz] = k.split(',').map(Number);
@@ -385,7 +391,6 @@ function rebuildTerrain() {
           const prev = dist[i];
           const merged = smin(prev, d, BLEND);
           dist[i] = merged;
-          field[i] = -merged;
           // Farbe vom jeweils nächstgelegenen Block; die Oberseite bekommt
           // die Deckfarbe (Gras auf Erde), sofern nichts darüber liegt
           if (d < prev) {
@@ -398,39 +403,97 @@ function rebuildTerrain() {
       }
     }
   }
+
+  // Die Insel wird mit einem Quader geschnitten, damit die Außenkanten
+  // gerade abbrechen statt sich rundzuziehen: Schnittmenge = max(d, dBox).
+  const HALF_W = SIZE / 2;
+  const cxz = SIZE / 2 - 0.5;
+  for (let z = 0; z < size; z++) {
+    const qz = Math.abs(wzs[z] - cxz) - HALF_W;
+    for (let y = 0; y < size; y++) {
+      const row = z * size2 + y * size;
+      for (let x = 0; x < size; x++) {
+        const qx = Math.abs(wxs[x] - cxz) - HALF_W;
+        field[row + x] = -Math.max(dist[row + x], qx, qz);
+      }
+    }
+  }
   terrain.update();
 }
 
-/* -------------------------- Wasserspiegel --------------------------
-   Wasser ist kein Block mehr, sondern ein globaler Pegel: eine einzige
-   Fläche über der ganzen Insel auf Höhe `waterLevel + 0.5`. Wo das
-   Gelände höher liegt, verdeckt es die Fläche von selbst — dadurch füllt
-   ein Klick automatisch die ganze Ebene und jede Senke darin.
+/* ------------------------- Wasserbecken -------------------------
+   Wasser ist kein Block und keine globale Ebene, sondern eine Liste
+   voneinander unabhängiger Becken. Jedes hat einen eigenen Pegel; welche
+   Zellen dazugehören, ergibt ein Flood-Fill vom Becken aus: erreichbar ist
+   jede Nachbarzelle, deren Geländeoberkante unter dem Pegel liegt.
 
-   Werkzeug "Wasser": Linksklick hebt den Pegel um eine Stufe (der erste
-   Klick setzt ihn auf die angeklickte Höhe), Rechtsklick senkt ihn.
-   Fällt er unter das tiefste Gelände, verschwindet das Wasser.
-------------------------------------------------------------------- */
-const WATER_MIN = -1;      // darunter ist nichts mehr zu sehen
-// Der Spiegel steht auf 2/3 der Blockhöhe, nicht an der Oberkante: so trifft
-// er die Seitenflächen sauber, statt genau an der gerundeten Blockkante zu
-// enden.
-const WATER_FILL = 2 / 3;
-let waterLevel = null;     // null = kein Wasser
+   Daraus folgt das Überlaufen von selbst — steigt ein Becken über seine
+   Schwelle, erreicht sein Fill das Nachbarbecken und schluckt es. Becken
+   werden nach Pegel absteigend aufgelöst, das höhere gewinnt also und
+   zieht das niedrigere auf seinen Stand.
+----------------------------------------------------------------- */
+const WATER_FILL = 2 / 3;    // Pegel steht auf 2/3 der Blockhöhe
+const WATER_OVER = 0.20;     // so weit ragt die Fläche in die Uferwand
+const MAX_Y = 10;
 
-const waterGeo = new THREE.PlaneGeometry(SIZE, SIZE, 96, 96);
-waterGeo.rotateX(-Math.PI / 2);      // liegt danach in der xz-Ebene
+let pools  = [];   // [{x, z, level}] — je Becken eine Saatzelle
+let bodies = [];   // aufgelöst: [{level, cells:[index], }]
+let cellOwner = new Int16Array(SIZE * SIZE);
 
-/* Tiefenziel: die Szene wird zusätzlich ohne Wasser in eine Depth-Textur
-   gerendert. Der Wassershader liest daraus, wie weit der Grund hinter dem
-   Pixel liegt, und macht daraus die Wassersäule entlang des Sichtstrahls —
-   ein echter Sichtweiteneffekt statt eingefärbter Vertices. */
+const ci = (x, z) => x + z * SIZE;
+
+/* Geländeoberkante je Säule (−1 = leer) */
+function groundMap() {
+  const g = new Int16Array(SIZE * SIZE).fill(-1);
+  for (const [k] of world) {
+    const [x, y, z] = k.split(',').map(Number);
+    const i = ci(x, z);
+    if (y > g[i]) g[i] = y;
+  }
+  return g;
+}
+
+/* Becken auflösen: höchster Pegel zuerst, jedes Becken flutet sein Einzugsgebiet */
+function resolvePools() {
+  const g = groundMap();
+  cellOwner.fill(-1);
+  bodies = [];
+
+  const order = pools.map((p, n) => n).sort((a, b) => pools[b].level - pools[a].level);
+  for (const n of order) {
+    const p = pools[n];
+    const start = ci(p.x, p.z);
+    if (cellOwner[start] !== -1) continue;      // von einem höheren Becken geschluckt
+    if (g[start] >= p.level) continue;          // Pegel liegt unter dem Grund: trocken
+
+    const id = bodies.length;
+    const cells = [start];
+    cellOwner[start] = id;
+    for (let head = 0; head < cells.length; head++) {
+      const c = cells[head], cx = c % SIZE, cz = (c / SIZE) | 0;
+      for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const nx = cx + dx, nz = cz + dz;
+        if (nx < 0 || nz < 0 || nx >= SIZE || nz >= SIZE) continue;   // Inselrand hält
+        const nc = ci(nx, nz);
+        if (cellOwner[nc] !== -1 || g[nc] >= p.level) continue;
+        cellOwner[nc] = id;
+        cells.push(nc);
+      }
+    }
+    bodies.push({ level: p.level, cells });
+  }
+
+  // Saatzellen neu setzen: eine je überlebendem Becken
+  pools = bodies.map(b => ({ x: b.cells[0] % SIZE, z: (b.cells[0] / SIZE) | 0, level: b.level }));
+}
+
+/* --------------------- Fläche der Becken bauen --------------------- */
 const depthTarget = new THREE.WebGLRenderTarget(1, 1);
 depthTarget.depthTexture = new THREE.DepthTexture();
 depthTarget.depthTexture.type = THREE.UnsignedIntType;
 
 const waterMat = new THREE.MeshPhongMaterial({
-  color: '#2d6ec2', specular: '#cfe9ff', shininess: 110,
+  color: '#2d6ec2', specular: '#6d9ec9', shininess: 45,
   transparent: true, depthWrite: false, side: THREE.DoubleSide
 });
 const waterUniforms = {
@@ -443,30 +506,31 @@ const waterUniforms = {
 };
 waterMat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, waterUniforms);
-  sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
-    '#include <begin_vertex>', `#include <begin_vertex>
-      // drei sich überlagernde Wellenzüge, klein gehalten
-      float t = uTime;
-      float wx = transformed.x, wz = transformed.z;
-      float h = 0.030 * sin(wx * 1.70 + t * 1.10)
-              + 0.024 * sin(wz * 2.30 - t * 0.90)
-              + 0.016 * sin((wx + wz) * 1.30 + t * 1.70);
-      transformed.y += h;
-      // Normale analytisch aus der Ableitung — sonst bleibt die Fläche flach beleuchtet
-      float dx = 0.030 * 1.70 * cos(wx * 1.70 + t * 1.10)
-               + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
-      float dz = -0.024 * 2.30 * cos(wz * 2.30 - t * 0.90)
-               + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
-      objectNormal = normalize(vec3(-dx, 1.0, -dz));
-      vNormal = normalize(normalMatrix * objectNormal);`);
+
+  sh.vertexShader = 'varying vec3 vWPos;\n' + sh.vertexShader.replace(
+    '#include <begin_vertex>',
+    '#include <begin_vertex>\n      vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
 
   sh.fragmentShader = `
+    varying vec3 vWPos;
     uniform sampler2D tDepth;
     uniform vec2 uRes;
-    uniform float uNear, uFar, uVis;
+    uniform float uNear, uFar, uVis, uTime;
     // Fenstertiefe [0,1] -> Sicht-Z (negativ vor der Kamera)
     float toViewZ(float d) { return (uNear * uFar) / ((uFar - uNear) * d - uFar); }
-  ` + sh.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>
+  ` + sh.fragmentShader
+    // Wellen stören nur die Normale — so hängen sie nicht an der Tessellierung
+    .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+      {
+        float t = uTime, wx = vWPos.x, wz = vWPos.z;
+        float dx = 0.030 * 1.70 * cos(wx * 1.70 + t * 1.10)
+                 + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
+        float dz = -0.024 * 2.30 * cos(wz * 2.30 - t * 0.90)
+                 + 0.016 * 1.30 * cos((wx + wz) * 1.30 + t * 1.70);
+        vec3 nW = normalize(vec3(-dx * 0.7, 1.0, -dz * 0.7));
+        normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
+      }`)
+    .replace('#include <dithering_fragment>', `#include <dithering_fragment>
     float groundZ = toViewZ(texture2D(tDepth, gl_FragCoord.xy / uRes).x);
     float surfaceZ = toViewZ(gl_FragCoord.z);
     float column = max(surfaceZ - groundZ, 0.0);      // Wassersäule im Sichtstrahl
@@ -476,72 +540,122 @@ waterMat.onBeforeCompile = (sh) => {
     gl_FragColor.a = clamp(0.34 + murk * 0.64, 0.0, 1.0);`);
 };
 
-const waterSurface = new THREE.Mesh(waterGeo, waterMat);
-waterSurface.position.set(SIZE / 2 - 0.5, 0, SIZE / 2 - 0.5);
+const waterSurface = new THREE.Mesh(new THREE.BufferGeometry(), waterMat);
 waterSurface.renderOrder = 1;
-waterSurface.visible = false;
+waterSurface.frustumCulled = false;
 scene.add(waterSurface);
 
-function applyWater() {
-  if (waterLevel === null) {
-    waterSurface.visible = false;
-  } else {
-    waterSurface.visible = true;
-    waterSurface.position.y = waterLevel - 0.5 + WATER_FILL;
+const WATER_BOTTOM = -0.5;     // Unterkante der Insel
+
+function buildWaterMesh() {
+  const pos = [], nrm = [], idx = [];
+  for (const b of bodies) {
+    const y = b.level - 0.5 + WATER_FILL;
+    const mine = new Set(b.cells);
+    for (const c of b.cells) {
+      const x = c % SIZE, z = (c / SIZE) | 0;
+      // nach außen ragt die Fläche ein Stück unter die Uferwand, innen
+      // stoßen die Zellen exakt aneinander (sonst doppelte Deckkraft)
+      // am Inselrand bündig abschneiden, sonst ein Stück unter die Uferwand
+      const outside = (nx, nz) => nx < 0 || nz < 0 || nx >= SIZE || nz >= SIZE;
+      const e = (dx, dz) => {
+        const nx = x + dx, nz = z + dz;
+        if (outside(nx, nz)) return 0;
+        return mine.has(ci(nx, nz)) ? 0 : WATER_OVER;
+      };
+      const x0 = x - 0.5 - e(-1, 0), x1 = x + 0.5 + e(1, 0);
+      const z0 = z - 0.5 - e(0, -1), z1 = z + 0.5 + e(0, 1);
+      const v = pos.length / 3;
+      pos.push(x0, y, z0,  x1, y, z0,  x0, y, z1,  x1, y, z1);
+      nrm.push(0,1,0,  0,1,0,  0,1,0,  0,1,0);
+      idx.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+
+      // Wo das Becken an der Inselkante endet, braucht es eine senkrechte
+      // Außenfläche — sonst schaut man auf eine unendlich dünne Ebene.
+      const wall = (ax, ay, az, bx, bz, nx, nz) => {
+        const w = pos.length / 3;
+        pos.push(ax, ay, az,  bx, ay, bz,  ax, WATER_BOTTOM, az,  bx, WATER_BOTTOM, bz);
+        for (let n = 0; n < 4; n++) nrm.push(nx, 0, nz);
+        idx.push(w, w + 2, w + 1, w + 1, w + 2, w + 3);
+      };
+      if (outside(x - 1, z)) wall(x0, y, z0, x0, z1, -1, 0);
+      if (outside(x + 1, z)) wall(x1, y, z1, x1, z0,  1, 0);
+      if (outside(x, z - 1)) wall(x1, y, z0, x0, z0,  0, -1);
+      if (outside(x, z + 1)) wall(x0, y, z1, x1, z1,  0, 1);
+    }
   }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  g.setIndex(idx);
+  waterSurface.geometry.dispose();
+  waterSurface.geometry = g;
+  waterSurface.visible = idx.length > 0;
+}
+
+function applyWater() {
+  resolvePools();
+  buildWaterMesh();
   save();
 }
 
-// Ist bei diesem Pegel überhaupt noch Wasser zu sehen?
-function waterVisible(level) {
-  if (level < WATER_MIN) return false;
-  for (let x = 0; x < SIZE; x++) {
-    for (let z = 0; z < SIZE; z++) {
-      let top = WATER_MIN;
-      for (let y = 10; y >= 0; y--) if (world.has(key(x, y, z))) { top = y; break; }
-      if (top < level) return true;      // hier steht Wasser über dem Grund
-    }
+/* Becken an einer Säule finden (null, wenn dort kein Wasser steht) */
+function bodyAt(x, z) {
+  if (x < 0 || z < 0 || x >= SIZE || z >= SIZE) return -1;
+  return cellOwner[ci(x, z)];
+}
+
+function raiseWater(x, z, atY) {
+  const id = bodyAt(x, z);
+  if (id !== -1) {
+    if (pools[id].level >= MAX_Y) return;
+    pools[id].level += 1;              // vorhandenes Becken steigt
+  } else {
+    pools.push({ x, z, level: Math.min(atY, MAX_Y) });   // neues Becken
   }
-  return false;
-}
-
-function raiseWater(atY) {
-  const next = waterLevel === null ? atY : waterLevel + 1;
-  if (next > 10) return;
-  waterLevel = next;
   applyWater();
 }
 
-function lowerWater() {
-  if (waterLevel === null) return;
-  const next = waterLevel - 1;
-  waterLevel = waterVisible(next) ? next : null;
+function lowerWater(x, z) {
+  const id = bodyAt(x, z);
+  if (id === -1) return;
+  // Beim Senken kann ein Becken in mehrere zerfallen: dafür bekommt jede
+  // seiner Zellen eine Saat, damit kein Teilbecken verloren geht.
+  const b = bodies[id], next = b.level - 1;
+  pools.splice(id, 1);
+  for (const c of b.cells) pools.push({ x: c % SIZE, z: (c / SIZE) | 0, level: next });
   applyWater();
 }
 
-/* Startwelt: sanfte Hügel, eine Senke für den See, Sand am Ufer */
+/* Startwelt als Beispiel: zwei getrennte Becken auf verschiedenen Höhen.
+   Links liegt eine tiefe Senke (Grund 0) hinter einem Wall auf Höhe 3,
+   rechts ein höheres Becken (Grund 3) hinter einem Wall auf Höhe 5.
+   Hebt man das rechte über 5, läuft es nach links und beide vereinigen
+   sich auf dem höheren Stand. */
 function generate() {
   world.clear(); meshes.length = 0;
   scheduleTerrain();
 
-  const WATER_LEVEL = 1;
-  const cx = SIZE / 2 - 0.5, cz = SIZE / 2 - 0.5;
+  const bowl = (x, z, cx, cz, r, depth) =>
+    Math.max(0, 1 - Math.hypot(x - cx, z - cz) / r) * depth;
+
   for (let x = 0; x < SIZE; x++) {
     for (let z = 0; z < SIZE; z++) {
-      // sanfte Hügel, in die eine runde Mulde für den See geschnitten ist —
-      // der Pegel füllt sonst jede flache Stelle der Insel
-      const r = Math.hypot(x - cx, z - cz);
-      const hills = 3.2 +
-        Math.sin(x * 0.45) * 0.8 +
-        Math.cos(z * 0.38) * 0.8 +
-        Math.sin((x + z) * 0.22) * 0.6;
-      const bowl = Math.max(0, 6.0 - r) * 0.8;
-      const top = Math.max(0, Math.round(hills - bowl));
+      const rim = x < 9 ? 3 : x > 10 ? 5 : 6;          // Wall, dazwischen ein Grat
+      const dig = x < 9 ? bowl(x, z, 4.5, 10, 5.0, 4.2)
+                        : bowl(x, z, 15,  10, 4.5, 3.2);
+      const top = Math.max(0, Math.round(rim - dig));
+
       for (let y = 0; y < top; y++) addBlock(x, y, z, y >= top - 1 ? 'dirt' : 'stone', true);
-      addBlock(x, top, z, top <= WATER_LEVEL + 1 ? 'sand' : 'grass', true);
+      const shore = (x < 9 && top <= 2) || (x > 10 && top <= 4);
+      addBlock(x, top, z, shore ? 'sand' : 'grass', true);
     }
   }
-  waterLevel = WATER_LEVEL;
+
+  pools = [
+    { x: 4,  z: 10, level: 1 },     // linkes, tiefes Becken
+    { x: 15, z: 10, level: 4 }      // rechtes, höheres Becken
+  ];
   applyWater();
   save();
 }
@@ -559,7 +673,7 @@ function saveNow() {
     const data = [];
     for (const [k, b] of world) data.push(k + ':' + b.type);
     localStorage.setItem(STORAGE_KEY, data.join('|'));
-    localStorage.setItem(WATER_KEY, waterLevel === null ? '' : String(waterLevel));
+    localStorage.setItem(WATER_KEY, pools.map(p => [p.x, p.z, p.level].join(',')).join('|'));
     localStorage.setItem(VIEW_KEY, JSON.stringify({
       cam: camera.position.toArray().map(n => +n.toFixed(3)),
       target: controls.target.toArray().map(n => +n.toFixed(3)),
@@ -580,15 +694,21 @@ function load() {
   } catch (e) {}
   if (!raw) return false;
 
-  let fromBlocks = null;      // Wasser aus alten Ständen: höchster Wasserblock
   for (const entry of raw.split('|')) {
     const [pos, type] = entry.split(':');
-    if (!BLOCKS[type]) continue;
+    if (!BLOCKS[type] || type === 'water') continue;   // altes Blockwasser entfällt
     const [x, y, z] = pos.split(',').map(Number);
-    if (type === 'water') { fromBlocks = Math.max(fromBlocks ?? y, y); continue; }
     addBlock(x, y, z, type, true);
   }
-  waterLevel = lvl === null ? fromBlocks : (lvl === '' ? null : Number(lvl));
+  pools = [];
+  if (lvl) {
+    for (const entry of lvl.split('|')) {
+      const [x, z, level] = entry.split(',').map(Number);
+      if (Number.isFinite(x) && Number.isFinite(z) && Number.isFinite(level)) {
+        pools.push({ x, z, level });
+      }
+    }
+  }
   applyWater();
   return world.size > 0;
 }
@@ -678,8 +798,8 @@ renderer.domElement.addEventListener('pointerup', ev => {
   const p = hit.object.userData;
 
   if (selected === 'water') {
-    if (ev.button === 2) lowerWater();
-    else raiseWater(p.y + hit.face.normal.y);
+    if (ev.button === 2) lowerWater(p.x, p.z);
+    else raiseWater(p.x, p.z, p.y + hit.face.normal.y);
   } else if (ev.button === 2) {
     removeBlock(p.x, p.y, p.z);
     highlight.visible = false;
