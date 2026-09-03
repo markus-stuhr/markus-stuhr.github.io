@@ -567,6 +567,9 @@ waterSurface.frustumCulled = false;
 scene.add(waterSurface);
 
 const WATER_BOTTOM = -0.5;     // Unterkante der Insel
+// Die Außenfläche des Wassers sitzt ein Stück INNERHALB der Levelkante —
+// exakt auf derselben Ebene würden beide Flächen um jedes Pixel streiten.
+const WATER_GAP = 0.04;
 
 function buildWaterMesh() {
   const pos = [], nrm = [], idx = [];
@@ -581,7 +584,7 @@ function buildWaterMesh() {
       const outside = (nx, nz) => nx < 0 || nz < 0 || nx >= SIZE || nz >= SIZE;
       const e = (dx, dz) => {
         const nx = x + dx, nz = z + dz;
-        if (outside(nx, nz)) return -INSET;       // exakt auf der Levelkante
+        if (outside(nx, nz)) return -(INSET + WATER_GAP);   // knapp hinter der Levelkante
         return mine.has(ci(nx, nz)) ? 0 : WATER_OVER;
       };
       const x0 = x - 0.5 - e(-1, 0), x1 = x + 0.5 + e(1, 0);
