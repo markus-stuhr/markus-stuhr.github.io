@@ -223,6 +223,7 @@ function addBlock(x, y, z, type, silent) {
   meshes.push(mesh);
   world.set(key(x,y,z), { mesh, type });
   scheduleTerrain();
+  scheduleWater();            // Becken folgen dem Gelände
   if (!silent) save();
 }
 
@@ -233,6 +234,7 @@ function removeBlock(x, y, z) {
   meshes.splice(meshes.indexOf(b.mesh), 1);
   world.delete(k);
   scheduleTerrain();
+  scheduleWater();            // Wasser fließt in den freien Platz nach
   save();
 }
 
@@ -509,8 +511,13 @@ function resolvePools() {
     bodies.push({ level: p.level, cells });
   }
 
-  // Saatzellen neu setzen: eine je überlebendem Becken
-  pools = bodies.map(b => ({ x: b.cells[0] % SIZE, z: (b.cells[0] / SIZE) | 0, level: b.level }));
+  // Jede Zelle wird zur Saat. Nur eine je Becken zu behalten wäre fragil:
+  // baut man genau diese Zelle zu, verschwände das ganze Becken. Und beim
+  // Senken zerfällt ein Becken oft in mehrere Teile, die alle überleben sollen.
+  pools = [];
+  for (const b of bodies) {
+    for (const c of b.cells) pools.push({ x: c % SIZE, z: (c / SIZE) | 0, level: b.level });
+  }
 }
 
 /* --------------------- Fläche der Becken bauen --------------------- */
@@ -645,6 +652,12 @@ function buildWaterMesh() {
   waterSurface.visible = idx.length > 0;
 }
 
+let waterPending = 0;
+function scheduleWater() {
+  if (waterPending) return;
+  waterPending = requestAnimationFrame(() => { waterPending = 0; applyWater(); });
+}
+
 function applyWater() {
   resolvePools();
   buildWaterMesh();
@@ -660,8 +673,9 @@ function bodyAt(x, z) {
 function raiseWater(x, z, atY) {
   const id = bodyAt(x, z);
   if (id !== -1) {
-    if (pools[id].level >= MAX_Y) return;
-    pools[id].level += 1;              // vorhandenes Becken steigt
+    if (bodies[id].level >= MAX_Y) return;
+    const next = bodies[id].level + 1;
+    for (const p of pools) if (cellOwner[ci(p.x, p.z)] === id) p.level = next;
   } else {
     pools.push({ x, z, level: Math.min(atY, MAX_Y) });   // neues Becken
   }
@@ -671,11 +685,8 @@ function raiseWater(x, z, atY) {
 function lowerWater(x, z) {
   const id = bodyAt(x, z);
   if (id === -1) return;
-  // Beim Senken kann ein Becken in mehrere zerfallen: dafür bekommt jede
-  // seiner Zellen eine Saat, damit kein Teilbecken verloren geht.
-  const b = bodies[id], next = b.level - 1;
-  pools.splice(id, 1);
-  for (const c of b.cells) pools.push({ x: c % SIZE, z: (c / SIZE) | 0, level: next });
+  const next = bodies[id].level - 1;
+  for (const p of pools) if (cellOwner[ci(p.x, p.z)] === id) p.level = next;
   applyWater();
 }
 
@@ -725,7 +736,9 @@ function saveNow() {
     const data = [];
     for (const [k, b] of world) data.push(k + ':' + b.type);
     localStorage.setItem(STORAGE_KEY, data.join('|'));
-    localStorage.setItem(WATER_KEY, pools.map(p => [p.x, p.z, p.level].join(',')).join('|'));
+    localStorage.setItem(WATER_KEY, bodies
+      .map(b => [b.cells[0] % SIZE, (b.cells[0] / SIZE) | 0, b.level].join(','))
+      .join('|'));
     localStorage.setItem(VIEW_KEY, JSON.stringify({
       cam: camera.position.toArray().map(n => +n.toFixed(3)),
       target: controls.target.toArray().map(n => +n.toFixed(3)),
