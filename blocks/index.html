@@ -677,11 +677,33 @@ function bakeAO() {
 const WATER_FILL = 2 / 3;    // Pegel steht auf 2/3 der Blockhöhe
 // Wie tief die Seitenflächen unten ins Gestein tauchen.
 const WATER_SINK = 0.40;
-const WAVE_SUB = 3;            // Unterteilung der Spiegelfläche je Zelle
+/* Unterteilung der Wellenfläche je Zelle. Die kürzeste Wellenlänge im
+   Shader ist 2π/6.5 ≈ 0.97 Weltweiten; bei 3 Schritten je Zelle kamen darauf
+   nur ~3 Stützpunkte und die Wellen waren sichtbar eckig. 6 Schritte geben
+   ~6 Stützpunkte je Welle — das reicht für eine glatte Silhouette. */
+const WAVE_SUB = 6;
 // Die tatsächliche Außenkante des Levels — die Randzellen sind um INSET
 // beschnitten, ihre Zellgrenze liegt also weiter außen als das Level selbst.
 const LEVEL_LO = -0.5 + INSET, LEVEL_HI = SIZE - 0.5 - INSET;
 const MAX_Y = 10;
+
+/* Schnittstellen der Wellen-Tessellierung zwischen a0 und a1: die beiden
+   Endpunkte plus alle Gitterpunkte (-0.5 + k/WAVE_SUB) dazwischen.
+
+   Spiegelfläche und Außenwand MÜSSEN dasselbe Gitter benutzen, sonst tastet
+   die eine die Wellenformel an anderen Stellen ab als die andere und an der
+   Naht klaffen sie auseinander. Eine Teilung in WAVE_SUB gleiche Stücke tut
+   das nur bei ganzen Zellen: am Levelrand sind die Zellen durch INSET
+   beschnitten, dort läge die gleichmäßige Teilung neben dem Gitter — und
+   genau in den Ecken des Levels fiel die Wand aus der Fläche. */
+function waveCuts(a0, a1) {
+  const out = [a0];
+  const k0 = Math.ceil((a0 + 0.5) * WAVE_SUB + 1e-6);
+  const k1 = Math.floor((a1 + 0.5) * WAVE_SUB - 1e-6);
+  for (let k = k0; k <= k1; k++) out.push(-0.5 + k / WAVE_SUB);
+  out.push(a1);
+  return out;
+}
 
 let pools  = [];   // [{x, z, level}] — je Becken eine Saatzelle
 let bodies = [];   // aufgelöst: [{level, cells:[index], }]
@@ -859,13 +881,15 @@ function buildWaterMesh() {
 
       // In Subquads unterteilt, damit die Wellen die Fläche wirklich
       // verformen können — ein einzelnes Quad hätte nur vier Stützpunkte
-      // und bliebe an der Silhouette schnurgerade.
-      for (let sj = 0; sj < WAVE_SUB; sj++) {
-        for (let si = 0; si < WAVE_SUB; si++) {
-          const ax = x0 + (x1 - x0) * (si / WAVE_SUB);
-          const bx = x0 + (x1 - x0) * ((si + 1) / WAVE_SUB);
-          const az = z0 + (z1 - z0) * (sj / WAVE_SUB);
-          const bz = z0 + (z1 - z0) * ((sj + 1) / WAVE_SUB);
+      // und bliebe an der Silhouette schnurgerade. Geschnitten wird auf das
+      // gemeinsame Gitter, nicht in gleiche Stücke (siehe waveCuts).
+      const xs = waveCuts(x0, x1), zs = waveCuts(z0, z1);
+      for (let sj = 0; sj < zs.length - 1; sj++) {
+        const az = zs[sj], bz = zs[sj + 1];
+        if (bz - az < 1e-6) continue;
+        for (let si = 0; si < xs.length - 1; si++) {
+          const ax = xs[si], bx = xs[si + 1];
+          if (bx - ax < 1e-6) continue;
           const v = pos.length / 3;
           pos.push(ax, y, az,  bx, y, az,  ax, y, bz,  bx, y, bz);
           nrm.push(0,1,0,  0,1,0,  0,1,0,  0,1,0);
@@ -929,14 +953,12 @@ function buildWaterMesh() {
            Spiegels. Also wird auf genau dieses Gitter geschnitten. */
         const ax = dx !== 0 ? 1 : 0;          // Laufachse: 0 = x, 1 = z
         const a0 = u[ax], a1 = v2[ax];
-        const cuts = [0];
-        const k0 = Math.ceil((Math.min(a0, a1) + 0.5) * WAVE_SUB + 1e-6);
-        const k1 = Math.floor((Math.max(a0, a1) + 0.5) * WAVE_SUB - 1e-6);
-        for (let k = k0; k <= k1; k++) {
-          cuts.push((-0.5 + k / WAVE_SUB - a0) / (a1 - a0));
-        }
-        cuts.push(1);
-        cuts.sort((m, n) => m - n);
+        // Dieselben Schnittstellen wie die Fläche, nur in den Laufparameter
+        // t umgerechnet — die Wand kann gegen die Laufrichtung orientiert
+        // sein, deshalb erst sortieren.
+        const cuts = waveCuts(Math.min(a0, a1), Math.max(a0, a1))
+          .map(v => (v - a0) / (a1 - a0))
+          .sort((m, n) => m - n);
 
         for (let sg = 0; sg < cuts.length - 1; sg++) {
           const t0 = cuts[sg], t1 = cuts[sg + 1];
