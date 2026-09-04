@@ -532,6 +532,7 @@ function rebuildTerrain() {
 
   for (const [k, b] of world) {
     if (b.type === 'water') continue;              // Wasser hat eine eigene Fläche
+    if (b.type === 'leaves') continue;             // Laub sind Blobs, siehe rebuildLeaves
     const [bx, by, bz] = k.split(',').map(Number);
     const covered = world.has(key(bx, by + 1, bz));
 
@@ -1125,6 +1126,88 @@ function placeFish(f, bodyIndex) {
    Verteilt wird pro Becken, nicht global: sonst sammeln sich in einem
    kleinen Tümpel genauso viele Fische wie im großen See. */
 
+/* --------------------------- Laubkronen ---------------------------
+   Wonderbox-Bäume sind keine Klötze: eine Krone ist ein Häufchen aus 3–5
+   überlappenden Sphäroiden. Laubblöcke werden deshalb aus dem Gelände-SDF
+   ausgenommen (dort würden sie zu einer Treppe verschmelzen) und stattdessen
+   je Block als EIN Sphäroid instanziiert — mit Radius deutlich über einer
+   halben Zelle, damit Nachbarn sich überlappen und als eine weiche Masse
+   lesen statt als Kette von Kugeln.
+
+   Versatz und Größe kommen aus einem Hash der Blockposition: eine Krone
+   soll unregelmäßig sein, aber beim Rebuild nicht springen.
+------------------------------------------------------------------- */
+const LEAF_MAX = 6000;
+const leafMat = new THREE.MeshStandardMaterial({
+  roughness: 0.95, metalness: 0
+});
+leafMat.onBeforeCompile = (sh) => {
+  sh.uniforms.uGrain = { value: grainTex };
+  sh.vertexShader = 'varying vec3 vLPos;\nvarying vec3 vLNrm;\n'
+    + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      vLPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+      vLNrm = normalize(mat3(instanceMatrix) * objectNormal);`);
+  sh.fragmentShader = 'varying vec3 vLPos;\nvarying vec3 vLNrm;\nuniform sampler2D uGrain;\n'
+    + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+      // Dieselbe triplanare Struktur wie das Gelände, nur feiner: die Krone
+      // soll gemalt aussehen, nicht wie eine glatte Kugel.
+      vec3 an = abs(vLNrm);
+      vec2 tuv = (an.y >= an.x && an.y >= an.z) ? vLPos.xz
+               : (an.x >= an.z)                ? vLPos.zy
+                                               : vLPos.xy;
+      float g1 = texture2D(uGrain, tuv * 0.9).r;
+      float g2 = texture2D(uGrain, tuv * 3.1).r;
+      diffuseColor.rgb *= 0.86 + g1 * 0.24 + (g2 - 0.5) * 0.18;
+      // Unterseite deutlich dunkler und kühler — ohne das wirkt die Krone
+      // wie ein Ballon statt wie belaubtes Volumen.
+      diffuseColor.rgb *= mix(vec3(0.46, 0.54, 0.62), vec3(1.06, 1.05, 0.95),
+                              smoothstep(-0.85, 0.55, vLNrm.y));`);
+};
+
+// 12x9 Segmente: aus der Spielentfernung ist die Silhouette rund, und bei
+// mehreren hundert Instanzen zählt jedes Dreieck.
+const leafMesh = new THREE.InstancedMesh(
+  new THREE.SphereGeometry(0.5, 12, 9), leafMat, LEAF_MAX);
+leafMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+leafMesh.frustumCulled = false;
+leafMesh.count = 0;
+leafMesh.castShadow = true;
+leafMesh.receiveShadow = true;
+scene.add(leafMesh);
+
+const _lm4 = new THREE.Matrix4(), _lq = new THREE.Quaternion();
+const _lv = new THREE.Vector3(), _ls = new THREE.Vector3();
+const _lc = new THREE.Color(), _lbase = new THREE.Color('#5aa83f');
+
+function rebuildLeaves() {
+  let n = 0;
+  for (const [k, b] of world) {
+    if (b.type !== 'leaves' || n >= LEAF_MAX) continue;
+    const [x, y, z] = k.split(',').map(Number);
+
+    // 1.62 Zellen Durchmesser: bei 1.0 blieben zwischen diagonalen Nachbarn
+    // Kerben, bei über ~1.8 verschwinden die Beulen und die Krone wird ein
+    // glatter Klumpen ohne Blattstruktur in der Silhouette.
+    const r = 1.45 * (0.86 + hash3(x, y, z, 3) * 0.28);
+    _lv.set(x + (hash3(x, y, z, 11) - 0.5) * 0.30,
+            y + (hash3(x, y, z, 12) - 0.5) * 0.26,
+            z + (hash3(x, y, z, 13) - 0.5) * 0.30);
+    _lq.setFromAxisAngle(_up, hash3(x, y, z, 14) * Math.PI * 2);
+    _ls.set(r, r * (0.80 + hash3(x, y, z, 15) * 0.24), r);
+    _lm4.compose(_lv, _lq, _ls);
+    leafMesh.setMatrixAt(n, _lm4);
+
+    _lc.copy(_lbase).offsetHSL((hash3(x, y, z, 16) - 0.5) * 0.07,
+                               (hash3(x, y, z, 17) - 0.5) * 0.22,
+                               (hash3(x, y, z, 18) - 0.5) * 0.16);
+    leafMesh.setColorAt(n, _lc);
+    n++;
+  }
+  leafMesh.count = n;
+  leafMesh.instanceMatrix.needsUpdate = true;
+  if (leafMesh.instanceColor) leafMesh.instanceColor.needsUpdate = true;
+}
+
 /* ----------------------------- Grashalme -----------------------------
    Zweiter Bewohner des Detail-Layers: kleine Halme auf jeder freien
    Grasfläche über Wasser. Als InstancedMesh, das Wehen macht der
@@ -1201,6 +1284,61 @@ grassMat.onBeforeCompile = (sh) => {
       transformed.xz += wind * bend;`);
 };
 
+/* Ein Büschel: ein Fächer aus drei breiten Blättern mit gemeinsamer Wurzel.
+   Der Rasen aus Einzelhalmen (oben) macht die Fläche, die Büschel machen die
+   SILHOUETTE — bei Wonderbox ragen sie über jede Oberkante hinaus, und genau
+   das ist das wiedererkennbarste Detail des Looks. Deshalb viel breiter und
+   ~4x höher als ein Halm, dafür in kleiner Zahl. */
+function makeTuftGeometry() {
+  const SEG = 4, BLADES = 3, pos = [], idx = [];
+  for (let b = 0; b < BLADES; b++) {
+    const spread = (b - (BLADES - 1) / 2) * 0.6;      // Fächerwinkel um Y
+    const ca = Math.cos(spread), sa = Math.sin(spread);
+    const base = pos.length / 3;
+    for (let i = 0; i <= SEG; i++) {
+      const t = i / SEG;
+      const w = 0.052 * (1 - t * 0.82);               // breit an der Wurzel
+      const lean = t * t * 0.40;                      // deutlicher Bogen
+      for (const sx of [-w, w]) {
+        pos.push(sx * ca + lean * sa, t, -sx * sa + lean * ca);
+      }
+    }
+    for (let i = 0; i < SEG; i++) {
+      const a = base + i * 2;
+      idx.push(a, a + 1, a + 2,  a + 1, a + 3, a + 2);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  // Normalen nach oben kippen, gleiche Begründung wie beim Halm: seitliche
+  // Bandnormalen stehen fast senkrecht zur Sonne und werden schwarz.
+  const nrm = g.attributes.normal;
+  for (let i = 0; i < nrm.count; i++) {
+    const v = new THREE.Vector3(nrm.getX(i) * 0.35, 1, nrm.getZ(i) * 0.35).normalize();
+    nrm.setXYZ(i, v.x, v.y, v.z);
+  }
+  return g;
+}
+
+const TUFT_MAX = 40000;
+const tuftGeo = makeTuftGeometry();
+const tuftMesh = new THREE.InstancedMesh(tuftGeo, grassMat, TUFT_MAX);
+tuftMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+tuftMesh.frustumCulled = false;
+tuftMesh.count = 0;
+tuftMesh.castShadow = true;
+tuftMesh.receiveShadow = true;
+scene.add(tuftMesh);
+
+// Der Wind-Vertexshader von grassMat liest aPhase/aRot je Instanz — die
+// Büschelgeometrie braucht dieselben Attribute, sonst bleibt sie starr.
+const tuftPhase = new THREE.InstancedBufferAttribute(new Float32Array(TUFT_MAX), 1);
+const tuftRot   = new THREE.InstancedBufferAttribute(new Float32Array(TUFT_MAX), 1);
+tuftGeo.setAttribute('aPhase', tuftPhase);
+tuftGeo.setAttribute('aRot', tuftRot);
+
 const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, GRASS_MAX);
 grassMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 grassMesh.frustumCulled = false;
@@ -1269,6 +1407,72 @@ function rebuildGrass() {
   if (grassMesh.instanceColor) grassMesh.instanceColor.needsUpdate = true;
   grassPhase.needsUpdate = true;
   grassRot.needsUpdate = true;
+  rebuildTufts();
+}
+
+/* Büschel an den Kanten. Eine Kante ist jede Seite, an der auf gleicher
+   Höhe kein Block steht — dort bricht die Grasfläche im Original nicht ab,
+   sondern franst über den Rand. Die Büschel stehen deshalb ETWAS AUSSERHALB
+   der Zelle und kippen nach außen. Steht über dem Nachbarn eine Wand, ist
+   die Kante verdeckt und bleibt kahl. */
+const TUFT_SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const _tq = new THREE.Quaternion(), _tq2 = new THREE.Quaternion();
+const _tx = new THREE.Vector3(1, 0, 0);
+
+function rebuildTufts() {
+  let n = 0;
+  for (const [k, b] of world) {
+    if (b.type !== 'grass' || n >= TUFT_MAX) continue;
+    const [x, y, z] = k.split(',').map(Number);
+    if (world.has(key(x, y + 1, z))) continue;          // überbaut
+    if (cellOwner[ci(x, z)] !== -1) continue;           // unter Wasser
+
+    const emit = (px, pz, aY, tilt, h, wide, seed) => {
+      _v3.set(px, y + 0.42, pz);
+      _tq.setFromAxisAngle(_up, aY);
+      _tq2.setFromAxisAngle(_tx, tilt);                 // kippt +y nach +z
+      _tq.multiply(_tq2);
+      _scale.set(wide, h, wide);
+      _m4.compose(_v3, _tq, _scale);
+      tuftMesh.setMatrixAt(n, _m4);
+      _tint.copy(_base).offsetHSL((seed - 0.5) * 0.05, (seed - 0.5) * 0.18, 0.04);
+      tuftMesh.setColorAt(n, _tint);
+      const along = px * GRASS_WIND.x + pz * GRASS_WIND.y;
+      tuftPhase.setX(n, along * 0.55 + seed * 0.8);
+      tuftRot.setX(n, aY);
+      n++;
+    };
+
+    for (const [dx, dz] of TUFT_SIDES) {
+      const nx = x + dx, nz = z + dz;
+      const inside = nx >= 0 && nz >= 0 && nx < SIZE && nz < SIZE;
+      if (inside && world.has(key(nx, y, nz))) continue;      // keine Kante
+      if (inside && world.has(key(nx, y + 1, nz))) continue;   // Wand davor
+
+      const PER = 8;
+      for (let i = 0; i < PER && n < TUFT_MAX; i++) {
+        const sd = hash3(x * 7 + dx, y, z * 7 + dz, i * 4 + 1);
+        const s2 = hash3(x * 7 + dx, y, z * 7 + dz, i * 4 + 2);
+        const s3 = hash3(x * 7 + dx, y, z * 7 + dz, i * 4 + 3);
+        // Längs der Kante verteilen (Tangente ist die Querachse)
+        const t = (i + 0.15 + sd * 0.7) / PER - 0.5;
+        // Über den Rand hinaus: das ist der ganze Zweck der Kantenbüschel.
+        const out = 0.5 + 0.06 + s2 * 0.16;
+        const px = x + dx * out + dz * t;
+        const pz = z + dz * out + dx * t;
+        emit(px, pz, Math.atan2(dx, dz),
+             0.16 + s3 * 0.26,                  // leicht nach außen gekippt
+             0.10 + s2 * 0.13, 0.55 + s3 * 0.45, sd);
+      }
+    }
+
+  }
+
+  tuftMesh.count = n;
+  tuftMesh.instanceMatrix.needsUpdate = true;
+  if (tuftMesh.instanceColor) tuftMesh.instanceColor.needsUpdate = true;
+  tuftPhase.needsUpdate = true;
+  tuftRot.needsUpdate = true;
 }
 
 function syncFish() {
@@ -1363,6 +1567,7 @@ function applyWater() {
   buildWaterMesh();
   syncFish();
   rebuildGrass();
+  rebuildLeaves();
   save();
 }
 
@@ -1420,6 +1625,22 @@ function generate() {
       const beach = top <= WATER_LEVEL
         || (top === WATER_LEVEL + 1 && hash3(x, 0, z, 42) < 0.55);
       addBlock(x, top, z, beach ? 'sand' : 'grass', true);
+
+      // Bäume nur auf Wiese und mit Abstand zum Ufer. Der Stamm bleibt ein
+      // Voxelblock (im Gelände-SDF wird er zur gerundeten Säule), die Krone
+      // besteht aus Laubblöcken, die als überlappende Sphäroide gezeichnet
+      // werden — siehe rebuildLeaves.
+      if (!beach && top >= WATER_LEVEL + 2 && hash3(x, 0, z, 77) < 0.016) {
+        const trunk = 2 + Math.floor(hash3(x, 0, z, 78) * 2);
+        for (let i = 1; i <= trunk; i++) addBlock(x, top + i, z, 'wood', true);
+        const cy = top + trunk + 1;
+        // Grobe Kugel: zwei breite Lagen und eine Kappe. Die Blobs haben
+        // 1.6 Zellen Durchmesser, deshalb genügen so wenige Blöcke.
+        for (const [ox, oy, oz] of [
+          [0,0,0], [1,0,0], [-1,0,0], [0,0,1], [0,0,-1],
+          [0,1,0], [0,1,1]
+        ]) addBlock(x + ox, cy + oy, z + oz, 'leaves', true);
+      }
     }
   }
 
