@@ -63,9 +63,9 @@ const SIZE = 20;              // 20 x 20 Grundfläche
 // die Blockflanken sind gerundet, ein Schnitt exakt auf der Blockgrenze
 // träfe sie dort, wo sie schon eingezogen sind, und die Kante würde wellig.
 const INSET = 0.32;           // etwas mehr als BOX_ROUND
-const STORAGE_KEY = 'blocks.world.v2';
+const STORAGE_KEY = 'blocks.world.v4';
 const VIEW_KEY    = 'blocks.view.v1';
-const WATER_KEY   = 'blocks.water.v2';
+const WATER_KEY   = 'blocks.water.v4';
 
 /* ---------------------------------------------------------------
    Prozedurale 16x16-Pixeltexturen — Minecraft-Optik ohne Assets.
@@ -1153,18 +1153,38 @@ function lowerWater(x, z) {
   applyWater();
 }
 
-/* Startwelt: eine leere, flache Grasebene. */
+/* Startwelt: eine Bucht in der einen Ecke, dahinter ansteigende Wiese.
+   Die Küstenlinie fransen zwei Sinuswellen aus, damit sie nicht als
+   Diagonale durchs Raster schneidet. */
 function generate() {
   world.clear(); meshes.length = 0;
   scheduleTerrain();
 
-  // Leere Startwelt: eine flache Grasebene, kein Wasser. Alles Weitere
-  // baut man selbst.
+  const WATER_LEVEL = 2;
+
   for (let x = 0; x < SIZE; x++) {
-    for (let z = 0; z < SIZE; z++) addBlock(x, 0, z, 'grass', true);
+    for (let z = 0; z < SIZE; z++) {
+      // Radialer Abstand zur Ecke (0,0), nicht (x+z): eine diagonale
+      // Metrik verteilt die Höhen zu gleichmäßig und der Strand nimmt die
+      // halbe Fläche ein. Die Wurzel lässt das Ufer flach auslaufen und
+      // hinten trotzdem noch ansteigen.
+      const d = Math.hypot(x, z);
+      const wave = Math.sin(x * 0.55) * 0.6 + Math.cos(z * 0.45) * 0.5;
+      const top = Math.max(0, Math.round(-2.2 + 1.5 * Math.sqrt(d) + wave * 0.55));
+
+      for (let y = 0; y < top; y++) {
+        addBlock(x, y, z, y >= top - 1 ? 'dirt' : 'stone', true);
+      }
+
+      // Alles bis knapp über die Wasserlinie ist Sand — Meeresboden und
+      // Strand. Direkt dahinter fransen ein paar Sandflecken in die Wiese.
+      const beach = top <= WATER_LEVEL
+        || (top === WATER_LEVEL + 1 && hash3(x, 0, z, 42) < 0.55);
+      addBlock(x, top, z, beach ? 'sand' : 'grass', true);
+    }
   }
 
-  pools = [];
+  pools = [{ x: 0, z: 0, level: WATER_LEVEL }];
   applyWater();
   save();
 }
