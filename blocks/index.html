@@ -5,39 +5,64 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Blocks</title>
 <script defer src="/analytics.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&display=swap">
 <style>
+  /* Wonderbox-UI-Sprache: runde Sans (im Original Baloo), warme gelbe
+     Panels, weisse Karten mit Farbchip, kraeftige Rundungen und weiche
+     Schatten. Nichts hat eine scharfe Ecke. */
+  :root {
+    --amber:      #f5a623;
+    --amber-dark: #d8871a;
+    --card:       #ffffff;
+    --ink:        #4a3a26;
+    --shadow:     0 4px 0 rgba(120, 78, 20, .28), 0 8px 20px rgba(20, 60, 70, .22);
+  }
   * { box-sizing: border-box; }
-  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#0d1117;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#e6edf3; }
+  html, body { margin:0; padding:0; height:100%; overflow:hidden; background:#7fd0de;
+    font-family: "Baloo 2", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-weight:600; color:var(--ink); -webkit-font-smoothing:antialiased; }
   canvas { display:block; touch-action:none; }
-  #hud { position:fixed; left:0; right:0; bottom:0; padding:14px 10px 18px;
-    display:flex; justify-content:center; gap:8px; pointer-events:none; }
-  .slot { pointer-events:auto; width:54px; height:54px; border-radius:8px; cursor:pointer;
-    border:2px solid rgba(255,255,255,.25); background:#222; position:relative;
-    display:flex; align-items:flex-end; justify-content:center; overflow:hidden;
-    image-rendering: pixelated; transition: transform .08s, border-color .08s; }
-  .slot canvas { width:100%; height:100%; }
-  .slot span { position:absolute; top:2px; left:4px; font-size:10px; opacity:.7;
-    text-shadow:0 1px 2px #000; }
-  .slot b { position:absolute; bottom:2px; font-size:10px; font-weight:600;
-    text-shadow:0 1px 3px #000; letter-spacing:.02em; }
-  .slot.active { border-color:#ffd166; transform:translateY(-6px); }
-  #info { position:fixed; top:12px; left:12px; font-size:12px; line-height:1.5;
-    background:rgba(13,17,23,.6); padding:10px 12px; border-radius:8px;
-    backdrop-filter: blur(6px); max-width:260px; }
-  #info b { color:#ffd166; }
-  #tools { position:fixed; top:12px; right:12px; display:flex; gap:6px; }
-  #tools button { pointer-events:auto; font:inherit; font-size:12px; color:#e6edf3;
-    background:rgba(13,17,23,.6); border:1px solid rgba(255,255,255,.2);
-    padding:7px 10px; border-radius:8px; cursor:pointer; backdrop-filter: blur(6px); }
-  #tools button:hover { border-color:#ffd166; }
+
+  #hud { position:fixed; left:0; right:0; bottom:0; padding:14px 10px 20px;
+    display:flex; justify-content:center; gap:9px; pointer-events:none; }
+  .slot { pointer-events:auto; width:58px; height:58px; border-radius:18px; cursor:pointer;
+    border:none; background:var(--card); position:relative; overflow:hidden;
+    box-shadow:var(--shadow);
+    transition: transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .12s; }
+  /* Der Farbchip sitzt als abgerundetes Quadrat IN der weissen Karte —
+     wie die gemalten 3D-Icons im Original, nur ohne Assets. */
+  .slot i { position:absolute; inset:9px 9px 17px; border-radius:11px;
+    background:var(--chip);
+    box-shadow: inset 0 -6px 10px rgba(0,0,0,.16), inset 0 5px 8px rgba(255,255,255,.45); }
+  .slot span { position:absolute; top:2px; right:7px; font-size:10px;
+    font-weight:700; color:#c7b393; }
+  .slot b { position:absolute; bottom:1px; left:0; right:0; text-align:center;
+    font-size:9.5px; font-weight:700; letter-spacing:.02em; color:#8a7757; }
+  .slot.active { transform:translateY(-9px) scale(1.06);
+    box-shadow:0 0 0 4px var(--amber), var(--shadow); }
+  .slot.active b { color:var(--amber-dark); }
+
+  #info { position:fixed; top:14px; left:14px; font-size:12.5px; line-height:1.6;
+    background:rgba(255,255,255,.92); padding:12px 15px; border-radius:20px;
+    max-width:250px; box-shadow:var(--shadow); }
+  #info b { display:block; font-size:17px; font-weight:700; color:var(--amber-dark);
+    margin-bottom:3px; letter-spacing:.01em; }
+
+  #tools { position:fixed; top:14px; right:14px; display:flex; gap:8px; }
+  #tools button { pointer-events:auto; font:inherit; font-size:13px; font-weight:700;
+    color:#fff; background:var(--amber); border:none;
+    padding:10px 18px; border-radius:16px; cursor:pointer; box-shadow:var(--shadow);
+    transition: transform .1s; }
+  #tools button:active { transform:translateY(2px); }
 </style>
 </head>
 <body>
 <div id="info">
-  <b>Blocks</b><br>
+  <b>Blocks</b>
   Ziehen = drehen · Scrollen = Zoom<br>
-  Linksklick = setzen · Rechtsklick = entfernen<br>
+  Links = setzen · Rechts = entfernen<br>
   Tasten 1–8 = Material
 </div>
 <div id="tools">
@@ -67,99 +92,114 @@ const STORAGE_KEY = 'blocks.world.v4';
 const VIEW_KEY    = 'blocks.view.v1';
 const WATER_KEY   = 'blocks.water.v4';
 
+// deterministischer Zufall aus Ganzzahlen
+function hash3(x, y, z, n) {
+  let h = (x * 374761393 + y * 668265263 + z * 1274126177 + n * 2246822519) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 /* ---------------------------------------------------------------
-   Prozedurale 16x16-Pixeltexturen — Minecraft-Optik ohne Assets.
-   Jede Textur ist eine kleine Rauschfläche um eine Basisfarbe.
+   Gemalte Texturen — Wonderbox-Look.
+
+   Der "gezeichnete" Eindruck bei Wonderbox kommt NICHT aus Outlines oder
+   Cel-Shading, sondern aus gemalten Texturen: weiche, tieffrequente
+   Pinselflecken statt Pixelrauschen. Deshalb hier grosse Canvas, weiche
+   Radialgradienten und LINEARE Filterung — die Vorgaengerversion malte
+   16x16-Pixelrauschen mit NearestFilter, also genau das Gegenteil.
+
+   Das Ergebnis ist eine Graustufen-Struktur, die das Gelaende-Material
+   triplanar als Helligkeitsmodulation ueber die Vertexfarbe legt.
 --------------------------------------------------------------- */
-const texCache = new Map();
-function pixelTexture(base, spread, draw) {
-  const key = base + ':' + spread + ':' + (draw ? draw.name : '');
-  if (texCache.has(key)) return texCache.get(key);
-  const N = 16;
+function paintedGrain(N, seed) {
   const c = document.createElement('canvas');
   c.width = c.height = N;
   const g = c.getContext('2d');
-  const col = new THREE.Color(base);
-  for (let y = 0; y < N; y++) {
-    for (let x = 0; x < N; x++) {
-      const n = 1 + (Math.random() - 0.5) * spread;
-      g.fillStyle = '#' + col.clone().multiplyScalar(n).getHexString();
-      g.fillRect(x, y, 1, 1);
+  let st = seed;
+  const rnd = () => (st = (st * 1664525 + 1013904223) >>> 0) / 4294967296;
+
+  g.fillStyle = '#808080';
+  g.fillRect(0, 0, N, N);
+
+  // Weiche Flecken in drei Groessenstufen. Jeder wird neunfach gekachelt
+  // gezeichnet, damit die Textur an den Raendern nahtlos wiederholt.
+  const blobs = (count, rMin, rMax, amp) => {
+    for (let i = 0; i < count; i++) {
+      const x = rnd() * N, y = rnd() * N;
+      const r = rMin + rnd() * (rMax - rMin);
+      const v = (rnd() - 0.5) * 2 * amp;
+      const col = Math.round(128 + v * 127);
+      for (let ox = -1; ox <= 1; ox++) {
+        for (let oy = -1; oy <= 1; oy++) {
+          const cx = x + ox * N, cy = y + oy * N;
+          if (cx < -r || cy < -r || cx > N + r || cy > N + r) continue;
+          const grad = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+          grad.addColorStop(0, 'rgba(' + col + ',' + col + ',' + col + ',' + Math.abs(v) * 1.6 + ')');
+          grad.addColorStop(1, 'rgba(' + col + ',' + col + ',' + col + ',0)');
+          g.fillStyle = grad;
+          g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+        }
+      }
     }
+  };
+  blobs(14, N * 0.22, N * 0.42, 0.55);    // grosse Farbfelder
+  blobs(40, N * 0.07, N * 0.16, 0.40);    // Pinselflecken
+  blobs(150, N * 0.012, N * 0.038, 0.30); // Struktur
+
+  /* Kontrast strecken. Sich ueberlagernde Alpha-Gradienten mitteln sich
+     gegenseitig zur Mitte weg — gemessen kam nur 0.31..0.68 heraus, und im
+     Material blieben davon ±7% Helligkeit uebrig: unsichtbar. Die Streckung
+     auf einen festen Bereich macht das Ergebnis ausserdem unabhaengig von
+     der Blob-Parametrisierung, statt sie per Hand nachjustieren zu muessen. */
+  const img = g.getImageData(0, 0, N, N);
+  const d = img.data;
+  let lo = 255, hi = 0;
+  for (let i = 0; i < d.length; i += 4) { if (d[i] < lo) lo = d[i]; if (d[i] > hi) hi = d[i]; }
+  const span = Math.max(1, hi - lo);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = 30 + (d[i] - lo) / span * 195;      // -> 0.12 .. 0.88
+    d[i] = d[i + 1] = d[i + 2] = v;
   }
-  if (draw) draw(g, N, col);
+  g.putImageData(img, 0, 0);
+
   const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.NearestFilter;
-  t.minFilter = THREE.NearestFilter;
-  t.colorSpace = THREE.SRGBColorSpace;
-  texCache.set(key, t);
+  t.magFilter = THREE.LinearFilter;                  // weich, nicht pixelig
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
   return t;
 }
 
-// Grasrand: oberer Teil der Seitenfläche grün überzeichnet
-function grassSide(g, N) {
-  const green = new THREE.Color('#5a9e3a');
-  for (let x = 0; x < N; x++) {
-    const h = 3 + (Math.random() * 2 | 0);
-    for (let y = 0; y < h; y++) {
-      const n = 1 + (Math.random() - 0.5) * 0.25;
-      g.fillStyle = '#' + green.clone().multiplyScalar(n).getHexString();
-      g.fillRect(x, y, 1, 1);
-    }
-  }
-}
-// Holzmaserung: senkrechte dunkle Streifen
-function woodGrain(g, N, col) {
-  for (let x = 0; x < N; x += 3 + (Math.random() * 2 | 0)) {
-    g.fillStyle = '#' + col.clone().multiplyScalar(0.75).getHexString();
-    g.fillRect(x, 0, 1, N);
-  }
-}
-
-/* Materialdefinition: [top, side, bottom] Texturen */
-function mats(defs) {
-  return defs.map(d => new THREE.MeshLambertMaterial(d));
-}
+/* Blockdefinition: nur noch Farben + Name. Die Wuerfel-Meshes kommen nie in
+   die Szene (sie sind reine Raycast-Ziele), gezeichnet wird ausschliesslich
+   die verschmolzene Gelaendeoberflaeche — Texturen pro Block waeren toter
+   Code. `top` faerbt die Oberseite, `side` die Flanken. */
 const BLOCKS = {
-  grass: { top: '#6aae42', side: '#8b6b4a', name: 'Wiese',  icon: '#6aae42',
-    build: () => {
-      const top  = pixelTexture('#6aae42', 0.22);
-      const side = pixelTexture('#8b6b4a', 0.20, grassSide);
-      const bot  = pixelTexture('#8b6b4a', 0.20);
-      return mats([{map:side},{map:side},{map:top},{map:bot},{map:side},{map:side}]);
-    } },
-  dirt: { top: '#8b6b4a', side: '#7d5f42', name: 'Erde', icon: '#8b6b4a',
-    build: () => { const t = pixelTexture('#8b6b4a', 0.22); return mats(Array(6).fill({map:t})); } },
-  stone: { top: '#8a8a90', side: '#7e7e85', name: 'Stein', icon: '#8a8a90',
-    build: () => { const t = pixelTexture('#8a8a90', 0.28); return mats(Array(6).fill({map:t})); } },
-  sand: { top: '#ded1a0', side: '#d2c391', name: 'Sand', icon: '#ded1a0',
-    build: () => { const t = pixelTexture('#ded1a0', 0.16); return mats(Array(6).fill({map:t})); } },
-  water: { top: '#3b7bd4', side: '#3b7bd4', name: 'Wasser', icon: '#3b7bd4', transparent: true,
-    build: () => { const t = pixelTexture('#3b7bd4', 0.18);
-      return mats(Array(6).fill({map:t, transparent:true, opacity:0.72})); } },
-  wood: { top: '#a8804d', side: '#7a5a32', name: 'Holz', icon: '#7a5a32',
-    build: () => {
-      const top  = pixelTexture('#a8804d', 0.18);
-      const side = pixelTexture('#7a5a32', 0.18, woodGrain);
-      return mats([{map:side},{map:side},{map:top},{map:top},{map:side},{map:side}]);
-    } },
-  leaves: { top: '#4a8c36', side: '#3f7a2e', name: 'Laub', icon: '#3f7a2e',
-    build: () => { const t = pixelTexture('#3f7a2e', 0.45);
-      return mats(Array(6).fill({map:t})); } },
-  snow: { top: '#eef4f8', side: '#cfd8de', name: 'Schnee', icon: '#eef4f8',
-    build: () => {
-      const top  = pixelTexture('#eef4f8', 0.10);
-      const side = pixelTexture('#cfd8de', 0.12);
-      return mats([{map:side},{map:side},{map:top},{map:side},{map:side},{map:side}]);
-    } }
+  grass:  { top: '#7cc24b', side: '#b98a5e', name: 'Wiese',  icon: '#7cc24b' },
+  dirt:   { top: '#b98a5e', side: '#8a6242', name: 'Erde',   icon: '#b98a5e' },
+  stone:  { top: '#8e9aa6', side: '#7b8794', name: 'Stein',  icon: '#8e9aa6' },
+  sand:   { top: '#e8c79a', side: '#c97f52', name: 'Sand',   icon: '#e8c79a' },
+  water:  { top: '#7fb9c9', side: '#7fb9c9', name: 'Wasser', icon: '#7fb9c9' },
+  wood:   { top: '#c08f57', side: '#a9764a', name: 'Holz',   icon: '#a9764a' },
+  leaves: { top: '#5aa83f', side: '#3f7a3a', name: 'Laub',   icon: '#3f7a3a' },
+  snow:   { top: '#f2f6f7', side: '#d6e2e8', name: 'Schnee', icon: '#f2f6f7' }
 };
 const TYPES = Object.keys(BLOCKS);
-for (const t of TYPES) BLOCKS[t].materials = BLOCKS[t].build();
 
 /* --------------------------- Szene --------------------------- */
+/* Atmosphaere. Vorher stand hier schwarz — das ergab einen Nachtlook und
+   nahm dem Diorama jede Luft. Wonderbox setzt seine Inseln in einen hellen
+   Teal-Himmel und laesst alles Ferne in dieselbe Farbe ausbleichen
+   (Aerial Perspective). Fog-Farbe und Himmel-Horizont MUESSEN dieselbe
+   Farbe sein, sonst zeichnet sich die Silhouette der Insel als Kante ab. */
+const SKY_TOP    = '#52bcd8';
+const SKY_MID    = '#7fd0de';
+const SKY_HORIZON = '#c6e9e6';
+const HAZE       = '#a7dbdf';   // Fog + ferne Bergketten
+
 const scene = new THREE.Scene();
-scene.background = new THREE.Color('#000000');
-scene.fog = new THREE.Fog('#000000', 40, 110);
+scene.fog = new THREE.Fog(HAZE, 45, 150);
 
 const camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 500);
 camera.position.set(24, 20, 24);
@@ -181,21 +221,118 @@ controls.maxPolarAngle = Math.PI * 0.495;   // nicht unter den Boden
 controls.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: null };
 controls.update();
 
-scene.add(new THREE.HemisphereLight('#cfe6ff', '#4b5540', 0.85));
-const sun = new THREE.DirectionalLight('#fff4dd', 1.15);
+/* Drei Lichter statt zwei. Der Kern des Wonderbox-Looks ist, dass die
+   Schattenseiten FARBIG sind (teal), nicht einfach dunkelgrau: das warme
+   Key-Light macht die Sonnenseite, der kalte Gegen-Fill hebt die
+   Schattenseite an und kippt sie ins Blaue. */
+scene.add(new THREE.HemisphereLight('#dceff5', '#c0a173', 1.15));
+
+const sun = new THREE.DirectionalLight('#fff2d6', 1.05);
 sun.position.set(30, 45, 18);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
+// Der entscheidende Regler fuer den Look: ein Schlagschatten auf halber
+// Deckkraft. Bei voller Deckkraft schluckt er die Farbe der Flaeche und die
+// Abseiten werden zu blaugrauen Loechern.
+sun.shadow.intensity = 0.55;
+sun.shadow.bias = -0.0012;
+sun.shadow.normalBias = 0.02;
 const S = SIZE * 0.9;
 Object.assign(sun.shadow.camera, { left:-S, right:S, top:S, bottom:-S, near:1, far:140 });
 sun.shadow.camera.updateProjectionMatrix();
 sun.target.position.set(SIZE/2, 0, SIZE/2);
 scene.add(sun, sun.target);
 
+// Kalter Fill aus der Gegenrichtung — wirft keinen Schatten, faerbt nur
+// die Abseiten. Ohne ihn laufen sie ins Graue und der Look kippt.
+const fill = new THREE.DirectionalLight('#bfdde8', 0.55);
+fill.position.set(-26, 14, -20);
+scene.add(fill);
+
+/* ------------------------- Himmelskuppel -------------------------
+   Ein Gradient von Horizont zu Zenit. Als BackSide-Sphaere und nicht als
+   scene.background, weil ein Gradient sonst eine Equirect-Textur braeuchte
+   und der Farbverlauf beim Kippen der Kamera nicht mitwandert.
+----------------------------------------------------------------- */
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(320, 32, 16),
+  new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: {
+      uTop: { value: new THREE.Color(SKY_TOP) },
+      uMid: { value: new THREE.Color(SKY_MID) },
+      uBot: { value: new THREE.Color(SKY_HORIZON) }
+    },
+    vertexShader: `varying float vH;
+      void main() {
+        vH = normalize(position).y;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `uniform vec3 uTop, uMid, uBot; varying float vH;
+      void main() {
+        float h = clamp(vH * 0.5 + 0.5, 0.0, 1.0);
+        vec3 c = mix(uBot, uMid, smoothstep(0.42, 0.56, h));
+        c = mix(c, uTop, smoothstep(0.56, 0.92, h));
+        gl_FragColor = vec4(c, 1.0);
+      }`
+  })
+);
+sky.frustumCulled = false;
+sky.renderOrder = -2;
+sky.position.set(SIZE/2, 0, SIZE/2);
+scene.add(sky);
+
+/* --------------------- Ferne Bergketten ---------------------
+   Zwei weiche Kaemme, damit das Diorama in einer Landschaft schwebt statt
+   in leerem Blau. Fast in Fog-Farbe: sie sollen Tiefe andeuten, nicht
+   Aufmerksamkeit ziehen. Als Baender ohne Spitzen — eine Silhouette aus
+   ueberlagerten Sinuswellen liest sich auf die Entfernung als Huegelzug.
+------------------------------------------------------------- */
+function ridgeBand(radius, baseY, minH, maxH, color, seed) {
+  const SEGS = 360, pos = [], idx = [];
+  for (let i = 0; i <= SEGS; i++) {
+    const a = i / SEGS * Math.PI * 2;
+    // Fuenf Oktaven mit fallender Amplitude. Mit nur drei niedrigen
+    // Frequenzen (erster Versuch) sah das Band wie eine Sinuswelle aus,
+    // nicht wie ein Huegelzug — die hohen Oktaven machen die Zacken.
+    const n = Math.sin(a * 4 + seed) * 0.42
+            + Math.sin(a * 9 + seed * 2.3) * 0.26
+            + Math.sin(a * 19 + seed * 4.1) * 0.17
+            + Math.sin(a * 37 + seed * 7.7) * 0.10
+            + Math.sin(a * 71 + seed * 11.3) * 0.05;
+    const h = minH + Math.pow(n * 0.5 + 0.5, 1.6) * (maxH - minH);
+    const r = radius * (1 + Math.sin(a * 5 + seed) * 0.04);
+    const cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+    pos.push(cx, baseY, cz, cx, baseY + h, cz);
+  }
+  for (let i = 0; i < SEGS; i++) {
+    const b = i * 2;
+    idx.push(b, b + 1, b + 2, b + 1, b + 3, b + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    color, side: THREE.DoubleSide, fog: false, depthWrite: false
+  }));
+  m.frustumCulled = false;
+  m.position.set(SIZE/2, 0, SIZE/2);
+  m.renderOrder = -1;
+  return m;
+}
+scene.add(ridgeBand(265, -60, 52, 74, '#a9dade', 0.7));   // fern, fast Haze
+scene.add(ridgeBand(205, -60, 44, 62, '#8bc6d2', 2.9));   // mittel
+scene.add(ridgeBand(155, -60, 38, 52, '#74b3c4', 5.3));   // naeher, satter
+
 // Sockel unter der Bauplatte, damit die Fläche "schwebt" statt abzubrechen
-const baseMat = new THREE.MeshLambertMaterial({ map: pixelTexture('#2e3236', 0.16) });
-const base = new THREE.Mesh(new THREE.BoxGeometry(SIZE - 2 * INSET, 4, SIZE - 2 * INSET), baseMat);
-base.position.set(SIZE/2 - 0.5, -2.3, SIZE/2 - 0.5);
+// Warmes Gestein statt Anthrazit — der dunkle Sockel las sich als Loch.
+const baseMat = new THREE.MeshStandardMaterial({
+  color: '#9c7350', roughness: 0.95, metalness: 0
+});
+// Material fuer die unsichtbaren Raycast-Wuerfel: eins fuer alle.
+const rayMat = new THREE.MeshBasicMaterial({ visible: false });
+const base = new THREE.Mesh(new THREE.BoxGeometry(SIZE - 2 * INSET, 2.4, SIZE - 2 * INSET), baseMat);
+base.position.set(SIZE/2 - 0.5, -1.5, SIZE/2 - 0.5);
 base.receiveShadow = true;
 scene.add(base);
 
@@ -210,7 +347,8 @@ function addBlock(x, y, z, type, silent) {
   if (type === 'water') return;          // Wasser ist ein Pegel, kein Block
   if (world.has(key(x,y,z))) return;
   if (x < 0 || z < 0 || x >= SIZE || z >= SIZE || y < 0 || y > 10) return;
-  const mesh = new THREE.Mesh(geo, BLOCKS[type].materials);
+  // Ohne Material: das Mesh wird nie gezeichnet, nur geraycastet.
+  const mesh = new THREE.Mesh(geo, rayMat);
   mesh.position.set(x, y, z);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
@@ -274,32 +412,18 @@ const Y_SQUEEZE  = BOX_ROUND / ROUND_Y;
 const mcCenter = new THREE.Vector3(9.5, 5.0, 9.5);   // deckt y −1.5 … 11.5
 const mcScale  = new THREE.Vector3(MC_SPAN_XZ / 2, MC_SPAN_Y / 2, MC_SPAN_XZ / 2);
 
-/* Struktur-Textur: 16x16 Graustufen, die triplanar aus den Weltkoordinaten
-   gesampelt wird. Genau ein Block pro Wiederholung, NearestFilter und eine
-   harte Achsenwahl statt weicher Überblendung — dadurch bleiben die Pixel
-   überall gestochen scharf, auch auf den gerundeten Flanken. */
-const grainTex = (() => {
-  const N = 16;
-  const c = document.createElement('canvas');
-  c.width = c.height = N;
-  const g = c.getContext('2d');
-  for (let y = 0; y < N; y++) {
-    for (let x = 0; x < N; x++) {
-      let v = 0.5 + (Math.random() - 0.5) * 0.55;
-      if ((x ^ y) % 7 === 0) v -= 0.10;          // etwas gröbere Sprenkel
-      if ((x + y * 3) % 11 === 0) v += 0.08;
-      g.fillStyle = 'rgb(' + [v, v, v].map(n => Math.round(n * 255)).join(',') + ')';
-      g.fillRect(x, y, 1, 1);
-    }
-  }
-  const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.NearestFilter;                 // nah: harte Texel
-  t.minFilter = THREE.LinearMipmapLinearFilter;      // fern: kein Flimmern
-  t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  return t;
-})();
+/* Struktur-Textur: gemalte Graustufen, triplanar aus den Weltkoordinaten
+   gesampelt. Vorher war das 16x16-Pixelrauschen mit NearestFilter — bewusst
+   Minecraft. Fuer den Wonderbox-Look muss genau das weg: weiche, grosse
+   Pinselflecken, lineare Filterung, und eine Wiederholung ueber MEHRERE
+   Bloecke statt einer pro Block, damit die Struktur nicht das Raster
+   nachzeichnet. Die harte Achsenwahl (statt weicher Ueberblendung) bleibt:
+   sie ist billiger und auf den gerundeten Flanken nicht zu sehen. */
+const grainTex = paintedGrain(256, 20240904);
 
-const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const terrainMat = new THREE.MeshStandardMaterial({
+  vertexColors: true, roughness: 0.95, metalness: 0
+});
 terrainMat.onBeforeCompile = (sh) => {
   sh.uniforms.uGrain = { value: grainTex };
   sh.uniforms.uScale = { value: mcScale };
@@ -318,8 +442,34 @@ terrainMat.onBeforeCompile = (sh) => {
       vec2 tuv = (an.y >= an.x && an.y >= an.z) ? vWPos.xz
                : (an.x >= an.z)                ? vWPos.zy
                                                : vWPos.xy;
-      float grain = texture2D(uGrain, tuv * 4.0).r;   // 64 Texel je Block
-      diffuseColor.rgb *= 0.82 + grain * 0.36;`);
+      // 0.28 = eine Texturwiederholung je ~3.5 Bloecke. Bei 1.0 (eine je
+      // Block) zeichnen die Flecken das Voxelraster nach und die
+      // verschmolzene Oberflaeche zerfaellt optisch wieder in Wuerfel.
+      float grain = texture2D(uGrain, tuv * 0.31).r;
+      float mid   = texture2D(uGrain, tuv * 0.85).r;
+      float fine  = texture2D(uGrain, tuv * 2.3).r;
+      // Deutlich flacher als vorher (0.82 + 0.36): gemalte Oberflaechen
+      // haben weiche Wertesprünge, harter Kontrast liest sich als Rauschen.
+      diffuseColor.rgb *= 0.82 + grain * 0.36
+                        + (mid  - 0.5) * 0.20
+                        + (fine - 0.5) * 0.12;
+      // Oberseiten bekommen einen Hauch mehr Licht, Unterseiten kippen ins
+      // Kuehle — gemalte AO, die die Rundungen der Bloecke lesbar macht.
+      diffuseColor.rgb *= mix(vec3(0.80, 0.84, 0.95), vec3(1.05, 1.03, 0.97),
+                              smoothstep(-0.9, 0.35, vWNrm.y));`);
+
+  /* Fresnel-Rim. Muss NACH der Beleuchtung addiert werden, nicht in
+     color_fragment: dort wuerde ihn das Licht mitmultiplizieren und im
+     Schatten waere er weg — genau da soll er aber die Silhouette
+     freistellen. Nach unten ausgeblendet, sonst leuchtet der Inselsockel. */
+  sh.fragmentShader = sh.fragmentShader.replace(
+    '#include <opaque_fragment>',
+    `#include <opaque_fragment>
+      vec3 V = normalize(cameraPosition - vWPos);
+      float rim = pow(1.0 - clamp(dot(normalize(vWNrm), V), 0.0, 1.0), 3.0);
+      rim *= smoothstep(-0.5, 0.1, vWNrm.y)                  // nicht nach unten
+           * (1.0 - smoothstep(0.45, 0.90, vWNrm.y));        // nicht nach oben
+      gl_FragColor.rgb += vec3(0.30, 0.52, 0.60) * rim * 0.22;`);
 };
 
 const terrain = new MarchingCubes(MC_RES, terrainMat, false, true, 200000);
@@ -362,6 +512,7 @@ function scheduleTerrain() {
 }
 
 const _c = new THREE.Color();
+const _j = new THREE.Color(), _hsl = { h: 0, s: 0, l: 0 };
 function rebuildTerrain() {
   const { field, palette, size, size2 } = terrain;
   dist.fill(2);
@@ -382,8 +533,19 @@ function rebuildTerrain() {
   for (const [k, b] of world) {
     if (b.type === 'water') continue;              // Wasser hat eine eigene Fläche
     const [bx, by, bz] = k.split(',').map(Number);
-    const top = BLOCKS[b.type].top, side = BLOCKS[b.type].side;
     const covered = world.has(key(bx, by + 1, bz));
+
+    // ±5% Helligkeit und ein Hauch Hue-Drift je Block.
+    const jv = 1 + (hash3(bx, by, bz, 31) - 0.5) * 0.10;
+    const jh = (hash3(bx, by, bz, 37) - 0.5) * 0.020;
+    const tint = (hex) => {
+      _j.set(hex).multiplyScalar(jv);
+      _j.getHSL(_hsl);
+      _j.setHSL((_hsl.h + jh + 1) % 1, _hsl.s, Math.min(1, _hsl.l));
+      return _j;
+    };
+    const top = tint(BLOCKS[b.type].top).getHex();
+    const side = tint(BLOCKS[b.type].side).getHex();
 
     const gx = worldToGrid(bx, 0), gy = worldToGrid(by, 1), gz = worldToGrid(bz, 2);
     // Randblöcke reichen bis an die Feldgrenze — aber nur nach außen
@@ -444,7 +606,60 @@ function rebuildTerrain() {
       }
     }
   }
+  bakeAO();
   terrain.update();
+}
+
+/* ------------------------ Gebackenes AO ------------------------
+   Der Diorama-Eindruck bei Wonderbox haengt an weicher Verschattung in
+   jeder Kehle — ohne sie sieht die verschmolzene Oberflaeche nach Plastik
+   aus. Ein Screenspace-AO-Pass waere dafuer zu teuer; das Distanzfeld
+   liegt hier aber schon vor und weiss selbst, wie eingeschlossen ein Punkt
+   ist. Also: fuer jeden Feldpunkt zaehlen, wie viele Nachbarn in einem
+   festen Abstand im Material liegen. 0.5 = freie Oberflaeche, mehr = Kehle.
+
+   Das Ergebnis wird direkt in `palette` multipliziert, und Marching Cubes
+   interpoliert es beim Bauen zu Vertexfarben — die Verschattung ist also
+   Teil der Geometrie und kostet zur Laufzeit nichts.
+
+   Die Abtastradien sind je Achse verschieden, weil das Feld in y dichter
+   liegt (MC_SPAN_Y < MC_SPAN_XZ): 4 bzw. 7 Schritte sind beide ~1.2 Bloecke.
+   Gleiche Schrittzahl waere in y ein viel kleinerer Radius und das AO
+   bekaeme eine sichtbare Richtungsverzerrung.
+--------------------------------------------------------------- */
+const AO_RX = 4, AO_RY = 7;
+const aoOffsets = [];
+{
+  const { size, size2 } = terrain;
+  for (let dz = -1; dz <= 1; dz++)
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dy && !dz) continue;
+        aoOffsets.push(dz * AO_RX * size2 + dy * AO_RY * size + dx * AO_RX);
+      }
+}
+
+function bakeAO() {
+  const { field, palette, size, size2 } = terrain;
+  const n = aoOffsets.length;
+  for (let z = AO_RX; z < size - AO_RX; z++) {
+    for (let y = AO_RY; y < size - AO_RY; y++) {
+      const row = z * size2 + y * size;
+      for (let x = AO_RX; x < size - AO_RX; x++) {
+        const i = row + x;
+        let inside = 0;
+        for (let k = 0; k < n; k++) if (field[i + aoOffsets[k]] > 0) inside++;
+        const occ = inside / n;
+        const ao = Math.max(0.50, Math.min(1, 1 - (occ - 0.42) * 1.55));
+        // Blau faellt am schnellsten: die Kehlen werden waermer statt nur
+        // dunkler. Gleichmaessig abgedunkeltes AO liest sich als Schmutz.
+        const j = i * 3;
+        palette[j]     *= ao;
+        palette[j + 1] *= ao * (0.96 + ao * 0.04);
+        palette[j + 2] *= ao * (0.88 + ao * 0.12);
+      }
+    }
+  }
 }
 
 /* ------------------------- Wasserbecken -------------------------
@@ -529,7 +744,7 @@ depthTarget.depthTexture = new THREE.DepthTexture();
 depthTarget.depthTexture.type = THREE.UnsignedIntType;
 
 const waterMat = new THREE.MeshPhongMaterial({
-  color: '#2d6ec2', specular: '#6d9ec9', shininess: 45,
+  color: '#4e9db8', specular: '#7fb6c9', shininess: 130,
   transparent: true, depthWrite: false, side: THREE.DoubleSide
 });
 const waterUniforms = {
@@ -589,7 +804,7 @@ waterMat.onBeforeCompile = (sh) => {
     // Beer-Lambert: je länger der Weg durchs Wasser, desto weniger Grund
     float murk = 1.0 - exp(-column / uVis);
     // Grundschleier, damit die Wasserkante am Ufer sichtbar bleibt
-    gl_FragColor.a = clamp(0.30 + murk * 0.62, 0.0, 1.0);`);
+    gl_FragColor.a = clamp(0.42 + murk * 0.52, 0.0, 1.0);`);
 };
 
 const waterSurface = new THREE.Mesh(new THREE.BufferGeometry(), waterMat);
@@ -898,12 +1113,6 @@ const GRASS_WIND = new THREE.Vector2(1, 0.35).normalize();   // Windrichtung
 const GRASS_ROT = Math.atan2(GRASS_WIND.x, GRASS_WIND.y);
 const GRASS_SPREAD = 0.85;                                   // ±24°
 
-// deterministischer Zufall aus Ganzzahlen
-function hash3(x, y, z, n) {
-  let h = (x * 374761393 + y * 668265263 + z * 1274126177 + n * 2246822519) | 0;
-  h = Math.imul(h ^ (h >>> 13), 1274126177);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
 
 /* Ein Halm: schmales Band, das sich nach oben verjüngt und leicht
    vorbiegt. Lokal 0..1 hoch, die Instanz skaliert ihn. */
@@ -941,7 +1150,7 @@ const grassGeo = makeBladeGeometry();
 // in der Sonne zu überstrahlen — dort dominiert das direkte Licht. Zu viel
 // davon (der erste Versuch) lässt sie ausgerechnet im Schatten leuchten.
 const grassMat = new THREE.MeshLambertMaterial({
-  side: THREE.DoubleSide, emissive: '#22401b'
+  side: THREE.DoubleSide, emissive: '#2c4a1f'
 });
 const grassUniforms = { uTime: { value: 0 } };
 grassMat.onBeforeCompile = (sh) => {
@@ -978,7 +1187,7 @@ grassGeo.setAttribute('aRot', grassRot);
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion();
 const _v3 = new THREE.Vector3(), _scale = new THREE.Vector3();
 const _up = new THREE.Vector3(0, 1, 0);
-const _tint = new THREE.Color(), _base = new THREE.Color('#86c94e');
+const _tint = new THREE.Color(), _base = new THREE.Color('#93d455');
 
 function rebuildGrass() {
   let n = 0;
@@ -1270,8 +1479,8 @@ TYPES.forEach((type, i) => {
   const slot = document.createElement('div');
   slot.className = 'slot' + (type === selected ? ' active' : '');
   slot.dataset.type = type;
-  slot.style.background = BLOCKS[type].icon;
-  slot.innerHTML = '<span>' + (i + 1) + '</span><b>' + BLOCKS[type].name + '</b>';
+  slot.style.setProperty('--chip', BLOCKS[type].icon);
+  slot.innerHTML = '<i></i><span>' + (i + 1) + '</span><b>' + BLOCKS[type].name + '</b>';
   slot.addEventListener('click', () => select(type));
   hud.appendChild(slot);
 });
@@ -1291,9 +1500,11 @@ document.getElementById('btnReset').addEventListener('click', () => {
 /* ------------------- Highlight & Interaktion ------------------ */
 const highlight = new THREE.Mesh(
   new THREE.BoxGeometry(1.02, 1.02, 1.02),
-  new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent: true, opacity: 0.45 })
+  new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true,
+    opacity: 0.85, depthTest: false, fog: false })
 );
 highlight.visible = false;
+highlight.renderOrder = 10;
 scene.add(highlight);
 
 const raycaster = new THREE.Raycaster();
