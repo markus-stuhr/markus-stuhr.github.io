@@ -932,8 +932,8 @@ grassMat.onBeforeCompile = (sh) => {
   sh.vertexShader = 'uniform float uTime;\nattribute float aPhase;\nattribute float aRot;\n'
     + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
       // Zwei überlagerte Böen, damit das Wehen nicht im Takt läuft
-      float sway = sin(uTime * 1.5 + aPhase) * 0.6
-                 + sin(uTime * 2.9 + aPhase * 1.7) * 0.4;
+      float sway = sin(uTime * 1.1 + aPhase) * 0.65
+                 + sin(uTime * 1.9 + aPhase * 1.7) * 0.35;
       // Der Wind weht global in eine Richtung — die Halme sind aber je
       // Instanz um Y gedreht, also wird er in ihren lokalen Raum zurück-
       // gerechnet. Ohne das biegt jeder Halm in seine eigene Richtung und
@@ -991,7 +991,12 @@ function rebuildGrass() {
       _tint.copy(_base).offsetHSL((rv - 0.5) * 0.06, (rx) * 0.18, (rz) * 0.13);
       grassMesh.setColorAt(n, _tint);
 
-      grassPhase.setX(n, hash3(x, y, z, i * 3 + 5) * 6.283);
+      // Die Phase kommt überwiegend aus der Position IN Windrichtung: so
+      // laufen die Böen als Welle über die Wiese und alle Halme wehen
+      // miteinander. Rein zufällige Phasen lassen jeden für sich zappeln.
+      // Ein kleiner Zufallsanteil bleibt, sonst wirkt es mechanisch.
+      const along = (x + rx) * GRASS_WIND.x + (z + rz) * GRASS_WIND.y;
+      grassPhase.setX(n, along * 0.55 + hash3(x, y, z, i * 3 + 5) * 0.6);
       grassRot.setX(n, rot);
     }
   }
