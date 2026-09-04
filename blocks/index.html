@@ -28,21 +28,21 @@
   /* Mit den vier Deko-Typen sind es zwölf Slots — auf dem Handy passen die
      nicht in eine Reihe, deshalb Umbruch statt Überlauf. */
   #hud { position:fixed; left:0; right:0; bottom:0; padding:14px 10px 20px;
-    display:flex; flex-wrap:wrap; justify-content:center; gap:9px;
+    display:flex; flex-wrap:wrap; justify-content:center; gap:7px;
     pointer-events:none; }
-  .slot { pointer-events:auto; width:58px; height:58px; border-radius:18px; cursor:pointer;
+  .slot { pointer-events:auto; width:50px; height:50px; border-radius:15px; cursor:pointer;
     border:none; background:var(--card); position:relative; overflow:hidden;
     box-shadow:var(--shadow);
     transition: transform .12s cubic-bezier(.34,1.56,.64,1), box-shadow .12s; }
   /* Der Farbchip sitzt als abgerundetes Quadrat IN der weissen Karte —
      wie die gemalten 3D-Icons im Original, nur ohne Assets. */
-  .slot i { position:absolute; inset:9px 9px 17px; border-radius:11px;
+  .slot i { position:absolute; inset:7px 7px 15px; border-radius:9px;
     background:var(--chip);
     box-shadow: inset 0 -6px 10px rgba(0,0,0,.16), inset 0 5px 8px rgba(255,255,255,.45); }
-  .slot span { position:absolute; top:2px; right:7px; font-size:10px;
+  .slot span { position:absolute; top:1px; right:5px; font-size:9px;
     font-weight:700; color:#c7b393; }
-  .slot b { position:absolute; bottom:1px; left:0; right:0; text-align:center;
-    font-size:9.5px; font-weight:700; letter-spacing:.02em; color:#8a7757; }
+  .slot b { position:absolute; bottom:0; left:0; right:0; text-align:center;
+    font-size:8.5px; font-weight:700; letter-spacing:0; color:#8a7757; }
   .slot.active { transform:translateY(-9px) scale(1.06);
     box-shadow:0 0 0 4px var(--amber), var(--shadow); }
   .slot.active b { color:var(--amber-dark); }
@@ -66,7 +66,7 @@
   <b>Blocks</b>
   Ziehen = drehen · Scrollen = Zoom<br>
   Links = setzen · Rechts = entfernen<br>
-  Tasten 1–9 = Material
+  Tasten 1–9 = Material · Deko per Klick
 </div>
 <div id="tools">
   <button id="btnReset">Neu</button>
@@ -86,6 +86,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const SIZE = 20;              // 20 x 20 Grundfläche
 // Die Insel wird etwas INNERHALB der äußersten Blockmitten abgeschnitten:
@@ -203,7 +204,45 @@ const BLOCKS = {
   rock: { name: 'Fels', icon: '#8e9aa6', scale: [0.9, 1.6], tint: 2.35,
           models: ['Rock_1_A', 'Rock_2_A', 'Rock_3_A'] },
   fern: { name: 'Farn', icon: '#7cc24b', scale: [0.9, 1.5], upNormals: 0.75,
-          models: ['Grass_1_A', 'Grass_2_A'] }
+          models: ['Grass_1_A', 'Grass_2_A'] },
+
+  /* Burg und Dorf aus dem KayKit Medieval Builder Pack (CC0). Die Modelle
+     sind aus der Vor-Atlas-Ära: keine Textur, sondern mehrere Primitive mit
+     benannten Materialien (Stone, Brown, Beige …). Sie werden beim Laden
+     verschmolzen und die Materialnamen auf UNSERE Palette gemappt — siehe
+     MEDIEVAL_PALETTE. Deshalb kommt die Burg im Wonderbox-Farbklang heraus
+     und nicht im KayKit-Grau. */
+  castle: { name: 'Burg',  icon: '#8e9aa6', dir: 'medieval', ext: '.glb', flat: true,
+            scale: [1, 1], fitH: 2.7, fitW: 2.2, models: ['castle'] },
+  wall:   { name: 'Mauer', icon: '#7f8b97', dir: 'medieval', ext: '.glb', flat: true,
+            scale: [1, 1], fitH: 1.5, fitW: 1.0, yawStep: 4,
+            models: ['wall_straight', 'wall_corner', 'wall_gate', 'wall_gate_closed'] },
+  tower:  { name: 'Turm',  icon: '#98a2ad', dir: 'medieval', ext: '.glb', flat: true,
+            scale: [1, 1], fitH: 2.3, fitW: 0.95, yawStep: 4, models: ['watchtower'] },
+  house:  { name: 'Haus',  icon: '#e3b65c', dir: 'medieval', ext: '.glb', flat: true,
+            scale: [1, 1], fitH: 1.5, fitW: 1.35, yawStep: 4,
+            models: ['house', 'barracks', 'market', 'mill', 'watermill', 'well'] },
+
+  /* Requisiten aus dem KayKit Dungeon Pack (CC0) — eigener Atlas
+     (dungeon_texture.png), also ein zweites texturiertes Material. */
+  crate:  { name: 'Kiste', icon: '#a9764a', dir: 'dungeon',
+            scale: [0.9, 1.1], fitH: 0.6,
+            models: ['barrel_large', 'barrel_small', 'barrel_small_stack',
+                     'box_large', 'box_small', 'crates_stacked'] },
+  chest:  { name: 'Truhe', icon: '#c08f57', dir: 'dungeon',
+            scale: [1, 1], fitH: 0.55, yawStep: 4, models: ['chest', 'chest_gold'] }
+};
+
+/* Materialnamen des Medieval Builder Packs auf unsere Palette. Der Pack
+   liefert nur benannte Flächenfarben, also ist das Umfärben kostenlos —
+   und der einzige Weg, fremde Gebäude in denselben Farbklang zu holen wie
+   das prozedurale Gelände. Unbekannte Namen behalten ihre Originalfarbe. */
+const MEDIEVAL_PALETTE = {
+  Stone:     '#8e9aa6',   StoneDark: '#6f7a86',
+  Brown:     '#a9764a',   BrownDark: '#7d5636',
+  White:     '#eef2f2',   Beige:     '#e3b65c',
+  Green:     '#5aa83f',   Red:       '#b4553f',
+  Blue:      '#4f7fae',   Yellow:    '#e8c15a'
 };
 const isDeco = (t) => !!(BLOCKS[t] && BLOCKS[t].models);
 // "Feste" Zelle: traegt Gelaendemasse. Deko steht nur darauf und darf
@@ -1272,7 +1311,10 @@ function rebuildLeaves() {
 ------------------------------------------------------------------- */
 const DECO_MAX = 512;              // Instanzen je Modellvariante
 const decoMeshes = {};             // type -> [InstancedMesh je Variante]
-let decoMat = null;
+// Ein Material je Texturquelle. Die drei Packs bringen zwei verschiedene
+// Atlanten mit (forest_texture, dungeon_texture) und der Medieval-Pack gar
+// keinen — dafuer das 'flat'-Material mit Vertexfarben.
+const decoMats = new Map();
 
 /* Dasselbe Struktur-/AO-/Rim-Rezept wie Gelaende und Laub, aber
    ABGESCHWAECHT: KayKit bringt ueber den Atlas schon einen eigenen
@@ -1281,8 +1323,9 @@ let decoMat = null;
    dieselbe Luft und dieselbe Silhouettentrennung bekommen wie der Rest. */
 function makeDecoMaterial(map) {
   const m = new THREE.MeshStandardMaterial({
-    map, roughness: 0.92, metalness: 0,
-    side: THREE.DoubleSide          // Gras- und Buschblaetter sind Karten
+    roughness: 0.92, metalness: 0,
+    side: THREE.DoubleSide,         // Gras- und Buschblaetter sind Karten
+    ...(map ? { map } : { vertexColors: true })
   });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uGrain = { value: grainTex };
@@ -1312,27 +1355,69 @@ function makeDecoMaterial(map) {
   return m;
 }
 
-const decoLoader = new GLTFLoader().setPath('assets/kaykit/');
+const decoLoader = new GLTFLoader().setPath('assets/');
+
+/* Mehrere Primitive zu EINER Geometrie verschmelzen und die Materialfarbe
+   je Teil in ein Vertexfarben-Attribut backen.
+
+   Notwendig, weil InstancedMesh genau eine Geometrie und ein Material
+   braucht — ein Modell mit fuenf benannten Materialien kaeme sonst als
+   fuenf Meshes und waere nicht instanzierbar. Die Attribute werden
+   ausdruecklich neu aufgebaut (nur position/normal/color): mergeGeometries
+   verlangt identische Attributsaetze, und die Originale bringen ein
+   TEXCOORD_0 mit, das hier ohnehin ins Leere zeigt. */
+function bakeFlatColors(root, palette) {
+  const parts = [];
+  const col = new THREE.Color();
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    o.updateWorldMatrix(true, false);
+    const src = o.geometry;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', src.getAttribute('position').clone());
+    if (src.getAttribute('normal')) g.setAttribute('normal', src.getAttribute('normal').clone());
+    if (src.index) g.setIndex(src.index.clone());
+    g.applyMatrix4(o.matrixWorld);
+    if (!g.getAttribute('normal')) g.computeVertexNormals();
+
+    const name = o.material && o.material.name;
+    col.set(palette[name] || (o.material && o.material.color
+      ? '#' + o.material.color.getHexString() : '#cccccc'));
+    const n = g.getAttribute('position').count;
+    const arr = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { arr[i*3] = col.r; arr[i*3+1] = col.g; arr[i*3+2] = col.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    parts.push(g);
+  });
+  return parts.length ? mergeGeometries(parts, false) : null;
+}
 
 async function loadDeco() {
   for (const type of TYPES) {
     const def = BLOCKS[type];
     if (!def.models) continue;
     decoMeshes[type] = [];
+    const dir = def.dir || 'kaykit';
+    const ext = def.ext || '.gltf';
     for (const name of def.models) {
       let gltf;
-      try { gltf = await decoLoader.loadAsync(name + '.gltf'); }
-      catch (e) { console.warn('Deko fehlt:', name, e); continue; }
+      try { gltf = await decoLoader.loadAsync(dir + '/' + name + ext); }
+      catch (e) { console.warn('Deko fehlt:', dir + '/' + name, e); continue; }
 
       let geo = null, srcMap = null;
-      gltf.scene.traverse(o => {
-        if (!o.isMesh || geo) return;
-        // Knotentransform in die Geometrie backen: dann traegt die Instanz
-        // allein die Platzierung und muss den Modellaufbau nicht kennen.
-        o.updateWorldMatrix(true, false);
-        geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
-        srcMap = o.material && o.material.map;
-      });
+      if (def.flat) {
+        // Vor-Atlas-Modelle: verschmelzen und auf unsere Palette umfaerben
+        geo = bakeFlatColors(gltf.scene, MEDIEVAL_PALETTE);
+      } else {
+        gltf.scene.traverse(o => {
+          if (!o.isMesh || geo) return;
+          // Knotentransform in die Geometrie backen: dann traegt die Instanz
+          // allein die Platzierung und muss den Modellaufbau nicht kennen.
+          o.updateWorldMatrix(true, false);
+          geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+          srcMap = o.material && o.material.map;
+        });
+      }
       if (!geo) continue;
 
       /* Ursprung normalisieren: in x/z zentrieren und die Unterkante auf 0
@@ -1343,6 +1428,26 @@ async function loadDeco() {
       geo.computeBoundingBox();
       const bb = geo.boundingBox;
       geo.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+
+      /* Zielgroesse in Zellen statt geratener Skalierungsfaktoren. Die
+         Modelleinheiten der drei Packs sind voellig verschieden — der
+         Medieval-Pack ist fuer eine 1er-Kachel gebaut, die Forest-Baeume
+         sind 4-5 Einheiten hoch — und die Bounding Box eines Modells mit
+         mehreren Primitiven ist von aussen ohnehin nicht zu erraten. Nach
+         `translate` sitzt der Ursprung auf Boden und Mitte, `scale` um den
+         Ursprung laesst ihn also dort.
+
+         fitW getrennt von fitH, weil eine Mauer beides braucht: genau eine
+         Zelle breit, aber deutlich hoeher als breit. Uniform skaliert waere
+         eine zellbreite Mauer nur kniehoch. */
+      if (def.fitH) {
+        const h = bb.max.y - bb.min.y;
+        const w = Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z);
+        const sy = h > 1e-4 ? def.fitH / h : 1;
+        const sx = def.fitW && w > 1e-4 ? def.fitW / w : sy;
+        geo.scale(sx, sy, sx);
+        geo.computeBoundingBox();
+      }
       geo.computeBoundingSphere();
 
       if (def.upNormals) {
@@ -1356,11 +1461,14 @@ async function loadDeco() {
         nrm.needsUpdate = true;
       }
 
-      if (!decoMat && srcMap) {
-        srcMap.colorSpace = THREE.SRGBColorSpace;
-        decoMat = makeDecoMaterial(srcMap);
+      // Ein Material je Quelle, nicht je Modell: sonst haette three fuer
+      // jeden Atlas so viele Texturobjekte wie Modelle.
+      const matKey = def.flat ? 'flat' : (srcMap ? dir : 'flat');
+      if (!decoMats.has(matKey)) {
+        if (srcMap) srcMap.colorSpace = THREE.SRGBColorSpace;
+        decoMats.set(matKey, makeDecoMaterial(def.flat ? null : srcMap));
       }
-      const im = new THREE.InstancedMesh(geo, decoMat, DECO_MAX);
+      const im = new THREE.InstancedMesh(geo, decoMats.get(matKey), DECO_MAX);
       im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       im.frustumCulled = false;
       im.count = 0;
@@ -1392,11 +1500,19 @@ function rebuildDeco() {
     const s = def.scale[0] + hash3(x, y, z, 102) * (def.scale[1] - def.scale[0]);
     // y − 0.5: die Zelle reicht von y−0.5 bis y+0.5, die Deko steht also
     // auf der Deckflaeche des Blocks darunter.
-    _dv.set(x + (hash3(x, y, z, 103) - 0.5) * 0.34,
+    // Bewuchs darf aus der Zellmitte wandern, Bauwerke nicht.
+    const jit = def.yawStep || def.flat ? 0 : 0.34;
+    _dv.set(x + (hash3(x, y, z, 103) - 0.5) * jit,
             y - 0.5,
-            z + (hash3(x, y, z, 104) - 0.5) * 0.34);
-    _dq.setFromAxisAngle(_up, hash3(x, y, z, 105) * Math.PI * 2);
-    _dsc.set(s, s * (0.88 + hash3(x, y, z, 106) * 0.28), s);
+            z + (hash3(x, y, z, 104) - 0.5) * jit);
+    /* Freie Drehung passt zu Bewuchs, aber nicht zu Bauwerken: eine Mauer
+       oder ein Haus schraeg im Raster sieht nach Versehen aus. yawStep
+       rastet die Drehung auf Vielfache von 90° (yawStep = 4). */
+    const turns = hash3(x, y, z, 105);
+    _dq.setFromAxisAngle(_up, def.yawStep
+      ? Math.floor(turns * def.yawStep) / def.yawStep * Math.PI * 2
+      : turns * Math.PI * 2);
+    _dsc.set(s, s * (def.flat ? 1 : 0.88 + hash3(x, y, z, 106) * 0.28), s);
     _m4.compose(_dv, _dq, _dsc);
     list[vi].setMatrixAt(n, _m4);
     if (def.tint) {
@@ -1814,6 +1930,9 @@ function generate() {
   scheduleTerrain();
 
   const WATER_LEVEL = 2;
+  // Oberkante je Saeule mitschreiben: die Burganlage wird nach der
+  // Gelaendeschleife gesetzt und braucht die Hoehen aller Nachbarn.
+  const tops = new Int16Array(SIZE * SIZE).fill(-1);
 
   for (let x = 0; x < SIZE; x++) {
     for (let z = 0; z < SIZE; z++) {
@@ -1834,6 +1953,7 @@ function generate() {
       const beach = top <= WATER_LEVEL
         || (top === WATER_LEVEL + 1 && hash3(x, 0, z, 42) < 0.55);
       addBlock(x, top, z, beach ? 'sand' : 'grass', true);
+      tops[x + z * SIZE] = beach ? -1 : top;      // -1 = nicht bebaubar
 
       // Bäume nur auf Wiese und mit Abstand zum Ufer. Der Stamm bleibt ein
       // Voxelblock (im Gelände-SDF wird er zur gerundeten Säule), die Krone
@@ -1850,6 +1970,43 @@ function generate() {
                    : r < 0.150 ? 'fern' : null;
         if (deco) addBlock(x, top + 1, z, deco, true);
       }
+    }
+  }
+
+  /* Eine kleine Burganlage, damit die Bauwerke von Anfang an im Bild sind.
+     Gesetzt wird nur, wo die Saeule bebaubar ist und die Nachbarhoehen
+     zusammenpassen — sonst haengt eine Mauer halb in der Luft. */
+  const buildAt = (bx, bz, type) => {
+    if (bx < 0 || bz < 0 || bx >= SIZE || bz >= SIZE) return false;
+    const t = tops[bx + bz * SIZE];
+    if (t < WATER_LEVEL + 1) return false;
+    // Deko ersetzt keinen Bewuchs, sie kommt nur auf freie Saeulen
+    if (world.has(key(bx, t + 1, bz))) return false;
+    addBlock(bx, t + 1, bz, type, true);
+    return true;
+  };
+
+  // Hoechste bebaubare Saeule als Burghuegel suchen
+  let cx = -1, cz = -1, best = -1;
+  for (let z = 2; z < SIZE - 2; z++) {
+    for (let x = 2; x < SIZE - 2; x++) {
+      const t = tops[x + z * SIZE];
+      if (t > best) { best = t; cx = x; cz = z; }
+    }
+  }
+  if (cx >= 0) {
+    buildAt(cx, cz, 'castle');
+    // Mauerring mit Tuermen an den Ecken
+    for (let d = -2; d <= 2; d++) {
+      const edge = Math.abs(d) === 2;
+      buildAt(cx + d, cz - 2, edge ? 'tower' : 'wall');
+      buildAt(cx + d, cz + 2, edge ? 'tower' : 'wall');
+      if (!edge) { buildAt(cx - 2, cz + d, 'wall'); buildAt(cx + 2, cz + d, 'wall'); }
+    }
+    // Ein paar Haeuser und Requisiten ausserhalb der Mauer
+    for (const [ox, oz, t] of [[-4, 0, 'house'], [4, 1, 'house'], [0, -4, 'house'],
+                               [-4, 2, 'crate'], [5, 0, 'crate'], [1, -4, 'chest']]) {
+      buildAt(cx + ox, cz + oz, t);
     }
   }
 
