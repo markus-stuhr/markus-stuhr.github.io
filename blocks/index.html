@@ -913,12 +913,42 @@ function buildWaterMesh() {
         const a = dx !== 0 ? [p, lo] : [lo, p];
         const b = dx !== 0 ? [p, hi] : [hi, p];
         const [u, v2] = (dx > 0 || dz < 0) ? [b, a] : [a, b];
-        const w = pos.length / 3;
-        pos.push(u[0], y, u[1],  v2[0], y, v2[1],
-                 u[0], floor, u[1],  v2[0], floor, v2[1]);
-        for (let n = 0; n < 4; n++) nrm.push(dx, 0, dz);
-        wav.push(1, 1, 0, 0);          // nur die Oberkante bewegt sich
-        idx.push(w, w + 2, w + 1, w + 1, w + 2, w + 3);
+
+        /* Die Wand längs unterteilen. Vorher war sie EIN Quad: die Welle
+           wurde nur an ihren beiden Endpunkten ausgewertet und dazwischen
+           linear interpoliert, während der Spiegel daneben WAVE_SUB
+           Stützpunkte je Zelle hat. Die Oberkante lief dadurch sichtbar
+           anders als die Fläche, obwohl beide dieselbe Wellenformel benutzen.
+
+           Gleiche ANZAHL Segmente genügt nicht — die Stützpunkte müssen an
+           denselben Stellen liegen. Die Subquads des Spiegels teilen jede
+           Zelle bei (-0.5 + k/WAVE_SUB); ein Wandlauf beginnt aber durch die
+           `ext`-Verlängerung auch mal auf halber Schrittweite, und eine
+           gleichmäßige Teilung landete dann zwischen den Stützpunkten des
+           Spiegels. Also wird auf genau dieses Gitter geschnitten. */
+        const ax = dx !== 0 ? 1 : 0;          // Laufachse: 0 = x, 1 = z
+        const a0 = u[ax], a1 = v2[ax];
+        const cuts = [0];
+        const k0 = Math.ceil((Math.min(a0, a1) + 0.5) * WAVE_SUB + 1e-6);
+        const k1 = Math.floor((Math.max(a0, a1) + 0.5) * WAVE_SUB - 1e-6);
+        for (let k = k0; k <= k1; k++) {
+          cuts.push((-0.5 + k / WAVE_SUB - a0) / (a1 - a0));
+        }
+        cuts.push(1);
+        cuts.sort((m, n) => m - n);
+
+        for (let sg = 0; sg < cuts.length - 1; sg++) {
+          const t0 = cuts[sg], t1 = cuts[sg + 1];
+          if (t1 - t0 < 1e-6) continue;
+          const ux = u[0] + (v2[0] - u[0]) * t0, uz = u[1] + (v2[1] - u[1]) * t0;
+          const vx = u[0] + (v2[0] - u[0]) * t1, vz = u[1] + (v2[1] - u[1]) * t1;
+          const w = pos.length / 3;
+          pos.push(ux, y, uz,  vx, y, vz,
+                   ux, floor, uz,  vx, floor, vz);
+          for (let n = 0; n < 4; n++) nrm.push(dx, 0, dz);
+          wav.push(1, 1, 0, 0);        // nur die Oberkante bewegt sich
+          idx.push(w, w + 2, w + 1, w + 1, w + 2, w + 3);
+        }
       };
       side(-1, 0); side(1, 0); side(0, -1); side(0, 1);
     }
