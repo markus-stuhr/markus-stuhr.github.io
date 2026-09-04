@@ -891,6 +891,12 @@ function placeFish(f, bodyIndex) {
 --------------------------------------------------------------------- */
 const GRASS_MAX = 24000;
 const GRASS_WIND = new THREE.Vector2(1, 0.35).normalize();   // Windrichtung
+// Halme zeigen grob in Windrichtung statt kreuz und quer: volle 360°
+// Streuung sieht chaotisch aus, ein gemeinsamer Grundwinkel wie eine
+// gekämmte Wiese. Der Bogen der Geometrie liegt lokal in +z, deshalb
+// atan2(x, z) statt atan2(z, x).
+const GRASS_ROT = Math.atan2(GRASS_WIND.x, GRASS_WIND.y);
+const GRASS_SPREAD = 0.85;                                   // ±24°
 
 // deterministischer Zufall aus Ganzzahlen
 function hash3(x, y, z, n) {
@@ -978,7 +984,7 @@ function rebuildGrass() {
       const rx = hash3(x, y, z, i * 3 + 1) - 0.5;
       const rz = hash3(x, y, z, i * 3 + 2) - 0.5;
       const rv = hash3(x, y, z, i * 3 + 3);
-      const rot = hash3(x, y, z, i * 3 + 11) * Math.PI * 2;
+      const rot = GRASS_ROT + (hash3(x, y, z, i * 3 + 11) - 0.5) * GRASS_SPREAD;
 
       const h = 0.034 + rv * 0.046;
       _v3.set(x + rx * 0.72, y + 0.46, z + rz * 0.72);
