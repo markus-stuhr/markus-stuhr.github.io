@@ -889,7 +889,7 @@ function placeFish(f, bodyIndex) {
    Math.random(): so bleibt sie über Rebuilds hinweg identisch. Sonst
    springt bei jedem gesetzten Block das gesamte Gras der Welt neu.
 --------------------------------------------------------------------- */
-const GRASS_MAX = 6000;
+const GRASS_MAX = 24000;
 const GRASS_WIND = new THREE.Vector2(1, 0.35).normalize();   // Windrichtung
 
 // deterministischer Zufall aus Ganzzahlen
@@ -905,7 +905,7 @@ function makeBladeGeometry() {
   const SEG = 4, pos = [], idx = [];
   for (let i = 0; i <= SEG; i++) {
     const t = i / SEG;
-    const w = 0.009 * (1 - t * 0.9);                  // sehr fein, nach oben spitz
+    const w = 0.0065 * (1 - t * 0.9);                 // sehr fein, nach oben spitz
     const lean = t * t * 0.10;                        // natürlicher Bogen
     pos.push(-w, t, lean,  w, t, lean);
   }
@@ -941,7 +941,7 @@ grassMat.onBeforeCompile = (sh) => {
       float ca = cos(aRot), sa = sin(aRot);
       vec2 wind = vec2(${GRASS_WIND.x.toFixed(4)} * ca + ${GRASS_WIND.y.toFixed(4)} * sa,
                       -${GRASS_WIND.x.toFixed(4)} * sa + ${GRASS_WIND.y.toFixed(4)} * ca);
-      float bend = sway * 0.34 * transformed.y * transformed.y;
+      float bend = sway * 0.10 * transformed.y * transformed.y;
       transformed.xz += wind * bend;`);
 };
 
@@ -972,7 +972,7 @@ function rebuildGrass() {
 
     // Büschelstärke variiert je Block — nicht überall gleich viel
     const density = hash3(x, y, z, 7);
-    const count = density < 0.08 ? 0 : 4 + Math.floor(density * 11);
+    const count = density < 0.05 ? 0 : 12 + Math.floor(density * 26);
 
     for (let i = 0; i < count && n < GRASS_MAX; i++, n++) {
       const rx = hash3(x, y, z, i * 3 + 1) - 0.5;
@@ -980,7 +980,7 @@ function rebuildGrass() {
       const rv = hash3(x, y, z, i * 3 + 3);
       const rot = hash3(x, y, z, i * 3 + 11) * Math.PI * 2;
 
-      const h = 0.055 + rv * 0.075;
+      const h = 0.034 + rv * 0.046;
       _v3.set(x + rx * 0.72, y + 0.46, z + rz * 0.72);
       _q.setFromAxisAngle(_up, rot);
       _scale.set(0.7 + rv * 0.6, h, 0.7 + rv * 0.6);
