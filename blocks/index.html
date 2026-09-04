@@ -923,15 +923,21 @@ function makeBladeGeometry() {
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setIndex(idx);
   g.computeVertexNormals();
+
+  // Normalen nach oben kippen. Die echten Bandnormalen zeigen seitlich, so
+  // dünne Flächen stehen also fast senkrecht zum Sonnenlicht und werden
+  // schwarz. Nach oben gedreht nehmen die Halme die Lichtstimmung des
+  // Bodens an — hell in der Sonne, dunkel im Schatten.
+  const nrm = g.attributes.normal;
+  for (let i = 0; i < nrm.count; i++) {
+    const v = new THREE.Vector3(nrm.getX(i) * 0.3, 1, nrm.getZ(i) * 0.3).normalize();
+    nrm.setXYZ(i, v.x, v.y, v.z);
+  }
   return g;
 }
 
 const grassGeo = makeBladeGeometry();
-// Etwas emissive: so dünne Bänder stehen fast senkrecht zum Licht und
-// versacken sonst im Schwarzen.
-const grassMat = new THREE.MeshLambertMaterial({
-  side: THREE.DoubleSide, emissive: '#2f5a22'
-});
+const grassMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
 const grassUniforms = { uTime: { value: 0 } };
 grassMat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, grassUniforms);
@@ -956,6 +962,7 @@ grassMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 grassMesh.frustumCulled = false;
 grassMesh.count = 0;
 grassMesh.castShadow = true;
+grassMesh.receiveShadow = true;    // sonst bleiben die Halme im Schatten hell
 scene.add(grassMesh);
 
 const grassPhase = new THREE.InstancedBufferAttribute(new Float32Array(GRASS_MAX), 1);
@@ -989,7 +996,11 @@ function rebuildGrass() {
       const rot = GRASS_ROT + (hash3(x, y, z, i * 3 + 11) - 0.5) * GRASS_SPREAD;
 
       const h = 0.034 + rv * 0.046;
-      _v3.set(x + rx * 0.72, y + 0.46, z + rz * 0.72);
+      // Volle Zellbreite ausnutzen: bei kleinerem Faktor bleibt zwischen
+      // den Blöcken ein kahler Streifen und die Wiese zerfällt sichtbar in
+      // Quadrate. Etwas tiefer wurzeln, damit die Halme an der gerundeten
+      // Blockkante nicht in der Luft stehen.
+      _v3.set(x + rx * 0.98, y + 0.43, z + rz * 0.98);
       _q.setFromAxisAngle(_up, rot);
       _scale.set(0.7 + rv * 0.6, h, 0.7 + rv * 0.6);
       _m4.compose(_v3, _q, _scale);
