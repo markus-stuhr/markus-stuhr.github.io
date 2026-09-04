@@ -937,7 +937,12 @@ function makeBladeGeometry() {
 }
 
 const grassGeo = makeBladeGeometry();
-const grassMat = new THREE.MeshLambertMaterial({ side: THREE.DoubleSide });
+// Ein dezenter Eigenleucht-Sockel hebt die Halme im Schatten an, ohne sie
+// in der Sonne zu überstrahlen — dort dominiert das direkte Licht. Zu viel
+// davon (der erste Versuch) lässt sie ausgerechnet im Schatten leuchten.
+const grassMat = new THREE.MeshLambertMaterial({
+  side: THREE.DoubleSide, emissive: '#22401b'
+});
 const grassUniforms = { uTime: { value: 0 } };
 grassMat.onBeforeCompile = (sh) => {
   Object.assign(sh.uniforms, grassUniforms);
