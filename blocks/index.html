@@ -889,7 +889,7 @@ function placeFish(f, bodyIndex) {
    Math.random(): so bleibt sie über Rebuilds hinweg identisch. Sonst
    springt bei jedem gesetzten Block das gesamte Gras der Welt neu.
 --------------------------------------------------------------------- */
-const GRASS_MAX = 24000;
+const GRASS_MAX = 120000;
 const GRASS_WIND = new THREE.Vector2(1, 0.35).normalize();   // Windrichtung
 // Halme zeigen grob in Windrichtung statt kreuz und quer: volle 360°
 // Streuung sieht chaotisch aus, ein gemeinsamer Grundwinkel wie eine
@@ -976,9 +976,11 @@ function rebuildGrass() {
     if (world.has(key(x, y + 1, z))) continue;          // überbaut
     if (cellOwner[ci(x, z)] !== -1) continue;           // unter Wasser
 
-    // Büschelstärke variiert je Block — nicht überall gleich viel
+    // Büschelstärke variiert je Block — aber nur um Faktor ~2 und ohne
+    // kahle Blöcke: bei dieser Dichte fällt beides sonst als Kachelmuster
+    // auf, weil dichte und dünne Felder direkt nebeneinander liegen.
     const density = hash3(x, y, z, 7);
-    const count = density < 0.05 ? 0 : 12 + Math.floor(density * 26);
+    const count = 150 + Math.floor(density * 180);
 
     for (let i = 0; i < count && n < GRASS_MAX; i++, n++) {
       const rx = hash3(x, y, z, i * 3 + 1) - 0.5;
