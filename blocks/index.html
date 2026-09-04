@@ -63,9 +63,9 @@ const SIZE = 20;              // 20 x 20 Grundfläche
 // die Blockflanken sind gerundet, ein Schnitt exakt auf der Blockgrenze
 // träfe sie dort, wo sie schon eingezogen sind, und die Kante würde wellig.
 const INSET = 0.32;           // etwas mehr als BOX_ROUND
-const STORAGE_KEY = 'blocks.world.v1';
+const STORAGE_KEY = 'blocks.world.v2';
 const VIEW_KEY    = 'blocks.view.v1';
-const WATER_KEY   = 'blocks.water.v1';
+const WATER_KEY   = 'blocks.water.v2';
 
 /* ---------------------------------------------------------------
    Prozedurale 16x16-Pixeltexturen — Minecraft-Optik ohne Assets.
@@ -1153,35 +1153,18 @@ function lowerWater(x, z) {
   applyWater();
 }
 
-/* Startwelt als Beispiel: zwei getrennte Becken auf verschiedenen Höhen.
-   Links liegt eine tiefe Senke (Grund 0) hinter einem Wall auf Höhe 3,
-   rechts ein höheres Becken (Grund 3) hinter einem Wall auf Höhe 5.
-   Hebt man das rechte über 5, läuft es nach links und beide vereinigen
-   sich auf dem höheren Stand. */
+/* Startwelt: eine leere, flache Grasebene. */
 function generate() {
   world.clear(); meshes.length = 0;
   scheduleTerrain();
 
-  const bowl = (x, z, cx, cz, r, depth) =>
-    Math.max(0, 1 - Math.hypot(x - cx, z - cz) / r) * depth;
-
+  // Leere Startwelt: eine flache Grasebene, kein Wasser. Alles Weitere
+  // baut man selbst.
   for (let x = 0; x < SIZE; x++) {
-    for (let z = 0; z < SIZE; z++) {
-      const rim = x < 9 ? 3 : x > 10 ? 5 : 6;          // Wall, dazwischen ein Grat
-      const dig = x < 9 ? bowl(x, z, 4.5, 10, 5.0, 4.2)
-                        : bowl(x, z, 15,  10, 4.5, 3.2);
-      const top = Math.max(0, Math.round(rim - dig));
-
-      for (let y = 0; y < top; y++) addBlock(x, y, z, y >= top - 1 ? 'dirt' : 'stone', true);
-      const shore = (x < 9 && top <= 2) || (x > 10 && top <= 4);
-      addBlock(x, top, z, shore ? 'sand' : 'grass', true);
-    }
+    for (let z = 0; z < SIZE; z++) addBlock(x, 0, z, 'grass', true);
   }
 
-  pools = [
-    { x: 4,  z: 10, level: 1 },     // linkes, tiefes Becken
-    { x: 15, z: 10, level: 4 }      // rechtes, höheres Becken
-  ];
+  pools = [];
   applyWater();
   save();
 }
