@@ -25,8 +25,11 @@
     font-weight:600; color:var(--ink); -webkit-font-smoothing:antialiased; }
   canvas { display:block; touch-action:none; }
 
+  /* Mit den vier Deko-Typen sind es zwölf Slots — auf dem Handy passen die
+     nicht in eine Reihe, deshalb Umbruch statt Überlauf. */
   #hud { position:fixed; left:0; right:0; bottom:0; padding:14px 10px 20px;
-    display:flex; justify-content:center; gap:9px; pointer-events:none; }
+    display:flex; flex-wrap:wrap; justify-content:center; gap:9px;
+    pointer-events:none; }
   .slot { pointer-events:auto; width:58px; height:58px; border-radius:18px; cursor:pointer;
     border:none; background:var(--card); position:relative; overflow:hidden;
     box-shadow:var(--shadow);
@@ -63,7 +66,7 @@
   <b>Blocks</b>
   Ziehen = drehen · Scrollen = Zoom<br>
   Links = setzen · Rechts = entfernen<br>
-  Tasten 1–8 = Material
+  Tasten 1–9 = Material
 </div>
 <div id="tools">
   <button id="btnReset">Neu</button>
@@ -82,6 +85,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const SIZE = 20;              // 20 x 20 Grundfläche
 // Die Insel wird etwas INNERHALB der äußersten Blockmitten abgeschnitten:
@@ -183,7 +187,30 @@ const BLOCKS = {
   water:  { top: '#7fb9c9', side: '#7fb9c9', name: 'Wasser', icon: '#7fb9c9' },
   wood:   { top: '#c08f57', side: '#a9764a', name: 'Holz',   icon: '#a9764a' },
   leaves: { top: '#5aa83f', side: '#3f7a3a', name: 'Laub',   icon: '#3f7a3a' },
-  snow:   { top: '#f2f6f7', side: '#d6e2e8', name: 'Schnee', icon: '#f2f6f7' }
+  snow:   { top: '#f2f6f7', side: '#d6e2e8', name: 'Schnee', icon: '#f2f6f7' },
+
+  /* Deko: keine Gelaendemasse, sondern ein Modell aus dem KayKit Forest
+     Nature Pack (CC0, Kay Lousberg — assets/kaykit/KayKit-License.txt).
+     Sie belegen trotzdem eine Rasterzelle und werden wie jedes andere
+     Material gesetzt und entfernt; `models` unterscheidet sie vom Rest.
+     Aus der Liste waehlt ein Hash der Blockposition — so ist die Variante
+     stabil und der Wald sieht trotzdem nicht geklont aus. */
+  tree: { name: 'Baum', icon: '#4f8f3a', scale: [0.58, 0.82],
+          models: ['Tree_1_A', 'Tree_2_A', 'Tree_3_A', 'Tree_4_A'] },
+  // upNormals: Blattkarten, deren Normalen nach oben gebogen werden
+  bush: { name: 'Busch', icon: '#63a844', scale: [1.0, 1.7],
+          models: ['Bush_1_A', 'Bush_2_A', 'Bush_3_A', 'Bush_4_A'] },
+  rock: { name: 'Fels', icon: '#8e9aa6', scale: [0.9, 1.6], tint: 2.35,
+          models: ['Rock_1_A', 'Rock_2_A', 'Rock_3_A'] },
+  fern: { name: 'Farn', icon: '#7cc24b', scale: [0.9, 1.5], upNormals: 0.75,
+          models: ['Grass_1_A', 'Grass_2_A'] }
+};
+const isDeco = (t) => !!(BLOCKS[t] && BLOCKS[t].models);
+// "Feste" Zelle: traegt Gelaendemasse. Deko steht nur darauf und darf
+// deshalb weder Gras verdecken noch als Kante oder Uferwand zaehlen.
+const isSolid = (x, y, z) => {
+  const b = world.get(key(x, y, z));
+  return !!b && !isDeco(b.type);
 };
 const TYPES = Object.keys(BLOCKS);
 
@@ -533,8 +560,9 @@ function rebuildTerrain() {
   for (const [k, b] of world) {
     if (b.type === 'water') continue;              // Wasser hat eine eigene Fläche
     if (b.type === 'leaves') continue;             // Laub sind Blobs, siehe rebuildLeaves
+    if (isDeco(b.type)) continue;                  // Deko ist ein Modell, keine Masse
     const [bx, by, bz] = k.split(',').map(Number);
-    const covered = world.has(key(bx, by + 1, bz));
+    const covered = isSolid(bx, by + 1, bz);
 
     // ±5% Helligkeit und ein Hauch Hue-Drift je Block.
     const jv = 1 + (hash3(bx, by, bz, 31) - 0.5) * 0.10;
@@ -714,7 +742,10 @@ const ci = (x, z) => x + z * SIZE;
 /* Geländeoberkante je Säule (−1 = leer) */
 function groundMap() {
   const g = new Int16Array(SIZE * SIZE).fill(-1);
-  for (const [k] of world) {
+  for (const [k, b] of world) {
+    // Deko zaehlt nicht mit: ein Baum am Ufer soll das Becken nicht
+    // aufstauen wie eine Felswand.
+    if (isDeco(b.type)) continue;
     const [x, y, z] = k.split(',').map(Number);
     const i = ci(x, z);
     if (y > g[i]) g[i] = y;
@@ -1230,6 +1261,161 @@ function rebuildLeaves() {
   if (leafMesh.instanceColor) leafMesh.instanceColor.needsUpdate = true;
 }
 
+/* --------------------------- Deko-Modelle ---------------------------
+   KayKit Forest Nature Pack (CC0, Kay Lousberg). Je Modellvariante ein
+   InstancedMesh, damit ein ganzer Wald ein Draw Call je Variante bleibt.
+
+   Alle 13 Modelle teilen EINE Textur (forest_texture.png, 1024², 48 KB) —
+   ein Gradient-Atlas, in den die UVs zeigen. Deshalb wird auch nur ein
+   Material gebaut und an alle Instanzmeshes gegeben; sonst haette three
+   dreizehn Texturobjekte fuer dasselbe Bild im Speicher.
+------------------------------------------------------------------- */
+const DECO_MAX = 512;              // Instanzen je Modellvariante
+const decoMeshes = {};             // type -> [InstancedMesh je Variante]
+let decoMat = null;
+
+/* Dasselbe Struktur-/AO-/Rim-Rezept wie Gelaende und Laub, aber
+   ABGESCHWAECHT: KayKit bringt ueber den Atlas schon einen eigenen
+   Farbverlauf mit. Volle Struktur darueber macht die Modelle nur schmutzig
+   und kaempft gegen ihre eigene Schattierung. Ziel ist nur, dass sie
+   dieselbe Luft und dieselbe Silhouettentrennung bekommen wie der Rest. */
+function makeDecoMaterial(map) {
+  const m = new THREE.MeshStandardMaterial({
+    map, roughness: 0.92, metalness: 0,
+    side: THREE.DoubleSide          // Gras- und Buschblaetter sind Karten
+  });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uGrain = { value: grainTex };
+    sh.vertexShader = 'varying vec3 vDPos;\nvarying vec3 vDNrm;\n'
+      + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+        vDPos = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;
+        vDNrm = normalize(mat3(instanceMatrix) * objectNormal);`);
+    sh.fragmentShader = 'varying vec3 vDPos;\nvarying vec3 vDNrm;\nuniform sampler2D uGrain;\n'
+      + sh.fragmentShader
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          vec3 an = abs(vDNrm);
+          vec2 tuv = (an.y >= an.x && an.y >= an.z) ? vDPos.xz
+                   : (an.x >= an.z)                ? vDPos.zy
+                                                   : vDPos.xy;
+          float g  = texture2D(uGrain, tuv * 0.7).r;
+          float g2 = texture2D(uGrain, tuv * 2.4).r;
+          diffuseColor.rgb *= 0.86 + g * 0.28 + (g2 - 0.5) * 0.14;
+          diffuseColor.rgb *= mix(vec3(0.84, 0.88, 0.95), vec3(1.05, 1.03, 0.97),
+                                  smoothstep(-0.9, 0.35, vDNrm.y));`)
+        .replace('#include <opaque_fragment>', `#include <opaque_fragment>
+          vec3 V = normalize(cameraPosition - vDPos);
+          float rim = pow(1.0 - clamp(dot(normalize(vDNrm), V), 0.0, 1.0), 3.0);
+          rim *= smoothstep(-0.4, 0.2, vDNrm.y)
+               * (1.0 - smoothstep(0.5, 0.95, vDNrm.y));
+          gl_FragColor.rgb += vec3(0.30, 0.52, 0.60) * rim * 0.18;`);
+  };
+  return m;
+}
+
+const decoLoader = new GLTFLoader().setPath('assets/kaykit/');
+
+async function loadDeco() {
+  for (const type of TYPES) {
+    const def = BLOCKS[type];
+    if (!def.models) continue;
+    decoMeshes[type] = [];
+    for (const name of def.models) {
+      let gltf;
+      try { gltf = await decoLoader.loadAsync(name + '.gltf'); }
+      catch (e) { console.warn('Deko fehlt:', name, e); continue; }
+
+      let geo = null, srcMap = null;
+      gltf.scene.traverse(o => {
+        if (!o.isMesh || geo) return;
+        // Knotentransform in die Geometrie backen: dann traegt die Instanz
+        // allein die Platzierung und muss den Modellaufbau nicht kennen.
+        o.updateWorldMatrix(true, false);
+        geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+        srcMap = o.material && o.material.map;
+      });
+      if (!geo) continue;
+
+      /* Ursprung normalisieren: in x/z zentrieren und die Unterkante auf 0
+         legen. Die Modelle sind darin nicht einheitlich — Rock_3_A hat
+         seinen Ursprung z. B. in der Mitte (min.y = -0.47) und schwebte
+         sonst halb im Boden. Aus der Bounding Box gerechnet stimmt es fuer
+         jedes Modell, ohne Werte von Hand zu pflegen. */
+      geo.computeBoundingBox();
+      const bb = geo.boundingBox;
+      geo.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2);
+      geo.computeBoundingSphere();
+
+      if (def.upNormals) {
+        const nrm = geo.attributes.normal;
+        const w = 1 - def.upNormals;                  // Restanteil der echten Normale
+        for (let i = 0; i < nrm.count; i++) {
+          _dv.set(nrm.getX(i) * w, nrm.getY(i) * w + def.upNormals, nrm.getZ(i) * w)
+             .normalize();
+          nrm.setXYZ(i, _dv.x, _dv.y, _dv.z);
+        }
+        nrm.needsUpdate = true;
+      }
+
+      if (!decoMat && srcMap) {
+        srcMap.colorSpace = THREE.SRGBColorSpace;
+        decoMat = makeDecoMaterial(srcMap);
+      }
+      const im = new THREE.InstancedMesh(geo, decoMat, DECO_MAX);
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      im.frustumCulled = false;
+      im.count = 0;
+      im.castShadow = true;
+      im.receiveShadow = true;
+      scene.add(im);
+      decoMeshes[type].push(im);
+    }
+  }
+  rebuildDeco();
+}
+
+const _dq = new THREE.Quaternion(), _dv = new THREE.Vector3(), _dsc = new THREE.Vector3();
+
+function rebuildDeco() {
+  const used = {};
+  for (const type in decoMeshes) used[type] = decoMeshes[type].map(() => 0);
+
+  for (const [k, b] of world) {
+    const list = decoMeshes[b.type];
+    if (!list || !list.length) continue;
+    const def = BLOCKS[b.type];
+    const [x, y, z] = k.split(',').map(Number);
+
+    const vi = Math.min(list.length - 1, Math.floor(hash3(x, y, z, 101) * list.length));
+    const n = used[b.type][vi];
+    if (n >= DECO_MAX) continue;
+
+    const s = def.scale[0] + hash3(x, y, z, 102) * (def.scale[1] - def.scale[0]);
+    // y − 0.5: die Zelle reicht von y−0.5 bis y+0.5, die Deko steht also
+    // auf der Deckflaeche des Blocks darunter.
+    _dv.set(x + (hash3(x, y, z, 103) - 0.5) * 0.34,
+            y - 0.5,
+            z + (hash3(x, y, z, 104) - 0.5) * 0.34);
+    _dq.setFromAxisAngle(_up, hash3(x, y, z, 105) * Math.PI * 2);
+    _dsc.set(s, s * (0.88 + hash3(x, y, z, 106) * 0.28), s);
+    _m4.compose(_dv, _dq, _dsc);
+    list[vi].setMatrixAt(n, _m4);
+    if (def.tint) {
+      const t = def.tint * (0.88 + hash3(x, y, z, 107) * 0.24);
+      _lc.setRGB(t, t * 1.01, t * 1.04);      // ein Hauch kühler
+      list[vi].setColorAt(n, _lc);
+    }
+    used[b.type][vi] = n + 1;
+  }
+
+  for (const type in decoMeshes) {
+    decoMeshes[type].forEach((im, i) => {
+      im.count = used[type][i];
+      im.instanceMatrix.needsUpdate = true;
+      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    });
+  }
+}
+
 /* ----------------------------- Grashalme -----------------------------
    Zweiter Bewohner des Detail-Layers: kleine Halme auf jeder freien
    Grasfläche über Wasser. Als InstancedMesh, das Wehen macht der
@@ -1384,7 +1570,7 @@ function rebuildGrass() {
   for (const [k, b] of world) {
     if (b.type !== 'grass' || n >= GRASS_MAX) continue;
     const [x, y, z] = k.split(',').map(Number);
-    if (world.has(key(x, y + 1, z))) continue;          // überbaut
+    if (isSolid(x, y + 1, z)) continue;                 // überbaut
     if (cellOwner[ci(x, z)] !== -1) continue;           // unter Wasser
 
     // Büschelstärke variiert je Block — aber nur um Faktor ~2 und ohne
@@ -1446,7 +1632,7 @@ function rebuildTufts() {
   for (const [k, b] of world) {
     if (b.type !== 'grass' || n >= TUFT_MAX) continue;
     const [x, y, z] = k.split(',').map(Number);
-    if (world.has(key(x, y + 1, z))) continue;          // überbaut
+    if (isSolid(x, y + 1, z)) continue;                 // überbaut
     if (cellOwner[ci(x, z)] !== -1) continue;           // unter Wasser
 
     const emit = (px, pz, aY, tilt, h, wide, seed) => {
@@ -1468,8 +1654,8 @@ function rebuildTufts() {
     for (const [dx, dz] of TUFT_SIDES) {
       const nx = x + dx, nz = z + dz;
       const inside = nx >= 0 && nz >= 0 && nx < SIZE && nz < SIZE;
-      if (inside && world.has(key(nx, y, nz))) continue;      // keine Kante
-      if (inside && world.has(key(nx, y + 1, nz))) continue;   // Wand davor
+      if (inside && isSolid(nx, y, nz)) continue;        // keine Kante
+      if (inside && isSolid(nx, y + 1, nz)) continue;    // Wand davor
 
       const PER = 8;
       for (let i = 0; i < PER && n < TUFT_MAX; i++) {
@@ -1590,6 +1776,7 @@ function applyWater() {
   syncFish();
   rebuildGrass();
   rebuildLeaves();
+  rebuildDeco();
   save();
 }
 
@@ -1652,16 +1839,16 @@ function generate() {
       // Voxelblock (im Gelände-SDF wird er zur gerundeten Säule), die Krone
       // besteht aus Laubblöcken, die als überlappende Sphäroide gezeichnet
       // werden — siehe rebuildLeaves.
-      if (!beach && top >= WATER_LEVEL + 2 && hash3(x, 0, z, 77) < 0.016) {
-        const trunk = 2 + Math.floor(hash3(x, 0, z, 78) * 2);
-        for (let i = 1; i <= trunk; i++) addBlock(x, top + i, z, 'wood', true);
-        const cy = top + trunk + 1;
-        // Grobe Kugel: zwei breite Lagen und eine Kappe. Die Blobs haben
-        // 1.6 Zellen Durchmesser, deshalb genügen so wenige Blöcke.
-        for (const [ox, oy, oz] of [
-          [0,0,0], [1,0,0], [-1,0,0], [0,0,1], [0,0,-1],
-          [0,1,0], [0,1,1]
-        ]) addBlock(x + ox, cy + oy, z + oz, 'leaves', true);
+      // Bewuchs nur auf Wiese und mit Abstand zum Ufer. Ein Baum ist jetzt
+      // EIN Deko-Block (KayKit-Modell) statt Stamm plus Laubkrone aus
+      // Voxeln — die Voxelvariante bleibt zum Selberbauen erhalten.
+      if (!beach && top >= WATER_LEVEL + 2) {
+        const r = hash3(x, 0, z, 77);
+        const deco = r < 0.045 ? 'tree'
+                   : r < 0.085 ? 'bush'
+                   : r < 0.105 ? 'rock'
+                   : r < 0.150 ? 'fern' : null;
+        if (deco) addBlock(x, top + 1, z, deco, true);
       }
     }
   }
@@ -1735,6 +1922,11 @@ if (savedView && savedView.cam && savedView.target) {
 }
 
 if (!load()) generate();
+
+// Deko nachladen: die Welt steht schon, die Modelle kommen asynchron dazu
+// und rebuildDeco() setzt sie danach. Faellt der Ladevorgang aus, laeuft
+// alles andere weiter — Deko ist Zierrat, kein Fundament.
+loadDeco().catch(e => console.warn('Deko konnte nicht geladen werden:', e));
 
 // Kameradrehung/Zoom ebenfalls sichern, aber erst wenn sie zur Ruhe kommt
 controls.addEventListener('end', save);
