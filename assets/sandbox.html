@@ -66,7 +66,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
       <tr><td><kbd>C</kbd></td><td>ducken (schleichen)</td></tr>
       <tr><td><kbd>Leertaste</kbd></td><td>springen</td></tr>
       <tr><td><kbd>Alt</kbd> halten</td><td>Blickrichtung halten (seitwärts, rückwärts)</td></tr>
-      <tr><td><kbd>E</kbd></td><td>Schwertangriff (dreiteilige Kette)</td></tr>
+      <tr><td><kbd>E</kbd></td><td>Schwert ziehen und zuschlagen (dreiteilige Kette)</td></tr>
       <tr><td><kbd>Q</kbd> halten</td><td>Schild ziehen und blocken</td></tr>
       <tr><td><kbd>V</kbd></td><td>winken</td></tr>
       <tr><td>Maus ziehen · Rad</td><td>Kamera drehen · zoomen</td></tr>
@@ -228,6 +228,7 @@ function emote(name){
 }
 
 // Drei Schlaege, die sich bei schnellem Tippen zu einer Kette abwechseln.
+const SWORD_LINGER = 10000;                   // wie lange das Schwert bleibt
 const COMBO = ['Melee_1H_Attack_Slice_Horizontal', 'Melee_1H_Attack_Chop',
                'Melee_1H_Attack_Stab'];
 let comboStep = 0, comboUntil = 0;
@@ -240,6 +241,7 @@ function attack(){
   const dur = actions[name].getClip().duration * 1000;
   emoteUntil = now + dur * .85;               // laesst sich frueh abbrechen
   comboUntil = now + dur * 1.6;
+  swordUntil = now + dur + SWORD_LINGER;      // jeder Schlag verlaengert
   currentName = '';                           // gleicher Schlag erneut moeglich
   setClip(name, .08);
 }
@@ -247,6 +249,7 @@ function attack(){
 // --- Figur aufbauen (auch beim Wechsel ueber das Dropdown) --------------
 let libs = null, swordProto = null, shieldProto = null, charRoot = null;
 let shieldObj = null;                         // nur waehrend des Blockens sichtbar
+let swordObj = null, swordUntil = 0;          // erscheint beim Angriff, bleibt 10 s
 
 function buildCharacter(gltf){
   if(charRoot){                               // alte Figur abraeumen
@@ -294,18 +297,20 @@ function buildCharacter(gltf){
   // Schwert an den Handknochen haengen — dafuer hat das Rig "handslot.r"
   // (in three.js ohne Punkt: "handslotr").
   const hand = (n)=> ch.getObjectByName('handslot' + n) || ch.getObjectByName('handslot.' + n);
-  shieldObj = null;
+  shieldObj = swordObj = null;
   for(const [side, proto] of [['r', swordProto], ['l', shieldProto]]){
     const slot = hand(side);
     if(!slot){ console.warn('handslot.' + side + ' nicht gefunden'); continue; }
     const o = proto.clone(true);
     o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
     slot.add(o);
-    if(side === 'l'){ shieldObj = o; o.visible = false; }
+    o.visible = false;                        // Waffen kommen erst bei Bedarf
+    if(side === 'l') shieldObj = o; else swordObj = o;
   }
 
   setClip('Idle_A', 0);
-  window.__sandbox = {scene, player, actions, char: ch, shield: shieldObj};
+  window.__sandbox = {scene, player, actions, char: ch,
+                      shield: shieldObj, sword: swordObj};
 }
 
 // Auswahlliste: alle gerigten Modelle mit derselben Rig-Signatur wie die
@@ -426,6 +431,9 @@ function tick(){
   // Das Schild erscheint erst mit der Deckung und bleibt waehrend des
   // Ueberblendens zurueck ins Idle noch kurz stehen.
   if(shieldObj) shieldObj.visible = blocking || currentName.startsWith('Melee_Block');
+  // Das Schwert erscheint mit dem ersten Schlag und bleibt danach zehn
+  // Sekunden gezueckt; jeder weitere Schlag setzt die Zeit neu.
+  if(swordObj) swordObj.visible = performance.now() < swordUntil;
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
 
   // Eingabe in eine Richtung relativ zur Kamera umrechnen
