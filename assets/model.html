@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modell · 3D-Asset-Katalog</title>
+<script defer src="/analytics.js"></script>
+<style>
+:root{--bg:#14161c;--panel:#1c1f28;--panel2:#232733;--line:#2f3444;
+  --ink:#e9ecf3;--dim:#98a0b4;--acc:#7fd4a8}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+a{color:inherit}
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;
+  border-bottom:1px solid var(--line);background:var(--panel)}
+.back{border:1px solid var(--line);background:var(--panel2);border-radius:8px;
+  padding:6px 12px;font-size:14px;text-decoration:none;white-space:nowrap}
+.back:hover{border-color:var(--acc)}
+.tt{min-width:0}
+h1{font-size:17px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+main{flex:1;position:relative;min-height:0}
+canvas{display:block}
+.hud{position:absolute;left:14px;bottom:14px;background:rgba(28,31,40,.86);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;
+  color:var(--dim);line-height:1.7;backdrop-filter:blur(6px);max-width:min(320px,60vw)}
+.hud b{color:var(--ink);font-weight:600}
+.ctrl{position:absolute;right:14px;top:14px;display:flex;flex-direction:column;gap:8px}
+button{background:rgba(28,31,40,.86);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;
+  backdrop-filter:blur(6px)}
+button:hover{border-color:var(--acc)}
+select{background:rgba(28,31,40,.86);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;max-width:170px}
+button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc)}
+.dl{text-decoration:none;text-align:center}
+.msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim)}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="index.html">← Katalog</a>
+  <div class="tt"><h1 id="title">…</h1><div class="sub" id="sub"></div></div>
+</header>
+<main id="stage">
+  <div class="msg" id="msg">Lade …</div>
+  <div class="ctrl">
+    <button id="rot" aria-pressed="true">Rotation</button>
+    <button id="wire" aria-pressed="false">Wireframe</button>
+    <button id="grid" aria-pressed="true">Boden</button>
+    <button id="reset">Ansicht</button>
+    <select id="clips" hidden></select>
+    <a class="back dl" id="dl" download>Download</a>
+  </div>
+  <div class="hud" id="hud"></div>
+</main>
+
+<script type="importmap">
+{"imports":{
+ "three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+ "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+
+const file = new URLSearchParams(location.search).get('m');
+if(!file){ location.replace('index.html'); }
+const url = 'models/' + file.split('/').map(encodeURIComponent).join('/');
+const stage = document.getElementById('stage');
+const msg = document.getElementById('msg');
+document.getElementById('dl').href = url;
+
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.append(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x181b23);
+scene.add(new THREE.HemisphereLight(0xffffff,0x39405a,1.9));
+const key = new THREE.DirectionalLight(0xffffff,1.8);
+key.position.set(4,7,5); key.castShadow = true;
+key.shadow.mapSize.set(1024,1024);
+scene.add(key);
+const fill = new THREE.DirectionalLight(0xbcd2ff,.55);
+fill.position.set(-5,3,-4); scene.add(fill);
+
+const cam = new THREE.PerspectiveCamera(38,1,.01,2000);
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = .07;
+
+const pivot = new THREE.Group(); scene.add(pivot);
+const helper = new THREE.Group(); scene.add(helper);
+let mixer = null, home = null, radius = 1;
+const clock = new THREE.Clock();
+
+function fit(obj){
+  const box = new THREE.Box3().setFromObject(obj);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  obj.position.sub(center);
+  obj.position.y += size.y/2;                   // auf den Boden stellen
+  radius = Math.max(size.x,size.y,size.z) || 1;
+  const dist = (radius*.5)/Math.tan(THREE.MathUtils.degToRad(cam.fov*.5)) * 2.2;
+  home = {pos:new THREE.Vector3(dist*.7,dist*.55+size.y/2,dist*.75),
+          tgt:new THREE.Vector3(0,size.y/2,0)};
+  cam.near = radius/200; cam.far = radius*60; cam.updateProjectionMatrix();
+  controls.minDistance = radius*.2; controls.maxDistance = radius*12;
+  resetView();
+
+  const g = new THREE.GridHelper(radius*6, 24, 0x3a4256, 0x2a2f3d);
+  helper.add(g);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(radius*8,radius*8),
+    new THREE.ShadowMaterial({opacity:.28}));
+  floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; helper.add(floor);
+  key.shadow.camera.left = -radius*2; key.shadow.camera.right = radius*2;
+  key.shadow.camera.top = radius*2; key.shadow.camera.bottom = -radius*2;
+  key.shadow.camera.far = radius*20; key.shadow.camera.updateProjectionMatrix();
+  key.position.set(radius*2,radius*3.5,radius*2.5);
+}
+function resetView(){
+  if(!home) return;
+  cam.position.copy(home.pos);
+  controls.target.copy(home.tgt);
+  controls.update();
+}
+
+new GLTFLoader().load(url, g=>{
+  msg.remove();
+  pivot.add(g.scene);
+  let tris = 0, meshes = 0, mats = new Set();
+  g.scene.traverse(o=>{
+    if(o.isMesh){
+      o.castShadow = true; o.receiveShadow = true; meshes++;
+      const p = o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count;
+      tris += p/3;
+      for(const m of [].concat(o.material)) mats.add(m.name || m.uuid);
+    }
+  });
+  fit(g.scene);
+  if(g.animations.length){
+    mixer = new THREE.AnimationMixer(g.scene);
+    let action = mixer.clipAction(g.animations[0]); action.play();
+    const sel = document.getElementById('clips');
+    if(g.animations.length > 1){
+      sel.hidden = false;
+      g.animations.forEach((c,i)=>{
+        const o = document.createElement('option');
+        o.value = i; o.textContent = c.name || ('Clip ' + (i+1));
+        sel.append(o);
+      });
+      sel.onchange = ()=>{
+        action.fadeOut(.2);
+        action = mixer.clipAction(g.animations[+sel.value]);
+        action.reset().fadeIn(.2).play();
+      };
+    }
+  }
+  const name = file.split('/').pop().replace(/\.(gltf|glb)$/,'').replace(/\.gltf$/,'');
+  document.title = name + ' · 3D-Asset-Katalog';
+  document.getElementById('title').textContent = name.replace(/[_-]/g,' ');
+  document.getElementById('sub').textContent = file.split('/')[0].replace(/_/g,' ');
+  document.getElementById('hud').innerHTML =
+    '<b>' + Math.round(tris).toLocaleString('de-DE') + '</b> Dreiecke · <b>' + meshes +
+    '</b> Mesh(es) · <b>' + mats.size + '</b> Material(ien)' +
+    (g.animations.length ? '<br><b>' + g.animations.length + '</b> Animation(en)' : '') +
+    '<br>Ziehen = drehen · Scrollen = zoomen · Rechts ziehen = schieben';
+}, undefined, e=>{ msg.textContent = 'Konnte das Modell nicht laden.'; });
+
+// UI
+let spin = true, wire = false;
+const rotBtn = document.getElementById('rot');
+const wireBtn = document.getElementById('wire');
+const gridBtn = document.getElementById('grid');
+rotBtn.onclick = ()=>{ spin = !spin; rotBtn.ariaPressed = spin; };
+wireBtn.onclick = ()=>{
+  wire = !wire; wireBtn.ariaPressed = wire;
+  pivot.traverse(o=>{ if(o.isMesh) for(const m of [].concat(o.material)) m.wireframe = wire; });
+};
+gridBtn.onclick = ()=>{ helper.visible = !helper.visible; gridBtn.ariaPressed = helper.visible; };
+document.getElementById('reset').onclick = resetView;
+addEventListener('keydown', e=>{ if(e.key === 'Escape') location.href = 'index.html'; });
+
+function resize(){
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w,h);
+  cam.aspect = w/h; cam.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+renderer.setAnimationLoop(()=>{
+  const dt = clock.getDelta();
+  if(mixer) mixer.update(dt);
+  if(spin) pivot.rotation.y += dt*.5;
+  controls.update();
+  renderer.render(scene,cam);
+});
+</script>
+</body>
+</html>
