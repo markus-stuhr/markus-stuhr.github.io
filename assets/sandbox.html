@@ -79,8 +79,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
       <tr><td><kbd>Q</kbd> halten</td><td>Schild ziehen und blocken</td></tr>
       <tr><td><kbd>V</kbd></td><td>winken</td></tr>
       <tr><td colspan="2" style="padding-top:6px;color:var(--acc2)">
-        Das Skelett greift an, sobald es dich sieht — Q blockt seinen Schlag,
-        wenn es von vorne kommt.</td></tr>
+        Das Skelett wartet in der Ferne und greift erst an, wenn du ihm nahe
+        kommst — Q blockt seinen Schlag, wenn er von vorne kommt.</td></tr>
       <tr><td>Maus ziehen · Rad</td><td>Kamera drehen · zoomen</td></tr>
     </table>
     <div id="touchnote" hidden style="margin-top:8px;color:var(--acc2)">
@@ -244,8 +244,19 @@ const SWORD_LINGER = 10000;                   // wie lange das Schwert bleibt
 const PLAYER_HP = 6, ENEMY_HP = 4;
 const REACH = 2.0;                            // Schlagreichweite in Einheiten
 const ENEMY_FILE = 'KayKit_Skeletons_1.1_FREE/characters/gltf/Skeleton_Warrior.glb';
+const SPAWN_MIN = 16, SPAWN_MAX = 24;         // Abstand beim Erscheinen
+const AGGRO = 7, LEASH = 15;                  // wann es angreift, wann es aufgibt
 const COMBO = ['Melee_1H_Attack_Slice_Horizontal', 'Melee_1H_Attack_Chop',
                'Melee_1H_Attack_Stab'];
+// Der Moment des Aufpralls liegt in jedem Clip woanders — gemessen an der
+// Geschwindigkeit und der Reichweite der Schwerthand: der seitliche Schwung
+// trifft nach einem Fuenftel, der Hieb von oben erst nach gut der Haelfte.
+const HIT_AT = {
+  Melee_1H_Attack_Slice_Horizontal: .20,
+  Melee_1H_Attack_Chop: .55,
+  Melee_1H_Attack_Stab: .30,
+};
+const hitFraction = name => HIT_AT[name] ?? .45;
 let comboStep = 0, comboUntil = 0;
 function attack(){
   if(!grounded || dead || performance.now() < hurtUntil) return;
@@ -257,7 +268,7 @@ function attack(){
   emoteUntil = now + dur * .85;               // laesst sich frueh abbrechen
   comboUntil = now + dur * 1.6;
   swordUntil = now + dur + SWORD_LINGER;      // jeder Schlag verlaengert
-  pendingHit = now + dur * .45;               // ungefaehr der Moment des Aufpralls
+  pendingHit = now + dur * hitFraction(name);
   currentName = '';                           // gleicher Schlag erneut moeglich
   setClip(name, .08);
 }
@@ -451,7 +462,7 @@ async function scatterProps(){
 const enemy = {
   root: null, mixer: null, actions: {}, current: null, name: '',
   pos: new THREE.Vector3(0, 0, -6), facing: 0, hp: ENEMY_HP,
-  state: 'idle', until: 0, hitAt: 0, respawnAt: 0, nextAttack: 0,
+  state: 'idle', until: 0, hitAt: 0, respawnAt: 0, nextAttack: 0, aggro: false,
 };
 const ENEMY_SPEED = {walk: 1.7, run: 3.6};
 
@@ -495,14 +506,23 @@ function buildEnemy(gltf){
 }
 
 function enemySpawn(){
-  const a = Math.random()*Math.PI*2, d = 10 + Math.random()*6;
-  enemy.pos.set(pos.x + Math.cos(a)*d, 0, pos.z + Math.sin(a)*d);
+  // Weit genug weg, damit man erst hinlaufen muss — und im Zweifel auf die
+  // andere Seite des Platzes, wenn der Rand im Weg ist.
+  const d = SPAWN_MIN + Math.random()*(SPAWN_MAX - SPAWN_MIN);
+  for(let i = 0; i < 12; i++){
+    const a = Math.random()*Math.PI*2;
+    enemy.pos.set(pos.x + Math.cos(a)*d, 0, pos.z + Math.sin(a)*d);
+    if(Math.hypot(enemy.pos.x, enemy.pos.z) < 26) break;
+  }
   const r = Math.hypot(enemy.pos.x, enemy.pos.z);
   if(r > 26){ enemy.pos.x *= 26/r; enemy.pos.z *= 26/r; }
+  enemy.aggro = false;
   enemy.hp = ENEMY_HP;
   enemy.state = 'spawn';
-  enemy.until = performance.now() + 900;
+  enemy.until = performance.now()
+    + (enemy.actions.Spawn_Ground?.getClip().duration ?? 1) * 1000;
   enemy.name = ''; enemy.current = null;
+  enemy.mixer.stopAllAction();                // sonst wirkt Death_A weiter
   enemyClip('Spawn_Ground', 0);
   enemy.root.visible = true;
 }
@@ -529,8 +549,12 @@ function enemyUpdate(dt, now){
       }
       if(now > enemy.until){ enemy.state = 'idle'; enemyClip('Idle_A'); }
       break;
-    default: {                                 // idle / verfolgen
-      if(dead || dist > 14){ enemyClip('Idle_A'); break; }
+    default: {                                 // warten / verfolgen
+      // Es wartet, bis man ihm nahe kommt, und laesst wieder ab, wenn man
+      // weit genug weg ist.
+      if(dist < AGGRO) enemy.aggro = true;
+      else if(dist > LEASH) enemy.aggro = false;
+      if(dead || !enemy.aggro){ enemyClip('Idle_A'); break; }
       if(dist < REACH && now < enemy.nextAttack){
         enemyClip('Idle_A');                   // Pause zwischen den Schlaegen
       } else if(dist < REACH){
@@ -540,7 +564,7 @@ function enemyUpdate(dt, now){
         enemy.name = '';                       // gleichen Schlag erneut zulassen
         enemyClip(clip, .08);
         enemy.state = 'attack';
-        enemy.hitAt = now + dur * .45;
+        enemy.hitAt = now + dur * hitFraction(clip);
         enemy.until = now + dur * 1.25;
         enemy.nextAttack = now + dur * 1.25 + 1100;
       } else {
@@ -553,7 +577,7 @@ function enemyUpdate(dt, now){
     }
   }
 
-  if(enemy.state !== 'dead' && dist > .01){
+  if(enemy.state !== 'dead' && enemy.aggro && dist > .01){
     const target = Math.atan2(dx, dz);
     let diff = ((target - enemy.facing + Math.PI*3) % (Math.PI*2)) - Math.PI;
     enemy.facing += diff * Math.min(1, dt*8);
