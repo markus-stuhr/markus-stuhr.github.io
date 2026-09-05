@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sandbox · 3D-Asset-Katalog</title>
+<script defer src="/analytics.js"></script>
+<style>
+:root{--bg:#14161c;--panel:#1c1f28;--panel2:#232733;--line:#2f3444;
+  --ink:#e9ecf3;--dim:#98a0b4;--acc:#7fd4a8;--acc2:#f0b45c}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  overflow:hidden}
+header{display:flex;align-items:center;gap:14px;padding:12px 18px;
+  border-bottom:1px solid var(--line);background:var(--panel)}
+.back{border:1px solid var(--line);background:var(--panel2);border-radius:8px;
+  padding:6px 12px;font-size:14px;text-decoration:none;color:inherit;white-space:nowrap}
+.back:hover{border-color:var(--acc)}
+h1{font-size:17px;margin:0}
+.sub{font-size:12px;color:var(--dim)}
+main{flex:1;position:relative;min-height:0}
+canvas{display:block}
+.msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim)}
+.keys{position:absolute;left:14px;bottom:14px;background:rgba(28,31,40,.86);
+  border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:12px;
+  color:var(--dim);backdrop-filter:blur(6px);max-width:min(340px,70vw)}
+.keys b{color:var(--ink)}
+.keys table{border-collapse:collapse}
+.keys td{padding:1px 0}
+.keys td:first-child{padding-right:12px;white-space:nowrap}
+kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:5px;padding:0 5px;font:inherit;font-size:11px;color:var(--ink)}
+.state{position:absolute;right:14px;top:14px;background:rgba(28,31,40,.86);
+  border:1px solid var(--line);border-radius:10px;padding:9px 13px;font-size:12px;
+  color:var(--dim);backdrop-filter:blur(6px);text-align:right}
+.state b{color:var(--acc);font-size:13px}
+.hide{position:absolute;right:14px;bottom:14px;background:rgba(28,31,40,.86);
+  border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 12px;
+  font:inherit;font-size:13px;cursor:pointer;backdrop-filter:blur(6px)}
+.hide:hover{border-color:var(--acc)}
+</style>
+</head>
+<body>
+<header>
+  <a class="back" href="index.html">← Katalog</a>
+  <div>
+    <h1>Sandbox</h1>
+    <div class="sub">Rogue Hooded · Steuerung im GTA-Stil</div>
+  </div>
+</header>
+<main id="stage">
+  <div class="msg" id="msg">Lade Figur, Animationen und Kulisse …</div>
+  <div class="state" id="state" hidden><b id="stName">—</b><br><span id="stSpeed"></span></div>
+  <div class="keys" id="keys" hidden>
+    <table>
+      <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / Pfeile</td><td>gehen</td></tr>
+      <tr><td><kbd>Shift</kbd> halten</td><td>rennen</td></tr>
+      <tr><td><kbd>C</kbd></td><td>ducken (schleichen)</td></tr>
+      <tr><td><kbd>Leertaste</kbd></td><td>springen</td></tr>
+      <tr><td><kbd>Alt</kbd> halten</td><td>Blickrichtung halten (seitwärts, rückwärts)</td></tr>
+      <tr><td><kbd>V</kbd></td><td>winken</td></tr>
+      <tr><td>Maus ziehen · Rad</td><td>Kamera drehen · zoomen</td></tr>
+    </table>
+    <div id="touchnote" hidden style="margin-top:8px;color:var(--acc2)">
+      Ohne Tastatur geht hier nur die Kamera — die Steuerung braucht einen Rechner.
+    </div>
+  </div>
+  <button class="hide" id="hide">Hilfe ausblenden</button>
+</main>
+
+<script type="importmap">
+{"imports":{
+ "three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+ "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+
+const M = 'models/';
+const CHAR = 'KayKit_Adventurers_2.0_FREE/Characters/gltf/Rogue_Hooded.glb';
+const LIB_BASIC = 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_MovementBasic.glb';
+const LIB_GENERAL = 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_General.glb';
+const LIB_ADV = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_MovementAdvanced.glb';
+const LIB_SIM = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_Simulation.glb';
+
+const url = p => M + p.split('/').map(encodeURIComponent).join('/');
+const loader = new GLTFLoader();
+const load = p => new Promise((res, rej) => loader.load(url(p), res, undefined, rej));
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.append(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x243049);
+scene.fog = new THREE.Fog(0x243049, 28, 62);
+scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x39415c, 2.7));
+const sun = new THREE.DirectionalLight(0xfff2d8, 2.4);
+sun.position.set(8, 14, 6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+const sc = sun.shadow.camera;
+sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.far = 60;
+sc.updateProjectionMatrix();
+scene.add(sun);
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(30, 64).rotateX(-Math.PI/2),
+  new THREE.MeshStandardMaterial({color:0x3d4a3a, roughness:1}));
+ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(60, 60, 0x54604f, 0x46523f);
+grid.position.y = .002;
+grid.material.transparent = true; grid.material.opacity = .35;
+scene.add(grid);
+
+const cam = new THREE.PerspectiveCamera(50, 1, .1, 200);
+
+// --- Kamera: Drittperson, folgt der Figur, Maus dreht darum herum -------
+const camYaw = {v: Math.PI*0.15}, camPitch = {v: 0.38};
+let camDist = 6;
+let dragging = false, lastX = 0, lastY = 0;
+renderer.domElement.addEventListener('pointerdown', e=>{
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  renderer.domElement.setPointerCapture(e.pointerId);
+});
+renderer.domElement.addEventListener('pointerup', e=>{ dragging = false; });
+renderer.domElement.addEventListener('pointermove', e=>{
+  if(!dragging) return;
+  camYaw.v -= (e.clientX - lastX) * .006;
+  camPitch.v = Math.max(-.15, Math.min(1.15, camPitch.v + (e.clientY - lastY) * .004));
+  lastX = e.clientX; lastY = e.clientY;
+});
+renderer.domElement.addEventListener('wheel', e=>{
+  e.preventDefault();
+  camDist = Math.max(2.5, Math.min(14, camDist + Math.sign(e.deltaY)*.7));
+}, {passive:false});
+renderer.domElement.addEventListener('contextmenu', e=> e.preventDefault());
+
+// --- Eingabe ------------------------------------------------------------
+const keys = new Set();
+const CODES = {
+  KeyW:'f', ArrowUp:'f', KeyS:'b', ArrowDown:'b',
+  KeyA:'l', ArrowLeft:'l', KeyD:'r', ArrowRight:'r',
+};
+addEventListener('keydown', e=>{
+  if(e.repeat) return;
+  if(e.code === 'Space'){ e.preventDefault(); jump(); }
+  if(e.code === 'KeyC') crouch = !crouch;   // kein Strg: kollidiert mit Browser-Shortcuts
+  if(e.code === 'KeyV') emote('Waving');
+  keys.add(e.code);
+  if(CODES[e.code] || e.code === 'ShiftLeft') e.preventDefault();
+});
+addEventListener('keyup', e=> keys.delete(e.code));
+addEventListener('blur', ()=> keys.clear());
+
+// --- Figur und Zustandsautomat -----------------------------------------
+// Beim Uebertragen fremder Clips nur Rotationen plus root/hips-Position
+// nehmen; die Clips selbst laufen auf der Stelle, bewegt wird die Figur.
+function retarget(clip){
+  const keep = clip.tracks.filter(t =>
+    !t.name.endsWith('.scale') &&
+    (!t.name.endsWith('.position') || /^(root|hips)\./.test(t.name)));
+  return new THREE.AnimationClip(clip.name, clip.duration, keep);
+}
+
+const player = new THREE.Group();
+scene.add(player);
+let mixer = null, actions = {}, current = null, currentName = '';
+let velY = 0, grounded = true, crouch = false, emoteUntil = 0;
+const pos = new THREE.Vector3(0, 0, 4);
+let facing = Math.PI;
+
+const SPEED = {walk: 2.2, run: 5.4, sneak: 1.15};
+
+function setClip(name, fade = .18){
+  if(currentName === name || !actions[name]) return;
+  const next = actions[name];
+  next.reset().setEffectiveWeight(1).fadeIn(fade).play();
+  if(current) current.fadeOut(fade);
+  current = next; currentName = name;
+  document.getElementById('stName').textContent = name;
+}
+function jump(){
+  if(!grounded || crouch) return;
+  velY = 5.2; grounded = false;
+  setClip('Jump_Start', .06);
+}
+function emote(name){
+  if(!actions[name] || !grounded) return;
+  emoteUntil = performance.now() + actions[name].getClip().duration * 1000;
+  setClip(name, .15);
+}
+
+(async ()=>{
+  const [ch, basic, general, adv, sim] = await Promise.all(
+    [CHAR, LIB_BASIC, LIB_GENERAL, LIB_ADV, LIB_SIM].map(load));
+
+  ch.scene.traverse(o=>{ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+  fitHeight(ch.scene, 1.8);                   // Figur auf ~1,8 Einheiten
+  player.add(ch.scene);
+  mixer = new THREE.AnimationMixer(ch.scene);
+
+  const want = {
+    Idle_A: general, Waving: sim,
+    Walking_A: basic, Running_A: basic,
+    Jump_Start: basic, Jump_Idle: basic, Jump_Land: basic,
+    Crouching: adv, Sneaking: adv, Walking_Backwards: adv,
+    Running_Strafe_Left: adv, Running_Strafe_Right: adv,
+  };
+  for(const [name, src] of Object.entries(want)){
+    const clip = src.animations.find(a => a.name === name);
+    if(!clip){ console.warn('Clip fehlt:', name); continue; }
+    const a = mixer.clipAction(retarget(clip), ch.scene);
+    if(name === 'Jump_Start' || name === 'Jump_Land'){
+      a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true;
+    }
+    if(name === 'Waving'){ a.setLoop(THREE.LoopOnce, 1); }
+    actions[name] = a;
+  }
+  setClip('Idle_A', 0);
+
+  await scatterProps();
+  document.getElementById('msg').remove();
+  document.getElementById('keys').hidden = false;
+  document.getElementById('state').hidden = false;
+  renderer.setAnimationLoop(tick);
+})().catch(e=>{
+  document.getElementById('msg').textContent = 'Konnte die Sandbox nicht laden.';
+  console.error(e);
+});
+
+// Die Packs sind untereinander nicht massstabsgetreu — ein Baum aus dem
+// Forest-Pack ist in Modelleinheiten zehnmal so gross wie eine Figur.
+// Deshalb jedes Modell auf eine Zielhoehe normieren.
+function fitHeight(obj, h){
+  const b = new THREE.Box3().setFromObject(obj);
+  const size = b.getSize(new THREE.Vector3());
+  if(size.y > 0) obj.scale.multiplyScalar(h/size.y);
+  const b2 = new THREE.Box3().setFromObject(obj);
+  obj.position.y -= b2.min.y;                 // auf den Boden setzen
+  return h;
+}
+
+// --- Kulisse ------------------------------------------------------------
+// Ein paar Requisiten aus den Packs, damit man beim Laufen etwas sieht.
+const props = [];                             // {x,z,r} fuer die Kollision
+async function scatterProps(){
+  const F = 'KayKit_Forest_Nature_Pack_1.0_FREE/Assets/gltf/';
+  const D = 'KayKit_Dungeon_Pack_1.1_FREE/Assets/gltf/';
+  const list = [                              // Datei, Zielhoehe, Radius
+    [F + 'Tree_1_A_Color1.gltf', 5.0, .55],
+    [F + 'Tree_2_B_Color1.gltf', 5.6, .55],
+    [F + 'Tree_3_C_Color1.gltf', 4.4, .5],
+    [F + 'Tree_Bare_1_B_Color1.gltf', 4.0, .45],
+    [F + 'Rock_1_D_Color1.gltf', 1.1, .7],
+    [F + 'Rock_2_A_Color1.gltf', .8, .6],
+    [F + 'Bush_1_A_Color1.gltf', .8, .55],
+    [D + 'barrel_large.gltf', 1.1, .45],
+    [D + 'crates_stacked.gltf', 1.4, .6],
+    [D + 'chest.gltf', .8, .5],
+  ];
+  const loaded = await Promise.all(list.map(async l=>{
+    try{
+      const o = (await load(l[0])).scene;
+      fitHeight(o, l[1]);
+      o.userData.h = l[1];
+      return [o, l[2]];
+    }catch(e){ return null; }
+  }));
+  const ok = loaded.filter(Boolean);
+  if(!ok.length) return;
+  let seed = 7;
+  const rnd = ()=> (seed = (seed*1103515245 + 12345) % 2147483648) / 2147483648;
+  for(let i = 0; i < 60; i++){
+    const [proto, radius] = ok[Math.floor(rnd()*ok.length)];
+    const a = rnd()*Math.PI*2, d = 5 + rnd()*21;
+    const x = Math.cos(a)*d, z = Math.sin(a)*d;
+    if(Math.hypot(x, z - 4) < 3) continue;    // Startplatz frei lassen
+    const o = proto.clone(true);
+    o.position.set(x, o.position.y, z);
+    o.rotation.y = rnd()*Math.PI*2;
+    const s = .8 + rnd()*.5;
+    o.scale.multiplyScalar(s);
+    o.position.y *= s;
+    o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
+    scene.add(o);
+    props.push({x, z, r: radius*s, tall: proto.userData.h*s > 1.6});
+  }
+}
+
+// --- Schleife -----------------------------------------------------------
+const clock = new THREE.Clock();
+const stSpeed = document.getElementById('stSpeed');
+
+function tick(){
+  const dt = Math.min(clock.getDelta(), .05);
+  const strafeMode = keys.has('AltLeft') || keys.has('AltRight');
+  const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
+
+  // Eingabe in eine Richtung relativ zur Kamera umrechnen
+  let ix = 0, iz = 0;
+  for(const k of keys){
+    const d = CODES[k];
+    if(d === 'f') iz -= 1; else if(d === 'b') iz += 1;
+    else if(d === 'l') ix -= 1; else if(d === 'r') ix += 1;
+  }
+  const moving = (ix || iz) && !(emoteUntil > performance.now());
+  let dirX = 0, dirZ = 0;
+  if(moving){
+    const len = Math.hypot(ix, iz);
+    // Kamera steht bei +(sin,cos) hinter der Figur, vorwaerts ist also
+    // -(sin,cos) und rechts (cos,-sin).
+    const cs = Math.cos(camYaw.v), sn = Math.sin(camYaw.v);
+    const x = ix/len, z = iz/len;
+    dirX = x*cs + z*sn;
+    dirZ = -x*sn + z*cs;
+  }
+
+  const speed = !grounded ? SPEED.walk
+    : crouch ? SPEED.sneak
+    : running ? SPEED.run : SPEED.walk;
+
+  if(moving){
+    const nx = pos.x + dirX*speed*dt, nz = pos.z + dirZ*speed*dt;
+    if(!blocked(nx, nz)){ pos.x = nx; pos.z = nz; }
+    else if(!blocked(nx, pos.z)) pos.x = nx;
+    else if(!blocked(pos.x, nz)) pos.z = nz;
+    const r = Math.hypot(pos.x, pos.z);
+    if(r > 28){ pos.x *= 28/r; pos.z *= 28/r; }
+  }
+
+  // Ausrichtung: normalerweise in Laufrichtung drehen, mit Alt die
+  // Kamerarichtung halten und seitwaerts/rueckwaerts laufen.
+  const target = strafeMode ? camYaw.v + Math.PI
+    : (moving ? Math.atan2(dirX, dirZ) : facing);
+  let diff = ((target - facing + Math.PI*3) % (Math.PI*2)) - Math.PI;
+  facing += diff * Math.min(1, dt*12);
+  player.rotation.y = facing;
+  player.position.set(pos.x, pos.y, pos.z);
+
+  // Schwerkraft
+  if(!grounded){
+    velY -= 15*dt;
+    pos.y += velY*dt;
+    if(pos.y <= 0){ pos.y = 0; velY = 0; grounded = true; setClip('Jump_Land', .05); }
+  }
+
+  // Animationszustand
+  if(emoteUntil > performance.now()){
+    /* Emote laeuft */
+  } else if(!grounded){
+    if(velY < 1.2) setClip('Jump_Idle', .12);
+  } else if(currentName === 'Jump_Land' && current && current.time < .25){
+    /* Landung ausspielen */
+  } else if(!moving){
+    setClip(crouch ? 'Crouching' : 'Idle_A');
+  } else if(crouch){
+    setClip('Sneaking');
+  } else if(strafeMode){
+    // Bewegungsrichtung im Koerpersystem der Figur
+    const rel = Math.atan2(dirX, dirZ) - facing;
+    const a = Math.atan2(Math.sin(rel), Math.cos(rel));
+    if(Math.abs(a) > 2.2) setClip('Walking_Backwards');
+    else if(a > .8) setClip('Running_Strafe_Left');
+    else if(a < -.8) setClip('Running_Strafe_Right');
+    else setClip(running ? 'Running_A' : 'Walking_A');
+  } else {
+    setClip(running ? 'Running_A' : 'Walking_A');
+  }
+
+  // Laufgeschwindigkeit auf das Tempo der Clips legen
+  if(current){
+    const base = currentName === 'Running_A' ? SPEED.run
+      : currentName === 'Walking_A' ? SPEED.walk
+      : currentName === 'Sneaking' ? SPEED.sneak : 0;
+    current.setEffectiveTimeScale(base && moving ? Math.max(.6, speed/base) : 1);
+  }
+
+  stSpeed.textContent = (moving ? speed.toFixed(1) : '0.0') + ' m/s'
+    + (crouch ? ' · geduckt' : '') + (strafeMode ? ' · Blick fix' : '');
+
+  // Kamera folgt
+  const cy = Math.cos(camPitch.v), sy = Math.sin(camPitch.v);
+  const want = new THREE.Vector3(
+    pos.x + Math.sin(camYaw.v)*camDist*cy,
+    pos.y + 1.1 + camDist*sy,
+    pos.z + Math.cos(camYaw.v)*camDist*cy);
+  // Kamera vor Baumstaemmen zurueckziehen, statt hindurchzuschauen
+  let t = 1;
+  for(let k = 1; k >= .3; k -= .1){
+    const cx = pos.x + (want.x - pos.x)*k, cz = pos.z + (want.z - pos.z)*k;
+    if(!props.some(p => p.tall &&
+        (cx-p.x)*(cx-p.x) + (cz-p.z)*(cz-p.z) < (p.r + .5)*(p.r + .5))){ t = k; break; }
+    t = k;
+  }
+  want.lerpVectors(new THREE.Vector3(pos.x, pos.y + 1.5, pos.z), want, t);
+  cam.position.lerp(want, Math.min(1, dt*9));
+  cam.lookAt(pos.x, pos.y + 1.0, pos.z);
+  sun.position.set(pos.x + 8, 14, pos.z + 6);
+  sun.target.position.set(pos.x, 0, pos.z);
+  sun.target.updateMatrixWorld();
+
+  mixer.update(dt);
+  renderer.render(scene, cam);
+}
+
+function blocked(x, z){
+  for(const p of props){
+    const dx = x - p.x, dz = z - p.z;
+    if(dx*dx + dz*dz < (p.r + .35)*(p.r + .35)) return true;
+  }
+  return false;
+}
+
+function resize(){
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h);
+  cam.aspect = w/h; cam.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+if(matchMedia('(hover: none)').matches)
+  document.getElementById('touchnote').hidden = false;
+
+const hideBtn = document.getElementById('hide');
+hideBtn.onclick = ()=>{
+  const k = document.getElementById('keys');
+  k.hidden = !k.hidden;
+  hideBtn.textContent = k.hidden ? 'Hilfe einblenden' : 'Hilfe ausblenden';
+};
+</script>
+</body>
+</html>
