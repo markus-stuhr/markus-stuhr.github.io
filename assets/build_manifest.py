@@ -33,7 +33,13 @@ def rig_signature(j):
         for n in j.get('nodes', []):
             if n.get('name') == name:
                 t = n.get('translation', [0, 0, 0])
-                vals.append('%.3f,%.3f,%.3f' % tuple(t))
+                # -0.0 und 0.0 sind derselbe Wert: Blender exportiert das
+                # Vorzeichen mit, sonst gaebe eine reexportierte Figur ein
+                # neues Rig und bekaeme keine Animationen angeboten.
+                # Erst runden, dann 0.0 addieren: -1e-8 wird zu -0.000, und
+                # -0.0 + 0.0 ist 0.0. Sonst gaebe eine reexportierte Figur
+                # ein neues Rig und bekaeme keine Animationen angeboten.
+                vals.append(','.join('%.3f' % (round(v, 3) + 0.0) for v in t))
                 break
         else:
             vals.append('-')

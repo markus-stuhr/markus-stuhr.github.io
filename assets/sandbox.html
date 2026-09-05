@@ -99,7 +99,6 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {makeGirl} from './girl.js';
 
 const M = 'models/';
 const CHAR = 'KayKit_Adventurers_2.0_FREE/Characters/gltf/Rogue_Hooded.glb';
@@ -110,9 +109,6 @@ const LIB_SIM = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_
 const LIB_MELEE = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_CombatMelee.glb';
 const SWORD = 'KayKit_Adventurers_2.0_FREE/Assets/gltf/sword_1handed.gltf';
 const SHIELD = 'KayKit_Adventurers_2.0_FREE/Assets/gltf/shield_round.gltf';
-// Eigene Figur: das Mage-Modell ohne Hut, Haare rot eingefaerbt
-const GIRL = 'custom:girl';
-const GIRL_RIG = 'KayKit_Adventurers_2.0_FREE/Characters/gltf/Mage.glb';
 
 const url = p => M + p.split('/').map(encodeURIComponent).join('/');
 const loader = new GLTFLoader();
@@ -277,15 +273,6 @@ function attack(){
   setClip(name, .08);
 }
 
-// Laedt eine Figur — entweder eine Datei aus den Packs oder die selbst
-// gebaute, die sich das Skelett einer vorhandenen Figur ausleiht.
-async function loadCharacter(file){
-  if(file !== GIRL) return load(file);
-  const g = await load(GIRL_RIG);
-  makeGirl(g.scene);
-  return g;
-}
-
 // --- Figur aufbauen (auch beim Wechsel ueber das Dropdown) --------------
 let libs = null, swordProto = null, shieldProto = null, charRoot = null;
 let shieldObj = null;                         // nur waehrend des Blockens sichtbar
@@ -364,7 +351,7 @@ function buildCharacter(gltf){
 async function fillCharacterList(){
   const sel = document.getElementById('who');
   let data;
-  try{ data = await (await fetch('rigs.json')).json(); }catch(e){ return; }
+  try{ data = await (await fetch('rigs.json', {cache: 'no-cache'})).json(); }catch(e){ return; }
   const rig = data.rigs[CHAR];
   const libFiles = new Set(data.libs.map(l => l.file));
   const list = Object.entries(data.rigs)
@@ -377,14 +364,11 @@ async function fillCharacterList(){
     o.textContent = f.split('/').pop().replace(/\.(gltf|glb)$/, '').replace(/_/g, ' ');
     sel.append(o);
   }
-  const own = document.createElement('option');
-  own.value = GIRL; own.textContent = 'Rothaariges Mädchen';
-  sel.append(own);
   sel.value = CHAR;
   sel.hidden = list.length < 2;
   sel.addEventListener('change', async ()=>{
     sel.disabled = true;
-    try{ buildCharacter(await loadCharacter(sel.value)); }
+    try{ buildCharacter(await load(sel.value)); }
     catch(e){ console.error(e); }
     finally{ sel.disabled = false; sel.blur(); }
   });

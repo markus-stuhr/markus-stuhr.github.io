@@ -207,7 +207,7 @@ new GLTFLoader().load(url, g=>{
 // werden erst beim Auswaehlen geladen, sonst waeren es 12 Dateien a ~1 MB.
 async function loadLibs(){
   let data;
-  try{ data = await (await fetch('rigs.json')).json(); }catch(e){ return; }
+  try{ data = await (await fetch('rigs.json', {cache: 'no-cache'})).json(); }catch(e){ return; }
   const rig = data.rigs[file];
   if(!rig) return;
   const myPack = file.split('/')[0];

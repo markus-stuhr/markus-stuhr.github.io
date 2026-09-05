@@ -300,7 +300,7 @@ function apply(){
 }
 
 (async ()=>{
-  const man = await (await fetch('manifest.json')).json();
+  const man = await (await fetch('manifest.json', {cache: 'no-cache'})).json();
   const labels = Object.fromEntries(man.packs.map(p=>[p.id,p.label]));
   // "animiert" heisst: eigene Clips — oder ein Rig, fuer das es eine
   // passende Animationsbibliothek gibt.

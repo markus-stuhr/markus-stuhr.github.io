@@ -12,3 +12,5 @@ simulator/GPS Tracks/
 
 # Lokale Archiv-Artefakte
 *.zip
+assets/tools/mage_texture.png
+assets/tools/girl_texture.png
