@@ -70,7 +70,7 @@ function hairCells(head, pixels, w, h, grid = 32){
   }
   // Die Augen liegen in einem eigenen, ebenfalls dunklen Feld — nur das
   // groesste zusammenhaengende Feld ist das Haar, alles weiter weg bleibt.
-  const found = [...cells].filter(([, n]) => n >= 20)
+  const found = [...cells].filter(([, n]) => n >= 6)
     .map(([k, n]) => [...k.split(',').map(Number), n]);
   if(!found.length) return [];
   const [bx, by] = found.reduce((a, b) => (a[2] >= b[2] ? a : b));
@@ -142,7 +142,9 @@ export function makeGirl(scene){
   // Stiefel: die braunen Felder der Beine deutlich abdunkeln. Vor den
   // Farbtonregeln unten, sonst wuerde der umgefaerbte Robensaum mitgefangen.
   for(const leg of meshes.filter(m => /_Leg/.test(m.name))){
-    for(const {cell, rgb} of meshCells(leg, px, cv.width, cv.height, GRID)){
+    // Mindestzahl klein halten: Schnalle und Riemen sind nur eine Handvoll
+    // Dreiecke und blieben sonst hell.
+    for(const {cell, rgb} of meshCells(leg, px, cv.width, cv.height, GRID, 4)){
       const [h] = rgbToHsl(...rgb);
       if(h < .02 || h > .11) continue;        // nur die braunen Felder
       paintCell(cell, ([, , l]) => [24/360, .46, Math.max(.06, l * .42)]);
