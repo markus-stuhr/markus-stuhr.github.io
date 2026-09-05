@@ -41,6 +41,14 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
   border:1px solid var(--line);border-radius:10px;padding:9px 13px;font-size:12px;
   color:var(--dim);backdrop-filter:blur(6px);text-align:right}
 .state b{color:var(--acc);font-size:13px}
+.hp{position:absolute;left:50%;top:14px;transform:translateX(-50%);
+  background:rgba(28,31,40,.86);border:1px solid var(--line);border-radius:10px;
+  padding:8px 14px;font-size:13px;backdrop-filter:blur(6px);text-align:center;
+  line-height:1.5;white-space:nowrap}
+.hp .me{color:#7fd4a8}
+.hp .foe{color:#e0705f}
+.hp .gone{opacity:.22}
+.hp .down{color:var(--dim)}
 .hide{position:absolute;right:14px;bottom:14px;background:rgba(28,31,40,.86);
   border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:7px 12px;
   font:inherit;font-size:13px;cursor:pointer;backdrop-filter:blur(6px)}
@@ -52,13 +60,14 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
   <a class="back" href="index.html">← Katalog</a>
   <div>
     <h1>Sandbox</h1>
-    <div class="sub">Steuerung im GTA-Stil</div>
+    <div class="sub">Steuerung im GTA-Stil · Skelett bekämpfen</div>
   </div>
   <select id="who" autocomplete="off" hidden></select>
 </header>
 <main id="stage">
   <div class="msg" id="msg">Lade Figur, Animationen und Kulisse …</div>
   <div class="state" id="state" hidden><b id="stName">—</b><br><span id="stSpeed"></span></div>
+  <div class="hp" id="hp"></div>
   <div class="keys" id="keys" hidden>
     <table>
       <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / Pfeile</td><td>gehen</td></tr>
@@ -69,6 +78,9 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
       <tr><td><kbd>E</kbd></td><td>Schwert ziehen und zuschlagen (dreiteilige Kette)</td></tr>
       <tr><td><kbd>Q</kbd> halten</td><td>Schild ziehen und blocken</td></tr>
       <tr><td><kbd>V</kbd></td><td>winken</td></tr>
+      <tr><td colspan="2" style="padding-top:6px;color:var(--acc2)">
+        Das Skelett greift an, sobald es dich sieht — Q blockt seinen Schlag,
+        wenn es von vorne kommt.</td></tr>
       <tr><td>Maus ziehen · Rad</td><td>Kamera drehen · zoomen</td></tr>
     </table>
     <div id="touchnote" hidden style="margin-top:8px;color:var(--acc2)">
@@ -229,11 +241,14 @@ function emote(name){
 
 // Drei Schlaege, die sich bei schnellem Tippen zu einer Kette abwechseln.
 const SWORD_LINGER = 10000;                   // wie lange das Schwert bleibt
+const PLAYER_HP = 6, ENEMY_HP = 4;
+const REACH = 2.0;                            // Schlagreichweite in Einheiten
+const ENEMY_FILE = 'KayKit_Skeletons_1.1_FREE/characters/gltf/Skeleton_Warrior.glb';
 const COMBO = ['Melee_1H_Attack_Slice_Horizontal', 'Melee_1H_Attack_Chop',
                'Melee_1H_Attack_Stab'];
 let comboStep = 0, comboUntil = 0;
 function attack(){
-  if(!grounded) return;
+  if(!grounded || dead || performance.now() < hurtUntil) return;
   const now = performance.now();
   comboStep = now < comboUntil ? (comboStep + 1) % COMBO.length : 0;
   const name = COMBO[comboStep];
@@ -242,6 +257,7 @@ function attack(){
   emoteUntil = now + dur * .85;               // laesst sich frueh abbrechen
   comboUntil = now + dur * 1.6;
   swordUntil = now + dur + SWORD_LINGER;      // jeder Schlag verlaengert
+  pendingHit = now + dur * .45;               // ungefaehr der Moment des Aufpralls
   currentName = '';                           // gleicher Schlag erneut moeglich
   setClip(name, .08);
 }
@@ -250,6 +266,7 @@ function attack(){
 let libs = null, swordProto = null, shieldProto = null, charRoot = null;
 let shieldObj = null;                         // nur waehrend des Blockens sichtbar
 let swordObj = null, swordUntil = 0;          // erscheint beim Angriff, bleibt 10 s
+let hp = PLAYER_HP, dead = false, hurtUntil = 0, pendingHit = 0;
 
 function buildCharacter(gltf){
   if(charRoot){                               // alte Figur abraeumen
@@ -281,14 +298,17 @@ function buildCharacter(gltf){
     Running_Strafe_Left: adv, Running_Strafe_Right: adv,
     Melee_1H_Attack_Slice_Horizontal: melee, Melee_1H_Attack_Chop: melee,
     Melee_1H_Attack_Stab: melee,
-    Melee_Block: melee, Melee_Blocking: melee,
+    Melee_Block: melee, Melee_Blocking: melee, Melee_Block_Hit: melee,
+    Hit_A: general, Death_A: general, Spawn_Ground: general,
   };
   for(const [name, src] of Object.entries(want)){
     const clip = src.animations.find(a => a.name === name);
     if(!clip){ console.warn('Clip fehlt:', name); continue; }
     const a = mixer.clipAction(retarget(clip), ch);
     if(name === 'Jump_Start' || name === 'Jump_Land' || name === 'Waving'
-       || name === 'Melee_Block' || name.startsWith('Melee_1H_Attack')){
+       || name === 'Melee_Block' || name === 'Melee_Block_Hit'
+       || name === 'Hit_A' || name === 'Death_A' || name === 'Spawn_Ground'
+       || name.startsWith('Melee_1H_Attack')){
       a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true;
     }
     actions[name] = a;
@@ -310,7 +330,9 @@ function buildCharacter(gltf){
 
   setClip('Idle_A', 0);
   window.__sandbox = {scene, player, actions, char: ch,
-                      shield: shieldObj, sword: swordObj};
+                      shield: shieldObj, sword: swordObj,
+                      get enemy(){ return enemy; },
+                      get info(){ return {hp, dead, pos: pos.toArray(), facing}; }};
 }
 
 // Auswahlliste: alle gerigten Modelle mit derselben Rig-Signatur wie die
@@ -350,6 +372,8 @@ async function fillCharacterList(){
   shieldProto = shield.scene;
   buildCharacter(ch);
   await fillCharacterList();
+  buildEnemy(await load(ENEMY_FILE));
+  paintHealth();
 
   await scatterProps();
   document.getElementById('msg').remove();
@@ -418,6 +442,202 @@ async function scatterProps(){
     scene.add(o);
     props.push({x, z, r: radius*s, tall: proto.userData.h*s > 1.6});
   }
+}
+
+
+// --- Gegner --------------------------------------------------------------
+// Ein Skelett mit eigenem Mixer und einer schlichten KI: warten, verfolgen,
+// zuschlagen. Es benutzt dieselben Clips wie die Spielfigur.
+const enemy = {
+  root: null, mixer: null, actions: {}, current: null, name: '',
+  pos: new THREE.Vector3(0, 0, -6), facing: 0, hp: ENEMY_HP,
+  state: 'idle', until: 0, hitAt: 0, respawnAt: 0, nextAttack: 0,
+};
+const ENEMY_SPEED = {walk: 1.7, run: 3.6};
+
+function enemyClip(name, fade = .18){
+  const a = enemy.actions[name];
+  if(!a || enemy.name === name) return;
+  a.reset().setEffectiveWeight(1).fadeIn(fade).play();
+  if(enemy.current) enemy.current.fadeOut(fade);
+  enemy.current = a; enemy.name = name;
+}
+
+function buildEnemy(gltf){
+  const e = gltf.scene;
+  e.traverse(o=>{ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+  fitHeight(e, 1.75);
+  scene.add(e);
+  enemy.root = e;
+  enemy.mixer = new THREE.AnimationMixer(e);
+  const {basic, general, melee} = libs;
+  const want = {
+    Idle_A: general, Hit_A: general, Death_A: general, Spawn_Ground: general,
+    Walking_A: basic, Running_A: basic,
+    Melee_1H_Attack_Chop: melee, Melee_1H_Attack_Slice_Horizontal: melee,
+  };
+  for(const [name, src] of Object.entries(want)){
+    const clip = src.animations.find(a => a.name === name);
+    if(!clip) continue;
+    const a = enemy.mixer.clipAction(retarget(clip), e);
+    if(name !== 'Idle_A' && name !== 'Walking_A' && name !== 'Running_A'){
+      a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true;
+    }
+    enemy.actions[name] = a;
+  }
+  const slot = e.getObjectByName('handslotr') || e.getObjectByName('handslot.r');
+  if(slot){
+    const w = swordProto.clone(true);
+    w.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
+    slot.add(w);
+  }
+  enemySpawn();
+}
+
+function enemySpawn(){
+  const a = Math.random()*Math.PI*2, d = 10 + Math.random()*6;
+  enemy.pos.set(pos.x + Math.cos(a)*d, 0, pos.z + Math.sin(a)*d);
+  const r = Math.hypot(enemy.pos.x, enemy.pos.z);
+  if(r > 26){ enemy.pos.x *= 26/r; enemy.pos.z *= 26/r; }
+  enemy.hp = ENEMY_HP;
+  enemy.state = 'spawn';
+  enemy.until = performance.now() + 900;
+  enemy.name = ''; enemy.current = null;
+  enemyClip('Spawn_Ground', 0);
+  enemy.root.visible = true;
+}
+
+function enemyUpdate(dt, now){
+  if(!enemy.root) return;
+  const dx = pos.x - enemy.pos.x, dz = pos.z - enemy.pos.z;
+  const dist = Math.hypot(dx, dz);
+
+  switch(enemy.state){
+    case 'spawn':
+      if(now > enemy.until){ enemy.state = 'idle'; enemyClip('Idle_A'); }
+      break;
+    case 'dead':
+      if(now > enemy.respawnAt) enemySpawn();
+      break;
+    case 'hurt':
+      if(now > enemy.until){ enemy.state = 'idle'; enemyClip('Idle_A'); }
+      break;
+    case 'attack':
+      if(enemy.hitAt && now > enemy.hitAt){    // Moment des Aufpralls
+        enemy.hitAt = 0;
+        if(dist < REACH + .5) damagePlayer();
+      }
+      if(now > enemy.until){ enemy.state = 'idle'; enemyClip('Idle_A'); }
+      break;
+    default: {                                 // idle / verfolgen
+      if(dead || dist > 14){ enemyClip('Idle_A'); break; }
+      if(dist < REACH && now < enemy.nextAttack){
+        enemyClip('Idle_A');                   // Pause zwischen den Schlaegen
+      } else if(dist < REACH){
+        const clip = Math.random() < .5
+          ? 'Melee_1H_Attack_Chop' : 'Melee_1H_Attack_Slice_Horizontal';
+        const dur = enemy.actions[clip].getClip().duration * 1000;
+        enemy.name = '';                       // gleichen Schlag erneut zulassen
+        enemyClip(clip, .08);
+        enemy.state = 'attack';
+        enemy.hitAt = now + dur * .45;
+        enemy.until = now + dur * 1.25;
+        enemy.nextAttack = now + dur * 1.25 + 1100;
+      } else {
+        const run = dist > 3.5;
+        const sp = run ? ENEMY_SPEED.run : ENEMY_SPEED.walk;
+        enemy.pos.x += (dx/dist)*sp*dt;
+        enemy.pos.z += (dz/dist)*sp*dt;
+        enemyClip(run ? 'Running_A' : 'Walking_A');
+      }
+    }
+  }
+
+  if(enemy.state !== 'dead' && dist > .01){
+    const target = Math.atan2(dx, dz);
+    let diff = ((target - enemy.facing + Math.PI*3) % (Math.PI*2)) - Math.PI;
+    enemy.facing += diff * Math.min(1, dt*8);
+  }
+  enemy.root.position.set(enemy.pos.x, 0, enemy.pos.z);
+  enemy.root.rotation.y = enemy.facing;
+  enemy.mixer.update(dt);
+}
+
+// --- Treffer -------------------------------------------------------------
+function inFront(fromX, fromZ, facingAngle, tx, tz){
+  const dx = tx - fromX, dz = tz - fromZ;
+  const d = Math.hypot(dx, dz) || 1;
+  return (dx/d)*Math.sin(facingAngle) + (dz/d)*Math.cos(facingAngle) > .35;
+}
+
+function damageEnemy(){
+  if(enemy.state === 'dead' || enemy.state === 'spawn') return;
+  enemy.hp--;
+  const now = performance.now();
+  // etwas Rueckstoss, damit der Treffer sichtbar wird
+  const dx = enemy.pos.x - pos.x, dz = enemy.pos.z - pos.z;
+  const d = Math.hypot(dx, dz) || 1;
+  enemy.pos.x += (dx/d)*.45; enemy.pos.z += (dz/d)*.45;
+  enemy.name = '';
+  if(enemy.hp <= 0){
+    enemy.state = 'dead';
+    enemy.respawnAt = now + 4000;
+    enemyClip('Death_A', .1);
+  } else {
+    enemy.state = 'hurt';
+    enemy.hitAt = 0;                          // unterbrochener Schlag trifft nicht
+    enemy.nextAttack = now + 900;
+    enemy.until = now + enemy.actions.Hit_A.getClip().duration * 900;
+    enemyClip('Hit_A', .08);
+  }
+  paintHealth();
+}
+
+function damagePlayer(){
+  const now = performance.now();
+  if(dead || now < hurtUntil) return;
+  // Blocken schuetzt, solange der Gegner von vorne kommt
+  if(keys.has('KeyQ') && grounded
+     && inFront(pos.x, pos.z, facing, enemy.pos.x, enemy.pos.z)){
+    currentName = '';
+    setClip('Melee_Block_Hit', .06);
+    hurtUntil = now + 250;
+    return;
+  }
+  hp--;
+  paintHealth();
+  if(hp <= 0){
+    dead = true;
+    emoteUntil = now + 5000;
+    currentName = '';
+    setClip('Death_A', .1);
+    setTimeout(respawnPlayer, 2600);
+  } else {
+    hurtUntil = now + actions.Hit_A.getClip().duration * 600;
+    emoteUntil = hurtUntil;
+    currentName = '';
+    setClip('Hit_A', .06);
+  }
+}
+
+function respawnPlayer(){
+  hp = PLAYER_HP; dead = false; emoteUntil = 0;
+  hurtUntil = performance.now() + 1500;       // kurz unverwundbar
+  pos.set(0, 0, 4); velY = 0; grounded = true;
+  currentName = '';
+  setClip('Spawn_Ground', .1);
+  enemySpawn();
+  paintHealth();
+}
+
+function paintHealth(){
+  const bar = (n, max, cls)=>
+    '<span class="' + cls + '">' + '❤'.repeat(Math.max(0, n))
+    + '<span class="gone">' + '❤'.repeat(Math.max(0, max - n)) + '</span></span>';
+  document.getElementById('hp').innerHTML =
+    '<div>Du ' + bar(hp, PLAYER_HP, 'me') + '</div>' +
+    (enemy.state === 'dead' ? '<div class="down">Skelett besiegt</div>'
+      : '<div>Skelett ' + bar(enemy.hp, ENEMY_HP, 'foe') + '</div>');
 }
 
 // --- Schleife -----------------------------------------------------------
@@ -553,6 +773,16 @@ function tick(){
   sun.position.set(pos.x + 8, 14, pos.z + 6);
   sun.target.position.set(pos.x, 0, pos.z);
   sun.target.updateMatrixWorld();
+
+  // Der Schlag trifft, wenn der Gegner nah genug und vor der Figur steht.
+  const now2 = performance.now();
+  if(pendingHit && now2 > pendingHit){
+    pendingHit = 0;
+    const d = Math.hypot(enemy.pos.x - pos.x, enemy.pos.z - pos.z);
+    if(enemy.state !== 'dead' && d < REACH + .6
+       && inFront(pos.x, pos.z, facing, enemy.pos.x, enemy.pos.z)) damageEnemy();
+  }
+  enemyUpdate(dt, now2);
 
   mixer.update(dt);
   renderer.render(scene, cam);
