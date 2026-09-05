@@ -60,6 +60,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
       <tr><td><kbd>C</kbd></td><td>ducken (schleichen)</td></tr>
       <tr><td><kbd>Leertaste</kbd></td><td>springen</td></tr>
       <tr><td><kbd>Alt</kbd> halten</td><td>Blickrichtung halten (seitwärts, rückwärts)</td></tr>
+      <tr><td><kbd>E</kbd></td><td>Schwertangriff (dreiteilige Kette)</td></tr>
       <tr><td><kbd>V</kbd></td><td>winken</td></tr>
       <tr><td>Maus ziehen · Rad</td><td>Kamera drehen · zoomen</td></tr>
     </table>
@@ -86,6 +87,8 @@ const LIB_BASIC = 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Me
 const LIB_GENERAL = 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_General.glb';
 const LIB_ADV = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_MovementAdvanced.glb';
 const LIB_SIM = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_Simulation.glb';
+const LIB_MELEE = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_CombatMelee.glb';
+const SWORD = 'KayKit_Adventurers_2.0_FREE/Assets/gltf/sword_1handed.gltf';
 
 const url = p => M + p.split('/').map(encodeURIComponent).join('/');
 const loader = new GLTFLoader();
@@ -156,6 +159,7 @@ addEventListener('keydown', e=>{
   if(e.code === 'Space'){ e.preventDefault(); jump(); }
   if(e.code === 'KeyC') crouch = !crouch;   // kein Strg: kollidiert mit Browser-Shortcuts
   if(e.code === 'KeyV') emote('Waving');
+  if(e.code === 'KeyE') attack();
   keys.add(e.code);
   if(CODES[e.code] || e.code === 'ShiftLeft') e.preventDefault();
 });
@@ -215,9 +219,26 @@ function emote(name){
   setClip(name, .15);
 }
 
+// Drei Schlaege, die sich bei schnellem Tippen zu einer Kette abwechseln.
+const COMBO = ['Melee_1H_Attack_Slice_Horizontal', 'Melee_1H_Attack_Chop',
+               'Melee_1H_Attack_Stab'];
+let comboStep = 0, comboUntil = 0;
+function attack(){
+  if(!grounded) return;
+  const now = performance.now();
+  comboStep = now < comboUntil ? (comboStep + 1) % COMBO.length : 0;
+  const name = COMBO[comboStep];
+  if(!actions[name]) return;
+  const dur = actions[name].getClip().duration * 1000;
+  emoteUntil = now + dur * .85;               // laesst sich frueh abbrechen
+  comboUntil = now + dur * 1.6;
+  currentName = '';                           // gleicher Schlag erneut moeglich
+  setClip(name, .08);
+}
+
 (async ()=>{
-  const [ch, basic, general, adv, sim] = await Promise.all(
-    [CHAR, LIB_BASIC, LIB_GENERAL, LIB_ADV, LIB_SIM].map(load));
+  const [ch, basic, general, adv, sim, melee, sword] = await Promise.all(
+    [CHAR, LIB_BASIC, LIB_GENERAL, LIB_ADV, LIB_SIM, LIB_MELEE, SWORD].map(load));
 
   ch.scene.traverse(o=>{ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
   fitHeight(ch.scene, 1.8);                   // Figur auf ~1,8 Einheiten
@@ -230,6 +251,8 @@ function emote(name){
     Jump_Start: basic, Jump_Idle: basic, Jump_Land: basic,
     Crouching: adv, Sneaking: adv, Walking_Backwards: adv,
     Running_Strafe_Left: adv, Running_Strafe_Right: adv,
+    Melee_1H_Attack_Slice_Horizontal: melee, Melee_1H_Attack_Chop: melee,
+    Melee_1H_Attack_Stab: melee,
   };
   for(const [name, src] of Object.entries(want)){
     const clip = src.animations.find(a => a.name === name);
@@ -238,10 +261,20 @@ function emote(name){
     if(name === 'Jump_Start' || name === 'Jump_Land'){
       a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true;
     }
-    if(name === 'Waving'){ a.setLoop(THREE.LoopOnce, 1); }
+    if(name === 'Waving' || name.startsWith('Melee_1H_Attack')){
+      a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true;
+    }
     actions[name] = a;
   }
+  // Schwert an den Handknochen haengen — dafuer hat das Rig "handslot.r".
+  const slot = ch.scene.getObjectByName('handslotr') || ch.scene.getObjectByName('handslot.r');
+  if(slot){
+    sword.scene.traverse(o=>{ if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+    slot.add(sword.scene);
+  } else console.warn('handslot.r nicht gefunden');
+
   setClip('Idle_A', 0);
+  window.__sandbox = {scene, player, actions, char: ch.scene, sword: sword.scene};
 
   await scatterProps();
   document.getElementById('msg').remove();
