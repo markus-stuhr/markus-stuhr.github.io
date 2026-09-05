@@ -67,7 +67,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
       <tr><td><kbd>Leertaste</kbd></td><td>springen</td></tr>
       <tr><td><kbd>Alt</kbd> halten</td><td>Blickrichtung halten (seitwärts, rückwärts)</td></tr>
       <tr><td><kbd>E</kbd></td><td>Schwertangriff (dreiteilige Kette)</td></tr>
-      <tr><td><kbd>Q</kbd> halten</td><td>mit dem Schild blocken</td></tr>
+      <tr><td><kbd>Q</kbd> halten</td><td>Schild ziehen und blocken</td></tr>
       <tr><td><kbd>V</kbd></td><td>winken</td></tr>
       <tr><td>Maus ziehen · Rad</td><td>Kamera drehen · zoomen</td></tr>
     </table>
@@ -246,6 +246,7 @@ function attack(){
 
 // --- Figur aufbauen (auch beim Wechsel ueber das Dropdown) --------------
 let libs = null, swordProto = null, shieldProto = null, charRoot = null;
+let shieldObj = null;                         // nur waehrend des Blockens sichtbar
 
 function buildCharacter(gltf){
   if(charRoot){                               // alte Figur abraeumen
@@ -293,16 +294,18 @@ function buildCharacter(gltf){
   // Schwert an den Handknochen haengen — dafuer hat das Rig "handslot.r"
   // (in three.js ohne Punkt: "handslotr").
   const hand = (n)=> ch.getObjectByName('handslot' + n) || ch.getObjectByName('handslot.' + n);
+  shieldObj = null;
   for(const [side, proto] of [['r', swordProto], ['l', shieldProto]]){
     const slot = hand(side);
     if(!slot){ console.warn('handslot.' + side + ' nicht gefunden'); continue; }
     const o = proto.clone(true);
     o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
     slot.add(o);
+    if(side === 'l'){ shieldObj = o; o.visible = false; }
   }
 
   setClip('Idle_A', 0);
-  window.__sandbox = {scene, player, actions, char: ch};
+  window.__sandbox = {scene, player, actions, char: ch, shield: shieldObj};
 }
 
 // Auswahlliste: alle gerigten Modelle mit derselben Rig-Signatur wie die
@@ -420,6 +423,9 @@ function tick(){
   const dt = Math.min(clock.getDelta(), .05);
   const strafeMode = keys.has('AltLeft') || keys.has('AltRight');
   const blocking = keys.has('KeyQ') && grounded;
+  // Das Schild erscheint erst mit der Deckung und bleibt waehrend des
+  // Ueberblendens zurueck ins Idle noch kurz stehen.
+  if(shieldObj) shieldObj.visible = blocking || currentName.startsWith('Melee_Block');
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
 
   // Eingabe in eine Richtung relativ zur Kamera umrechnen
