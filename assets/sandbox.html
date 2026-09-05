@@ -176,22 +176,37 @@ const player = new THREE.Group();
 scene.add(player);
 let mixer = null, actions = {}, current = null, currentName = '';
 let velY = 0, grounded = true, crouch = false, emoteUntil = 0;
+let airSpeed = 0, airX = 0, airZ = 0;         // Schwung beim Absprung
 const pos = new THREE.Vector3(0, 0, 4);
 let facing = Math.PI;
 
 const SPEED = {walk: 2.2, run: 5.4, sneak: 1.15};
 
-function setClip(name, fade = .18){
+// Es gibt in der Rig-Bibliothek keinen Clip fuer "geduckt stehen" —
+// "Crouching" ist wie "Sneaking" ein Duckgang. Fuer den Stand wird der
+// Duckgang deshalb an der Stelle eingefroren, an der beide Fuesse
+// beieinander stehen (etwa ein Viertel des Zyklus).
+function setClip(name, fade = .18, freezeAt = null){
   if(currentName === name || !actions[name]) return;
   const next = actions[name];
   next.reset().setEffectiveWeight(1).fadeIn(fade).play();
+  next.paused = freezeAt !== null;
+  if(freezeAt !== null) next.time = next.getClip().duration * freezeAt;
   if(current) current.fadeOut(fade);
   current = next; currentName = name;
-  document.getElementById('stName').textContent = name;
+  document.getElementById('stName').textContent =
+    freezeAt !== null ? name + ' (Stand)' : name;
 }
 function jump(){
   if(!grounded || crouch) return;
-  velY = 5.2; grounded = false;
+  // Aus dem Lauf heraus fliegt die Figur schneller und etwas hoeher, der
+  // Sprung wird dadurch deutlich weiter statt immer gleich kurz.
+  const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  const moving = [...keys].some(k => CODES[k]);
+  airSpeed = moving ? (running ? SPEED.run : SPEED.walk) : 0;
+  airX = Math.sin(facing); airZ = Math.cos(facing);
+  velY = running && moving ? 6.1 : 5.2;
+  grounded = false;
   setClip('Jump_Start', .06);
 }
 function emote(name){
@@ -325,11 +340,19 @@ function tick(){
     dirZ = -x*sn + z*cs;
   }
 
-  const speed = !grounded ? SPEED.walk
+  const speed = !grounded ? (airSpeed || (moving ? SPEED.walk : 0))
     : crouch ? SPEED.sneak
     : running ? SPEED.run : SPEED.walk;
 
-  if(moving){
+  // In der Luft traegt der Schwung des Absprungs weiter, auch wenn die
+  // Taste losgelassen wird; steuern laesst sich nur noch die Richtung.
+  if(!grounded && airSpeed){
+    if(moving){ airX = dirX; airZ = dirZ; }
+    else { dirX = airX; dirZ = airZ; }
+  }
+  const advancing = moving || (!grounded && airSpeed);
+
+  if(advancing){
     const nx = pos.x + dirX*speed*dt, nz = pos.z + dirZ*speed*dt;
     if(!blocked(nx, nz)){ pos.x = nx; pos.z = nz; }
     else if(!blocked(nx, pos.z)) pos.x = nx;
@@ -362,8 +385,9 @@ function tick(){
   } else if(currentName === 'Jump_Land' && current && current.time < .25){
     /* Landung ausspielen */
   } else if(!moving){
-    setClip(crouch ? 'Crouching' : 'Idle_A');
+    if(crouch) setClip('Crouching', .18, .26); else setClip('Idle_A');
   } else if(crouch){
+    if(currentName === 'Crouching') currentName = '';   // Einfrieren aufheben
     setClip('Sneaking');
   } else if(strafeMode){
     // Bewegungsrichtung im Koerpersystem der Figur
@@ -385,7 +409,7 @@ function tick(){
     current.setEffectiveTimeScale(base && moving ? Math.max(.6, speed/base) : 1);
   }
 
-  stSpeed.textContent = (moving ? speed.toFixed(1) : '0.0') + ' m/s'
+  stSpeed.textContent = (advancing ? speed.toFixed(1) : '0.0') + ' m/s'
     + (crouch ? ' · geduckt' : '') + (strafeMode ? ' · Blick fix' : '');
 
   // Kamera folgt
