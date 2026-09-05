@@ -101,7 +101,39 @@ controls.dampingFactor = .07;
 
 const pivot = new THREE.Group(); scene.add(pivot);
 const helper = new THREE.Group(); scene.add(helper);
-let mixer = null, home = null, radius = 1;
+let mixer = null, home = null, radius = 1, root3d = null, action = null;
+const clips = [];                       // {clip|lazy, name, groupLabel}
+const sel = document.getElementById('clips');
+const libCache = new Map();
+
+function addClip(clip, group, name){
+  clips.push({clip, name: name || clip.name, group});
+  refreshClipList();
+}
+function refreshClipList(){
+  sel.hidden = clips.length === 0;
+  const cur = sel.value;
+  sel.innerHTML = '';
+  let g = null, og = null;
+  clips.forEach((c,i)=>{
+    if(c.group !== g){
+      g = c.group;
+      og = document.createElement('optgroup'); og.label = g; sel.append(og);
+    }
+    const o = document.createElement('option');
+    o.value = i; o.textContent = c.name;
+    (og || sel).append(o);
+  });
+  if(cur) sel.value = cur;
+}
+function play(i){
+  const c = clips[i]; if(!c || !mixer) return;
+  if(action) action.fadeOut(.25);
+  action = mixer.clipAction(c.clip, root3d);
+  action.reset().fadeIn(.25).play();
+  sel.value = i;
+}
+
 const clock = new THREE.Clock();
 
 function fit(obj){
@@ -112,8 +144,12 @@ function fit(obj){
   obj.position.y += size.y/2;                   // auf den Boden stellen
   radius = Math.max(size.x,size.y,size.z) || 1;
   const dist = (radius*.5)/Math.tan(THREE.MathUtils.degToRad(cam.fov*.5)) * 2.2;
-  home = {pos:new THREE.Vector3(dist*.7,dist*.55+size.y/2,dist*.75),
-          tgt:new THREE.Vector3(0,size.y/2,0)};
+  // Blickrichtung als feste Richtung um die Mitte herum — frueher stand die
+  // Kamera bei hohen Modellen fast senkrecht darueber, weil die volle
+  // Modellhoehe auf die Kamerahoehe addiert wurde.
+  const tgt = new THREE.Vector3(0, size.y/2, 0);
+  const dir = new THREE.Vector3(.62,.42,.66).normalize().multiplyScalar(dist);
+  home = {pos: tgt.clone().add(dir), tgt};
   cam.near = radius/200; cam.far = radius*60; cam.updateProjectionMatrix();
   controls.minDistance = radius*.2; controls.maxDistance = radius*12;
   resetView();
@@ -148,24 +184,14 @@ new GLTFLoader().load(url, g=>{
     }
   });
   fit(g.scene);
-  if(g.animations.length){
-    mixer = new THREE.AnimationMixer(g.scene);
-    let action = mixer.clipAction(g.animations[0]); action.play();
-    const sel = document.getElementById('clips');
-    if(g.animations.length > 1){
-      sel.hidden = false;
-      g.animations.forEach((c,i)=>{
-        const o = document.createElement('option');
-        o.value = i; o.textContent = c.name || ('Clip ' + (i+1));
-        sel.append(o);
-      });
-      sel.onchange = ()=>{
-        action.fadeOut(.2);
-        action = mixer.clipAction(g.animations[+sel.value]);
-        action.reset().fadeIn(.2).play();
-      };
-    }
-  }
+
+  // Eigene Clips zuerst; passende Fremdbibliotheken kommen asynchron dazu.
+  mixer = new THREE.AnimationMixer(g.scene);
+  root3d = g.scene;
+  for(const c of g.animations) addClip(c, 'Eigene Animationen');
+  if(g.animations.length) play(0);
+  loadLibs();
+
   const name = file.split('/').pop().replace(/\.(gltf|glb)$/,'').replace(/\.gltf$/,'');
   document.title = name + ' · 3D-Asset-Katalog';
   document.getElementById('title').textContent = name.replace(/[_-]/g,' ');
@@ -176,6 +202,71 @@ new GLTFLoader().load(url, g=>{
     (g.animations.length ? '<br><b>' + g.animations.length + '</b> Animation(en)' : '') +
     '<br>Ziehen = drehen · Scrollen = zoomen · Rechts ziehen = schieben';
 }, undefined, e=>{ msg.textContent = 'Konnte das Modell nicht laden.'; });
+
+// Fremdanimationen: Bibliotheken mit derselben Rig-Signatur. Die Clips
+// werden erst beim Auswaehlen geladen, sonst waeren es 12 Dateien a ~1 MB.
+async function loadLibs(){
+  let data;
+  try{ data = await (await fetch('rigs.json')).json(); }catch(e){ return; }
+  const rig = data.rigs[file];
+  if(!rig) return;
+  const myPack = file.split('/')[0];
+  const libs = data.libs
+    .filter(l => l.rig === rig && l.file !== file)
+    .sort((a,b)=> (b.file.startsWith(myPack) - a.file.startsWith(myPack))
+                  || a.label.localeCompare(b.label));
+  const seen = new Set(clips.map(c=>c.name));
+  for(const lib of libs){
+    const fresh = lib.clips.filter(n => !seen.has(n));
+    if(!fresh.length) continue;
+    for(const n of fresh){
+      seen.add(n);
+      clips.push({clip: null, lib, name: n, group: lib.label});
+    }
+  }
+  refreshClipList();
+  if(clips.length && !action) sel.value = '';
+  const extra = clips.filter(c=>c.lib).length;
+  const hud = document.getElementById('hud');
+  if(extra && hud) hud.insertAdjacentHTML('afterbegin',
+    '<b>' + extra + '</b> Clips aus der passenden Rig-Bibliothek<br>');
+}
+
+// Beim Uebertragen auf eine andere Figur nur die Rotationen nehmen (plus die
+// Position von root/hips fuer die Fortbewegung). Die Scale-Tracks gehoeren
+// zu den Proportionen des Mannequins — auf einer Figur blasen sie z.B. den
+// Helm auf, weil KayKit Kopfgroessen ueber die Knochenskalierung loest.
+function retarget(clip){
+  const keep = clip.tracks.filter(t=>{
+    if(t.name.endsWith('.scale')) return false;
+    if(t.name.endsWith('.position')) return /^(root|hips)\./.test(t.name);
+    return true;
+  });
+  const out = new THREE.AnimationClip(clip.name, clip.duration, keep);
+  out.blendMode = clip.blendMode;
+  return out;
+}
+
+async function ensureClip(i){
+  const c = clips[i];
+  if(c.clip) return c.clip;
+  const url = 'models/' + c.lib.file.split('/').map(encodeURIComponent).join('/');
+  if(!libCache.has(c.lib.file)){
+    libCache.set(c.lib.file, new Promise((res,rej)=>
+      new GLTFLoader().load(url, g=>res(g.animations), undefined, rej)));
+  }
+  const anims = await libCache.get(c.lib.file);
+  const src = anims.find(a => a.name === c.name);
+  c.clip = src ? retarget(src) : null;
+  return c.clip;
+}
+
+sel.addEventListener('change', async ()=>{
+  const i = +sel.value;
+  sel.disabled = true;
+  try{ if(await ensureClip(i)) play(i); }
+  finally{ sel.disabled = false; }
+});
 
 // UI
 let spin = true, wire = false;

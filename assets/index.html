@@ -42,11 +42,16 @@ input:focus,select:focus{border-color:var(--acc)}
 .card:hover .fav{opacity:1}
 .fav.on{color:var(--acc2);opacity:1}
 .fav:hover{color:var(--acc2)}
-#favBtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+.anim{position:absolute;top:6px;left:6px;padding:1px 7px;border-radius:7px;
+  background:rgba(20,22,28,.72);color:var(--acc);font-size:11px;font-weight:600;
+  letter-spacing:.3px;pointer-events:none}
+#favBtn,#animBtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
   border-radius:8px;padding:8px 13px;font:inherit;font-size:14px;cursor:pointer;
   white-space:nowrap}
 #favBtn:hover{border-color:var(--acc2)}
 #favBtn[aria-pressed="true"]{border-color:var(--acc2);color:var(--acc2)}
+#animBtn:hover{border-color:var(--acc)}
+#animBtn[aria-pressed="true"]{border-color:var(--acc);color:var(--acc)}
 .sec{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;
   margin:14px 0 -2px;padding-bottom:7px;border-bottom:1px solid var(--line)}
 .sec:first-child{margin-top:0}
@@ -72,6 +77,7 @@ footer a{color:var(--acc)}
       <option value="pack">Pack</option>
       <option value="size">Größe</option>
     </select>
+    <button id="animBtn" aria-pressed="false" title="Nur Modelle mit Animationen">▶ Animiert</button>
     <button id="favBtn" aria-pressed="false" title="Nur Favoriten zeigen">★ Favoriten</button>
   </div>
 </header>
@@ -97,6 +103,7 @@ const packEl = document.getElementById('pack');
 const sortEl = document.getElementById('sort');
 const countEl = document.getElementById('count');
 const favBtn = document.getElementById('favBtn');
+const animBtn = document.getElementById('animBtn');
 
 // --- Favoriten (localStorage) und Ansichtszustand (sessionStorage) ---
 const FAV_KEY = 'kaykit.favs', STATE_KEY = 'kaykit.state';
@@ -105,12 +112,12 @@ try{ favs = new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); }catch(e
 function saveFavs(){
   try{ localStorage.setItem(FAV_KEY, JSON.stringify([...favs])); }catch(e){}
 }
-let favOnly = false;
+let favOnly = false, animOnly = false;
 function saveState(){
   try{
     sessionStorage.setItem(STATE_KEY, JSON.stringify({
       q: qEl.value, pack: packEl.value, sort: sortEl.value,
-      favOnly, y: scrollY
+      favOnly, animOnly, y: scrollY
     }));
   }catch(e){}
 }
@@ -246,6 +253,13 @@ function render(){
     m.innerHTML = '<div class="nm"></div><div class="pk"></div>';
     m.firstChild.textContent = it.name;
     m.lastChild.textContent = it.packLabel + (it.group ? ' · ' + it.group : '');
+    if(it.animated){
+      const t = document.createElement('span');
+      t.className = 'anim';
+      t.textContent = it.anim ? '▶ ' + it.anim : '▶';
+      t.title = it.anim ? it.anim + ' eigene Clips' : 'Animationen aus der Rig-Bibliothek';
+      a.append(t);
+    }
     const b = document.createElement('button');
     b.className = 'fav' + (favs.has(it.file) ? ' on' : '');
     b.textContent = favs.has(it.file) ? '★' : '☆';
@@ -269,6 +283,7 @@ function apply(){
   view = items.filter(i =>
     (!p || i.pack === p) &&
     (!favOnly || favs.has(i.file)) &&
+    (!animOnly || i.animated) &&
     (!q || i.search.includes(q)));
   const s = sortEl.value;
   view.sort((a,b)=> s === 'size' ? b.size - a.size
@@ -283,8 +298,12 @@ function apply(){
 (async ()=>{
   const man = await (await fetch('manifest.json')).json();
   const labels = Object.fromEntries(man.packs.map(p=>[p.id,p.label]));
+  // "animiert" heisst: eigene Clips — oder ein Rig, fuer das es eine
+  // passende Animationsbibliothek gibt.
+  const rigsWithClips = new Set(man.libs.map(l=>l.rig));
   items = man.items.map(i=>({
     ...i,
+    animated: i.anim > 0 || (i.rig && rigsWithClips.has(i.rig)),
     packLabel: labels[i.pack] || i.pack,
     search: (i.name + ' ' + (labels[i.pack]||'') + ' ' + i.group).toLowerCase()
   }));
@@ -302,6 +321,8 @@ function apply(){
       sortEl.value = st.sort || 'name';
       favOnly = !!st.favOnly;
       favBtn.ariaPressed = favOnly;
+      animOnly = !!st.animOnly;
+      animBtn.ariaPressed = animOnly;
       restoreY = st.y || 0;
     }
   }catch(e){}
@@ -311,6 +332,9 @@ function apply(){
   sortEl.addEventListener('change', apply);
   favBtn.addEventListener('click', ()=>{
     favOnly = !favOnly; favBtn.ariaPressed = favOnly; apply();
+  });
+  animBtn.addEventListener('click', ()=>{
+    animOnly = !animOnly; animBtn.ariaPressed = animOnly; apply();
   });
   addEventListener('scroll', ()=>{
     clearTimeout(saveState.t);
