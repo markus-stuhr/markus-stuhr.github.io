@@ -26,8 +26,8 @@ input:focus,select:focus{border-color:var(--acc)}
 #q{flex:1;min-width:180px}
 .grid{display:grid;gap:12px;padding:18px 20px 60px;
   grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-  overflow:hidden;transition:transform .12s,border-color .12s}
+.card{position:relative;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden;transition:transform .12s,border-color .12s}
 .card:hover{transform:translateY(-2px);border-color:var(--acc)}
 .thumb{aspect-ratio:1;width:100%;display:block;background:
   radial-gradient(circle at 50% 40%,#2a2f3d,#191c24)}
@@ -35,6 +35,24 @@ input:focus,select:focus{border-color:var(--acc)}
 .nm{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pk{font-size:11px;color:var(--dim);margin-top:2px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
+.fav{position:absolute;top:6px;right:6px;width:30px;height:30px;padding:0;
+  border:0;border-radius:8px;background:rgba(20,22,28,.55);color:#6b7488;
+  font-size:16px;line-height:30px;cursor:pointer;opacity:.55;
+  transition:opacity .12s,color .12s}
+.card:hover .fav{opacity:1}
+.fav.on{color:var(--acc2);opacity:1}
+.fav:hover{color:var(--acc2)}
+#favBtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+  border-radius:8px;padding:8px 13px;font:inherit;font-size:14px;cursor:pointer;
+  white-space:nowrap}
+#favBtn:hover{border-color:var(--acc2)}
+#favBtn[aria-pressed="true"]{border-color:var(--acc2);color:var(--acc2)}
+.sec{grid-column:1/-1;display:flex;align-items:baseline;gap:10px;
+  margin:14px 0 -2px;padding-bottom:7px;border-bottom:1px solid var(--line)}
+.sec:first-child{margin-top:0}
+.sec h2{margin:0;font-size:14px;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--acc)}
+.sec span{font-size:12px;color:var(--dim)}
 .empty{padding:60px 20px;text-align:center;color:var(--dim)}
 footer{padding:0 20px 40px;color:var(--dim);font-size:12px}
 footer a{color:var(--acc)}
@@ -54,6 +72,7 @@ footer a{color:var(--acc)}
       <option value="pack">Pack</option>
       <option value="size">Größe</option>
     </select>
+    <button id="favBtn" aria-pressed="false" title="Nur Favoriten zeigen">★ Favoriten</button>
   </div>
 </header>
 <div class="grid" id="grid"></div>
@@ -77,6 +96,24 @@ const qEl = document.getElementById('q');
 const packEl = document.getElementById('pack');
 const sortEl = document.getElementById('sort');
 const countEl = document.getElementById('count');
+const favBtn = document.getElementById('favBtn');
+
+// --- Favoriten (localStorage) und Ansichtszustand (sessionStorage) ---
+const FAV_KEY = 'kaykit.favs', STATE_KEY = 'kaykit.state';
+let favs = new Set();
+try{ favs = new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); }catch(e){}
+function saveFavs(){
+  try{ localStorage.setItem(FAV_KEY, JSON.stringify([...favs])); }catch(e){}
+}
+let favOnly = false;
+function saveState(){
+  try{
+    sessionStorage.setItem(STATE_KEY, JSON.stringify({
+      q: qEl.value, pack: packEl.value, sort: sortEl.value,
+      favOnly, y: scrollY
+    }));
+  }catch(e){}
+}
 
 // --- ein einziger WebGL-Kontext rendert alle Thumbnails nacheinander und
 //     kopiert das Ergebnis in die 2D-Canvas der jeweiligen Karte.
@@ -159,12 +196,45 @@ function renderThumb(canvas){
   });
 }
 
+// Zwischenueberschriften: bei Sortierung nach Pack das Pack (bzw. die
+// Untergruppe, wenn ohnehin ein Pack gefiltert ist), bei Name der
+// Anfangsbuchstabe. Nach Groesse sortiert ergibt keine sinnvolle Gruppe.
+function sectionOf(it){
+  const s = sortEl.value;
+  if(s === 'pack') return packEl.value
+    ? (it.group || 'Ohne Untergruppe')
+    : it.packLabel;
+  if(s === 'name') return (it.name[0] || '#').toUpperCase();
+  return null;
+}
+
 function render(){
   grid.innerHTML = '';
   countEl.textContent = view.length + ' von ' + items.length + ' Modellen';
-  if(!view.length){ grid.innerHTML = '<div class="empty">Nichts gefunden.</div>'; return; }
-  const frag = document.createDocumentFragment();
+  if(!view.length){
+    grid.innerHTML = '<div class="empty">' +
+      (favOnly ? 'Noch keine Favoriten — Stern auf einer Karte antippen.' : 'Nichts gefunden.') +
+      '</div>';
+    return;
+  }
+  const counts = new Map();
   for(const it of view){
+    const k = sectionOf(it);
+    if(k !== null) counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  const frag = document.createDocumentFragment();
+  let sec = null;
+  for(const it of view){
+    const s = sectionOf(it);
+    if(s !== null && s !== sec){
+      sec = s;
+      const h = document.createElement('div');
+      h.className = 'sec';
+      h.innerHTML = '<h2></h2><span></span>';
+      h.firstChild.textContent = sec;
+      h.lastChild.textContent = counts.get(sec) + ' Modelle';
+      frag.append(h);
+    }
     const a = document.createElement('a');
     a.className = 'card';
     a.href = 'model.html?m=' + encodeURIComponent(it.file);
@@ -176,7 +246,19 @@ function render(){
     m.innerHTML = '<div class="nm"></div><div class="pk"></div>';
     m.firstChild.textContent = it.name;
     m.lastChild.textContent = it.packLabel + (it.group ? ' · ' + it.group : '');
-    a.append(c,m); frag.append(a); io.observe(c);
+    const b = document.createElement('button');
+    b.className = 'fav' + (favs.has(it.file) ? ' on' : '');
+    b.textContent = favs.has(it.file) ? '★' : '☆';
+    b.title = 'Favorit';
+    b.addEventListener('click', ev=>{
+      ev.preventDefault(); ev.stopPropagation();
+      if(favs.has(it.file)) favs.delete(it.file); else favs.add(it.file);
+      saveFavs();
+      b.classList.toggle('on', favs.has(it.file));
+      b.textContent = favs.has(it.file) ? '★' : '☆';
+      if(favOnly) apply();                       // aus der Favoritenliste entfernen
+    });
+    a.append(c,m,b); frag.append(a); io.observe(c);
   }
   grid.append(frag);
 }
@@ -186,13 +268,16 @@ function apply(){
   const p = packEl.value;
   view = items.filter(i =>
     (!p || i.pack === p) &&
+    (!favOnly || favs.has(i.file)) &&
     (!q || i.search.includes(q)));
   const s = sortEl.value;
   view.sort((a,b)=> s === 'size' ? b.size - a.size
-    : s === 'pack' ? (a.pack.localeCompare(b.pack) || a.name.localeCompare(b.name))
+    : s === 'pack' ? (a.pack.localeCompare(b.pack) || a.group.localeCompare(b.group)
+        || a.name.localeCompare(b.name))
     : a.name.localeCompare(b.name));
   queue.length = 0;
   render();
+  saveState();
 }
 
 (async ()=>{
@@ -208,10 +293,44 @@ function apply(){
     o.value = p.id; o.textContent = p.label + ' (' + p.count + ')';
     packEl.append(o);
   }
+  let restoreY = 0;
+  try{
+    const st = JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null');
+    if(st){
+      qEl.value = st.q || '';
+      if([...packEl.options].some(o=>o.value === st.pack)) packEl.value = st.pack;
+      sortEl.value = st.sort || 'name';
+      favOnly = !!st.favOnly;
+      favBtn.ariaPressed = favOnly;
+      restoreY = st.y || 0;
+    }
+  }catch(e){}
+
   qEl.addEventListener('input', apply);
   packEl.addEventListener('change', apply);
   sortEl.addEventListener('change', apply);
+  favBtn.addEventListener('click', ()=>{
+    favOnly = !favOnly; favBtn.ariaPressed = favOnly; apply();
+  });
+  addEventListener('scroll', ()=>{
+    clearTimeout(saveState.t);
+    saveState.t = setTimeout(saveState, 150);
+  }, {passive:true});
+  addEventListener('pagehide', saveState);
+
+  history.scrollRestoration = 'manual';
   apply();
+  // Der Browser setzt die Scrollposition nach einem Zurueck teils selbst noch
+  // einmal zurueck; deshalb mehrfach nachfassen, bis der Nutzer selbst scrollt.
+  if(restoreY){
+    let manual = false;
+    const stop = ()=>{ manual = true; };
+    addEventListener('wheel', stop, {once:true, passive:true});
+    addEventListener('touchstart', stop, {once:true, passive:true});
+    const go = ()=>{ if(!manual && Math.abs(scrollY - restoreY) > 2) scrollTo(0, restoreY); };
+    requestAnimationFrame(go);
+    for(const t of [60,150,300,600]) setTimeout(go, t);
+  }
 })();
 </script>
 </body>

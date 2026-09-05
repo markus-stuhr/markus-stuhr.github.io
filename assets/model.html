@@ -7,7 +7,7 @@
 <script defer src="/analytics.js"></script>
 <style>
 :root{--bg:#14161c;--panel:#1c1f28;--panel2:#232733;--line:#2f3444;
-  --ink:#e9ecf3;--dim:#98a0b4;--acc:#7fd4a8}
+  --ink:#e9ecf3;--dim:#98a0b4;--acc:#7fd4a8;--acc2:#f0b45c}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;
@@ -35,6 +35,7 @@ button:hover{border-color:var(--acc)}
 select{background:rgba(28,31,40,.86);border:1px solid var(--line);color:var(--ink);
   border-radius:8px;padding:7px 10px;font:inherit;font-size:13px;max-width:170px}
 button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc)}
+#fav[aria-pressed="true"]{border-color:var(--acc2);color:var(--acc2)}
 .dl{text-decoration:none;text-align:center}
 .msg{position:absolute;inset:0;display:grid;place-items:center;color:var(--dim)}
 </style>
@@ -51,6 +52,7 @@ button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc)}
     <button id="wire" aria-pressed="false">Wireframe</button>
     <button id="grid" aria-pressed="true">Boden</button>
     <button id="reset">Ansicht</button>
+    <button id="fav" aria-pressed="false">☆ Favorit</button>
     <select id="clips" hidden></select>
     <a class="back dl" id="dl" download>Download</a>
   </div>
@@ -187,6 +189,23 @@ wireBtn.onclick = ()=>{
 };
 gridBtn.onclick = ()=>{ helper.visible = !helper.visible; gridBtn.ariaPressed = helper.visible; };
 document.getElementById('reset').onclick = resetView;
+
+// Favorit — gleicher localStorage-Key wie im Katalog
+const FAV_KEY = 'kaykit.favs';
+const favBtn = document.getElementById('fav');
+let favs = new Set();
+try{ favs = new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); }catch(e){}
+function paintFav(){
+  const on = favs.has(file);
+  favBtn.ariaPressed = on;
+  favBtn.textContent = (on ? '★' : '☆') + ' Favorit';
+}
+favBtn.onclick = ()=>{
+  if(favs.has(file)) favs.delete(file); else favs.add(file);
+  try{ localStorage.setItem(FAV_KEY, JSON.stringify([...favs])); }catch(e){}
+  paintFav();
+};
+paintFav();
 addEventListener('keydown', e=>{ if(e.key === 'Escape') location.href = 'index.html'; });
 
 function resize(){
