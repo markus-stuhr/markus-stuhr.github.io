@@ -153,12 +153,21 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x243049);
 scene.fog = new THREE.Fog(0x243049, 55, 150);
 scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x39415c, 2.7));
+// Die Schattenkamera folgt der Figur. Ihr Ausschnitt muss die grossen
+// Gebaeude fassen, sonst brechen deren Schatten am Rand ab; die Sonne steht
+// entsprechend hoch, damit ein 16 Einheiten hohes Dach noch darunter passt.
+const SHADOW_R = 45;
 const sun = new THREE.DirectionalLight(0xfff2d8, 2.4);
-sun.position.set(8, 14, 6);
+sun.position.set(26, 34, 18);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(4096, 4096);
+// normalBias statt bias: der Versatz waechst sonst mit der Tiefenspanne
+// des groesseren Ausschnitts und drueckt die Schatten voellig weg.
+sun.shadow.normalBias = .04;
 const sc = sun.shadow.camera;
-sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.far = 80;
+sc.left = -SHADOW_R; sc.right = SHADOW_R;
+sc.top = SHADOW_R; sc.bottom = -SHADOW_R;
+sc.near = 1; sc.far = 200;
 sc.updateProjectionMatrix();
 scene.add(sun);
 
@@ -367,7 +376,7 @@ function jump(){
   const moving = [...keys].some(k => CODES[k]);
   airSpeed = moving ? (running ? SPEED.run : SPEED.walk) : 0;
   airX = Math.sin(facing); airZ = Math.cos(facing);
-  velY = running && moving ? 6.1 : 5.2;
+  velY = running && moving ? 7.0 : 6.2;      // reicht auf Kisten und Podeste
   grounded = false;
   setClip('Jump_Start', .06);
 }
@@ -499,7 +508,7 @@ function buildCharacter(gltf){
 
   setClip('Idle_A', 0);
   window.__sandbox = {scene, player, actions, char: ch, props,
-                      get houseGrid(){ return houseGrid; },
+                      get world(){ return world; },
                       shield: shieldObj, sword: swordObj,
                       get enemy(){ return enemy; },
                       get info(){ return {hp, dead, pos: pos.toArray(), facing}; }};
@@ -547,6 +556,9 @@ async function fillCharacterList(){
 
   await placeTown();
   await scatterProps();
+  // Erst wenn alles steht, die Saeulen bauen — dann kann man auf Kisten,
+  // Faesser und Podeste springen.
+  world = buildWorldGrid([townGroup, propGroup].filter(Boolean));
   document.getElementById('msg').remove();
   document.getElementById('keys').hidden = false;
   document.getElementById('state').hidden = false;
@@ -594,28 +606,29 @@ const TOWN = [                    // Datei, x, z, Drehung in Grad, Groesse
 ];
 const WALK_BAND = [.35, 1.70];                // Hoehe ueber dem Boden, in der
                                               // die Figur ansteht
-const FLOOR_MAX = 1.3;                        // bis hierhin gilt Geometrie als
-                                              // begehbarer Boden (Podeste)
 const GRID_CELL = .25;
 const STEP_MAX = .9;                          // hoehere Kanten sind unbegehbar
-let houseGrid = null;
-let curFloor = 0;                             // Bodenhoehe unter der Figur
 
-function buildGrid(obj){
-  obj.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(obj);
+// Die Welt wird in Saeulen zerlegt: pro Rasterzelle merkt sich ein Bitfeld,
+// in welchen 25-cm-Scheiben Geometrie steckt. Damit weiss die Figur nicht
+// nur, wo eine Wand steht, sondern auch, worauf sie stehen kann — Kisten,
+// Podeste, Mauerkronen. Ueber SLAB_TOP interessiert nichts mehr, so hoch
+// kommt niemand mit einem Sprung.
+const SLAB = .25, SLAB_N = 32;                // 32 Scheiben = 8 Einheiten hoch
+const SLAB_TOP = SLAB * SLAB_N;
+let world = null;
+
+function buildWorldGrid(objs){
+  const box = new THREE.Box3();
+  for(const o of objs){ o.updateMatrixWorld(true); box.expandByObject(o); }
   const pad = GRID_CELL;
   const minX = box.min.x - pad, minZ = box.min.z - pad;
   const nx = Math.ceil((box.max.x - box.min.x + 2*pad) / GRID_CELL);
   const nz = Math.ceil((box.max.z - box.min.z + 2*pad) / GRID_CELL);
-  const bits = new Uint8Array(nx * nz);
-  const floor = new Float32Array(nx * nz);    // Hoehe des begehbaren Bodens
+  const cols = new Uint32Array(nx * nz);
   const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
 
-  // Alle Dreiecke einmal einsammeln, danach zwei Durchgaenge: erst der
-  // Boden (flache Podeste), dann alles, was darueber im Weg steht.
-  const tris = [];
-  obj.traverse(mesh=>{
+  for(const root of objs) root.traverse(mesh=>{
     if(!mesh.isMesh) return;
     const posAttr = mesh.geometry.attributes.position, idx = mesh.geometry.index;
     const count = idx ? idx.count : posAttr.count;
@@ -625,49 +638,54 @@ function buildGrid(obj){
       a.fromBufferAttribute(posAttr, i0).applyMatrix4(mesh.matrixWorld);
       b.fromBufferAttribute(posAttr, i1).applyMatrix4(mesh.matrixWorld);
       c.fromBufferAttribute(posAttr, i2).applyMatrix4(mesh.matrixWorld);
-      tris.push({
-        loY: Math.min(a.y, b.y, c.y), hiY: Math.max(a.y, b.y, c.y),
-        x0: Math.floor((Math.min(a.x, b.x, c.x) - minX) / GRID_CELL),
-        x1: Math.floor((Math.max(a.x, b.x, c.x) - minX) / GRID_CELL),
-        z0: Math.floor((Math.min(a.z, b.z, c.z) - minZ) / GRID_CELL),
-        z1: Math.floor((Math.max(a.z, b.z, c.z) - minZ) / GRID_CELL),
-      });
+      const loY = Math.min(a.y, b.y, c.y), hiY = Math.max(a.y, b.y, c.y);
+      if(hiY <= .02 || loY >= SLAB_TOP) continue;        // Boden und Dachhoehe
+      const s0 = Math.max(0, Math.floor(loY / SLAB));
+      const s1 = Math.min(SLAB_N - 1, Math.floor(hiY / SLAB));
+      let mask = 0;
+      for(let s = s0; s <= s1; s++) mask |= (1 << s);
+      const x0 = Math.max(0, Math.floor((Math.min(a.x, b.x, c.x) - minX) / GRID_CELL));
+      const x1 = Math.min(nx-1, Math.floor((Math.max(a.x, b.x, c.x) - minX) / GRID_CELL));
+      const z0 = Math.max(0, Math.floor((Math.min(a.z, b.z, c.z) - minZ) / GRID_CELL));
+      const z1 = Math.min(nz-1, Math.floor((Math.max(a.z, b.z, c.z) - minZ) / GRID_CELL));
+      for(let z = z0; z <= z1; z++)
+        for(let x = x0; x <= x1; x++) cols[z*nx + x] |= mask;
     }
   });
-
-  const cells = (t, fn)=>{
-    for(let z = Math.max(0, t.z0); z <= Math.min(nz-1, t.z1); z++)
-      for(let x = Math.max(0, t.x0); x <= Math.min(nx-1, t.x1); x++)
-        fn(z*nx + x);
-  };
-  for(const t of tris)
-    if(t.hiY <= FLOOR_MAX)
-      cells(t, i=>{ if(t.hiY > floor[i]) floor[i] = t.hiY; });
-  for(const t of tris)
-    cells(t, i=>{
-      if(t.hiY > floor[i] + WALK_BAND[0] && t.loY < floor[i] + WALK_BAND[1])
-        bits[i] = 1;
-    });
-  return {minX, minZ, nx, nz, bits, floor};
+  return {minX, minZ, nx, nz, cols};
 }
 
-// Hoehe des Bodens an einer Stelle — Podeste tragen die Figur
-function floorAt(x, z){
-  const g = houseGrid;
+function columnAt(x, z){
+  const g = world;
   if(!g) return 0;
   const cx = Math.floor((x - g.minX) / GRID_CELL);
   const cz = Math.floor((z - g.minZ) / GRID_CELL);
   if(cx < 0 || cz < 0 || cx >= g.nx || cz >= g.nz) return 0;
-  return g.floor[cz*g.nx + cx];
+  return g.cols[cz*g.nx + cx];
 }
 
-function gridBlocked(g, x, z){
-  if(!g) return false;
-  const cx = Math.floor((x - g.minX) / GRID_CELL);
-  const cz = Math.floor((z - g.minZ) / GRID_CELL);
-  if(cx < 0 || cz < 0 || cx >= g.nx || cz >= g.nz) return false;
-  return g.bits[cz*g.nx + cx] === 1;
+// Hoehe der Flaeche, auf der die Figur an dieser Stelle steht: von den
+// Fuessen aus nach unten die erste belegte Scheibe suchen.
+function floorAt(x, z, fromY = 0){
+  const col = columnAt(x, z);
+  if(!col) return 0;
+  let s = Math.min(SLAB_N - 1, Math.floor((fromY + .3) / SLAB));
+  for(; s >= 0; s--) if(col & (1 << s)) return (s + 1) * SLAB;
+  return 0;
 }
+
+// Steht auf Fusshoehe etwas im Weg? Kopf- und Kniehoehe werden geprueft,
+// die Scheibe direkt unter den Fuessen ist der Boden und zaehlt nicht.
+function columnBlocks(col, feetY){
+  if(!col) return false;
+  const s0 = Math.floor((feetY + WALK_BAND[0]) / SLAB);
+  const s1 = Math.floor((feetY + WALK_BAND[1]) / SLAB);
+  for(let s = Math.max(0, s0); s <= Math.min(SLAB_N - 1, s1); s++)
+    if(col & (1 << s)) return true;
+  return false;
+}
+
+let townGroup = null, propGroup = null;
 
 async function placeTown(){
   const town = new THREE.Group();
@@ -686,7 +704,19 @@ async function placeTown(){
   }
   if(!town.children.length) return;
   scene.add(town);
-  houseGrid = buildGrid(town);
+  townGroup = town;
+}
+
+// Grober Test gegen die Gebaeude, damit beim Verteilen nichts im Haus landet
+const townBox = new THREE.Box3();
+function townBlocked(x, z){
+  if(!townGroup) return false;
+  for(const b of townGroup.children){
+    townBox.setFromObject(b);
+    if(x > townBox.min.x - .5 && x < townBox.max.x + .5 &&
+       z > townBox.min.z - .5 && z < townBox.max.z + .5) return true;
+  }
+  return false;
 }
 
 async function scatterProps(){
@@ -714,6 +744,9 @@ async function scatterProps(){
   }));
   const ok = loaded.filter(Boolean);
   if(!ok.length) return;
+  const group = new THREE.Group();
+  scene.add(group);
+  propGroup = group;
   let seed = 7;
   const rnd = ()=> (seed = (seed*1103515245 + 12345) % 2147483648) / 2147483648;
   for(let i = 0; i < 150; i++){
@@ -723,7 +756,7 @@ async function scatterProps(){
     if(Math.hypot(x, z - 4) < 4) continue;    // Startplatz frei lassen
     // nichts ins Haus oder in bereits gesetzte Requisiten stellen
     if(props.some(p => Math.hypot(x - p.x, z - p.z) < p.r + radius + .6)) continue;
-    if(gridBlocked(houseGrid, x, z)) continue;
+    if(townBlocked(x, z)) continue;
     const o = proto.clone(true);
     o.position.set(x, o.position.y, z);
     o.rotation.y = rnd()*Math.PI*2;
@@ -731,7 +764,7 @@ async function scatterProps(){
     o.scale.multiplyScalar(s);
     o.position.y *= s;
     o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
-    scene.add(o);
+    group.add(o);
     props.push({x, z, r: radius*s, tall: proto.userData.h*s > 1.6});
   }
 }
@@ -1029,14 +1062,15 @@ function tick(){
   player.position.set(pos.x, pos.y, pos.z);
 
   // Schwerkraft — der Boden kann ein Podest sein
-  const ground = floorAt(pos.x, pos.z);
-  curFloor = pos.y;
+  const ground = floorAt(pos.x, pos.z, pos.y);
   if(!grounded){
     velY -= 15*dt;
     pos.y += velY*dt;
     if(pos.y <= ground){
       pos.y = ground; velY = 0; grounded = true; setClip('Jump_Land', .05);
     }
+  } else if(pos.y - ground > .45){
+    grounded = false; velY = 0;               // ueber die Kante getreten
   } else if(Math.abs(pos.y - ground) > .001){
     // Stufen weich nehmen, damit die Figur nicht springt
     pos.y += (ground - pos.y) * Math.min(1, dt * 10);
@@ -1095,18 +1129,25 @@ function tick(){
     pos.x + Math.sin(camYaw.v)*camDist*cy,
     pos.y + 1.1 + camDist*sy,
     pos.z + Math.cos(camYaw.v)*camDist*cy);
-  // Kamera vor Baumstaemmen zurueckziehen, statt hindurchzuschauen
+  // Kamera zurueckziehen, wenn wirklich etwas dazwischen steht. Geprueft
+  // wird auf der Hoehe, die die Kamera an dieser Stelle haette — sonst
+  // zoepft jeder Busch am Boden die Kamera an die Figur heran.
+  const eye = new THREE.Vector3(pos.x, pos.y + 1.5, pos.z);
   let t = 1;
   for(let k = 1; k >= .3; k -= .1){
-    const cx = pos.x + (want.x - pos.x)*k, cz = pos.z + (want.z - pos.z)*k;
-    if(!gridBlocked(houseGrid, cx, cz) && !props.some(p => p.tall &&
-        (cx-p.x)*(cx-p.x) + (cz-p.z)*(cz-p.z) < (p.r + .5)*(p.r + .5))){ t = k; break; }
+    const cx = eye.x + (want.x - eye.x)*k,
+          cy = eye.y + (want.y - eye.y)*k,
+          cz = eye.z + (want.z - eye.z)*k;
+    const slab = Math.floor(cy / SLAB);
+    const col = columnAt(cx, cz);
+    const hit = slab >= 0 && slab < SLAB_N && (col & (1 << slab));
+    if(!hit){ t = k; break; }
     t = k;
   }
-  want.lerpVectors(new THREE.Vector3(pos.x, pos.y + 1.5, pos.z), want, t);
+  want.lerpVectors(eye, want, t);
   cam.position.lerp(want, Math.min(1, dt*9));
   cam.lookAt(pos.x, pos.y + 1.0, pos.z);
-  sun.position.set(pos.x + 8, 14, pos.z + 6);
+  sun.position.set(pos.x + 26, 34, pos.z + 18);
   sun.target.position.set(pos.x, 0, pos.z);
   sun.target.updateMatrixWorld();
 
@@ -1126,17 +1167,12 @@ function tick(){
 }
 
 function blocked(x, z){
-  for(const p of props){
-    const dx = x - p.x, dz = z - p.z;
-    if(dx*dx + dz*dz < (p.r + .35)*(p.r + .35)) return true;
+  const r = .3;                               // die Figur hat Breite
+  for(const [dx, dz] of [[r,0],[-r,0],[0,r],[0,-r],[0,0]]){
+    if(columnBlocks(columnAt(x + dx, z + dz), pos.y)) return true;
+    if(floorAt(x + dx, z + dz, pos.y) - pos.y > STEP_MAX) return true;
   }
-  // Das Haus als Raster — die Figur hat Breite, deshalb vier Punkte um sie
-  // herum pruefen statt nur ihre Mitte.
-  const r = .3;
-  if(gridBlocked(houseGrid, x + r, z) || gridBlocked(houseGrid, x - r, z)
-     || gridBlocked(houseGrid, x, z + r) || gridBlocked(houseGrid, x, z - r))
-    return true;
-  return floorAt(x, z) - curFloor > STEP_MAX;  // zu hohe Kante
+  return false;
 }
 
 function resize(){
