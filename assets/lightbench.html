@@ -1,0 +1,135 @@
+<!DOCTYPE html><meta charset="utf-8"><title>Lichter-Benchmark</title>
+<style>body{margin:0;background:#12151c;color:#e9ecf3;font:14px system-ui}
+#hud{position:fixed;left:10px;top:10px;background:#1c1f28cc;padding:10px 14px;
+border:1px solid #2f3444;border-radius:8px;line-height:1.6;white-space:pre}
+canvas{display:block;margin:0 auto}</style>
+<div id="hud">lädt …</div>
+<!--
+  Vergleicht die Kosten vieler Punktlichter in drei Renderpfaden:
+    ?mode=webgl            klassischer WebGL-Renderer (forward)
+    ?mode=webgpu&async=1   WebGPU mit Standardbeleuchtung
+    ?mode=tiled&async=1    WebGPU mit TiledLighting (Lichter in Kacheln)
+  Dazu &lights=64 fuer die Anzahl. 16.7 ms bedeutet Vsync-Limit, also 60 fps.
+-->
+<script>
+// Der Importmap muss vor dem ersten Modulimport stehen, deshalb wird er
+// abhaengig vom Modus per document.write eingesetzt: der klassische
+// WebGL-Renderer und der WebGPU-Renderer liegen in verschiedenen Builds.
+const P = new URLSearchParams(location.search);
+const MODE = P.get('mode') || 'webgl';        // webgl | webgpu | tiled
+const V = '0.180.0';
+const core = MODE === 'webgl'
+  ? `https://cdn.jsdelivr.net/npm/three@${V}/build/three.module.js`
+  : `https://cdn.jsdelivr.net/npm/three@${V}/build/three.webgpu.js`;
+document.write(`<script type="importmap">{"imports":{
+  "three": "${core}",
+  "three/webgpu": "https://cdn.jsdelivr.net/npm/three@${V}/build/three.webgpu.js",
+  "three/tsl": "https://cdn.jsdelivr.net/npm/three@${V}/build/three.tsl.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@${V}/examples/jsm/"
+}}<\/script>`);
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+
+const P = new URLSearchParams(location.search);
+const MODE = P.get('mode') || 'webgl';
+const LIGHTS = +(P.get('lights') || 12);
+const W = 900, H = 560;
+const hud = document.getElementById('hud');
+
+let renderer;
+if(MODE === 'webgl'){
+  renderer = new THREE.WebGLRenderer({antialias: true});
+} else {
+  renderer = new THREE.WebGPURenderer({antialias: true});
+  if(MODE === 'tiled'){
+    const {TiledLighting} = await import('three/addons/lighting/TiledLighting.js');
+    renderer.lighting = new TiledLighting();
+  }
+  await renderer.init();
+}
+renderer.setPixelRatio(1);
+renderer.setSize(W, H);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.append(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0e18);
+if(!P.has('noambient')) scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x39415c, .35));
+
+const ground = new THREE.Mesh(new THREE.CircleGeometry(60, 64).rotateX(-Math.PI/2),
+  new THREE.MeshStandardMaterial({color: 0x3d4a3a, roughness: 1}));
+scene.add(ground);
+
+// Kulisse aus echten Modellen, damit die Fragmentlast realistisch ist
+const load = p => new Promise(r => new GLTFLoader()
+  .load('models/' + p.split('/').map(encodeURIComponent).join('/'), r));
+const F = 'KayKit_Forest_Nature_Pack_1.0_FREE/Assets/gltf/';
+const D = 'KayKit_Dungeon_Pack_1.1_FREE/Assets/gltf/';
+const protos = await Promise.all([
+  load(F + 'Tree_1_A_Color1.gltf'), load(F + 'Rock_1_D_Color1.gltf'),
+  load(D + 'barrel_large.gltf'), load(D + 'crates_stacked.gltf'),
+].map(p => p.then(g => g.scene)));
+
+let seed = 3;
+const rnd = ()=> (seed = (seed*1103515245 + 12345) % 2147483648) / 2147483648;
+for(let i = 0; i < 140; i++){
+  const o = protos[Math.floor(rnd()*protos.length)].clone(true);
+  const a = rnd()*Math.PI*2, d = 4 + rnd()*46;
+  o.position.set(Math.cos(a)*d, 0, Math.sin(a)*d);
+  o.rotation.y = rnd()*Math.PI*2;
+  o.scale.multiplyScalar(1.6 + rnd());
+  scene.add(o);
+}
+
+const lights = [];
+for(let i = 0; i < LIGHTS; i++){
+  const l = new THREE.PointLight(0xffa54a, 9, 18, 2);
+  const a = i / LIGHTS * Math.PI * 2, d = 8 + (i % 4) * 9;
+  l.position.set(Math.cos(a)*d, 2.7, Math.sin(a)*d);
+  scene.add(l);
+  lights.push(l);
+}
+
+// Der Tiled-Knoten legt seinen Compute-Pass erst in setSize() an — ohne
+// diesen Aufruf wirft der erste Cache-Key und es wird nichts gezeichnet.
+const cam = new THREE.PerspectiveCamera(50, W/H, .1, 300);
+cam.position.set(0, 9, 22);
+cam.lookAt(0, 1, 0);
+if(MODE === 'tiled') renderer.lighting.getNode(scene, cam).setSize(W, H);
+
+let n = 0, last = performance.now();
+const times = [];
+renderer.setAnimationLoop(()=>{
+  const t = performance.now() * .001;
+  for(let i = 0; i < lights.length; i++)
+    lights[i].intensity = 9 + Math.sin(t*9 + i) * 3;
+  try{ if(P.has('async')) renderer.renderAsync(scene, cam).catch(err=>{
+         hud.textContent = 'ASYNC-FEHLER: ' + err.message + '\n' +
+           String(err.stack).split('\n').slice(0,4).join('\n');
+         renderer.setAnimationLoop(null);
+       }); else renderer.render(scene, cam); }
+  catch(err){
+    hud.textContent = 'FEHLER: ' + err.message + '\n' +
+      String(err.stack).split('\n').slice(0,4).join('\n');
+    renderer.setAnimationLoop(null);
+    return;
+  }
+  const now = performance.now();
+  if(n++ > 30 && !window.__result) times.push(now - last);   // Aufwaermphase ueberspringen
+  last = now;
+  if(times.length === 150){
+    const s = times.slice().sort((a, b) => a - b);
+    hud.textContent =
+      `Modus: ${MODE}\nLichter: ${LIGHTS}\n` +
+      `Median: ${s[75].toFixed(1)} ms\n` +
+      `p90: ${s[135].toFixed(1)} ms\n` +
+      `min: ${s[0].toFixed(1)} ms`;
+    window.__result = {mode: MODE, lights: LIGHTS, median: +s[75].toFixed(1)};
+
+  } else if(times.length % 30 === 0){
+    hud.textContent = `Modus: ${MODE} · Lichter: ${LIGHTS} · messe … ${times.length}/150`;
+  }
+});
+</script>
