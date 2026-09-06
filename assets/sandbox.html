@@ -135,6 +135,8 @@ const LIB_MELEE = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Ri
 const SWORD = 'KayKit_Adventurers_2.0_FREE/Assets/gltf/sword_1handed.gltf';
 const SHIELD = 'KayKit_Adventurers_2.0_FREE/Assets/gltf/shield_round.gltf';
 
+const WORLD_R = 60;                           // begehbarer Radius der Insel
+
 const url = p => M + p.split('/').map(encodeURIComponent).join('/');
 const loader = new GLTFLoader();
 const load = p => new Promise((res, rej) => loader.load(url(p), res, undefined, rej));
@@ -149,28 +151,28 @@ stage.append(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x243049);
-scene.fog = new THREE.Fog(0x243049, 28, 62);
+scene.fog = new THREE.Fog(0x243049, 55, 150);
 scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x39415c, 2.7));
 const sun = new THREE.DirectionalLight(0xfff2d8, 2.4);
 sun.position.set(8, 14, 6);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 const sc = sun.shadow.camera;
-sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.far = 60;
+sc.left = -18; sc.right = 18; sc.top = 18; sc.bottom = -18; sc.far = 80;
 sc.updateProjectionMatrix();
 scene.add(sun);
 
 const ground = new THREE.Mesh(
-  new THREE.CircleGeometry(30, 64).rotateX(-Math.PI/2),
+  new THREE.CircleGeometry(WORLD_R + 4, 72).rotateX(-Math.PI/2),
   new THREE.MeshStandardMaterial({color:0x3d4a3a, roughness:1}));
 ground.receiveShadow = true;
 scene.add(ground);
-const grid = new THREE.GridHelper(60, 60, 0x54604f, 0x46523f);
+const grid = new THREE.GridHelper((WORLD_R + 4) * 2, 64, 0x54604f, 0x46523f);
 grid.position.y = .002;
 grid.material.transparent = true; grid.material.opacity = .35;
 scene.add(grid);
 
-const cam = new THREE.PerspectiveCamera(50, 1, .1, 200);
+const cam = new THREE.PerspectiveCamera(50, 1, .1, 400);
 
 // --- Kamera: Drittperson, folgt der Figur, Maus dreht darum herum -------
 const camYaw = {v: Math.PI*0.15}, camPitch = {v: 0.38};
@@ -497,6 +499,7 @@ function buildCharacter(gltf){
 
   setClip('Idle_A', 0);
   window.__sandbox = {scene, player, actions, char: ch, props,
+                      get houseGrid(){ return houseGrid; },
                       shield: shieldObj, sword: swordObj,
                       get enemy(){ return enemy; },
                       get info(){ return {hp, dead, pos: pos.toArray(), facing}; }};
@@ -542,7 +545,7 @@ async function fillCharacterList(){
   buildEnemy(await load(ENEMY_FILE));
   paintHealth();
 
-  await placeHouse();
+  await placeTown();
   await scatterProps();
   document.getElementById('msg').remove();
   document.getElementById('keys').hidden = false;
@@ -568,30 +571,122 @@ function fitHeight(obj, h){
 // --- Kulisse ------------------------------------------------------------
 // Ein paar Requisiten aus den Packs, damit man beim Laufen etwas sieht.
 const props = [];                             // {x,z,r} fuer die Kollision
-// Ein Haus als fester Punkt in der Szene — daran merkt man beim Laufen,
-// wo man ist. Die Kollision wird durch zwei Kreise angenaehert, das reicht
-// fuer einen rechteckigen Grundriss.
-const HOUSE = 'KayKit Medieval Builder Pack 1.0/Models/objects/gltf/'
-            + 'archeryrange.gltf.glb';
-async function placeHouse(){
-  let o;
-  try{ o = (await load(HOUSE)).scene; }catch(e){ return; }
-  fitHeight(o, 4.6);
-  o.position.x = -7; o.position.z = -9;
-  o.rotation.y = Math.PI * .78;               // Front zeigt zum Startplatz
-  o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
-  scene.add(o);
-  const box = new THREE.Box3().setFromObject(o);
-  const size = box.getSize(new THREE.Vector3());
-  const c = box.getCenter(new THREE.Vector3());
-  // Enger als der Umriss: zum Modell gehoeren Zaun und Zielscheibe, und die
-  // sollen begehbar bleiben.
-  const r = Math.min(size.x, size.z) * .30;
-  const off = (Math.max(size.x, size.z) * .5 - r) * .8;
-  const dir = size.x > size.z ? [1, 0] : [0, 1];
-  for(const sgn of [-1, 1])
-    props.push({x: c.x + dir[0]*off*sgn, z: c.z + dir[1]*off*sgn,
-                r, tall: true});
+// Ein Haus als fester Punkt in der Szene. Es soll teilweise begehbar sein
+// — Vorplatz, Unterstand und die Luecken zwischen den Pfosten. Deshalb
+// keine groben Kreise, sondern ein Raster: die Geometrie wird in Lauf- und
+// Brusthoehe abgetastet, und nur was dort im Weg steht, blockiert.
+// Kleine Stadt aus dem Medieval Builder Pack. Alle Gebaeude teilen einen
+// Massstab, damit die Groessenverhaeltnisse stimmen — Hoehe je Modell zu
+// normieren wuerde den Brunnen so hoch wie die Kaserne machen.
+const TOWN_DIR = 'KayKit Medieval Builder Pack 1.0/Models/objects/gltf/';
+const TOWN_SCALE = 10.0;                      // an der Tuerhoehe ausgerichtet
+const TOWN = [                                // Datei, x, z, Drehung in Grad
+  ['well', -10, -26, 0],
+  ['market', -28, -26, 20],
+  ['house', 8, -26, -25],
+  ['house', -26, -42, 65],
+  ['house', 8, -42, 200],
+  ['barracks', -10, -44, 8],
+  ['watchtower', 24, -34, -15],
+  ['mill', -42, -26, -30],
+  ['lumbermill', -38, -10, 110],
+  ['archeryrange', 24, -14, 140],
+];
+const WALK_BAND = [.35, 1.70];                // Hoehe ueber dem Boden, in der
+                                              // die Figur ansteht
+const FLOOR_MAX = 1.3;                        // bis hierhin gilt Geometrie als
+                                              // begehbarer Boden (Podeste)
+const GRID_CELL = .25;
+const STEP_MAX = .9;                          // hoehere Kanten sind unbegehbar
+let houseGrid = null;
+let curFloor = 0;                             // Bodenhoehe unter der Figur
+
+function buildGrid(obj){
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj);
+  const pad = GRID_CELL;
+  const minX = box.min.x - pad, minZ = box.min.z - pad;
+  const nx = Math.ceil((box.max.x - box.min.x + 2*pad) / GRID_CELL);
+  const nz = Math.ceil((box.max.z - box.min.z + 2*pad) / GRID_CELL);
+  const bits = new Uint8Array(nx * nz);
+  const floor = new Float32Array(nx * nz);    // Hoehe des begehbaren Bodens
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+
+  // Alle Dreiecke einmal einsammeln, danach zwei Durchgaenge: erst der
+  // Boden (flache Podeste), dann alles, was darueber im Weg steht.
+  const tris = [];
+  obj.traverse(mesh=>{
+    if(!mesh.isMesh) return;
+    const posAttr = mesh.geometry.attributes.position, idx = mesh.geometry.index;
+    const count = idx ? idx.count : posAttr.count;
+    for(let i = 0; i < count; i += 3){
+      const i0 = idx ? idx.getX(i) : i, i1 = idx ? idx.getX(i+1) : i+1,
+            i2 = idx ? idx.getX(i+2) : i+2;
+      a.fromBufferAttribute(posAttr, i0).applyMatrix4(mesh.matrixWorld);
+      b.fromBufferAttribute(posAttr, i1).applyMatrix4(mesh.matrixWorld);
+      c.fromBufferAttribute(posAttr, i2).applyMatrix4(mesh.matrixWorld);
+      tris.push({
+        loY: Math.min(a.y, b.y, c.y), hiY: Math.max(a.y, b.y, c.y),
+        x0: Math.floor((Math.min(a.x, b.x, c.x) - minX) / GRID_CELL),
+        x1: Math.floor((Math.max(a.x, b.x, c.x) - minX) / GRID_CELL),
+        z0: Math.floor((Math.min(a.z, b.z, c.z) - minZ) / GRID_CELL),
+        z1: Math.floor((Math.max(a.z, b.z, c.z) - minZ) / GRID_CELL),
+      });
+    }
+  });
+
+  const cells = (t, fn)=>{
+    for(let z = Math.max(0, t.z0); z <= Math.min(nz-1, t.z1); z++)
+      for(let x = Math.max(0, t.x0); x <= Math.min(nx-1, t.x1); x++)
+        fn(z*nx + x);
+  };
+  for(const t of tris)
+    if(t.hiY <= FLOOR_MAX)
+      cells(t, i=>{ if(t.hiY > floor[i]) floor[i] = t.hiY; });
+  for(const t of tris)
+    cells(t, i=>{
+      if(t.hiY > floor[i] + WALK_BAND[0] && t.loY < floor[i] + WALK_BAND[1])
+        bits[i] = 1;
+    });
+  return {minX, minZ, nx, nz, bits, floor};
+}
+
+// Hoehe des Bodens an einer Stelle — Podeste tragen die Figur
+function floorAt(x, z){
+  const g = houseGrid;
+  if(!g) return 0;
+  const cx = Math.floor((x - g.minX) / GRID_CELL);
+  const cz = Math.floor((z - g.minZ) / GRID_CELL);
+  if(cx < 0 || cz < 0 || cx >= g.nx || cz >= g.nz) return 0;
+  return g.floor[cz*g.nx + cx];
+}
+
+function gridBlocked(g, x, z){
+  if(!g) return false;
+  const cx = Math.floor((x - g.minX) / GRID_CELL);
+  const cz = Math.floor((z - g.minZ) / GRID_CELL);
+  if(cx < 0 || cz < 0 || cx >= g.nx || cz >= g.nz) return false;
+  return g.bits[cz*g.nx + cx] === 1;
+}
+
+async function placeTown(){
+  const town = new THREE.Group();
+  const loaded = await Promise.all(TOWN.map(async ([name, x, z, deg])=>{
+    try{ return [(await load(TOWN_DIR + name + '.gltf.glb')).scene, x, z, deg]; }
+    catch(e){ return null; }
+  }));
+  for(const entry of loaded){
+    if(!entry) continue;
+    const [o, x, z, deg] = entry;
+    o.scale.multiplyScalar(TOWN_SCALE);
+    o.position.set(x, 0, z);
+    o.rotation.y = deg * Math.PI / 180;
+    o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
+    town.add(o);
+  }
+  if(!town.children.length) return;
+  scene.add(town);
+  houseGrid = buildGrid(town);
 }
 
 async function scatterProps(){
@@ -621,13 +716,14 @@ async function scatterProps(){
   if(!ok.length) return;
   let seed = 7;
   const rnd = ()=> (seed = (seed*1103515245 + 12345) % 2147483648) / 2147483648;
-  for(let i = 0; i < 60; i++){
+  for(let i = 0; i < 150; i++){
     const [proto, radius] = ok[Math.floor(rnd()*ok.length)];
-    const a = rnd()*Math.PI*2, d = 5 + rnd()*21;
+    const a = rnd()*Math.PI*2, d = 6 + rnd()*(WORLD_R - 10);
     const x = Math.cos(a)*d, z = Math.sin(a)*d;
-    if(Math.hypot(x, z - 4) < 3) continue;    // Startplatz frei lassen
+    if(Math.hypot(x, z - 4) < 4) continue;    // Startplatz frei lassen
     // nichts ins Haus oder in bereits gesetzte Requisiten stellen
     if(props.some(p => Math.hypot(x - p.x, z - p.z) < p.r + radius + .6)) continue;
+    if(gridBlocked(houseGrid, x, z)) continue;
     const o = proto.clone(true);
     o.position.set(x, o.position.y, z);
     o.rotation.y = rnd()*Math.PI*2;
@@ -697,10 +793,10 @@ function enemySpawn(){
   for(let i = 0; i < 12; i++){
     const a = Math.random()*Math.PI*2;
     enemy.pos.set(pos.x + Math.cos(a)*d, 0, pos.z + Math.sin(a)*d);
-    if(Math.hypot(enemy.pos.x, enemy.pos.z) < 26) break;
+    if(Math.hypot(enemy.pos.x, enemy.pos.z) < WORLD_R - 4) break;
   }
   const r = Math.hypot(enemy.pos.x, enemy.pos.z);
-  if(r > 26){ enemy.pos.x *= 26/r; enemy.pos.z *= 26/r; }
+  if(r > WORLD_R - 4){ enemy.pos.x *= (WORLD_R - 4)/r; enemy.pos.z *= (WORLD_R - 4)/r; }
   enemy.aggro = false;
   enemy.hp = ENEMY_HP;
   enemy.state = 'spawn';
@@ -918,7 +1014,7 @@ function tick(){
     else if(!blocked(nx, pos.z)) pos.x = nx;
     else if(!blocked(pos.x, nz)) pos.z = nz;
     const r = Math.hypot(pos.x, pos.z);
-    if(r > 28){ pos.x *= 28/r; pos.z *= 28/r; }
+    if(r > WORLD_R){ pos.x *= WORLD_R/r; pos.z *= WORLD_R/r; }
   }
 
   // Ausrichtung: normalerweise in Laufrichtung drehen, mit Alt die
@@ -932,11 +1028,18 @@ function tick(){
   player.rotation.y = facing;
   player.position.set(pos.x, pos.y, pos.z);
 
-  // Schwerkraft
+  // Schwerkraft — der Boden kann ein Podest sein
+  const ground = floorAt(pos.x, pos.z);
+  curFloor = pos.y;
   if(!grounded){
     velY -= 15*dt;
     pos.y += velY*dt;
-    if(pos.y <= 0){ pos.y = 0; velY = 0; grounded = true; setClip('Jump_Land', .05); }
+    if(pos.y <= ground){
+      pos.y = ground; velY = 0; grounded = true; setClip('Jump_Land', .05);
+    }
+  } else if(Math.abs(pos.y - ground) > .001){
+    // Stufen weich nehmen, damit die Figur nicht springt
+    pos.y += (ground - pos.y) * Math.min(1, dt * 10);
   }
 
   // Animationszustand
@@ -996,7 +1099,7 @@ function tick(){
   let t = 1;
   for(let k = 1; k >= .3; k -= .1){
     const cx = pos.x + (want.x - pos.x)*k, cz = pos.z + (want.z - pos.z)*k;
-    if(!props.some(p => p.tall &&
+    if(!gridBlocked(houseGrid, cx, cz) && !props.some(p => p.tall &&
         (cx-p.x)*(cx-p.x) + (cz-p.z)*(cz-p.z) < (p.r + .5)*(p.r + .5))){ t = k; break; }
     t = k;
   }
@@ -1027,7 +1130,13 @@ function blocked(x, z){
     const dx = x - p.x, dz = z - p.z;
     if(dx*dx + dz*dz < (p.r + .35)*(p.r + .35)) return true;
   }
-  return false;
+  // Das Haus als Raster — die Figur hat Breite, deshalb vier Punkte um sie
+  // herum pruefen statt nur ihre Mitte.
+  const r = .3;
+  if(gridBlocked(houseGrid, x + r, z) || gridBlocked(houseGrid, x - r, z)
+     || gridBlocked(houseGrid, x, z + r) || gridBlocked(houseGrid, x, z - r))
+    return true;
+  return floorAt(x, z) - curFloor > STEP_MAX;  // zu hohe Kante
 }
 
 function resize(){
