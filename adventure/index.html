@@ -1,0 +1,969 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Adventure</title>
+<script defer src="/analytics.js"></script>
+<style>
+  :root{ --ink:#f2f5f8; --dim:#aab3c0; }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#8fd0e8;
+    font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink)}
+  canvas{display:block}
+  #stage{position:fixed;inset:0}
+
+  .panel{position:fixed;background:rgba(24,30,42,.82);backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:11px 13px}
+
+  #help{left:14px;top:14px;max-width:250px}
+  #help h1{margin:0 0 7px;font-size:14px;letter-spacing:.02em}
+  #help table{border-collapse:collapse;font-size:12px;color:var(--dim)}
+  #help td{padding:1px 0}
+  #help td:first-child{padding-right:10px;color:var(--ink);white-space:nowrap}
+
+  #hud{right:14px;top:14px;text-align:right;font-size:13px}
+  #hud b{font-size:19px;font-variant-numeric:tabular-nums}
+  #hud small{display:block;color:var(--dim);font-size:11px;letter-spacing:.05em;
+    text-transform:uppercase}
+
+  /* Aufforderung ueber dem Kopf der Figur, nur in Reichweite */
+  #prompt{left:50%;bottom:88px;transform:translateX(-50%);display:none;
+    padding:8px 14px;font-size:13px;white-space:nowrap}
+  #prompt kbd{background:rgba(255,255,255,.14);border-radius:5px;padding:1px 6px;
+    font:inherit;font-weight:600;margin-right:5px}
+
+  /* Kurze Einblendung nach einem Ereignis */
+  #toast{left:50%;top:64px;transform:translateX(-50%);opacity:0;
+    transition:opacity .35s;pointer-events:none;font-size:14px}
+  #toast.on{opacity:1}
+
+  #boot{position:fixed;inset:0;display:grid;place-items:center;
+    background:#1b2130;color:var(--dim);letter-spacing:.08em;font-size:12px;
+    text-transform:uppercase;transition:opacity .5s}
+  #boot.gone{opacity:0;pointer-events:none}
+
+  /* Touch: linker Daumen laeuft, rechter Knopf handelt */
+  #touch{position:fixed;inset:0;display:none;pointer-events:none}
+  #stick{position:absolute;left:26px;bottom:26px;width:116px;height:116px;
+    border-radius:50%;background:rgba(255,255,255,.10);
+    border:1px solid rgba(255,255,255,.18);pointer-events:auto}
+  #knob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;
+    border-radius:50%;background:rgba(255,255,255,.34)}
+  #act{position:absolute;right:26px;bottom:34px;width:78px;height:78px;border-radius:50%;
+    background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.24);
+    color:#fff;font:600 13px/78px system-ui;text-align:center;pointer-events:auto}
+  @media (pointer:coarse){ #touch{display:block} #help{display:none} }
+</style>
+
+<div id="stage"></div>
+
+<div id="help" class="panel">
+  <h1>Adventure — Versuchslevel</h1>
+  <table>
+    <tr><td>W A S D</td><td>laufen</td></tr>
+    <tr><td>Shift</td><td>rennen</td></tr>
+    <tr><td>Leertaste</td><td>springen</td></tr>
+    <tr><td>E</td><td>handeln</td></tr>
+    <tr><td>Q / R</td><td>Kamera drehen</td></tr>
+  </table>
+</div>
+
+<div id="hud" class="panel"><b id="found">0</b><span>/3</span><small>Truhen</small></div>
+<div id="prompt" class="panel"><kbd>E</kbd><span id="promptText">öffnen</span></div>
+<div id="toast" class="panel"></div>
+<div id="boot">Lade Welt …</div>
+
+<div id="touch">
+  <div id="stick"><div id="knob"></div></div>
+  <div id="act">E</div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+
+/* ===================================================================
+   Adventure — ein begehbares Level im Stil der blockbasierten Zelda-
+   Teile (Link's Awakening Remake, Echoes of Wisdom).
+
+   Bewusst KEIN Editor: /blocks baut Welten, das hier laeuft in einer.
+   Gemeinsam ist beiden nur der Look. Die Welt steht als ASCII-Karte
+   weiter unten — drei Ebenen (Hoehe, Boden, Deko), ein Zeichen je
+   Zelle. Das ist von Hand editierbar und braucht kein Datenformat.
+
+   Modelle: KayKit von Kay Lousberg (CC0) — die Deko liegt schon unter
+   /blocks/assets, die Figur unter /assets/models. Beides wird von hier
+   aus nur referenziert, nicht kopiert.
+=================================================================== */
+
+const CELL = 2.0;        // Kantenlaenge einer Zelle in Weltmetern
+const LIFT = 0.5;        // Hoehe EINER Stufe. Bewusst flach: so ist jede
+                         // Terrasse begehbar, ohne dass die Figur klettert.
+const BASE = -1.2;       // Unterkante aller Saeulen (Diorama-Sockel)
+const STEP_UP = 0.62;    // was die Figur im Gehen hochsteigt (= eine Stufe)
+
+const HEIGHT = [
+  '6666666666666666666666666666',
+  '6444444444444444444444444446',
+  '6422222222222222222222222246',
+  '6421111111111111111111111246',
+  '6421111111111111113333333246',
+  '6421111111111111123333333246',
+  '6421111111111111223333333246',
+  '6421111111111111223333333246',
+  '6421111111111111223333333246',
+  '6421111111111111123333333246',
+  '6421111111111111113333333246',
+  '6421111111111111111111111246',
+  '6421111111111111111111111246',
+  '6421111011111111111111111246',
+  '6421100000111111111111111246',
+  '6421000000011111111111111246',
+  '6421000000011111111111111246',
+  '6420000000001111111111111246',
+  '6421000000011111111111111246',
+  '6421000000011111111111111246',
+  '6421100000111111111111111246',
+  '6422222222222222222222222246',
+  '6444444444444444444444444446',
+  '6666666666666666666666666666',
+];
+const GROUND = [
+  'rrrrrrrrrrrrrrrrrrrrrrrrrrrr',
+  'rrrrrrrrrrrrrrrrrrrrrrrrrrrr',
+  'rrrrrrrrrrrrrrrrrrrrrrrrrrrr',
+  'rrrggggggggggggggggggggggrrr',
+  'rrrggggggggggggggggggggggrrr',
+  'rrrggggggggggggggggggggggrrr',
+  'rrrgggggggggggggggppppgggrrr',
+  'rrrgggggggggggggppppppgggrrr',
+  'rrrgggggggggggggppppppgggrrr',
+  'rrrgggggggggggggppgggggggrrr',
+  'rrrgggggggggggppppgggggggrrr',
+  'rrrgggggggggggpppggggggggrrr',
+  'rrrggggsgggggppggggggggggrrr',
+  'rrrgssswsssggppggggggggggrrr',
+  'rrrsswwwwwssgppggggggggggrrr',
+  'rrrswwwwwwwsgppggggggggggrrr',
+  'rrrswwwwwwwsgppggggggggggrrr',
+  'rrrwwwwwwwwwsppggggggggggrrr',
+  'rrrswwwwwwwsgppggggggggggrrr',
+  'rrrswwwwwwwsgppggggggggggrrr',
+  'rrrsswwwwwssgppggggggggggrrr',
+  'rrrrrrrrrrrrrrrrrrrrrrrrrrrr',
+  'rrrrrrrrrrrrrrrrrrrrrrrrrrrr',
+  'rrrrrrrrrrrrrrrrrrrrrrrrrrrr',
+];
+const DECO = [
+  '                            ',
+  '                            ',
+  '                            ',
+  '                            ',
+  '         T   R          R   ',
+  '   R  T    T                ',
+  '               B    H K     ',
+  '    T   T   T               ',
+  '     C             K   C    ',
+  '       B  T                 ',
+  '    F         G             ',
+  '     T                      ',
+  '         B              B   ',
+  '                  B         ',
+  '    T                  T    ',
+  '           F     T   B      ',
+  '   R                        ',
+  '            F       T   T   ',
+  '                 F          ',
+  '           C    T      F    ',
+  '                   T  T     ',
+  '                            ',
+  '                            ',
+  '                            ',
+];
+
+const MW = HEIGHT[0].length, MH = HEIGHT.length;
+const inMap = (x, z) => x >= 0 && z >= 0 && x < MW && z < MH;
+// Hoehe einer Zelle in Stufen. Ausserhalb der Karte: Wand.
+const cellH = (x, z) => inMap(x, z) ? +HEIGHT[z][x] : 99;
+const cellG = (x, z) => inMap(x, z) ? GROUND[z][x] : 'r';
+// Oberkante in Weltmetern. Wasser (Hoehe 0) hat keinen begehbaren Boden.
+const topY = (x, z) => cellH(x, z) * LIFT;
+const isWater = (x, z) => cellG(x, z) === 'w';
+
+// Kartenzelle -> Weltmitte. Die Karte wird um den Ursprung zentriert,
+// damit Kamera und Nebel nicht mit einer Ecke rechnen muessen.
+const wx = x => (x - (MW - 1) / 2) * CELL;
+const wz = z => (z - (MH - 1) / 2) * CELL;
+const cx = x => Math.round(x / CELL + (MW - 1) / 2);
+const cz = z => Math.round(z / CELL + (MH - 1) / 2);
+
+/* Palette. Dieselben Werte wie in /blocks, damit beide Seiten denselben
+   Farbklang haben — oben die Sonnenseite, an den Flanken die Erde. */
+const PAL = {
+  g: {top:'#7cc24b', side:'#b98a5e'},   // Wiese auf Erde
+  p: {top:'#c9a875', side:'#a9764a'},   // Trampelpfad
+  r: {top:'#8e9aa6', side:'#79838f'},   // Fels
+  s: {top:'#e8c79a', side:'#c97f52'},   // Sand
+  w: {top:'#d8c9a0', side:'#c0a97f'},   // Teichboden unter dem Wasser
+};
+
+// ---------------------------------------------------------------- Szene
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.append(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fd0e8);
+// Der Nebel setzt erst weit hinten ein: er soll die Kartenraender in den
+// Himmel ausblenden, nicht das Spielfeld einnebeln.
+scene.fog = new THREE.Fog(0x9ad6ea, 46, 96);
+
+scene.add(new THREE.HemisphereLight(0xdcefff, 0x54613f, 2.0));
+const sun = new THREE.DirectionalLight(0xfff1d4, 2.3);
+sun.position.set(18, 28, 12);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.normalBias = .035;
+// Die Schattenkamera folgt der Figur (siehe Schleife). Ihr Ausschnitt
+// deckt nur die nahe Umgebung ab — ueber die ganze Karte gespannt waere
+// jedes Texel so grob, dass die Schatten ausfransen.
+const SH = 22;
+Object.assign(sun.shadow.camera, {left:-SH, right:SH, top:SH, bottom:-SH, near:1, far:80});
+sun.shadow.camera.updateProjectionMatrix();
+scene.add(sun);
+scene.add(sun.target);
+
+const cam = new THREE.PerspectiveCamera(34, 1, .5, 260);
+
+function resize(){
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h);
+  cam.aspect = w / h;
+  cam.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+// ------------------------------------------------------------- Gelaende
+/* Eine Zelle = EINE Box von BASE bis zur Oberkante, nicht ein Stapel
+   Wuerfel. Das spart 80 % der Dreiecke und macht die Flanken glatt statt
+   geriffelt — genau der Diorama-Schnitt, den die Vorlage zeigt.
+
+   Gerundete Kanten sind der groesste Einzelgewinn am Look. Weil die
+   Fasenbreite bei skalierter Geometrie mitskaliert (und hohe Saeulen
+   dann oben anders aussehen als flache), wird je vorkommender Hoehe
+   eine eigene Geometrie gebaut und gecacht. */
+/* Benachbarte Zellen mit gleicher Hoehe UND gleichem Material werden zu
+   einem Rechteck zusammengefasst (greedy meshing). Ohne das bekommt jede
+   Zellgrenze ihre eigene gefaste Kante, und die Wiese liegt unter einem
+   sichtbaren Gitternetz aus Erdlinien — der auffaelligste Fehler in der
+   ersten Fassung. Zusammengefasst bleibt eine Fuge nur dort, wo wirklich
+   ein Materialwechsel oder eine Stufe ist. */
+function greedyRects(){
+  const used = new Uint8Array(MW * MH), rects = [];
+  for(let z = 0; z < MH; z++){
+    for(let x = 0; x < MW; x++){
+      if(used[z*MW + x]) continue;
+      const h = cellH(x, z), g = cellG(x, z);
+      const same = (px, pz) => !used[pz*MW + px] && cellH(px, pz) === h && cellG(px, pz) === g;
+
+      let w = 1;
+      while(x + w < MW && same(x + w, z)) w++;
+
+      // In die Tiefe nur wachsen, solange die GANZE Reihe passt
+      let d = 1;
+      grow: while(z + d < MH){
+        for(let i = 0; i < w; i++) if(!same(x + i, z + d)) break grow;
+        d++;
+      }
+
+      for(let dz = 0; dz < d; dz++)
+        for(let dx = 0; dx < w; dx++) used[(z+dz)*MW + x+dx] = 1;
+      rects.push({x, z, w, d, h, g});
+    }
+  }
+  return rects;
+}
+
+const terrainMat = new THREE.MeshStandardMaterial({
+  vertexColors: true, roughness: .95, metalness: 0});
+
+/* Oben Gras, an den Flanken Erde — als Vertexfarbe, nicht als zweites
+   Material. Nach dem Zusammenlegen bleibt so EIN Mesh fuer das ganze
+   Gelaende. Die Grenze laeuft an der Rundung entlang: was mehr nach oben
+   als zur Seite zeigt, ist Oberflaeche. */
+const _c = new THREE.Color();
+function paint(geo, def){
+  const nrm = geo.getAttribute('normal'), n = nrm.count;
+  const col = new Float32Array(n * 3);
+  const top = new THREE.Color(def.top), side = new THREE.Color(def.side);
+  for(let i = 0; i < n; i++){
+    _c.copy(nrm.getY(i) > 0.62 ? top : side);
+    col[i*3] = _c.r; col[i*3+1] = _c.g; col[i*3+2] = _c.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+
+function buildTerrain(){
+  const parts = [];
+  for(const r of greedyRects()){
+    const height = r.h * LIFT - BASE;
+    const g = paint(new RoundedBoxGeometry(
+      r.w * CELL, height, r.d * CELL, 2, 0.09), PAL[r.g] || PAL.g);
+    g.translate(wx(r.x) + (r.w - 1) * CELL / 2,
+                (r.h * LIFT + BASE) / 2,
+                wz(r.z) + (r.d - 1) * CELL / 2);
+    parts.push(g);
+  }
+  const mesh = new THREE.Mesh(mergeGeometries(parts, false), terrainMat);
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  scene.add(mesh);
+  parts.forEach(p => p.dispose());
+  console.info('Gelaende:', parts.length, 'Rechtecke statt', MW * MH, 'Zellen');
+}
+buildTerrain();
+
+/* Wasser: eine Flaeche knapp ueber dem Teichboden. Die Welle laeuft im
+   Vertexshader — zwei gekreuzte Sinuswellen reichen voellig, solange
+   die Flaeche fein genug unterteilt ist. */
+const waterCells = [];
+for(let z = 0; z < MH; z++) for(let x = 0; x < MW; x++) if(isWater(x, z)) waterCells.push([x, z]);
+
+const waterTime = {value: 0};
+
+if(waterCells.length){
+  const tiles = waterCells.map(([x, z]) => {
+    const g = new THREE.PlaneGeometry(CELL, CELL, 3, 3).rotateX(-Math.PI/2);
+    g.translate(wx(x), 0, wz(z));
+    return g;
+  });
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x4fa9c4, roughness: .25, metalness: .1,
+    transparent: true, opacity: .82});
+  waterMat.onBeforeCompile = sh => {
+    sh.uniforms.uT = waterTime;
+    sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace(
+      '#include <begin_vertex>', `#include <begin_vertex>
+      transformed.y += sin(transformed.x * .9 + uT * 1.6) * .045
+                     + sin(transformed.z * 1.3 - uT * 1.1) * .035;`);
+  };
+  const water = new THREE.Mesh(mergeGeometries(tiles, false), waterMat);
+  water.position.y = 0.30;
+  water.receiveShadow = true;
+  scene.add(water);
+  tiles.forEach(t => t.dispose());
+}
+
+// ----------------------------------------------------------------- Deko
+/* Die Modelle liegen bereits unter /blocks/assets (KayKit, CC0) und
+   werden von hier nur referenziert. `flat` unterscheidet die beiden
+   Generationen des Packs: die neueren tragen einen Texturatlas, die
+   aelteren nur benannte Materialien — die werden auf unsere Palette
+   umgefaerbt, sonst steht ein graues Haus in einer bunten Wiese. */
+const A = '../blocks/assets/';
+
+const KINDS = {
+  T: {dir:'kaykit',   models:['Tree_1_A','Tree_2_A','Tree_3_A','Tree_4_A'], fitH:[3.4,4.6], solid:.55},
+  B: {dir:'kaykit',   models:['Bush_1_A','Bush_2_A','Bush_3_A','Bush_4_A'], fitH:[.8,1.2]},
+  F: {dir:'kaykit',   models:['Grass_1_A','Grass_2_A'], fitH:[.6,.9], upNormals:.75},
+  R: {dir:'kaykit',   models:['Rock_1_A','Rock_2_A','Rock_3_A'], fitH:[.9,1.5], solid:.6},
+  K: {dir:'dungeon',  models:['barrel_large','box_large','crates_stacked'], fitH:[.9,1.1], solid:.5},
+  C: {dir:'dungeon',  models:['chest_gold'], fitH:[.9,.9], solid:.5, yawStep:4},
+  H: {dir:'medieval', models:['house'], ext:'.glb', flat:true, fitH:[3.0,3.0], solid:1.3, yawStep:4},
+  G: {dir:'medieval', models:['wall_gate_closed'], ext:'.glb', flat:true, fitH:[3.0,3.0], solid:1.0, yawStep:4},
+};
+
+const MEDIEVAL_PALETTE = {
+  Stone:'#8e9aa6', StoneDark:'#6f7a86', Brown:'#a9764a', BrownDark:'#7d5636',
+  White:'#eef2f2', Beige:'#e3b65c', Green:'#5aa83f', Red:'#b4553f',
+  Blue:'#4f7fae',  Yellow:'#e8c15a',
+};
+
+const loader = new GLTFLoader();
+const load = p => loader.loadAsync(p);
+
+// Ein deterministischer Hash je Zelle: dieselbe Karte ergibt immer
+// dieselbe Variante und dieselbe Drehung.
+function hash(x, z, n){
+  let h = (x * 374761393 + z * 668265263 + n * 2147483647) ^ 0x5bf03635;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/* Vor-Atlas-Modelle verschmelzen und umfaerben: die Materialnamen des
+   Medieval Packs auf unsere Palette. Unbekannte Namen behalten ihre
+   Originalfarbe, damit nichts unsichtbar wird. */
+function bakeFlat(root){
+  const parts = [], col = new THREE.Color();
+  root.updateWorldMatrix(true, true);
+  root.traverse(o => {
+    if(!o.isMesh) return;
+    const g = o.geometry.clone().applyMatrix4(o.matrixWorld);
+    if(!g.getAttribute('normal')) g.computeVertexNormals();
+    const name = o.material && o.material.name;
+    col.set(MEDIEVAL_PALETTE[name] || (o.material?.color
+      ? '#' + o.material.color.getHexString() : '#bbbbbb'));
+    const n = g.getAttribute('position').count, arr = new Float32Array(n * 3);
+    for(let i = 0; i < n; i++){ arr[i*3]=col.r; arr[i*3+1]=col.g; arr[i*3+2]=col.b; }
+    g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
+    for(const k of ['uv','uv1','uv2','tangent']) g.deleteAttribute(k);
+    parts.push(g);
+  });
+  return parts.length ? mergeGeometries(parts, false) : null;
+}
+
+const decoMats = new Map();
+function decoMaterial(map){
+  const key = map ? map.uuid : 'flat';
+  if(!decoMats.has(key)){
+    decoMats.set(key, new THREE.MeshStandardMaterial({
+      roughness: .93, metalness: 0,
+      side: THREE.DoubleSide,          // Blattkarten sind einseitig gebaut
+      ...(map ? {map} : {vertexColors: true})}));
+  }
+  return decoMats.get(key);
+}
+
+/* Ein geladenes Modell in eine Form bringen, mit der die Platzierung
+   nichts mehr vom Modellaufbau wissen muss: Ursprung in x/z zentriert,
+   Unterkante auf 0, Hoehe auf das Zielmass skaliert. Die Packs sind
+   darin voellig uneinheitlich — Rock_3_A hat seinen Ursprung z. B. in
+   der Mitte und wuerde sonst halb im Boden stecken. */
+function normalize(gltf, def){
+  let geo = null, map = null;
+  if(def.flat){
+    geo = bakeFlat(gltf.scene);
+  }else{
+    gltf.scene.updateWorldMatrix(true, true);
+    const parts = [];
+    gltf.scene.traverse(o => {
+      if(!o.isMesh) return;
+      parts.push(o.geometry.clone().applyMatrix4(o.matrixWorld));
+      if(!map && o.material?.map) map = o.material.map;
+    });
+    geo = parts.length ? mergeGeometries(parts, false) : null;
+  }
+  if(!geo) return null;
+
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox;
+  geo.translate(-(bb.min.x + bb.max.x)/2, -bb.min.y, -(bb.min.z + bb.max.z)/2);
+  geo.computeBoundingBox();
+  const h = geo.boundingBox.max.y || 1;
+  geo.scale(1/h, 1/h, 1/h);            // auf Einheitshoehe, Rest macht die Instanz
+
+  /* Blattkarten stehen senkrecht, ihre Normalen zeigen quer zur Sonne
+     und werden fast schwarz. Nach oben gekippt fangen sie Licht wie
+     eine Krone — derselbe Kniff wie im Blockbuilder. */
+  if(def.upNormals){
+    const nrm = geo.getAttribute('normal'), w = 1 - def.upNormals, v = new THREE.Vector3();
+    for(let i = 0; i < nrm.count; i++){
+      v.set(nrm.getX(i)*w, nrm.getY(i)*w + def.upNormals, nrm.getZ(i)*w).normalize();
+      nrm.setXYZ(i, v.x, v.y, v.z);
+    }
+  }
+  return {geo, mat: decoMaterial(def.flat ? null : map)};
+}
+
+// Was auf dem Feld steht, blockiert die Figur: Zelle -> Radius
+const blockers = new Map();
+// Truhen und Tor sind Spielobjekte, keine Kulisse
+const chests = [];
+let gateObj = null, gateCell = null;
+
+const _pos = new THREE.Vector3(), _qt = new THREE.Quaternion();
+const _scl = new THREE.Vector3(), _m4 = new THREE.Matrix4();
+const UP = new THREE.Vector3(0, 1, 0);
+
+async function buildDeco(){
+  // Zellen nach Art gruppieren — eine InstancedMesh je Modellvariante
+  const byKind = new Map();
+  for(let z = 0; z < MH; z++){
+    for(let x = 0; x < MW; x++){
+      const c = DECO[z][x];
+      if(c === ' ' || !KINDS[c]) continue;
+      if(!byKind.has(c)) byKind.set(c, []);
+      byKind.get(c).push([x, z]);
+    }
+  }
+
+  for(const [kind, cells] of byKind){
+    const def = KINDS[kind];
+    const ext = def.ext || '.gltf';
+    const variants = [];
+    for(const name of def.models){
+      try{
+        const g = await load(A + def.dir + '/' + name + ext);
+        const v = normalize(g, def);
+        if(v) variants.push(v);
+      }catch(e){ console.warn('Modell fehlt:', def.dir + '/' + name, e); }
+    }
+    if(!variants.length) continue;
+
+    // Instanzen je Variante sammeln, damit jede ihre eigene Mesh bekommt
+    const buckets = variants.map(() => []);
+    for(const [x, z] of cells){
+      const vi = Math.floor(hash(x, z, 1) * variants.length) % variants.length;
+      const s = def.fitH[0] + hash(x, z, 2) * (def.fitH[1] - def.fitH[0]);
+      const yaw = def.yawStep
+        ? Math.floor(hash(x, z, 3) * def.yawStep) / def.yawStep * Math.PI * 2
+        : hash(x, z, 3) * Math.PI * 2;
+      // Kleiner Versatz aus der Zellmitte, damit kein Gitter zu sehen ist.
+      // Spielobjekte bleiben mittig — sie muessen ansteuerbar sein.
+      const game = kind === 'C' || kind === 'G' || kind === 'H';
+      const ox = game ? 0 : (hash(x, z, 4) - .5) * CELL * .34;
+      const oz = game ? 0 : (hash(x, z, 5) - .5) * CELL * .34;
+      buckets[vi].push({x, z, ox, oz, s, yaw});
+      if(def.solid) blockers.set(x + ',' + z, def.solid);
+    }
+
+    variants.forEach((v, vi) => {
+      const list = buckets[vi];
+      if(!list.length) return;
+      const mesh = new THREE.InstancedMesh(v.geo, v.mat, list.length);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      list.forEach((it, i) => {
+        _pos.set(wx(it.x) + it.ox, topY(it.x, it.z), wz(it.z) + it.oz);
+        _qt.setFromAxisAngle(UP, it.yaw);
+        _scl.set(it.s, it.s, it.s);
+        mesh.setMatrixAt(i, _m4.compose(_pos, _qt, _scl));
+        if(kind === 'C') chests.push({x: it.x, z: it.z, mesh, i, open: false,
+                                      m: _m4.clone(), yaw: it.yaw, s: it.s});
+        if(kind === 'G'){
+          gateObj = mesh; gateCell = [it.x, it.z];
+          mesh.userData = {yaw: it.yaw, s: it.s};
+        }
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      scene.add(mesh);
+    });
+  }
+}
+
+// ---------------------------------------------------------------- Figur
+/* Die Figur kommt ohne eigene Animationen; die Clips liegen in einer
+   getrennten Bibliothek fuer dasselbe Rig ("Rig_Medium") und werden
+   uebertragen. Beim Uebertragen nur Rotationen plus die Wurzelposition
+   nehmen — die Clips laufen auf der Stelle, bewegt wird die Figur. */
+const MODELS = '../assets/models/';
+const CHAR      = 'KayKit_Adventurers_2.0_FREE/Characters/gltf/Knight.glb';
+const LIB_MOVE  = 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_MovementBasic.glb';
+const LIB_GEN   = 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_General.glb';
+const LIB_SIM   = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_Simulation.glb';
+
+const murl = p => MODELS + p.split('/').map(encodeURIComponent).join('/');
+
+function retarget(clip){
+  const keep = clip.tracks.filter(t =>
+    !t.name.endsWith('.scale') &&
+    (!t.name.endsWith('.position') || /^(root|hips)\./.test(t.name)));
+  return new THREE.AnimationClip(clip.name, clip.duration, keep);
+}
+
+const player = new THREE.Group();
+scene.add(player);
+
+let mixer = null, actions = {}, current = null, currentName = '';
+const CHAR_H = 1.55;                   // Zielhoehe der Figur in Metern
+const RADIUS = 0.42;                   // Kollisionsradius am Boden
+
+function setClip(name, fade = .16){
+  if(currentName === name || !actions[name]) return;
+  const next = actions[name];
+  next.reset().setEffectiveWeight(1).fadeIn(fade).play();
+  if(current) current.fadeOut(fade);
+  current = next; currentName = name;
+}
+
+function buildCharacter(gltf, libs){
+  const ch = gltf.scene;
+  ch.traverse(o => { if(o.isMesh){ o.castShadow = true; o.receiveShadow = true; } });
+
+  // Auf Zielhoehe bringen: die Packs sind untereinander nicht massgleich
+  const bb = new THREE.Box3().setFromObject(ch);
+  const s = CHAR_H / (bb.max.y - bb.min.y);
+  ch.scale.setScalar(s);
+  player.add(ch);
+
+  mixer = new THREE.AnimationMixer(ch);
+  const want = {
+    Idle_A:      libs.gen,
+    Walking_A:   libs.move,
+    Running_A:   libs.move,
+    Jump_Start:  libs.move,
+    Jump_Idle:   libs.move,
+    Jump_Land:   libs.move,
+    Cheering:    libs.sim,     // Jubel, wenn das Tor aufgeht
+    PickUp:      libs.gen,     // Buecken an der Truhe
+  };
+  for(const [name, src] of Object.entries(want)){
+    const clip = src.animations.find(a => a.name === name);
+    if(!clip){ console.warn('Clip fehlt:', name); continue; }
+    const a = mixer.clipAction(retarget(clip), ch);
+    if(/^(Jump_Start|Jump_Land|Cheering|PickUp)$/.test(name)){
+      a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true;
+    }
+    actions[name] = a;
+  }
+  setClip('Idle_A', 0);
+}
+
+// ------------------------------------------------------------ Kollision
+/* Zwei getrennte Fragen, und beide gegen das Blockgitter statt gegen
+   Geometrie — das ist der ganze Grund, warum die Welt ein Raster ist:
+
+   1. Wie hoch ist der Boden hier?  -> die Oberkante der Zelle
+   2. Darf ich da hin?              -> nur wenn die Stufe klein genug ist
+                                       und nichts Festes darauf steht
+
+   Die Achsen werden einzeln geprueft. Faellt eine weg, laeuft die Figur
+   an der Wand entlang, statt an ihr kleben zu bleiben. */
+function walkable(x, z, fromY){
+  const gx = cx(x), gz = cz(z);
+  if(!inMap(gx, gz)) return false;
+  if(isWater(gx, gz)) return false;                 // der Teich ist tief
+  const y = topY(gx, gz);
+  if(y - fromY > STEP_UP) return false;             // zu hohe Stufe
+  const b = blockers.get(gx + ',' + gz);
+  if(b){
+    // Abstand zur Zellmitte: ein Baumstamm blockiert nur seinen Kern,
+    // nicht die ganze Zelle — sonst fuehlt sich der Wald wie ein Gitter an.
+    const dx = x - wx(gx), dz = z - wz(gz);
+    if(Math.hypot(dx, dz) < b + RADIUS * .5) return false;
+  }
+  return true;
+}
+
+/* Der Boden unter der Figur ist die Zelle, auf der sie steht — nicht das
+   Maximum der Zellen, die ihr Radius streift. Das Maximum wirkte wie ein
+   Aufzug: an einer Felswand stehend wurde die Figur auf deren Hoehe
+   gehoben, und die naechste Stufe galt dann als klein genug. So ist sie
+   die Randmauer hochgelaufen. */
+function groundAt(x, z){
+  const gx = cx(x), gz = cz(z);
+  if(!inMap(gx, gz)) return 0;
+  return topY(gx, gz);
+}
+
+// ----------------------------------------------------------- Steuerung
+const keys = new Set();
+const MOVE = {KeyW:'f', ArrowUp:'f', KeyS:'b', ArrowDown:'b',
+              KeyA:'l', ArrowLeft:'l', KeyD:'r', ArrowRight:'r'};
+
+addEventListener('keydown', e => {
+  if(e.repeat) return;
+  if(e.code === 'Space'){ e.preventDefault(); jump(); }
+  if(e.code === 'KeyE') interact();
+  if(e.code === 'KeyQ') turnCam(-1);
+  if(e.code === 'KeyR') turnCam(1);
+  keys.add(e.code);
+  if(MOVE[e.code]) e.preventDefault();
+});
+addEventListener('keyup', e => keys.delete(e.code));
+addEventListener('blur', () => keys.clear());
+
+// Touch: linker Daumen laeuft, rechter Knopf handelt
+const touch = {x: 0, z: 0, active: false};
+{
+  const stick = document.getElementById('stick'), knob = document.getElementById('knob');
+  let id = null, ox = 0, oy = 0;
+  const R = 42;
+  stick.addEventListener('pointerdown', e => {
+    id = e.pointerId; ox = e.clientX; oy = e.clientY;
+    stick.setPointerCapture(id); touch.active = true;
+  });
+  stick.addEventListener('pointermove', e => {
+    if(e.pointerId !== id) return;
+    let dx = e.clientX - ox, dy = e.clientY - oy;
+    const d = Math.hypot(dx, dy);
+    if(d > R){ dx *= R/d; dy *= R/d; }
+    knob.style.transform = `translate(${dx}px,${dy}px)`;
+    touch.x = dx / R; touch.z = dy / R;
+  });
+  const end = e => {
+    if(e.pointerId !== id) return;
+    id = null; touch.x = touch.z = 0; touch.active = false;
+    knob.style.transform = '';
+  };
+  stick.addEventListener('pointerup', end);
+  stick.addEventListener('pointercancel', end);
+  document.getElementById('act').addEventListener('pointerdown', e => {
+    e.preventDefault(); interact();
+  });
+}
+
+// ------------------------------------------------------------- Kamera
+/* Fester Aufsichtswinkel, in 90-Grad-Schritten drehbar — das ist der
+   Unterschied zwischen "Zelda" und "Third-Person-Adventure". Die freie
+   Maussteuerung aus der Sandbox ist hier bewusst nicht uebernommen:
+   der feste Winkel ist es, der die Diorama-Lesbarkeit erzeugt. */
+const CAM_PITCH = 0.62;                // ~35 Grad ueber dem Horizont
+const CAM_DIST = 15;
+let camYaw = Math.PI * .25, camYawTarget = camYaw;
+const camLook = new THREE.Vector3();
+
+function turnCam(dir){ camYawTarget += dir * Math.PI / 2; }
+
+// ------------------------------------------------------- Spielzustand
+const pos = new THREE.Vector3(wx(14), 0, wz(20));
+pos.y = groundAt(pos.x, pos.z);
+let facing = Math.PI;                  // Blick nach Norden (in die Karte)
+let velY = 0, grounded = true, actUntil = 0;
+/* Alle Fristen laufen auf der aufsummierten Simulationszeit, nicht auf
+   performance.now(). Zwei Zeitachsen nebeneinander waeren nicht nur
+   unsauber, sie machen das Spiel auch untestbar: ein Test, der step()
+   in festen Schritten treibt, laesst die echte Uhr stehen. */
+let T = 0;
+let found = 0, gateOpen = false;
+
+const SPEED = {walk: 3.1, run: 6.0};
+const GRAV = 22, JUMP_V = 7.2;
+
+function jump(){
+  if(!grounded || T < actUntil) return;
+  velY = JUMP_V; grounded = false;
+  setClip('Jump_Start', .06);
+}
+
+const toastEl = document.getElementById('toast');
+let toastUntil = 0;
+function toast(text){
+  toastEl.textContent = text;
+  toastEl.classList.add('on');
+  toastUntil = T + 2.2;
+}
+
+/* Reichweite fuer Handlungen. Der Kandidat wird jeden Frame gesucht,
+   damit die Aufforderung erscheint und verschwindet, ohne dass irgendwo
+   ein Zustand gepflegt werden muss. */
+const REACH = 2.6;
+let target = null;
+
+function nearest(){
+  let best = null, bestD = REACH;
+  for(const c of chests){
+    if(c.open) continue;
+    const d = Math.hypot(pos.x - wx(c.x), pos.z - wz(c.z));
+    if(d < bestD){ bestD = d; best = {kind: 'chest', chest: c}; }
+  }
+  if(!best && gateCell && !gateOpen){
+    const d = Math.hypot(pos.x - wx(gateCell[0]), pos.z - wz(gateCell[1]));
+    if(d < REACH + .6) best = {kind: 'gate'};
+  }
+  return best;
+}
+
+function interact(){
+  if(!target || T < actUntil) return;
+  if(actions.PickUp){
+    actUntil = T + actions.PickUp.getClip().duration * .7;
+    currentName = ''; setClip('PickUp', .1);
+  }
+  if(target.kind === 'chest'){
+    const c = target.chest;
+    c.open = true;
+    found++;
+    document.getElementById('found').textContent = found;
+    // Die geoeffnete Truhe sinkt ein Stueck und verschwindet — eine
+    // eigene Deckel-Animation gibt das Modell nicht her.
+    c.sunk = 0;
+    toast(found < 3 ? `Truhe gefunden — noch ${3 - found}` : 'Alle Truhen gefunden!');
+    if(found >= 3 && gateObj) openGate();
+  }else if(target.kind === 'gate'){
+    toast(gateOpen ? '' : 'Verschlossen. Drei Truhen öffnen das Tor.');
+  }
+}
+
+function openGate(){
+  gateOpen = true;
+  if(gateCell) blockers.delete(gateCell[0] + ',' + gateCell[1]);
+  toast('Das Tor öffnet sich.');
+  if(actions.Cheering){
+    actUntil = T + actions.Cheering.getClip().duration * .9;
+    currentName = ''; setClip('Cheering', .12);
+  }
+}
+
+// ------------------------------------------------------- Hauptschleife
+const promptEl = document.getElementById('prompt');
+const promptText = document.getElementById('promptText');
+const clock = new THREE.Clock();
+const _dir = new THREE.Vector3();
+const _cm = new THREE.Matrix4(), _cp = new THREE.Vector3(), _cq = new THREE.Quaternion();
+
+function sinkInstance(mesh, i, x, z, yaw, s, drop){
+  _cp.set(wx(x), topY(x, z) - drop, wz(z));
+  _cq.setFromAxisAngle(UP, yaw);
+  _scl.set(s, s, s);
+  mesh.setMatrixAt(i, _cm.compose(_cp, _cq, _scl));
+  mesh.instanceMatrix.needsUpdate = true;
+}
+
+let gateDrop = 0;
+
+/* Simulation und Darstellung sind getrennt: `step` rechnet einen
+   Zeitschritt, `frame` ruft ihn und zeichnet. Das ist nicht nur sauberer,
+   es macht die Bewegung auch pruefbar — ein Test kann step() in festen
+   Schritten treiben, ohne auf echte Frames angewiesen zu sein (siehe
+   window.__adv unten). */
+function step(dt){
+  T += dt;
+  waterTime.value += dt;
+
+  // --- Eingabe in eine Richtung im Kameraraum uebersetzen -------------
+  let ix = 0, iz = 0;
+  for(const k of keys){
+    const m = MOVE[k];
+    if(m === 'f') iz -= 1; else if(m === 'b') iz += 1;
+    else if(m === 'l') ix -= 1; else if(m === 'r') ix += 1;
+  }
+  if(touch.active){ ix += touch.x; iz += touch.z; }
+  let tilt = Math.hypot(ix, iz);
+  if(tilt > 1){ ix /= tilt; iz /= tilt; tilt = 1; }
+
+  // Voller Ausschlag heisst nur am Daumenstick "rennen" — die Tastatur
+  // liefert immer 1.0, sonst wuerde die Figur nie gehen.
+  const running = keys.has('ShiftLeft') || keys.has('ShiftRight')
+               || (touch.active && tilt > .85);
+  const busy = T < actUntil;
+  const speed = (running ? SPEED.run : SPEED.walk) * tilt * (busy ? 0 : 1);
+
+  // Vorne ist, wohin die Kamera schaut — sonst laeuft die Figur nach
+  // einer Vierteldrehung in die falsche Richtung.
+  const cs = Math.sin(camYaw), cc = Math.cos(camYaw);
+  _dir.set(ix * cc - iz * cs, 0, ix * cs + iz * cc);
+  if(_dir.lengthSq() > 1e-6) _dir.normalize();
+
+  if(speed > .01){
+    const want = Math.atan2(_dir.x, _dir.z);
+    // Kuerzesten Weg zur Zielrichtung drehen
+    let d = want - facing;
+    while(d > Math.PI) d -= Math.PI * 2;
+    while(d < -Math.PI) d += Math.PI * 2;
+    facing += d * Math.min(1, dt * 14);
+
+    // Achsen einzeln: an einer Wand entlang laufen statt kleben
+    const st = speed * dt;
+    const nx = pos.x + _dir.x * st, nz = pos.z + _dir.z * st;
+    // Nicht der Mittelpunkt entscheidet, sondern der vordere Rand der
+    // Figur — sonst steckt sie zur Haelfte in der Wand, bevor es klemmt.
+    const fx = Math.sign(_dir.x) * RADIUS, fz = Math.sign(_dir.z) * RADIUS;
+    if(walkable(nx + fx, pos.z, pos.y)) pos.x = nx;
+    if(walkable(pos.x, nz + fz, pos.y)) pos.z = nz;
+  }
+
+  // --- Schwerkraft ----------------------------------------------------
+  const floor = groundAt(pos.x, pos.z);
+  if(!grounded){
+    velY -= GRAV * dt;
+    pos.y += velY * dt;
+    if(pos.y <= floor){ pos.y = floor; velY = 0; grounded = true; setClip('Jump_Land', .08); }
+  }else{
+    // Kanten heruntergehen statt fallen, solange die Stufe klein ist
+    if(floor < pos.y - .01) pos.y = Math.max(floor, pos.y - 9 * dt);
+    else pos.y = floor;
+  }
+
+  // --- Animation ------------------------------------------------------
+  if(!busy){
+    if(!grounded && velY < -1) setClip('Jump_Idle', .1);
+    else if(grounded && currentName !== 'Jump_Land'){
+      setClip(speed < .05 ? 'Idle_A' : running ? 'Running_A' : 'Walking_A');
+    }else if(grounded && currentName === 'Jump_Land'
+             && current && current.time >= current.getClip().duration - .02){
+      setClip(speed > .05 ? 'Walking_A' : 'Idle_A');
+    }
+  }
+
+  player.position.copy(pos);
+  player.rotation.y = facing;
+  if(mixer) mixer.update(dt);
+
+  // --- Kamera ---------------------------------------------------------
+  camYaw += (camYawTarget - camYaw) * Math.min(1, dt * 7);
+  camLook.lerp(_cp.set(pos.x, pos.y + 1.1, pos.z), Math.min(1, dt * 6));
+  const hor = Math.cos(CAM_PITCH) * CAM_DIST;
+  cam.position.set(camLook.x + Math.sin(camYaw) * hor,
+                   camLook.y + Math.sin(CAM_PITCH) * CAM_DIST,
+                   camLook.z + Math.cos(camYaw) * hor);
+  cam.lookAt(camLook);
+
+  // Die Schattenkamera mitziehen, sonst haengt der Ausschnitt am Ursprung
+  sun.position.set(pos.x + 18, pos.y + 28, pos.z + 12);
+  sun.target.position.copy(pos);
+  sun.target.updateMatrixWorld();
+
+  // --- Spielobjekte ---------------------------------------------------
+  for(const c of chests){
+    if(!c.open || c.sunk >= 1.4) continue;
+    c.sunk = Math.min(1.4, c.sunk + dt * 2.2);
+    sinkInstance(c.mesh, c.i, c.x, c.z, c.yaw, c.s * (1 - c.sunk / 2), c.sunk);
+  }
+  if(gateOpen && gateDrop < 3.2 && gateObj && gateCell){
+    gateDrop = Math.min(3.2, gateDrop + dt * 1.6);
+    sinkInstance(gateObj, 0, gateCell[0], gateCell[1],
+                 gateObj.userData.yaw ?? 0, gateObj.userData.s ?? 3, gateDrop);
+  }
+
+  // --- Aufforderung ---------------------------------------------------
+  target = busy ? null : nearest();
+  if(target){
+    promptEl.style.display = 'block';
+    promptText.textContent = target.kind === 'chest' ? 'Truhe öffnen' : 'Tor';
+  }else{
+    promptEl.style.display = 'none';
+  }
+  if(toastUntil && T > toastUntil){ toastEl.classList.remove('on'); toastUntil = 0; }
+}
+
+function frame(){
+  requestAnimationFrame(frame);
+  step(Math.min(clock.getDelta(), .05));
+  renderer.render(scene, cam);
+}
+
+// ---------------------------------------------------------------- Start
+(async () => {
+  const boot = document.getElementById('boot');
+  try{
+    await buildDeco();
+    const [ch, move, gen, sim] = await Promise.all(
+      [CHAR, LIB_MOVE, LIB_GEN, LIB_SIM].map(p => loader.loadAsync(murl(p))));
+    buildCharacter(ch, {move, gen, sim});
+  }catch(e){
+    console.error(e);
+    boot.textContent = 'Fehler beim Laden — siehe Konsole';
+    return;
+  }
+  // Kleines Fenster nach innen — beim Testen und Nachjustieren der Karte
+  // ist die Position der Figur die einzige Zahl, die wirklich zaehlt.
+  window.__adv = {
+    scene, player, chests,
+    get state(){ return {pos: pos.toArray().map(n => +n.toFixed(2)),
+                         cell: [cx(pos.x), cz(pos.z)], grounded, found,
+                         gateOpen, clip: currentName}; },
+    teleport(gx, gz){ pos.set(wx(gx), 0, wz(gz)); pos.y = groundAt(pos.x, pos.z); },
+    step, press: c => keys.add(c), release: c => keys.delete(c),
+    setYaw(a){ camYaw = camYawTarget = a; },
+    render: () => renderer.render(scene, cam),
+    walkable, groundAt, interact, get target(){ return target; },
+  };
+  boot.classList.add('gone');
+  camLook.set(pos.x, pos.y + 1.1, pos.z);
+  frame();
+})();
+</script>
