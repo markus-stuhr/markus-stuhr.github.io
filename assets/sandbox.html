@@ -105,9 +105,8 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
           <td>Kamera drehen · zoomen</td></tr>
       <tr><td class="hint" colspan="3">
         Das Skelett wartet in der Ferne und greift erst an, wenn du ihm nahe
-        kommst. In seiner Nähe bleibt dein Blick automatisch an ihm hängen:
-        du umkreist es seitwärts, auch in Deckung. Geblockt wird nur, was von
-        vorne kommt.</td></tr>
+        kommst. In Deckung bleibt dein Blick an ihm hängen und du umkreist es
+        seitwärts — geblockt wird nur, was von vorne kommt.</td></tr>
     </table>
     <div class="status" id="padnote" hidden>Controller erkannt</div>
     <div class="status" id="touchnote" hidden style="color:var(--acc2)">
@@ -862,14 +861,15 @@ function tick(){
   const strafeMode = keys.has('AltLeft') || keys.has('AltRight')
     || (pad && pad.strafe);
   const blocking = (keys.has('KeyQ') || (pad && pad.blocking)) && grounded;
-  // Steht ein Gegner in der Naehe, bleibt der Blick an ihm haengen — man
-  // umkreist ihn dann, statt ihm den Ruecken zuzudrehen.
+  // Nur in Deckung bleibt der Blick an einem nahen Gegner haengen — man
+  // umkreist ihn dann, statt ihm den Ruecken zuzudrehen. Ohne Schild laeuft
+  // die Figur normal in ihre Laufrichtung.
   const enemyDist = enemy.root && enemy.state !== 'dead'
     ? Math.hypot(enemy.pos.x - pos.x, enemy.pos.z - pos.z) : Infinity;
-  const lockOn = !dead && enemyDist < LOCK_RANGE;
-  // Wer blockt, anvisiert oder die Blickrichtung haelt, laeuft seitwaerts
-  // statt sich in die Laufrichtung zu drehen.
-  const sideways = strafeMode || blocking || lockOn;
+  const lockOn = blocking && !dead && enemyDist < LOCK_RANGE;
+  // Wer blockt oder die Blickrichtung haelt, laeuft seitwaerts statt sich
+  // in die Laufrichtung zu drehen.
+  const sideways = strafeMode || blocking;
   // Das Schild erscheint erst mit der Deckung und bleibt waehrend des
   // Ueberblendens zurueck ins Idle noch kurz stehen.
   if(shieldObj) shieldObj.visible = blocking || currentName.startsWith('Melee_Block');
