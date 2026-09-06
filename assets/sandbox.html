@@ -101,6 +101,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
       <tr><td><kbd>Alt</kbd> halten</td><td class="pad">LT</td>
           <td>Blickrichtung halten</td></tr>
       <tr><td><kbd>V</kbd></td><td class="pad">Y</td><td>winken</td></tr>
+      <tr><td><kbd>N</kbd></td><td class="pad">—</td><td>Tag / Nacht</td></tr>
       <tr><td>Maus ziehen · Rad</td><td class="pad">Rechter Stick</td>
           <td>Kamera drehen · zoomen</td></tr>
       <tr><td class="hint" colspan="3">
@@ -112,6 +113,7 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
     <div class="status" id="touchnote" hidden style="color:var(--acc2)">
       Ohne Tastatur oder Controller geht hier nur die Kamera.</div>
   </div>
+  <button class="hide" id="night" style="right:150px">☾ Nacht</button>
   <button class="hide" id="hide">Hilfe ausblenden</button>
 </main>
 
@@ -152,7 +154,8 @@ stage.append(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x243049);
 scene.fog = new THREE.Fog(0x243049, 55, 150);
-scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x39415c, 2.7));
+const hemi = new THREE.HemisphereLight(0xdfe8ff, 0x39415c, 2.7);
+scene.add(hemi);
 // Die Schattenkamera folgt der Figur. Ihr Ausschnitt muss die grossen
 // Gebaeude fassen, sonst brechen deren Schatten am Rand ab; die Sonne steht
 // entsprechend hoch, damit ein 16 Einheiten hohes Dach noch darunter passt.
@@ -216,6 +219,7 @@ addEventListener('keydown', e=>{
   if(e.code === 'KeyC') crouch = !crouch;   // kein Strg: kollidiert mit Browser-Shortcuts
   if(e.code === 'KeyV') emote('Waving');
   if(e.code === 'KeyE') attack();
+  if(e.code === 'KeyN') setNight(!nightMode);
   keys.add(e.code);
   if(CODES[e.code] || e.code === 'ShiftLeft') e.preventDefault();
 });
@@ -556,6 +560,7 @@ async function fillCharacterList(){
 
   await placeTown();
   await scatterProps();
+  await placeTorches();
   // Erst wenn alles steht, die Saeulen bauen — dann kann man auf Kisten,
   // Faesser und Podeste springen.
   world = buildWorldGrid([townGroup, propGroup].filter(Boolean));
@@ -587,6 +592,40 @@ const props = [];                             // {x,z,r} fuer die Kollision
 // — Vorplatz, Unterstand und die Luecken zwischen den Pfosten. Deshalb
 // keine groben Kreise, sondern ein Raster: die Geometrie wird in Lauf- und
 // Brusthoehe abgetastet, und nur was dort im Weg steht, blockiert.
+// Fackeln: das Modell liefert nur Stiel und Korb, die Flamme wird gebaut.
+// Zwei ineinandergesteckte Kegel aus unbeleuchtetem Material leuchten auch
+// im Dunkeln, ein Punktlicht daneben flackert mit.
+const TORCH = 'KayKit_Dungeon_Pack_1.1_FREE/Assets/gltf/torch.gltf';
+const TORCH_SPOTS = [                         // rund um die Stadt und am Weg
+  [-10, -18], [-4, -22], [-16, -22], [-10, -33],
+  [2, -20], [-20, -12], [0, -12], [-2, -2],
+  [4, 8], [-14, -4], [14, -22], [16, -10],
+];
+const torches = [];
+let nightMode = false;
+
+// Tag- und Nachtstimmung: Farben und Lichtstaerken an einer Stelle
+const MOOD = {
+  tag:  {himmel: 0x243049, boden: 0x39415c, ambient: 2.7, sonne: 2.4,
+         sonnenfarbe: 0xfff2d8, nebel: [55, 150]},
+  nacht:{himmel: 0x070b16, boden: 0x0d1424, ambient: .5, sonne: .35,
+         sonnenfarbe: 0x9fc0ff, nebel: [22, 85]},
+};
+
+function setNight(on){
+  nightMode = on;
+  const m = on ? MOOD.nacht : MOOD.tag;
+  scene.background.setHex(m.himmel);
+  scene.fog.color.setHex(m.himmel);
+  scene.fog.near = m.nebel[0]; scene.fog.far = m.nebel[1];
+  hemi.color.setHex(0xffffff); hemi.groundColor.setHex(m.boden);
+  hemi.intensity = m.ambient;
+  sun.intensity = m.sonne;
+  sun.color.setHex(m.sonnenfarbe);
+  const btn = document.getElementById('night');
+  if(btn) btn.textContent = on ? '☀ Tag' : '☾ Nacht';
+}
+
 // Kleine Stadt aus dem Medieval Builder Pack. Alle Gebaeude teilen einen
 // Massstab, damit die Groessenverhaeltnisse stimmen — Hoehe je Modell zu
 // normieren wuerde den Brunnen so hoch wie die Kaserne machen.
@@ -686,6 +725,55 @@ function columnBlocks(col, feetY){
 }
 
 let townGroup = null, propGroup = null;
+
+async function placeTorches(){
+  let proto;
+  try{ proto = (await load(TORCH)).scene; }catch(e){ return; }
+  fitHeight(proto, 2.6);                      // Fackel etwas ueber Kopfhoehe
+
+  const outer = new THREE.MeshBasicMaterial({color: 0xff7a1a, fog: false});
+  const inner = new THREE.MeshBasicMaterial({color: 0xffe07a, fog: false});
+  const coneOuter = new THREE.ConeGeometry(.22, .72, 6);
+  const coneInner = new THREE.ConeGeometry(.12, .42, 6);
+
+  for(const [x, z] of TORCH_SPOTS){
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = Math.random() * Math.PI * 2;
+    const post = proto.clone(true);
+    post.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
+    g.add(post);
+
+    const flame = new THREE.Group();
+    flame.position.y = 2.55;
+    const f1 = new THREE.Mesh(coneOuter, outer);
+    const f2 = new THREE.Mesh(coneInner, inner);
+    f2.position.y = .12;
+    flame.add(f1, f2);
+    g.add(flame);
+
+    const light = new THREE.PointLight(0xffa54a, 0, 16, 2);
+    light.position.y = 2.7;
+    g.add(light);
+
+    scene.add(g);
+    torches.push({flame, light, phase: Math.random() * Math.PI * 2});
+  }
+}
+
+// Flackern: zwei ueberlagerte Sinus mit unterschiedlicher Frequenz sehen
+// unruhiger aus als einer, ohne dass es zappelt.
+function updateTorches(time){
+  for(const t of torches){
+    const p = t.phase;
+    const f = Math.sin(time*9 + p) * .5 + Math.sin(time*23 + p*2.3) * .3;
+    t.flame.scale.set(1 + f*.12, 1 + f*.26, 1 + f*.12);
+    t.flame.rotation.y += .04;
+    t.flame.position.x = Math.sin(time*7 + p) * .03;
+    t.light.intensity = nightMode ? 9 + f*3.5 : 0;
+    t.flame.visible = true;
+  }
+}
 
 async function placeTown(){
   const town = new THREE.Group();
@@ -1161,6 +1249,7 @@ function tick(){
   }
   enemyUpdate(dt, now2);
 
+  updateTorches(clock.elapsedTime);
   mixer.update(dt);
   if(blockMove) keepUpperFacing();           // nach dem Mixer, sonst ueberschrieben
   renderer.render(scene, cam);
@@ -1189,6 +1278,8 @@ addEventListener('resize', resize); resize();
 
 if(matchMedia('(hover: none)').matches)
   document.getElementById('touchnote').hidden = false;
+
+document.getElementById('night').onclick = ()=> setNight(!nightMode);
 
 const hideBtn = document.getElementById('hide');
 hideBtn.onclick = ()=>{
