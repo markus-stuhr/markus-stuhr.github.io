@@ -628,6 +628,9 @@ function setNight(on){
   hemi.intensity = m.ambient;
   sun.intensity = m.sonne;
   sun.color.setHex(m.sonnenfarbe);
+  // Fackelschatten nur nachts — und nur hier umschalten, nicht pro Bild:
+  // die Zahl schattenwerfender Lichter steckt in den Shadern.
+  if(torchLights[0]) torchLights[0].castShadow = on;
   const btn = document.getElementById('night');
   if(btn) btn.textContent = on ? '☀ Tag' : '☾ Nacht';
 }
@@ -764,6 +767,15 @@ async function placeTorches(){
 
   for(let i = 0; i < LIGHT_POOL; i++){
     const l = new THREE.PointLight(0xffa54a, 0, 18, 2);
+    if(i === 0){
+      // Nur die naechste Fackel wirft Schatten: ein Punktlicht braucht dafuer
+      // sechs Renderdurchgaenge (Wuerfelkarte), das lohnt sich nur einmal.
+      l.castShadow = false;                   // wird nachts eingeschaltet
+      l.shadow.mapSize.set(1024, 1024);
+      l.shadow.camera.near = .4;
+      l.shadow.camera.far = 20;
+      l.shadow.normalBias = .06;
+    }
     scene.add(l);
     torchLights.push(l);
   }
