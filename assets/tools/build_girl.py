@@ -41,7 +41,7 @@ print("Bildknoten ersetzt:", swapped)
 for m in bpy.data.materials:
     m.name = "redhead"
 
-def lengthen_hair(extra=0.45):
+def lengthen_hair(extra=0.38):
     """Zieht die hinteren Haarflaechen nach unten.
 
     Haar-Vertices werden ueber das Haarfeld im UV-Atlas erkannt (Blender
@@ -60,6 +60,13 @@ def lengthen_hair(extra=0.45):
                 hair.add(me.loops[li].vertex_index)
 
     Z_START, Z_END = 1.58, 1.20               # ab hier wirkt es, hier voll
+    # Die verlaengerten Straehnen liegen auf den Schultern. Haengen sie wie
+    # der Rest des Haars nur am Kopfknochen, schneiden sie beim Kopfdrehen
+    # durch den Oberkoerper. Deshalb wandert ihr Gewicht anteilig auf den
+    # Brustkorb: die Spitzen folgen dem Rumpf, der Ansatz dem Kopf.
+    g_head = ob.vertex_groups.get("head")
+    g_chest = ob.vertex_groups.get("chest") or ob.vertex_groups.new(name="chest")
+
     moved = 0
     for i in hair:
         co = me.vertices[i].co
@@ -69,6 +76,10 @@ def lengthen_hair(extra=0.45):
         if w <= 0.001:
             continue
         co.z -= extra * w
+        share = 0.7 * w                       # Anteil, der dem Rumpf folgt
+        g_chest.add([i], share, 'REPLACE')
+        if g_head:
+            g_head.add([i], 1.0 - share, 'REPLACE')
         moved += 1
     me.update()
     print("Haar verlaengert, Vertices bewegt:", moved)
