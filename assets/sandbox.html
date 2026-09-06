@@ -105,7 +105,9 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
           <td>Kamera drehen · zoomen</td></tr>
       <tr><td class="hint" colspan="3">
         Das Skelett wartet in der Ferne und greift erst an, wenn du ihm nahe
-        kommst — geblockt wird nur, was von vorne kommt.</td></tr>
+        kommst. In seiner Nähe bleibt dein Blick automatisch an ihm hängen:
+        du umkreist es seitwärts, auch in Deckung. Geblockt wird nur, was von
+        vorne kommt.</td></tr>
     </table>
     <div class="status" id="padnote" hidden>Controller erkannt</div>
     <div class="status" id="touchnote" hidden style="color:var(--acc2)">
@@ -330,6 +332,7 @@ const REACH = 2.0;                            // Schlagreichweite in Einheiten
 const ENEMY_FILE = 'KayKit_Skeletons_1.1_FREE/characters/gltf/Skeleton_Warrior.glb';
 const SPAWN_MIN = 16, SPAWN_MAX = 24;         // Abstand beim Erscheinen
 const AGGRO = 7, LEASH = 15;                  // wann es angreift, wann es aufgibt
+const LOCK_RANGE = 8;                         // ab hier bleibt der Blick am Gegner
 const COMBO = ['Melee_1H_Attack_Slice_Horizontal', 'Melee_1H_Attack_Chop',
                'Melee_1H_Attack_Stab'];
 // Der Moment des Aufpralls liegt in jedem Clip woanders — gemessen an der
@@ -424,7 +427,7 @@ function buildCharacter(gltf){
   }
 
   setClip('Idle_A', 0);
-  window.__sandbox = {scene, player, actions, char: ch,
+  window.__sandbox = {scene, player, actions, char: ch, props,
                       shield: shieldObj, sword: swordObj,
                       get enemy(){ return enemy; },
                       get info(){ return {hp, dead, pos: pos.toArray(), facing}; }};
@@ -470,6 +473,7 @@ async function fillCharacterList(){
   buildEnemy(await load(ENEMY_FILE));
   paintHealth();
 
+  await placeHouse();
   await scatterProps();
   document.getElementById('msg').remove();
   document.getElementById('keys').hidden = false;
@@ -495,6 +499,32 @@ function fitHeight(obj, h){
 // --- Kulisse ------------------------------------------------------------
 // Ein paar Requisiten aus den Packs, damit man beim Laufen etwas sieht.
 const props = [];                             // {x,z,r} fuer die Kollision
+// Ein Haus als fester Punkt in der Szene — daran merkt man beim Laufen,
+// wo man ist. Die Kollision wird durch zwei Kreise angenaehert, das reicht
+// fuer einen rechteckigen Grundriss.
+const HOUSE = 'KayKit Medieval Builder Pack 1.0/Models/objects/gltf/'
+            + 'archeryrange.gltf.glb';
+async function placeHouse(){
+  let o;
+  try{ o = (await load(HOUSE)).scene; }catch(e){ return; }
+  fitHeight(o, 4.6);
+  o.position.x = -7; o.position.z = -9;
+  o.rotation.y = Math.PI * .78;               // Front zeigt zum Startplatz
+  o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
+  scene.add(o);
+  const box = new THREE.Box3().setFromObject(o);
+  const size = box.getSize(new THREE.Vector3());
+  const c = box.getCenter(new THREE.Vector3());
+  // Enger als der Umriss: zum Modell gehoeren Zaun und Zielscheibe, und die
+  // sollen begehbar bleiben.
+  const r = Math.min(size.x, size.z) * .30;
+  const off = (Math.max(size.x, size.z) * .5 - r) * .8;
+  const dir = size.x > size.z ? [1, 0] : [0, 1];
+  for(const sgn of [-1, 1])
+    props.push({x: c.x + dir[0]*off*sgn, z: c.z + dir[1]*off*sgn,
+                r, tall: true});
+}
+
 async function scatterProps(){
   const F = 'KayKit_Forest_Nature_Pack_1.0_FREE/Assets/gltf/';
   const D = 'KayKit_Dungeon_Pack_1.1_FREE/Assets/gltf/';
@@ -527,6 +557,8 @@ async function scatterProps(){
     const a = rnd()*Math.PI*2, d = 5 + rnd()*21;
     const x = Math.cos(a)*d, z = Math.sin(a)*d;
     if(Math.hypot(x, z - 4) < 3) continue;    // Startplatz frei lassen
+    // nichts ins Haus oder in bereits gesetzte Requisiten stellen
+    if(props.some(p => Math.hypot(x - p.x, z - p.z) < p.r + radius + .6)) continue;
     const o = proto.clone(true);
     o.position.set(x, o.position.y, z);
     o.rotation.y = rnd()*Math.PI*2;
@@ -760,6 +792,14 @@ function tick(){
   const strafeMode = keys.has('AltLeft') || keys.has('AltRight')
     || (pad && pad.strafe);
   const blocking = (keys.has('KeyQ') || (pad && pad.blocking)) && grounded;
+  // Steht ein Gegner in der Naehe, bleibt der Blick an ihm haengen — man
+  // umkreist ihn dann, statt ihm den Ruecken zuzudrehen.
+  const enemyDist = enemy.root && enemy.state !== 'dead'
+    ? Math.hypot(enemy.pos.x - pos.x, enemy.pos.z - pos.z) : Infinity;
+  const lockOn = !dead && enemyDist < LOCK_RANGE;
+  // Wer blockt, anvisiert oder die Blickrichtung haelt, laeuft seitwaerts
+  // statt sich in die Laufrichtung zu drehen.
+  const sideways = strafeMode || blocking || lockOn;
   // Das Schild erscheint erst mit der Deckung und bleibt waehrend des
   // Ueberblendens zurueck ins Idle noch kurz stehen.
   if(shieldObj) shieldObj.visible = blocking || currentName.startsWith('Melee_Block');
@@ -777,7 +817,7 @@ function tick(){
     else if(d === 'l') ix -= 1; else if(d === 'r') ix += 1;
   }
   if(pad && pad.tilt > 0 && !ix && !iz){ ix = pad.ix; iz = pad.iz; }
-  const moving = (ix || iz) && !blocking && !(emoteUntil > performance.now());
+  const moving = (ix || iz) && !(emoteUntil > performance.now());
   let dirX = 0, dirZ = 0;
   if(moving){
     const len = Math.hypot(ix, iz);
@@ -790,6 +830,7 @@ function tick(){
   }
 
   const speed = !grounded ? (airSpeed || (moving ? SPEED.walk : 0))
+    : blocking ? SPEED.sneak * 1.3          // in Deckung nur Schritttempo
     : crouch ? SPEED.sneak
     : running ? SPEED.run : SPEED.walk;
 
@@ -812,7 +853,9 @@ function tick(){
 
   // Ausrichtung: normalerweise in Laufrichtung drehen, mit Alt die
   // Kamerarichtung halten und seitwaerts/rueckwaerts laufen.
-  const target = strafeMode ? camYaw.v + Math.PI
+  const target = lockOn
+      ? Math.atan2(enemy.pos.x - pos.x, enemy.pos.z - pos.z)
+    : sideways ? camYaw.v + Math.PI
     : (moving ? Math.atan2(dirX, dirZ) : facing);
   let diff = ((target - facing + Math.PI*3) % (Math.PI*2)) - Math.PI;
   facing += diff * Math.min(1, dt*12);
@@ -833,7 +876,7 @@ function tick(){
     if(velY < 1.2) setClip('Jump_Idle', .12);
   } else if(currentName === 'Jump_Land' && current && current.time < .25){
     /* Landung ausspielen */
-  } else if(blocking){
+  } else if(blocking && !moving){
     // Melee_Block ist die Bewegung in die Deckung, Melee_Blocking das Halten
     if(currentName !== 'Melee_Blocking'
        && !(currentName === 'Melee_Block' && current && current.time < .3))
@@ -843,7 +886,7 @@ function tick(){
   } else if(crouch){
     if(currentName === 'Crouching') currentName = '';   // Einfrieren aufheben
     setClip('Sneaking');
-  } else if(strafeMode){
+  } else if(sideways){
     // Bewegungsrichtung im Koerpersystem der Figur
     const rel = Math.atan2(dirX, dirZ) - facing;
     const a = Math.atan2(Math.sin(rel), Math.cos(rel));
@@ -865,7 +908,7 @@ function tick(){
 
   stSpeed.textContent = (advancing ? speed.toFixed(1) : '0.0') + ' m/s'
     + (crouch ? ' · geduckt' : '') + (blocking ? ' · Deckung' : '')
-    + (strafeMode ? ' · Blick fix' : '');
+    + (lockOn ? ' · Gegner im Blick' : strafeMode ? ' · Blick fix' : '');
 
   // Kamera folgt
   const cy = Math.cos(camPitch.v), sy = Math.sin(camPitch.v);
