@@ -275,6 +275,26 @@ function readPad(dt){
 // --- Figur und Zustandsautomat -----------------------------------------
 // Beim Uebertragen fremder Clips nur Rotationen plus root/hips-Position
 // nehmen; die Clips selbst laufen auf der Stelle, bewegt wird die Figur.
+// Die Bibliothek hat keinen Clip fuers Laufen mit erhobenem Schild. Also
+// werden zwei Clips uebereinandergelegt: die Beine laufen, der Oberkoerper
+// haelt die Deckung. Beide Teile duerfen dieselbe Eigenschaft nicht
+// gleichzeitig animieren, sonst mischt three.js sie zu einer Mittelpose —
+// deshalb wird jeder Clip anhand der Knochen zerlegt.
+const UPPER_BONES = new Set([
+  'spine', 'chest', 'head',
+  'upperarml', 'lowerarml', 'wristl', 'handl', 'handslotl',
+  'upperarmr', 'lowerarmr', 'wristr', 'handr', 'handslotr',
+]);
+
+function splitClip(clip, wantUpper){
+  const tracks = clip.tracks.filter(t=>{
+    const bone = t.name.slice(0, t.name.lastIndexOf('.'));
+    return UPPER_BONES.has(bone) === wantUpper;
+  });
+  return new THREE.AnimationClip(
+    clip.name + (wantUpper ? '_oben' : '_unten'), clip.duration, tracks);
+}
+
 function retarget(clip){
   const keep = clip.tracks.filter(t =>
     !t.name.endsWith('.scale') &&
@@ -285,6 +305,12 @@ function retarget(clip){
 const player = new THREE.Group();
 scene.add(player);
 let mixer = null, actions = {}, current = null, currentName = '';
+let lowerActions = {}, blockUpper = null, upperOn = false;
+let rootBone = null, spineBone = null;
+const blockSpine = new THREE.Quaternion();    // Wirbelsaeule in Deckungspose
+// Diese Clips lassen sich mit erhobenem Schild laufen
+const BLOCK_MOVE_CLIPS = ['Walking_A', 'Walking_Backwards',
+                          'Running_Strafe_Left', 'Running_Strafe_Right'];
 let velY = 0, grounded = true, crouch = false, emoteUntil = 0;
 let airSpeed = 0, airX = 0, airZ = 0;         // Schwung beim Absprung
 const pos = new THREE.Vector3(0, 0, 4);
@@ -296,16 +322,41 @@ const SPEED = {walk: 2.2, run: 5.4, sneak: 1.15};
 // "Crouching" ist wie "Sneaking" ein Duckgang. Fuer den Stand wird der
 // Duckgang deshalb an der Stelle eingefroren, an der beide Fuesse
 // beieinander stehen (etwa ein Viertel des Zyklus).
-function setClip(name, fade = .18, freezeAt = null){
-  if(currentName === name || !actions[name]) return;
-  const next = actions[name];
+function setClip(name, fade = .18, freezeAt = null, lower = false){
+  const key = lower ? name + '#unten' : name;
+  const pool = lower ? lowerActions : actions;
+  if(currentName === key || !pool[name]) return;
+  const next = pool[name];
   next.reset().setEffectiveWeight(1).fadeIn(fade).play();
   next.paused = freezeAt !== null;
   if(freezeAt !== null) next.time = next.getClip().duration * freezeAt;
   if(current) current.fadeOut(fade);
-  current = next; currentName = name;
+  current = next; currentName = key;
   document.getElementById('stName').textContent =
-    freezeAt !== null ? name + ' (Stand)' : name;
+    freezeAt !== null ? name + ' (Stand)' : key.replace('#unten', ' + Schild');
+}
+
+// Die Seitwaertsclips drehen den Wurzelknochen in die Laufrichtung (bis zu
+// 60 Grad). Weil der Oberkoerper daran haengt, schwenkt das Schild mit.
+// Deshalb wird diese Drehung an der Wirbelsaeule wieder herausgerechnet:
+// Deckungspose aus dem Clip, davor die Gegendrehung — das Schild zeigt
+// geradeaus, waehrend die Beine seitwaerts laufen.
+const UP = new THREE.Vector3(0, 1, 0);
+const spineFix = new THREE.Quaternion();
+const rootEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+function keepUpperFacing(){
+  if(!rootBone || !spineBone) return;
+  rootEuler.setFromQuaternion(rootBone.quaternion);
+  spineFix.setFromAxisAngle(UP, -rootEuler.y);
+  spineBone.quaternion.copy(blockSpine).premultiply(spineFix);
+}
+
+// Oberkoerper-Deckung ein- oder ausblenden
+function setBlockUpper(on){
+  if(!blockUpper || on === upperOn) return;
+  upperOn = on;
+  if(on) blockUpper.reset().setEffectiveWeight(1).fadeIn(.15).play();
+  else blockUpper.fadeOut(.15);
 }
 function jump(){
   if(!grounded || crouch) return;
@@ -411,6 +462,25 @@ function buildCharacter(gltf){
     }
     actions[name] = a;
   }
+
+  // Beinteile der Laufclips und der Oberkoerper der Deckung
+  lowerActions = {};
+  for(const name of BLOCK_MOVE_CLIPS){
+    const clip = actions[name]?.getClip();
+    if(!clip) continue;
+    lowerActions[name] = mixer.clipAction(splitClip(clip, false), ch);
+  }
+  rootBone = ch.getObjectByName('root');
+  spineBone = ch.getObjectByName('spine');
+  const blockClip = actions.Melee_Blocking?.getClip();
+  // Die Deckungspose der Wirbelsaeule direkt aus dem Clip lesen, statt sie
+  // spaeter aus der Szene abzugreifen — sonst fliesst die eigene Korrektur
+  // zurueck und die Figur dreht sich immer weiter.
+  const spineTrack = blockClip?.tracks.find(t => t.name === 'spine.quaternion');
+  if(spineTrack) blockSpine.fromArray(spineTrack.values, 0);
+  blockUpper = blockClip
+    ? mixer.clipAction(splitClip(blockClip, true), ch) : null;
+  upperOn = false;
 
   // Schwert an den Handknochen haengen — dafuer hat das Rig "handslot.r"
   // (in three.js ohne Punkt: "handslotr").
@@ -870,6 +940,11 @@ function tick(){
   }
 
   // Animationszustand
+  // Laufen in Deckung: Beine aus dem Laufclip, Oberkoerper aus der Deckung
+  const blockMove = blocking && moving && grounded
+    && !(emoteUntil > performance.now());
+  setBlockUpper(blockMove);
+
   if(emoteUntil > performance.now()){
     /* Emote laeuft */
   } else if(!grounded){
@@ -890,10 +965,11 @@ function tick(){
     // Bewegungsrichtung im Koerpersystem der Figur
     const rel = Math.atan2(dirX, dirZ) - facing;
     const a = Math.atan2(Math.sin(rel), Math.cos(rel));
-    if(Math.abs(a) > 2.2) setClip('Walking_Backwards');
-    else if(a > .8) setClip('Running_Strafe_Left');
-    else if(a < -.8) setClip('Running_Strafe_Right');
-    else setClip(running ? 'Running_A' : 'Walking_A');
+    const forward = blocking ? 'Walking_A' : (running ? 'Running_A' : 'Walking_A');
+    const pick = Math.abs(a) > 2.2 ? 'Walking_Backwards'
+      : a > .8 ? 'Running_Strafe_Left'
+      : a < -.8 ? 'Running_Strafe_Right' : forward;
+    setClip(pick, .18, null, blockMove);
   } else {
     setClip(running ? 'Running_A' : 'Walking_A');
   }
@@ -942,6 +1018,7 @@ function tick(){
   enemyUpdate(dt, now2);
 
   mixer.update(dt);
+  if(blockMove) keepUpperFacing();           // nach dem Mixer, sonst ueberschrieben
   renderer.render(scene, cam);
 }
 
