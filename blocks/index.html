@@ -1608,61 +1608,6 @@ grassMat.onBeforeCompile = (sh) => {
       transformed.xz += wind * bend;`);
 };
 
-/* Ein Büschel: ein Fächer aus drei breiten Blättern mit gemeinsamer Wurzel.
-   Der Rasen aus Einzelhalmen (oben) macht die Fläche, die Büschel machen die
-   SILHOUETTE — bei Wonderbox ragen sie über jede Oberkante hinaus, und genau
-   das ist das wiedererkennbarste Detail des Looks. Deshalb viel breiter und
-   ~4x höher als ein Halm, dafür in kleiner Zahl. */
-function makeTuftGeometry() {
-  const SEG = 4, BLADES = 3, pos = [], idx = [];
-  for (let b = 0; b < BLADES; b++) {
-    const spread = (b - (BLADES - 1) / 2) * 0.6;      // Fächerwinkel um Y
-    const ca = Math.cos(spread), sa = Math.sin(spread);
-    const base = pos.length / 3;
-    for (let i = 0; i <= SEG; i++) {
-      const t = i / SEG;
-      const w = 0.052 * (1 - t * 0.82);               // breit an der Wurzel
-      const lean = t * t * 0.40;                      // deutlicher Bogen
-      for (const sx of [-w, w]) {
-        pos.push(sx * ca + lean * sa, t, -sx * sa + lean * ca);
-      }
-    }
-    for (let i = 0; i < SEG; i++) {
-      const a = base + i * 2;
-      idx.push(a, a + 1, a + 2,  a + 1, a + 3, a + 2);
-    }
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setIndex(idx);
-  g.computeVertexNormals();
-  // Normalen nach oben kippen, gleiche Begründung wie beim Halm: seitliche
-  // Bandnormalen stehen fast senkrecht zur Sonne und werden schwarz.
-  const nrm = g.attributes.normal;
-  for (let i = 0; i < nrm.count; i++) {
-    const v = new THREE.Vector3(nrm.getX(i) * 0.35, 1, nrm.getZ(i) * 0.35).normalize();
-    nrm.setXYZ(i, v.x, v.y, v.z);
-  }
-  return g;
-}
-
-const TUFT_MAX = 40000;
-const tuftGeo = makeTuftGeometry();
-const tuftMesh = new THREE.InstancedMesh(tuftGeo, grassMat, TUFT_MAX);
-tuftMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-tuftMesh.frustumCulled = false;
-tuftMesh.count = 0;
-tuftMesh.castShadow = true;
-tuftMesh.receiveShadow = true;
-scene.add(tuftMesh);
-
-// Der Wind-Vertexshader von grassMat liest aPhase/aRot je Instanz — die
-// Büschelgeometrie braucht dieselben Attribute, sonst bleibt sie starr.
-const tuftPhase = new THREE.InstancedBufferAttribute(new Float32Array(TUFT_MAX), 1);
-const tuftRot   = new THREE.InstancedBufferAttribute(new Float32Array(TUFT_MAX), 1);
-tuftGeo.setAttribute('aPhase', tuftPhase);
-tuftGeo.setAttribute('aRot', tuftRot);
-
 const grassMesh = new THREE.InstancedMesh(grassGeo, grassMat, GRASS_MAX);
 grassMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 grassMesh.frustumCulled = false;
@@ -1731,72 +1676,6 @@ function rebuildGrass() {
   if (grassMesh.instanceColor) grassMesh.instanceColor.needsUpdate = true;
   grassPhase.needsUpdate = true;
   grassRot.needsUpdate = true;
-  rebuildTufts();
-}
-
-/* Büschel an den Kanten. Eine Kante ist jede Seite, an der auf gleicher
-   Höhe kein Block steht — dort bricht die Grasfläche im Original nicht ab,
-   sondern franst über den Rand. Die Büschel stehen deshalb ETWAS AUSSERHALB
-   der Zelle und kippen nach außen. Steht über dem Nachbarn eine Wand, ist
-   die Kante verdeckt und bleibt kahl. */
-const TUFT_SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-const _tq = new THREE.Quaternion(), _tq2 = new THREE.Quaternion();
-const _tx = new THREE.Vector3(1, 0, 0);
-
-function rebuildTufts() {
-  let n = 0;
-  for (const [k, b] of world) {
-    if (b.type !== 'grass' || n >= TUFT_MAX) continue;
-    const [x, y, z] = k.split(',').map(Number);
-    if (isSolid(x, y + 1, z)) continue;                 // überbaut
-    if (cellOwner[ci(x, z)] !== -1) continue;           // unter Wasser
-
-    const emit = (px, pz, aY, tilt, h, wide, seed) => {
-      _v3.set(px, y + 0.42, pz);
-      _tq.setFromAxisAngle(_up, aY);
-      _tq2.setFromAxisAngle(_tx, tilt);                 // kippt +y nach +z
-      _tq.multiply(_tq2);
-      _scale.set(wide, h, wide);
-      _m4.compose(_v3, _tq, _scale);
-      tuftMesh.setMatrixAt(n, _m4);
-      _tint.copy(_base).offsetHSL((seed - 0.5) * 0.05, (seed - 0.5) * 0.18, 0.04);
-      tuftMesh.setColorAt(n, _tint);
-      const along = px * GRASS_WIND.x + pz * GRASS_WIND.y;
-      tuftPhase.setX(n, along * 0.55 + seed * 0.8);
-      tuftRot.setX(n, aY);
-      n++;
-    };
-
-    for (const [dx, dz] of TUFT_SIDES) {
-      const nx = x + dx, nz = z + dz;
-      const inside = nx >= 0 && nz >= 0 && nx < SIZE && nz < SIZE;
-      if (inside && isSolid(nx, y, nz)) continue;        // keine Kante
-      if (inside && isSolid(nx, y + 1, nz)) continue;    // Wand davor
-
-      const PER = 8;
-      for (let i = 0; i < PER && n < TUFT_MAX; i++) {
-        const sd = hash3(x * 7 + dx, y, z * 7 + dz, i * 4 + 1);
-        const s2 = hash3(x * 7 + dx, y, z * 7 + dz, i * 4 + 2);
-        const s3 = hash3(x * 7 + dx, y, z * 7 + dz, i * 4 + 3);
-        // Längs der Kante verteilen (Tangente ist die Querachse)
-        const t = (i + 0.15 + sd * 0.7) / PER - 0.5;
-        // Über den Rand hinaus: das ist der ganze Zweck der Kantenbüschel.
-        const out = 0.5 + 0.06 + s2 * 0.16;
-        const px = x + dx * out + dz * t;
-        const pz = z + dz * out + dx * t;
-        emit(px, pz, Math.atan2(dx, dz),
-             0.16 + s3 * 0.26,                  // leicht nach außen gekippt
-             0.10 + s2 * 0.13, 0.55 + s3 * 0.45, sd);
-      }
-    }
-
-  }
-
-  tuftMesh.count = n;
-  tuftMesh.instanceMatrix.needsUpdate = true;
-  if (tuftMesh.instanceColor) tuftMesh.instanceColor.needsUpdate = true;
-  tuftPhase.needsUpdate = true;
-  tuftRot.needsUpdate = true;
 }
 
 function syncFish() {
