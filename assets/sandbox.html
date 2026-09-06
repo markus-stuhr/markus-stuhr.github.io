@@ -83,6 +83,10 @@ kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2p
         kommst — Q blockt seinen Schlag, wenn er von vorne kommt.</td></tr>
       <tr><td>Maus ziehen · Rad</td><td>Kamera drehen · zoomen</td></tr>
     </table>
+    <div id="padnote" hidden style="margin-top:8px;color:var(--acc)">
+      Controller erkannt: linker Stick läuft, rechter dreht die Kamera,
+      A springt, X schlägt, LB blockt, B duckt, Y winkt, RT rennt.
+    </div>
     <div id="touchnote" hidden style="margin-top:8px;color:var(--acc2)">
       Ohne Tastatur geht hier nur die Kamera — die Steuerung braucht einen Rechner.
     </div>
@@ -185,6 +189,66 @@ addEventListener('keydown', e=>{
 });
 addEventListener('keyup', e=> keys.delete(e.code));
 addEventListener('blur', ()=> keys.clear());
+
+// --- Gamepad -------------------------------------------------------------
+// Standardbelegung (Xbox-Layout): linker Stick laeuft, rechter dreht die
+// Kamera, A springt, X schlaegt, LB blockt, B duckt, Y winkt, RT rennt.
+// Tastatur und Controller laufen parallel — was gerade Ausschlag gibt, zaehlt.
+const PAD = {
+  jump: 0, crouch: 1, attack: 2, wave: 3,
+  block: 4, sprint: 7, strafe: 6,
+};
+const DEAD = .18;                             // Stickmitte ignorieren
+const padPrev = new Set();                    // fuer Tastendruck-Flanken
+let padSeen = false;
+
+function padAxis(pad, i){
+  const v = pad.axes[i] ?? 0;
+  return Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD);
+}
+
+function activePad(){
+  const list = navigator.getGamepads ? navigator.getGamepads() : [];
+  for(const p of list) if(p && p.connected) return p;
+  return null;
+}
+
+// Liest den Controller und meldet Bewegung, Kamera und gedrueckte Knoepfe
+function readPad(dt){
+  const pad = activePad();
+  if(!pad){ padPrev.clear(); return null; }
+  if(!padSeen){
+    padSeen = true;
+    document.getElementById('padnote').hidden = false;
+  }
+  const down = i => !!(pad.buttons[i] && pad.buttons[i].pressed);
+  const pressed = i => {                      // nur der erste Frame zaehlt
+    const now = down(i);
+    const was = padPrev.has(i);
+    if(now) padPrev.add(i); else padPrev.delete(i);
+    return now && !was;
+  };
+
+  // Kamera mit dem rechten Stick
+  camYaw.v -= padAxis(pad, 2) * 2.4 * dt;
+  camPitch.v = Math.max(-.15, Math.min(1.15,
+    camPitch.v + padAxis(pad, 3) * 1.6 * dt));
+
+  if(pressed(PAD.jump)) jump();
+  if(pressed(PAD.attack)) attack();
+  if(pressed(PAD.wave)) emote('Waving');
+  if(pressed(PAD.crouch)) crouch = !crouch;
+
+  const ix = padAxis(pad, 0), iz = padAxis(pad, 1);
+  const tilt = Math.hypot(ix, iz);
+  return {
+    ix, iz, tilt,
+    // Rennen ueber den Trigger oder wenn der Stick voll ausgeschlagen ist
+    running: down(PAD.sprint) || tilt > .85,
+    blocking: down(PAD.block),
+    strafe: down(PAD.strafe),
+  };
+}
 
 // --- Figur und Zustandsautomat -----------------------------------------
 // Beim Uebertragen fremder Clips nur Rotationen plus root/hips-Position
@@ -621,7 +685,9 @@ function damagePlayer(){
   const now = performance.now();
   if(dead || now < hurtUntil) return;
   // Blocken schuetzt, solange der Gegner von vorne kommt
-  if(keys.has('KeyQ') && grounded
+  const pad = activePad();
+  const padBlock = !!pad && !!pad.buttons[PAD.block]?.pressed;
+  if((keys.has('KeyQ') || padBlock) && grounded
      && inFront(pos.x, pos.z, facing, enemy.pos.x, enemy.pos.z)){
     currentName = '';
     setClip('Melee_Block_Hit', .06);
@@ -670,15 +736,18 @@ const stSpeed = document.getElementById('stSpeed');
 
 function tick(){
   const dt = Math.min(clock.getDelta(), .05);
-  const strafeMode = keys.has('AltLeft') || keys.has('AltRight');
-  const blocking = keys.has('KeyQ') && grounded;
+  const pad = readPad(dt);
+  const strafeMode = keys.has('AltLeft') || keys.has('AltRight')
+    || (pad && pad.strafe);
+  const blocking = (keys.has('KeyQ') || (pad && pad.blocking)) && grounded;
   // Das Schild erscheint erst mit der Deckung und bleibt waehrend des
   // Ueberblendens zurueck ins Idle noch kurz stehen.
   if(shieldObj) shieldObj.visible = blocking || currentName.startsWith('Melee_Block');
   // Das Schwert erscheint mit dem ersten Schlag und bleibt danach zehn
   // Sekunden gezueckt; jeder weitere Schlag setzt die Zeit neu.
   if(swordObj) swordObj.visible = performance.now() < swordUntil;
-  const running = keys.has('ShiftLeft') || keys.has('ShiftRight');
+  const running = keys.has('ShiftLeft') || keys.has('ShiftRight')
+    || (pad && pad.running);
 
   // Eingabe in eine Richtung relativ zur Kamera umrechnen
   let ix = 0, iz = 0;
@@ -687,6 +756,7 @@ function tick(){
     if(d === 'f') iz -= 1; else if(d === 'b') iz += 1;
     else if(d === 'l') ix -= 1; else if(d === 'r') ix += 1;
   }
+  if(pad && pad.tilt > 0 && !ix && !iz){ ix = pad.ix; iz = pad.iz; }
   const moving = (ix || iz) && !blocking && !(emoteUntil > performance.now());
   let dirX = 0, dirZ = 0;
   if(moving){
@@ -825,6 +895,11 @@ function resize(){
   renderer.setSize(w, h);
   cam.aspect = w/h; cam.updateProjectionMatrix();
 }
+addEventListener('gamepadconnected', ()=>{
+  const n = document.getElementById('padnote');
+  if(n) n.hidden = false;
+});
+
 addEventListener('resize', resize); resize();
 
 if(matchMedia('(hover: none)').matches)
