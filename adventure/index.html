@@ -126,7 +126,7 @@
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
+import {MarchingCubes} from 'three/addons/objects/MarchingCubes.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 
 /* ===================================================================
@@ -398,80 +398,206 @@ resize();
    Fasenbreite bei skalierter Geometrie mitskaliert (und hohe Saeulen
    dann oben anders aussehen als flache), wird je vorkommender Hoehe
    eine eigene Geometrie gebaut und gecacht. */
-/* Benachbarte Zellen mit gleicher Hoehe UND gleichem Material werden zu
-   einem Rechteck zusammengefasst (greedy meshing). Ohne das bekommt jede
-   Zellgrenze ihre eigene gefaste Kante, und die Wiese liegt unter einem
-   sichtbaren Gitternetz aus Erdlinien — der auffaelligste Fehler in der
-   ersten Fassung. Zusammengefasst bleibt eine Fuge nur dort, wo wirklich
-   ein Materialwechsel oder eine Stufe ist. */
-function greedyRects(){
-  const used = new Uint8Array(MW * MH), rects = [];
-  for(let z = 0; z < MH; z++){
-    for(let x = 0; x < MW; x++){
-      if(used[z*MW + x]) continue;
-      const h = cellH(x, z), g = cellG(x, z);
-      const same = (px, pz) => !used[pz*MW + px] && cellH(px, pz) === h && cellG(px, pz) === g;
+/* ---------------------------------------------------------------------
+   Gelaendeform — uebernommen aus /blocks
 
-      let w = 1;
-      while(x + w < MW && same(x + w, z)) w++;
+   Nicht nachgebaut, sondern dasselbe Verfahren: jede Zelle ist eine
+   abgerundete Box im Abstandsfeld (`sdRoundBox`), benachbarte Boxen
+   werden mit einem weichen Minimum (`smin`) VERSCHMOLZEN, und aus dem
+   Feld zieht Marching Cubes die Oberflaeche. Genau daher kommt die
+   organische Form: die Blockkanten laufen ineinander, statt aneinander
+   zu stossen.
 
-      // In die Tiefe nur wachsen, solange die GANZE Reihe passt
-      let d = 1;
-      grow: while(z + d < MH){
-        for(let i = 0; i < w; i++) if(!same(x + i, z + d)) break grow;
-        d++;
-      }
+   Die Kennwerte sind die von /blocks, weil dort eine Zelle 1 Einheit
+   breit ist — und bei uns seit der Rasterhalbierung ebenfalls 1 m:
+   senkrechte Kanten stark gerundet (0.30), waagerechte fast scharf
+   (0.03). Das ist die Mischung, die weiche Formen mit klaren Terrassen
+   verbindet.
 
-      for(let dz = 0; dz < d; dz++)
-        for(let dx = 0; dx < w; dx++) used[(z+dz)*MW + x+dx] = 1;
-      rects.push({x, z, w, d, h, g});
-    }
-  }
-  return rects;
+   Unterschied zu /blocks: dort steht die ganze 20x20-Welt in EINEM Feld.
+   Unsere Karte ist 56x48 — ein einzelnes Feld waere bei brauchbarer
+   Aufloesung zu gross. Das Gelaende wird deshalb in Kacheln gerechnet,
+   die auf einem GEMEINSAMEN Sampleraster liegen und ueberlappend
+   abgetastet werden; jedes Dreieck faellt der Kachel zu, in der sein
+   Schwerpunkt liegt. So bleiben die Naehte dicht, ohne doppelte Flaechen.
+
+   Auch anders: bei uns ist eine Zelle eine SAEULE von BASE bis zur
+   Oberkante, kein Wuerfel je Hoehenstufe. Das spart bei 56x48 Zellen die
+   grosse Mehrheit der Distanzauswertungen.
+--------------------------------------------------------------------- */
+const BOX_ROUND = 0.30;   // Rundungsradius der senkrechten Kanten
+const ROUND_Y   = 0.03;   // Rundung der waagerechten Kanten (10 % davon)
+const BLEND     = 0.32;   // Weichheit der Verschmelzung
+const BOX_FLAT  = CELL / 2 - BOX_ROUND;      // flacher Kern in x/z
+const Y_SQUEEZE = BOX_ROUND / ROUND_Y;
+
+const SAMPLE = 0.25;      // Kantenlaenge eines Feldpunkts in x/z
+const TILE = 8;           // Zellen je Kachel
+const PAD = 1;            // Ueberlappung in Zellen
+const MC_RES = (TILE + 2 * PAD) / SAMPLE;    // 40 Samples je Achse
+
+function smin(a, b, k){
+  const h = Math.min(1, Math.max(0, 0.5 + 0.5 * (b - a) / k));
+  return b * (1 - h) + a * h - k * h * (1 - h);
+}
+
+/* Abstand zu einer stehenden Saeule. `hy` ist ihre halbe Hoehe. Der
+   Y_SQUEEZE-Trick stammt aus /blocks: die y-Komponente wird gestaucht,
+   bevor der Betrag genommen wird — dadurch faellt die Rundung oben und
+   unten viel kleiner aus als an den Seiten, ohne dass man zwei Radien
+   verrechnen muesste. */
+function sdColumn(dx, dy, dz, hy){
+  const qx = Math.max(Math.abs(dx) - BOX_FLAT, 0);
+  const qy = Math.max(Math.abs(dy) - (hy - ROUND_Y), 0) * Y_SQUEEZE;
+  const qz = Math.max(Math.abs(dz) - BOX_FLAT, 0);
+  return Math.sqrt(qx*qx + qy*qy + qz*qz) - BOX_ROUND;
 }
 
 const terrainMat = new THREE.MeshStandardMaterial({
   vertexColors: true, roughness: .95, metalness: 0});
 
-/* Oben Gras, an den Flanken Erde — als Vertexfarbe, nicht als zweites
-   Material. Nach dem Zusammenlegen bleibt so EIN Mesh fuer das ganze
-   Gelaende. Die Grenze laeuft an der Rundung entlang: was mehr nach oben
-   als zur Seite zeigt, ist Oberflaeche. */
-const _c = new THREE.Color();
-function paint(geo, def){
-  const nrm = geo.getAttribute('normal'), n = nrm.count;
-  const col = new Float32Array(n * 3);
-  const top = new THREE.Color(def.top), side = new THREE.Color(def.side);
-  for(let i = 0; i < n; i++){
-    _c.copy(nrm.getY(i) > 0.62 ? top : side);
-    col[i*3] = _c.r; col[i*3+1] = _c.g; col[i*3+2] = _c.b;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  return geo;
-}
-
 let terrainMesh = null;
+let mc = null;            // ein einziger Stempel, fuer alle Kacheln benutzt
+const _tc = new THREE.Color();
 
 function buildTerrain(){
-  if(terrainMesh){                 // beim Neubau das alte Gelaende abraeumen
+  if(terrainMesh){
     scene.remove(terrainMesh);
     terrainMesh.geometry.dispose();
     terrainMesh = null;
   }
-  const parts = [];
-  for(const r of greedyRects()){
-    const height = r.h * LIFT - BASE;
-    const g = paint(new RoundedBoxGeometry(
-      r.w * CELL, height, r.d * CELL, 2, 0.09), PAL[r.g] || PAL.g);
-    g.translate(wx(r.x) + (r.w - 1) * CELL / 2,
-                (r.h * LIFT + BASE) / 2,
-                wz(r.z) + (r.d - 1) * CELL / 2);
-    parts.push(g);
+  if(!mc){
+    mc = new MarchingCubes(MC_RES, terrainMat, false, false, 400000);
+    // Der Standardwert ist 80 — bei Feldwerten um Null loest dann nichts
+    // aus und es entsteht ueberhaupt keine Oberflaeche.
+    mc.isolation = 0;
   }
-  terrainMesh = new THREE.Mesh(mergeGeometries(parts, false), terrainMat);
+
+  // Hoehenbereich, den die Kacheln abdecken muessen
+  let maxH = 0;
+  for(let z = 0; z < MH; z++) for(let x = 0; x < MW; x++) maxH = Math.max(maxH, cellH(x, z));
+  const yLo = BASE - 0.6, yHi = maxH * LIFT + 0.6;
+  const ySpan = yHi - yLo;
+
+  const size = mc.size, size2 = size * size;
+  const field = mc.field;
+  const dist = new Float32Array(field.length);
+
+  // Reichweite einer Saeule in Feldpunkten
+  const stepXZ = (TILE + 2 * PAD) / size;
+  const stepY = ySpan / size;
+  const reachXZ = Math.ceil((CELL / 2 + BLEND) / stepXZ) + 1;
+
+  const posOut = [], nrmOut = [], colOut = [];
+
+  for(let tz = 0; tz * TILE < MH; tz++){
+    for(let tx = 0; tx * TILE < MW; tx++){
+      // Weltbereich dieser Kachel (Kern plus Ueberlappung)
+      const x0 = tx * TILE - PAD, z0 = tz * TILE - PAD;
+      const wx0 = wx(x0) - CELL / 2, wz0 = wz(z0) - CELL / 2;
+
+      dist.fill(4);
+      field.fill(-4);
+
+      const gwx = (i) => wx0 + (i + 0.5) * stepXZ;     // Feldpunkt -> Welt
+      const gwz = (i) => wz0 + (i + 0.5) * stepXZ;
+      const gy  = (i) => yLo + (i + 0.5) * stepY;
+
+      let anyCell = false;
+      for(let z = z0 - 1; z <= z0 + TILE + 2 * PAD; z++){
+        for(let x = x0 - 1; x <= x0 + TILE + 2 * PAD; x++){
+          if(!inMap(x, z)) continue;
+          anyCell = true;
+          const h = cellH(x, z);
+          const top = h * LIFT;
+          const hy = (top - BASE) / 2;             // halbe Saeulenhoehe
+          const cy = (top + BASE) / 2;             // Mitte der Saeule
+
+          // Feldbereich, den diese Saeule beeinflusst
+          const fx = (wx(x) - wx0) / stepXZ - 0.5, fz = (wz(z) - wz0) / stepXZ - 0.5;
+          const ix0 = Math.max(0, Math.floor(fx - reachXZ));
+          const ix1 = Math.min(size - 1, Math.ceil(fx + reachXZ));
+          const iz0 = Math.max(0, Math.floor(fz - reachXZ));
+          const iz1 = Math.min(size - 1, Math.ceil(fz + reachXZ));
+          if(ix1 < ix0 || iz1 < iz0) continue;
+
+          for(let iz = iz0; iz <= iz1; iz++){
+            const dz = gwz(iz) - wz(z);
+            for(let iy = 0; iy < size; iy++){
+              const dy = gy(iy) - cy;
+              // Frueh raus, wenn der Punkt weit ausserhalb der Saeule liegt
+              if(Math.abs(dy) > hy + BLEND + CELL) continue;
+              const rowBase = iz * size2 + iy * size;
+              for(let ix = ix0; ix <= ix1; ix++){
+                const dx = gwx(ix) - wx(x);
+                const d = sdColumn(dx, dy, dz, hy);
+                const i = rowBase + ix;
+                dist[i] = smin(dist[i], d, BLEND);
+              }
+            }
+          }
+        }
+      }
+      if(!anyCell) continue;
+
+      for(let i = 0; i < field.length; i++) field[i] = -dist[i];
+
+      mc.update();
+
+      // Ergebnis einsammeln: lokale Koordinaten sind -1..1, also auf den
+      // Weltbereich der Kachel abbilden. Ein Dreieck gehoert der Kachel,
+      // in deren KERN sein Schwerpunkt liegt — so faellt die Ueberlappung
+      // weg, ohne dass an den Naehten etwas fehlt.
+      const p = mc.geometry.attributes.position.array;
+      const n = mc.geometry.attributes.normal.array;
+      const sx = (TILE + 2 * PAD) / 2, sy = ySpan / 2;
+      const ox = wx0 + sx, oy = yLo + sy, oz = wz0 + sx;
+      const coreX0 = wx(tx * TILE) - CELL / 2, coreX1 = coreX0 + TILE * CELL;
+      const coreZ0 = wz(tz * TILE) - CELL / 2, coreZ1 = coreZ0 + TILE * CELL;
+
+      for(let v = 0; v < mc.count; v += 3){
+        let mx = 0, mz = 0;
+        for(let k = 0; k < 3; k++){
+          mx += p[(v+k)*3] * sx + ox;
+          mz += p[(v+k)*3+2] * sx + oz;
+        }
+        mx /= 3; mz /= 3;
+        if(mx < coreX0 || mx >= coreX1 || mz < coreZ0 || mz >= coreZ1) continue;
+        for(let k = 0; k < 3; k++){
+          const j = (v + k) * 3;
+          const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
+          posOut.push(px, py, pz);
+          nrmOut.push(n[j], n[j+1], n[j+2]);
+
+          /* Farbe aus der KARTE, nicht aus dem Feld. Die Palette von
+             Marching Cubes wird je Feldpunkt gesetzt und zwischen den
+             Punkten interpoliert — an Kachelgrenzen kommen die Saeulen in
+             anderer Reihenfolge zum Zug, und die Wiese bekam dadurch ein
+             rechteckiges Fleckenmuster in Kachelgroesse. Aus der Karte
+             gelesen ist die Farbe dagegen eindeutig, egal welche Kachel
+             das Dreieck erzeugt hat.
+
+             Deckflaeche gegen Flanke entscheidet die HOEHE des Punktes,
+             nicht seine Normale: auf der verschmolzenen Oberflaeche kippt
+             die Normale stellenweise weit genug, um mitten in der Wiese
+             Erdstreifen zu erzeugen. Der Abstand zur Zelloberkante ist
+             dagegen eindeutig. */
+          const gx2 = cx(px), gz2 = cz(pz);
+          const pal = PAL[cellG(gx2, gz2)] || PAL.g;
+          _tc.set(py > cellH(gx2, gz2) * LIFT - 0.22 ? pal.top : pal.side);
+          colOut.push(_tc.r, _tc.g, _tc.b);
+        }
+      }
+    }
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(posOut, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrmOut, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colOut, 3));
+  terrainMesh = new THREE.Mesh(geo, terrainMat);
   terrainMesh.castShadow = true; terrainMesh.receiveShadow = true;
   scene.add(terrainMesh);
-  parts.forEach(p => p.dispose());
 }
 
 /* Wasser: eine Flaeche knapp ueber dem Teichboden. Die Welle laeuft im
