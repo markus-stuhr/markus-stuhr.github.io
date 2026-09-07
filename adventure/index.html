@@ -815,11 +815,18 @@ terrainMat.onBeforeCompile = sh => {
         }
         vec2 uvW = (cell0 + d + 0.5) / uMapCells;
 
+        /* Auf ebenem Boden ist die Zelle UNTER DEM PUNKT die Grundlage,
+           nicht die des Dreiecks. Faellt die Verzerrung aus (naechster
+           Absatz), muss sie dorthin zurueck — auf die Dreieckszelle
+           zurueckzufallen erzeugt duenne Striche der falschen Farbe, weil
+           die beiden auseinanderlaufen koennen. */
+        vec2 uv0 = (cell0 + 0.5) / uMapCells;
+
         /* Und nur Zellen auf DERSELBEN HOEHE (steht im Alphakanal der
            Karte). Ueber eine Stufe hinweg landen sonst Flecken fremden
            Materials mitten in einer Flaeche — eine Sandzunge auf dem Fels
            unter der Kante etwa. */
-        if(abs(texture2D(uTop, uvW).a - texture2D(uTop, uv).a) < 0.02) uv = uvW;
+        uv = abs(texture2D(uTop, uvW).a - texture2D(uTop, uv0).a) < 0.02 ? uvW : uv0;
       }
 
       /* Deckflaeche gegen Flanke entscheidet die NEIGUNG, und zwar je
