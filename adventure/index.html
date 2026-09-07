@@ -798,23 +798,28 @@ terrainMat.onBeforeCompile = sh => {
            staerker weg, hoehere Frequenz macht die Kante unruhiger. */
         vec2 q = vTPos.xz * 1.55;
         vec2 warp = vec2(mgNoise(q), mgNoise(q + 41.3)) - 0.5;
+        vec2 off = warp * 0.34;
         vec2 cell0 = floor(vTPos.xz - uMapMin);          // Zelle unter dem Punkt
-        vec2 cellW = floor(vTPos.xz + warp * 0.34 - uMapMin);
-        vec2 step2 = abs(cellW - cell0);
-        vec2 uvW = (cellW + 0.5) / uMapCells;
+        vec2 d = floor(vTPos.xz + off - uMapMin) - cell0;
 
-        /* Zwei Bedingungen, sonst bleibt die unverzerrte Zelle:
+        /* Ueber Eck vererbt niemand: eine diagonale Verschiebung wird auf
+           die staerker verzerrte Achse PROJIZIERT, nicht verworfen.
 
-           1. Nur die vier DIREKT anliegenden Kacheln duerfen ihre Farbe
-              vererben, nicht die diagonalen (Manhattan-Abstand <= 1).
-              Ueber die Ecke gegriffen entstehen sonst spitze Zungen, die
-              genau im Eckpunkt ansetzen und quer ins Nachbarfeld ragen.
-           2. Nur Zellen auf DERSELBEN HOEHE (steht im Alphakanal der
-              Karte). Ueber eine Stufe hinweg landen sonst Flecken fremden
-              Materials mitten in einer Flaeche — eine Sandzunge auf dem
-              Fels unter der Kante etwa. */
-        if(step2.x + step2.y <= 1.0
-           && abs(texture2D(uTop, uvW).a - texture2D(uTop, uv).a) < 0.02) uv = uvW;
+           Verworfen (also zurueck auf die Zelle des Dreiecks) ergab dort,
+           wo die Verzerrung diagonal greift, duenne Striche der falschen
+           Farbe quer zur Kante — die Farbe sprang eben nicht zum Nachbarn,
+           sondern zurueck. Projiziert landet sie immer bei einer der vier
+           direkt anliegenden Kacheln. */
+        if(abs(d.x) + abs(d.y) > 1.0){
+          if(abs(off.x) >= abs(off.y)) d.y = 0.0; else d.x = 0.0;
+        }
+        vec2 uvW = (cell0 + d + 0.5) / uMapCells;
+
+        /* Und nur Zellen auf DERSELBEN HOEHE (steht im Alphakanal der
+           Karte). Ueber eine Stufe hinweg landen sonst Flecken fremden
+           Materials mitten in einer Flaeche — eine Sandzunge auf dem Fels
+           unter der Kante etwa. */
+        if(abs(texture2D(uTop, uvW).a - texture2D(uTop, uv).a) < 0.02) uv = uvW;
       }
 
       /* Deckflaeche gegen Flanke entscheidet die NEIGUNG, und zwar je
