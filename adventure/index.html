@@ -569,6 +569,45 @@ function updateMapTexture(){
   mapTopTex.needsUpdate = mapSideTex.needsUpdate = true;
 }
 
+/* Das Abstandsfeld an einer beliebigen Weltposition — dieselbe Funktion,
+   aus der auch die Kachelfelder gestanzt werden, nur direkt ausgewertet.
+
+   Sie wird fuer die NORMALEN gebraucht. Marching Cubes liefert als Normale
+   den Gradienten SEINES Feldes, und das ist an den Kachelraendern nicht
+   exakt dasselbe wie im Nachbarfeld: derselbe Punkt bekam aus zwei Kacheln
+   messbar verschiedene Normalen (-1.173 gegen -1.217), und genau das
+   zeichnete das 8x8-Raster als Helligkeitssprung ins Gelaende. Aus der
+   Funktion gerechnet haengt die Normale nur von der Position ab — die
+   Kachelaufteilung wird damit unsichtbar. */
+function sdfAt(px, py, pz){
+  let d = 4;
+  const gx = cx(px), gz = cz(pz);
+  for(let dz = -2; dz <= 2; dz++){
+    for(let dx = -2; dx <= 2; dx++){
+      const x = gx + dx, z = gz + dz;
+      if(!inMap(x, z)) continue;
+      const top = cellH(x, z) * LIFT;
+      d = smin(d, sdColumn(px - wx(x), py - (top + BASE) / 2, pz - wz(z),
+                           (top - BASE) / 2), BLEND);
+    }
+  }
+  return d;
+}
+
+/* Weit genug ausgetastet, dass die Mikrowoelbung zwischen zwei gleich
+   hohen Saeulen herausgemittelt wird. Mit einem kleinen Epsilon (0.05)
+   zeigt der Gradient jede dieser Woelbungen und die Wiese bekommt ein
+   grobes Wellenmuster — Marching Cubes glaettet sie nur deshalb, weil
+   sein Gradient ueber den Sampleabstand gebildet wird. */
+const NRM_EPS = 0.35;
+function normalAt(px, py, pz, out){
+  const dx = sdfAt(px + NRM_EPS, py, pz) - sdfAt(px - NRM_EPS, py, pz);
+  const dy = sdfAt(px, py + NRM_EPS, pz) - sdfAt(px, py - NRM_EPS, pz);
+  const dz = sdfAt(px, py, pz + NRM_EPS) - sdfAt(px, py, pz - NRM_EPS);
+  const len = Math.hypot(dx, dy, dz) || 1;
+  out[0] = dx / len; out[1] = dy / len; out[2] = dz / len;
+}
+
 const terrainMat = new THREE.MeshStandardMaterial({roughness: .95, metalness: 0});
 terrainMat.onBeforeCompile = sh => {
   sh.uniforms.uTop = {value: mapTopTex};
@@ -608,6 +647,7 @@ scene.add(terrainGroup);
 const tileMeshes = new Map();
 let mc = null;            // ein einziger Stempel, fuer alle Kacheln benutzt
 const _tc = new THREE.Color();
+const _nrm = [0, 0, 0];
 
 const TILES_X = Math.ceil(MW / TILE), TILES_Z = Math.ceil(MH / TILE);
 
@@ -730,17 +770,18 @@ function buildTerrain(only){
         if(mx < coreX0 || mx >= coreX1 || mz < coreZ0 || mz >= coreZ1) continue;
         for(let k = 0; k < 3; k++){
           const j = (v + k) * 3;
-          posOut.push(p[j] * sx + ox, p[j+1] * sy + oy, p[j+2] * sx + oz);
+          const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
+          posOut.push(px, py, pz);
 
+          normalAt(px, py, pz, _nrm);
           /* Fast waagerechte Normalen exakt waagerecht stellen. Das
              Verschmelzen zweier gleich hoher Saeulen hinterlaesst an der
              Zellgrenze eine winzige Woelbung; sie ist zu klein, um sie zu
              sehen, aber die Beleuchtung macht daraus ein Netz feiner
              Linien ueber der ganzen Wiese. Nur die flachen Bereiche
-             werden begradigt — Kanten und Flanken bleiben, wie sie sind,
-             und damit auch die organische Form. */
-          if(n[j+1] > 0.93) nrmOut.push(0, 1, 0);
-          else nrmOut.push(n[j], n[j+1], n[j+2]);
+             werden begradigt — Kanten und Flanken bleiben, wie sie sind. */
+          if(_nrm[1] > 0.93) nrmOut.push(0, 1, 0);
+          else nrmOut.push(_nrm[0], _nrm[1], _nrm[2]);
 
         }
       }
