@@ -37,6 +37,24 @@
     transition:opacity .35s;pointer-events:none;font-size:14px}
   #toast.on{opacity:1}
 
+  #edit{left:14px;top:14px;max-width:290px}
+  #edit h1{margin:0 0 8px;font-size:14px;letter-spacing:.02em}
+  #edit table{border-collapse:collapse;font-size:12px;color:var(--dim);margin-top:9px}
+  #edit td{padding:1px 0}
+  #edit td:first-child{padding-right:10px;color:var(--ink);white-space:nowrap}
+  #tools,#mats,#acts{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+  #acts{margin:9px 0 0}
+  #acts button{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.07);
+    color:var(--dim);border-radius:7px;padding:4px 8px;font:12px system-ui;cursor:pointer}
+  #acts button:hover{color:var(--ink)}
+  #tools button,#mats button{border:1px solid rgba(255,255,255,.16);
+    background:rgba(255,255,255,.07);color:var(--ink);border-radius:7px;
+    padding:4px 8px;font:12px system-ui;cursor:pointer}
+  #tools button.on,#mats button.on{background:#e8c15a;color:#1b2130;
+    border-color:#e8c15a;font-weight:600}
+  #mats button i{display:inline-block;width:9px;height:9px;border-radius:2px;
+    margin-right:5px;vertical-align:-1px}
+
   #boot{position:fixed;inset:0;display:grid;place-items:center;
     background:#1b2130;color:var(--dim);letter-spacing:.08em;font-size:12px;
     text-transform:uppercase;transition:opacity .5s}
@@ -65,6 +83,7 @@
     <tr><td>Leertaste</td><td>springen</td></tr>
     <tr><td>E</td><td>handeln</td></tr>
     <tr><td>Q / R</td><td>Kamera drehen</td></tr>
+    <tr><td>Tab</td><td>Editor</td></tr>
   </table>
 </div>
 
@@ -72,6 +91,25 @@
 <div id="prompt" class="panel"><kbd>E</kbd><span id="promptText">öffnen</span></div>
 <div id="toast" class="panel"></div>
 <div id="boot">Lade Welt …</div>
+
+<div id="edit" class="panel" hidden>
+  <h1>Editor</h1>
+  <div id="tools"></div>
+  <div id="mats"></div>
+  <table>
+    <tr><td>Linksklick</td><td>setzen</td></tr>
+    <tr><td>Rechtsklick</td><td>entfernen</td></tr>
+    <tr><td>1 … 9</td><td>Werkzeug</td></tr>
+    <tr><td>W A S D</td><td>Blick schieben</td></tr>
+    <tr><td>Rad</td><td>zoomen</td></tr>
+    <tr><td>Strg + S</td><td>Karte kopieren</td></tr>
+    <tr><td>Tab</td><td>zurück ins Spiel</td></tr>
+  </table>
+  <div id="acts">
+    <button id="copyBtn">Karte kopieren</button>
+    <button id="resetBtn">Zurücksetzen</button>
+  </div>
+</div>
 
 <div id="touch">
   <div id="stick"><div id="knob"></div></div>
@@ -111,31 +149,41 @@ const LIFT = 0.5;        // Hoehe EINER Stufe. Bewusst flach: so ist jede
 const BASE = -1.2;       // Unterkante aller Saeulen (Diorama-Sockel)
 const STEP_UP = 0.62;    // was die Figur im Gehen hochsteigt (= eine Stufe)
 
+/* Wasser hat eine TIEFE, keinen Ein/Aus-Schalter. Die Hoehe einer
+   Wasserzelle ist ihr GRUND, der Spiegel liegt fuer die ganze Karte auf
+   `WATER_LEVEL`. Was daraus folgt, ist der Sinn der Sache: eine Zelle mit
+   Grund knapp unter dem Spiegel ist eine Furt, die man durchwatet, eine
+   tiefe Zelle bleibt Sperre. Im Editor entsteht der Uebergang von selbst,
+   indem man den Grund zum Ufer hin anhebt. */
+const WATER_LEVEL = 2;   // Spiegelhoehe in Stufen
+const WADE_MAX = 1;      // bis hierher (in Stufen) laesst es sich waten
+const WADE_SLOW = .55;   // Tempo im Wasser
+
 const HEIGHT = [
-  '6666666666666666666666666666',
-  '6444444444444444444444444446',
-  '6422222222222222222222222246',
-  '6421111111111111111111111246',
-  '6421111111111111113333333246',
-  '6421111111111111123333333246',
-  '6421111111111111223333333246',
-  '6421111111111111223333333246',
-  '6421111111111111223333333246',
-  '6421111111111111123333333246',
-  '6421111111111111113333333246',
-  '6421111111111111111111111246',
-  '6421111111111111111111111246',
-  '6421111011111111111111111246',
-  '6421100000111111111111111246',
-  '6421000000011111111111111246',
-  '6421000000011111111111111246',
-  '6420000000001111111111111246',
-  '6421000000011111111111111246',
-  '6421000000011111111111111246',
-  '6421100000111111111111111246',
-  '6422222222222222222222222246',
-  '6444444444444444444444444446',
-  '6666666666666666666666666666',
+  '7777777777777777777777777777',
+  '7555555555555555555555555557',
+  '7533333333333333333333333357',
+  '7532222222222222222222222357',
+  '7532222222222222224444444357',
+  '7532222222222222234444444357',
+  '7532222222222222334444444357',
+  '7532222222222222334444444357',
+  '7532222222222222334444444357',
+  '7532222222222222234444444357',
+  '7532222222222222224444444357',
+  '7532222222222222222222222357',
+  '7532222222222222222222222357',
+  '7532222122222222222222222357',
+  '7532211111222222222222222357',
+  '7532111011122222222222222357',
+  '7532110001122222222222222357',
+  '7531100000112222222222222357',
+  '7532110001122222222222222357',
+  '7532111011122222222222222357',
+  '7532211111222222222222222357',
+  '7533333333333333333333333357',
+  '7555555555555555555555555557',
+  '7777777777777777777777777777',
 ];
 const GROUND = [
   'rrrrrrrrrrrrrrrrrrrrrrrrrrrr',
@@ -190,14 +238,26 @@ const DECO = [
   '                            ',
 ];
 
+/* Die drei Konstanten oben sind nur der AUSLIEFERUNGSZUSTAND. Gearbeitet
+   wird auf veraenderlichen Kopien: der Editor schreibt hinein, und was
+   im localStorage liegt, ueberschreibt sie beim Start. */
 const MW = HEIGHT[0].length, MH = HEIGHT.length;
+let hmap = HEIGHT.map(r => r.split('').map(Number));
+let gmap = GROUND.map(r => r.split(''));
+let dmap = DECO.map(r => r.split(''));
+
 const inMap = (x, z) => x >= 0 && z >= 0 && x < MW && z < MH;
 // Hoehe einer Zelle in Stufen. Ausserhalb der Karte: Wand.
-const cellH = (x, z) => inMap(x, z) ? +HEIGHT[z][x] : 99;
-const cellG = (x, z) => inMap(x, z) ? GROUND[z][x] : 'r';
-// Oberkante in Weltmetern. Wasser (Hoehe 0) hat keinen begehbaren Boden.
+const cellH = (x, z) => inMap(x, z) ? hmap[z][x] : 99;
+const cellG = (x, z) => inMap(x, z) ? gmap[z][x] : 'r';
+const cellD = (x, z) => inMap(x, z) ? dmap[z][x] : ' ';
+// Oberkante in Weltmetern — bei Wasser ist das der Grund, auf dem die
+// Figur watet.
 const topY = (x, z) => cellH(x, z) * LIFT;
 const isWater = (x, z) => cellG(x, z) === 'w';
+// Wassertiefe in Stufen; 0 bei allem, was kein Wasser ist.
+const depthAt = (x, z) => isWater(x, z) ? Math.max(0, WATER_LEVEL - cellH(x, z)) : 0;
+const wadable = (x, z) => depthAt(x, z) <= WADE_MAX;
 
 // Kartenzelle -> Weltmitte. Die Karte wird um den Ursprung zentriert,
 // damit Kamera und Nebel nicht mit einer Ecke rechnen muessen.
@@ -318,7 +378,14 @@ function paint(geo, def){
   return geo;
 }
 
+let terrainMesh = null;
+
 function buildTerrain(){
+  if(terrainMesh){                 // beim Neubau das alte Gelaende abraeumen
+    scene.remove(terrainMesh);
+    terrainMesh.geometry.dispose();
+    terrainMesh = null;
+  }
   const parts = [];
   for(const r of greedyRects()){
     const height = r.h * LIFT - BASE;
@@ -329,42 +396,51 @@ function buildTerrain(){
                 wz(r.z) + (r.d - 1) * CELL / 2);
     parts.push(g);
   }
-  const mesh = new THREE.Mesh(mergeGeometries(parts, false), terrainMat);
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  scene.add(mesh);
+  terrainMesh = new THREE.Mesh(mergeGeometries(parts, false), terrainMat);
+  terrainMesh.castShadow = true; terrainMesh.receiveShadow = true;
+  scene.add(terrainMesh);
   parts.forEach(p => p.dispose());
-  console.info('Gelaende:', parts.length, 'Rechtecke statt', MW * MH, 'Zellen');
 }
-buildTerrain();
 
 /* Wasser: eine Flaeche knapp ueber dem Teichboden. Die Welle laeuft im
-   Vertexshader — zwei gekreuzte Sinuswellen reichen voellig, solange
-   die Flaeche fein genug unterteilt ist. */
-const waterCells = [];
-for(let z = 0; z < MH; z++) for(let x = 0; x < MW; x++) if(isWater(x, z)) waterCells.push([x, z]);
-
+   Vertexshader — zwei gekreuzte Sinuswellen reichen voellig, solange die
+   Flaeche fein genug unterteilt ist. */
 const waterTime = {value: 0};
 
-if(waterCells.length){
-  const tiles = waterCells.map(([x, z]) => {
-    const g = new THREE.PlaneGeometry(CELL, CELL, 3, 3).rotateX(-Math.PI/2);
-    g.translate(wx(x), 0, wz(z));
-    return g;
-  });
-  const waterMat = new THREE.MeshStandardMaterial({
-    color: 0x4fa9c4, roughness: .25, metalness: .1,
-    transparent: true, opacity: .82});
-  waterMat.onBeforeCompile = sh => {
-    sh.uniforms.uT = waterTime;
-    sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace(
-      '#include <begin_vertex>', `#include <begin_vertex>
-      transformed.y += sin(transformed.x * .9 + uT * 1.6) * .045
-                     + sin(transformed.z * 1.3 - uT * 1.1) * .035;`);
-  };
-  const water = new THREE.Mesh(mergeGeometries(tiles, false), waterMat);
-  water.position.y = 0.30;
-  water.receiveShadow = true;
-  scene.add(water);
+const waterMat = new THREE.MeshStandardMaterial({
+  color: 0x4fa9c4, roughness: .25, metalness: .1,
+  transparent: true, opacity: .82});
+waterMat.onBeforeCompile = sh => {
+  sh.uniforms.uT = waterTime;
+  sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace(
+    '#include <begin_vertex>', `#include <begin_vertex>
+    transformed.y += sin(transformed.x * .9 + uT * 1.6) * .045
+                   + sin(transformed.z * 1.3 - uT * 1.1) * .035;`);
+};
+
+let waterMesh = null;
+
+function buildWater(){
+  if(waterMesh){
+    scene.remove(waterMesh);
+    waterMesh.geometry.dispose();
+    waterMesh = null;
+  }
+  const tiles = [];
+  for(let z = 0; z < MH; z++){
+    for(let x = 0; x < MW; x++){
+      if(!isWater(x, z)) continue;
+      const g = new THREE.PlaneGeometry(CELL, CELL, 3, 3).rotateX(-Math.PI/2);
+      // Der Spiegel liegt eine halbe Stufe ueber dem Grund: so ist an der
+      // Tiefe abzulesen, ob man noch waten kann.
+      g.translate(wx(x), WATER_LEVEL * LIFT, wz(z));
+      tiles.push(g);
+    }
+  }
+  if(!tiles.length) return;
+  waterMesh = new THREE.Mesh(mergeGeometries(tiles, false), waterMat);
+  waterMesh.receiveShadow = true;
+  scene.add(waterMesh);
   tiles.forEach(t => t.dispose());
 }
 
@@ -514,20 +590,13 @@ const _pos = new THREE.Vector3(), _qt = new THREE.Quaternion();
 const _scl = new THREE.Vector3(), _m4 = new THREE.Matrix4();
 const UP = new THREE.Vector3(0, 1, 0);
 
-async function buildDeco(){
-  // Zellen nach Art gruppieren — eine InstancedMesh je Modellvariante
-  const byKind = new Map();
-  for(let z = 0; z < MH; z++){
-    for(let x = 0; x < MW; x++){
-      const c = DECO[z][x];
-      if(c === ' ' || !KINDS[c]) continue;
-      if(!byKind.has(c)) byKind.set(c, []);
-      byKind.get(c).push([x, z]);
-    }
-  }
+/* Modelle einmal laden, danach nur noch Instanzen setzen. Der Editor baut
+   die Deko bei jeder Aenderung neu auf — das darf nicht jedes Mal ueber
+   das Netz gehen. */
+const decoVariants = new Map();          // Kind -> [{geo, mat}]
 
-  for(const [kind, cells] of byKind){
-    const def = KINDS[kind];
+async function loadDecoModels(){
+  for(const [kind, def] of Object.entries(KINDS)){
     const ext = def.ext || '.gltf';
     const variants = [];
     for(const name of def.models){
@@ -537,22 +606,56 @@ async function buildDeco(){
         if(v) variants.push(v);
       }catch(e){ console.warn('Modell fehlt:', def.dir + '/' + name, e); }
     }
-    if(!variants.length) continue;
+    if(variants.length) decoVariants.set(kind, variants);
+  }
+}
 
-    // Instanzen je Variante sammeln, damit jede ihre eigene Mesh bekommt
+/* Variante, Groesse und Drehung kommen aus einem Hash der Zellposition:
+   dieselbe Karte ergibt immer denselben Wald, und beim Neuaufbau im Editor
+   springt nichts herum. */
+function decoPlacement(kind, x, z){
+  const def = KINDS[kind];
+  const n = decoVariants.get(kind).length;
+  const game = kind === 'C' || kind === 'G' || kind === 'H';
+  return {
+    x, z,
+    vi: Math.floor(hash(x, z, 1) * n) % n,
+    s: def.fitH[0] + hash(x, z, 2) * (def.fitH[1] - def.fitH[0]),
+    yaw: def.yawStep
+      ? Math.floor(hash(x, z, 3) * def.yawStep) / def.yawStep * Math.PI * 2
+      : hash(x, z, 3) * Math.PI * 2,
+    // Kleiner Versatz aus der Zellmitte, damit kein Gitter zu sehen ist.
+    // Spielobjekte bleiben mittig — sie muessen ansteuerbar sein.
+    ox: game ? 0 : (hash(x, z, 4) - .5) * CELL * .34,
+    oz: game ? 0 : (hash(x, z, 5) - .5) * CELL * .34,
+  };
+}
+
+function rebuildDeco(){
+  // Alles Alte abraeumen. Die Geometrien bleiben — sie gehoeren den
+  // Varianten, nicht den Meshes.
+  for(const m of occluders){ scene.remove(m); m.dispose(); }
+  occluders.length = 0; fadeParts.length = 0; chests.length = 0;
+  blockers.clear();
+  gateObj = null; gateCell = null;
+
+  const byKind = new Map();
+  for(let z = 0; z < MH; z++){
+    for(let x = 0; x < MW; x++){
+      const c = cellD(x, z);
+      if(c === ' ' || !decoVariants.has(c)) continue;
+      if(!byKind.has(c)) byKind.set(c, []);
+      byKind.get(c).push([x, z]);
+    }
+  }
+
+  for(const [kind, cells] of byKind){
+    const def = KINDS[kind];
+    const variants = decoVariants.get(kind);
     const buckets = variants.map(() => []);
     for(const [x, z] of cells){
-      const vi = Math.floor(hash(x, z, 1) * variants.length) % variants.length;
-      const s = def.fitH[0] + hash(x, z, 2) * (def.fitH[1] - def.fitH[0]);
-      const yaw = def.yawStep
-        ? Math.floor(hash(x, z, 3) * def.yawStep) / def.yawStep * Math.PI * 2
-        : hash(x, z, 3) * Math.PI * 2;
-      // Kleiner Versatz aus der Zellmitte, damit kein Gitter zu sehen ist.
-      // Spielobjekte bleiben mittig — sie muessen ansteuerbar sein.
-      const game = kind === 'C' || kind === 'G' || kind === 'H';
-      const ox = game ? 0 : (hash(x, z, 4) - .5) * CELL * .34;
-      const oz = game ? 0 : (hash(x, z, 5) - .5) * CELL * .34;
-      buckets[vi].push({x, z, ox, oz, s, yaw});
+      const it = decoPlacement(kind, x, z);
+      buckets[it.vi].push(it);
       if(def.solid) blockers.set(x + ',' + z, def.solid);
     }
 
@@ -564,6 +667,7 @@ async function buildDeco(){
       // Jede Instanz traegt ihre eigene Deckung. Anfangs sind alle voll da.
       const fade = new THREE.InstancedBufferAttribute(
         new Float32Array(list.length).fill(1), 1);
+      mesh.geometry = v.geo;
       v.geo.setAttribute('aFade', fade);
       fadeParts.push({mesh, fade});
       list.forEach((it, i) => {
@@ -572,7 +676,7 @@ async function buildDeco(){
         _scl.set(it.s, it.s, it.s);
         mesh.setMatrixAt(i, _m4.compose(_pos, _qt, _scl));
         if(kind === 'C') chests.push({x: it.x, z: it.z, mesh, i, open: false,
-                                      m: _m4.clone(), yaw: it.yaw, s: it.s});
+                                      yaw: it.yaw, s: it.s});
         if(kind === 'G'){
           gateObj = mesh; gateCell = [it.x, it.z];
           mesh.userData = {yaw: it.yaw, s: it.s};
@@ -583,6 +687,13 @@ async function buildDeco(){
       occluders.push(mesh);
     });
   }
+}
+
+// Ein Zug nach jeder Kartenaenderung: Gelaende, Wasser, Deko.
+function rebuildWorld(){
+  buildTerrain();
+  buildWater();
+  if(decoVariants.size) rebuildDeco();
 }
 
 // ---------------------------------------------------------------- Figur
@@ -666,7 +777,7 @@ function buildCharacter(gltf, libs){
 function walkable(x, z, fromY){
   const gx = cx(x), gz = cz(z);
   if(!inMap(gx, gz)) return false;
-  if(isWater(gx, gz)) return false;                 // der Teich ist tief
+  if(!wadable(gx, gz)) return false;                // zu tief zum Waten
   const y = topY(gx, gz);
   if(y - fromY > STEP_UP) return false;             // zu hohe Stufe
   const b = blockers.get(gx + ',' + gz);
@@ -696,7 +807,20 @@ const MOVE = {KeyW:'f', ArrowUp:'f', KeyS:'b', ArrowDown:'b',
               KeyA:'l', ArrowLeft:'l', KeyD:'r', ArrowRight:'r'};
 
 addEventListener('keydown', e => {
+  if(e.code === 'Tab'){ e.preventDefault(); setEditing(!editing); return; }
   if(e.repeat) return;
+
+  if(editing){
+    if(e.code === 'KeyQ') turnCam(-1);
+    if(e.code === 'KeyR') turnCam(1);
+    if((e.ctrlKey || e.metaKey) && e.code === 'KeyS'){ e.preventDefault(); copyMap(); }
+    const n = /^Digit([1-9])$/.exec(e.code);
+    if(n) pickByNumber(+n[1]);
+    keys.add(e.code);
+    if(MOVE[e.code]) e.preventDefault();
+    return;
+  }
+
   if(e.code === 'Space'){ e.preventDefault(); jump(); }
   if(e.code === 'KeyE') interact();
   if(e.code === 'KeyQ') turnCam(-1);
@@ -837,6 +961,247 @@ function openGate(){
   }
 }
 
+/* ===================================================================
+   EDITOR
+
+   Die Bedienung ist aus /blocks uebernommen, der Renderer ausdruecklich
+   nicht: gebaut wird in derselben Darstellung, in der auch gespielt wird.
+   Ein Editor, der weiches Gelaende zeigt und kantiges liefert, ist beim
+   Leveldesign eher gefaehrlich als nuetzlich.
+
+   Der Cursor kommt aus einem Raycast gegen das Gelaende. Weil das
+   Gelaende EINE zusammengelegte Mesh ist, gibt es keine Blockobjekte, die
+   man treffen koennte — der Treffpunkt wird stattdessen in Kartenkoordi-
+   naten zurueckgerechnet.
+=================================================================== */
+let editing = false;
+
+const TOOLS = {
+  raise: {label: 'Höhe', hint: 'anheben / absenken'},
+  paint: {label: 'Boden', hint: 'Material malen'},
+  deco:  {label: 'Objekt', hint: 'Deko setzen'},
+};
+const MATS = {
+  g: 'Wiese', p: 'Pfad', r: 'Fels', s: 'Sand', w: 'Wasser',
+};
+const DECO_LABEL = {
+  T: 'Baum', B: 'Busch', F: 'Gras', R: 'Fels', K: 'Kiste',
+  C: 'Truhe', H: 'Haus', G: 'Tor',
+};
+
+let tool = 'raise', mat = 'g', decoKind = 'T';
+
+// Der Kartencursor: ein flacher Rahmen auf der angepeilten Zelle
+const cursor = new THREE.Mesh(
+  new THREE.BoxGeometry(CELL * 1.02, .12, CELL * 1.02),
+  new THREE.MeshBasicMaterial({color: 0xffe27a, transparent: true, opacity: .55}));
+cursor.visible = false;
+scene.add(cursor);
+let cursorCell = null;
+
+// Freie Kamera im Editor: der Blickpunkt loest sich von der Figur
+const editLook = new THREE.Vector3();
+let editDist = 30;
+
+function setEditing(on){
+  editing = on;
+  document.getElementById('edit').hidden = !on;
+  document.getElementById('help').hidden = on;
+  document.getElementById('prompt').style.display = 'none';
+  cursor.visible = on;
+  if(on){
+    editLook.copy(camLook);
+  }else{
+    /* Zurueck ins Spiel: die Figur kann auf einer Zelle stehen, die
+       inzwischen abgetragen, aufgeschuettet oder geflutet wurde. Sie auf
+       den aktuellen Boden zu setzen reicht meistens; steht sie in etwas
+       Unbegehbarem, wird die naechste gueltige Zelle gesucht. */
+    if(!walkable(pos.x, pos.z, 99)){
+      let best = null, bestD = Infinity;
+      for(let z = 0; z < MH; z++){
+        for(let x = 0; x < MW; x++){
+          if(!walkable(wx(x), wz(z), 99)) continue;
+          const d = (wx(x) - pos.x) ** 2 + (wz(z) - pos.z) ** 2;
+          if(d < bestD){ bestD = d; best = [wx(x), wz(z)]; }
+        }
+      }
+      if(best){ pos.x = best[0]; pos.z = best[1]; }
+    }
+    pos.y = groundAt(pos.x, pos.z);
+    velY = 0; grounded = true;
+    camLook.set(pos.x, pos.y + 1.1, pos.z);
+  }
+  keys.clear();
+}
+
+/* Raycast gegen das Gelaende, Treffpunkt in Kartenkoordinaten umrechnen.
+   Ein winziger Schritt ENTGEGEN der Strahlrichtung ist noetig, weil ein
+   Treffer auf einer senkrechten Flanke sonst der Nachbarzelle zugerechnet
+   wird — man malt dann immer eine Zelle zu weit. */
+const _mouse = new THREE.Vector2();
+const _erc = new THREE.Raycaster();
+function pickCell(ev){
+  if(!terrainMesh) return null;
+  const r = renderer.domElement.getBoundingClientRect();
+  _mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+  _mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+  _erc.setFromCamera(_mouse, cam);
+  const hit = _erc.intersectObject(terrainMesh, false)[0];
+  if(!hit) return null;
+  const p = hit.point.clone().addScaledVector(_erc.ray.direction, -0.02);
+  const gx = cx(p.x), gz = cz(p.z);
+  return inMap(gx, gz) ? [gx, gz] : null;
+}
+
+function applyTool(cell, remove){
+  if(!cell) return;
+  const [x, z] = cell;
+  if(tool === 'raise'){
+    const h = hmap[z][x] + (remove ? -1 : 1);
+    hmap[z][x] = Math.max(0, Math.min(9, h));
+  }else if(tool === 'paint'){
+    gmap[z][x] = remove ? 'g' : mat;
+  }else{
+    dmap[z][x] = remove ? ' ' : decoKind;
+  }
+  rebuildWorld();
+  saveWorld();
+}
+
+// --- Speichern ---------------------------------------------------------
+/* Die Karte IST das Speicherformat. Was der Editor ablegt, ist genau der
+   Text, der oben in der Datei steht — damit laesst sich eine gebaute Welt
+   ohne Umweg als neuer Auslieferungszustand einsetzen. */
+const STORAGE_KEY = 'adventure.world.v1';
+
+function mapText(){
+  const block = (name, rows) =>
+    'const ' + name + ' = [\n'
+    + rows.map(r => "  '" + r.join('') + "',").join('\n') + '\n];';
+  return [block('HEIGHT', hmap), block('GROUND', gmap), block('DECO', dmap)].join('\n');
+}
+
+function saveWorld(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      h: hmap.map(r => r.join('')),
+      g: gmap.map(r => r.join('')),
+      d: dmap.map(r => r.join('')),
+    }));
+  }catch(e){ /* privater Modus o. Ae. */ }
+}
+
+function loadWorld(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return false;
+    const w = JSON.parse(raw);
+    // Nur uebernehmen, was zur aktuellen Kartengroesse passt — sonst
+    // laufen alle Indizes ins Leere.
+    if(w.h.length !== MH || w.h[0].length !== MW) return false;
+    hmap = w.h.map(r => r.split('').map(Number));
+    gmap = w.g.map(r => r.split(''));
+    dmap = w.d.map(r => r.split(''));
+    return true;
+  }catch(e){ return false; }
+}
+
+function resetWorld(){
+  hmap = HEIGHT.map(r => r.split('').map(Number));
+  gmap = GROUND.map(r => r.split(''));
+  dmap = DECO.map(r => r.split(''));
+  try{ localStorage.removeItem(STORAGE_KEY); }catch(e){}
+  rebuildWorld();
+  toast('Welt zurückgesetzt');
+}
+
+// --- Bedienleiste ------------------------------------------------------
+function buildEditorUI(){
+  const tools = document.getElementById('tools');
+  const mats = document.getElementById('mats');
+
+  const paint = () => {
+    for(const b of tools.children) b.classList.toggle('on', b.dataset.tool === tool);
+    for(const b of mats.children){
+      b.classList.toggle('on',
+        tool === 'deco' ? b.dataset.deco === decoKind : b.dataset.mat === mat);
+    }
+    // Die zweite Reihe zeigt je nach Werkzeug Materialien oder Objekte
+    for(const b of mats.children){
+      b.hidden = tool === 'deco' ? !b.dataset.deco
+               : tool === 'paint' ? !b.dataset.mat : true;
+    }
+  };
+
+  for(const [id, def] of Object.entries(TOOLS)){
+    const b = document.createElement('button');
+    b.textContent = def.label; b.dataset.tool = id; b.title = def.hint;
+    b.onclick = () => { tool = id; paint(); };
+    tools.append(b);
+  }
+  for(const [id, label] of Object.entries(MATS)){
+    const b = document.createElement('button');
+    b.innerHTML = '<i style="background:' + PAL[id].top + '"></i>' + label;
+    b.dataset.mat = id;
+    b.onclick = () => { mat = id; paint(); };
+    mats.append(b);
+  }
+  for(const [id, label] of Object.entries(DECO_LABEL)){
+    const b = document.createElement('button');
+    b.textContent = label; b.dataset.deco = id;
+    b.onclick = () => { decoKind = id; paint(); };
+    mats.append(b);
+  }
+  document.getElementById('copyBtn').onclick = copyMap;
+  document.getElementById('resetBtn').onclick = () => {
+    // Zurueck auf den Auslieferungszustand. Ohne diesen Weg kann man sich
+    // die Welt verbauen, ohne wieder herauszukommen.
+    if(confirm('Die gebaute Welt verwerfen und das Startlevel laden?')) resetWorld();
+  };
+  paint();
+  return paint;
+}
+
+// Ziffern waehlen: erst die drei Werkzeuge, dann was das Werkzeug anbietet
+function pickByNumber(n){
+  const list = tool === 'deco' ? Object.keys(DECO_LABEL) : Object.keys(MATS);
+  if(n <= 3){ tool = Object.keys(TOOLS)[n - 1]; }
+  else if(list[n - 4]){ if(tool === 'deco') decoKind = list[n - 4]; else mat = list[n - 4]; }
+  repaintUI && repaintUI();
+}
+
+function copyMap(){
+  const text = mapText();
+  navigator.clipboard?.writeText(text)
+    .then(() => toast('Karte in der Zwischenablage'))
+    .catch(() => { console.info(text); toast('Karte in der Konsole'); });
+}
+
+let repaintUI = null;
+
+{
+  const el = () => renderer.domElement;
+  addEventListener('pointermove', e => {
+    if(!editing) return;
+    cursorCell = pickCell(e);
+    cursor.visible = !!cursorCell;
+    if(cursorCell){
+      const [x, z] = cursorCell;
+      cursor.position.set(wx(x), topY(x, z) + .07, wz(z));
+    }
+  });
+  addEventListener('pointerdown', e => {
+    if(!editing || e.target !== el()) return;
+    applyTool(pickCell(e), e.button === 2);
+  });
+  addEventListener('contextmenu', e => { if(editing) e.preventDefault(); });
+  addEventListener('wheel', e => {
+    if(!editing) return;
+    e.preventDefault();
+    editDist = Math.max(10, Math.min(70, editDist + Math.sign(e.deltaY) * 3));
+  }, {passive: false});
+}
+
 // ------------------------------------------------------- Hauptschleife
 const promptEl = document.getElementById('prompt');
 const promptText = document.getElementById('promptText');
@@ -863,6 +1228,8 @@ function step(dt){
   T += dt;
   waterTime.value += dt;
 
+  if(editing){ stepEditor(dt); return; }
+
   // --- Eingabe in eine Richtung im Kameraraum uebersetzen -------------
   let ix = 0, iz = 0;
   for(const k of keys){
@@ -879,7 +1246,11 @@ function step(dt){
   const running = keys.has('ShiftLeft') || keys.has('ShiftRight')
                || (touch.active && tilt > .85);
   const busy = T < actUntil;
-  const speed = (running ? SPEED.run : SPEED.walk) * tilt * (busy ? 0 : 1);
+  // Im Wasser wird die Figur langsam — das ist die Rueckmeldung, dass sie
+  // watet, ohne dass es dafuer eine eigene Animation braucht.
+  const wading = depthAt(cx(pos.x), cz(pos.z)) > 0;
+  const speed = (running ? SPEED.run : SPEED.walk) * tilt * (busy ? 0 : 1)
+              * (wading ? WADE_SLOW : 1);
 
   // Vorne ist, wohin die Kamera schaut — sonst laeuft die Figur nach
   // einer Vierteldrehung in die falsche Richtung.
@@ -928,6 +1299,9 @@ function step(dt){
     }
   }
 
+  // Die Figur steht auf dem Grund; dass sie im Wasser steckt, ergibt sich
+  // von selbst aus dem hoeher liegenden Spiegel. Ein zusaetzliches
+  // Einsinken sah aus, als ginge sie unter.
   player.position.copy(pos);
   player.rotation.y = facing;
   if(mixer) mixer.update(dt);
@@ -1011,6 +1385,41 @@ function updateOcclusion(dt){
   }
 }
 
+/* Im Editor bewegt sich nicht die Figur, sondern der Blick. Sonst laeuft
+   die Kamera nach derselben Formel — gleicher Winkel, gleiche Drehung, nur
+   weiter weg. So sieht man beim Bauen genau das, was man spaeter spielt. */
+function stepEditor(dt){
+  let ix = 0, iz = 0;
+  for(const k of keys){
+    const m = MOVE[k];
+    if(m === 'f') iz -= 1; else if(m === 'b') iz += 1;
+    else if(m === 'l') ix -= 1; else if(m === 'r') ix += 1;
+  }
+  if(ix || iz){
+    const cs = Math.sin(camYaw), cc = Math.cos(camYaw), v = 22 * dt;
+    editLook.x += (ix * cc - iz * cs) * v;
+    editLook.z += (ix * cs + iz * cc) * v;
+    // Nicht aus der Karte hinausschieben
+    const lim = MW * CELL / 2 + 6;
+    editLook.x = Math.max(-lim, Math.min(lim, editLook.x));
+    editLook.z = Math.max(-lim, Math.min(lim, editLook.z));
+  }
+
+  camYaw += (camYawTarget - camYaw) * Math.min(1, dt * 7);
+  const hor = Math.cos(CAM_PITCH) * editDist;
+  cam.position.set(editLook.x + Math.sin(camYaw) * hor,
+                   editLook.y + Math.sin(CAM_PITCH) * editDist,
+                   editLook.z + Math.cos(camYaw) * hor);
+  cam.lookAt(editLook);
+
+  sun.position.set(editLook.x + 18, editLook.y + 28, editLook.z + 12);
+  sun.target.position.copy(editLook);
+  sun.target.updateMatrixWorld();
+
+  if(mixer) mixer.update(dt);
+  if(toastUntil && T > toastUntil){ toastEl.classList.remove('on'); toastUntil = 0; }
+}
+
 function frame(){
   requestAnimationFrame(frame);
   step(Math.min(clock.getDelta(), .05));
@@ -1021,7 +1430,10 @@ function frame(){
 (async () => {
   const boot = document.getElementById('boot');
   try{
-    await buildDeco();
+    await loadDecoModels();
+    loadWorld();                 // gebaute Welt schlaegt den Auslieferungszustand
+    rebuildWorld();
+    repaintUI = buildEditorUI();
     const [ch, move, gen, sim] = await Promise.all(
       [CHAR, LIB_MOVE, LIB_GEN, LIB_SIM].map(p => loader.loadAsync(murl(p))));
     buildCharacter(ch, {move, gen, sim});
@@ -1040,6 +1452,9 @@ function frame(){
     teleport(gx, gz){ pos.set(wx(gx), 0, wz(gz)); pos.y = groundAt(pos.x, pos.z); },
     step, press: c => keys.add(c), release: c => keys.delete(c),
     setYaw(a){ camYaw = camYawTarget = a; },
+    edit: setEditing, applyTool, pickCell, resetWorld, mapText,
+    get maps(){ return {hmap, gmap, dmap}; },
+    setTool(t, v){ tool = t; if(t === 'paint') mat = v; if(t === 'deco') decoKind = v; },
     setPitch(a){ CAM_PITCH = a; },
     render: () => renderer.render(scene, cam),
     get occlusion(){
