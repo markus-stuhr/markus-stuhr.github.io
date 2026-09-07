@@ -790,13 +790,16 @@ terrainMat.onBeforeCompile = sh => {
          gehoert — derselbe Fehler, der schon einmal Farbstreifen an den
          Kanten erzeugt hat. */
       if(vUp > 0.88){
-        // Feinere Wellen, kleinere Auslenkung: die Kante soll gewachsen
-        // wirken, nicht ausgefranst. Die Amplitude ist die Stellschraube.
-        vec2 q = vTPos.xz * 2.4;
+        /* Eine einzige, weiche Oktave. Eine zweite feine Oktave darueber
+           erzeugt Details von etwa 15 cm — auf einer Kante, die ohnehin
+           dem 1-m-Raster folgt, liest sich das nicht als Struktur,
+           sondern als Ausfransen. Amplitude und Frequenz sind die
+           Stellschrauben: groessere Amplitude rundet die Rasterstufen
+           staerker weg, hoehere Frequenz macht die Kante unruhiger. */
+        vec2 q = vTPos.xz * 1.55;
         vec2 warp = vec2(mgNoise(q), mgNoise(q + 41.3)) - 0.5;
-        warp += (vec2(mgNoise(q * 2.6 + 17.0), mgNoise(q * 2.6 + 71.0)) - 0.5) * 0.4;
         vec2 cell0 = floor(vTPos.xz - uMapMin);          // Zelle unter dem Punkt
-        vec2 cellW = floor(vTPos.xz + warp * 0.26 - uMapMin);
+        vec2 cellW = floor(vTPos.xz + warp * 0.34 - uMapMin);
         vec2 step2 = abs(cellW - cell0);
         vec2 uvW = (cellW + 0.5) / uMapCells;
 
