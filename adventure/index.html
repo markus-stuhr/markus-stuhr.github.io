@@ -1108,16 +1108,19 @@ function buildWater(){
   for(const b of bodies){
     const y = bodyY(b);
 
-    // Becken plus Uferring (auch diagonal)
+    /* Becken plus Uferring — aber nur ORTHOGONAL angrenzende Zellen.
+       /blocks nimmt hier auch die diagonalen; bei uns schaut der Spiegel
+       dann in den Ecken unter dem Ufer hervor, weil die verschmolzene
+       Gelaendeoberflaeche an einer Aussenecke von zwei Seiten gleichzeitig
+       abgerundet wird und dort tiefer liegt als die Zelle nominell hoch
+       ist. Orthogonal reicht, um die Lueckenkante zu schliessen. */
     const paint = new Set(b.cells);
     for(const c of b.cells){
       const sx = c % MW, sz = (c / MW) | 0;
-      for(let dz = -1; dz <= 1; dz++){
-        for(let dx = -1; dx <= 1; dx++){
-          const nx = sx + dx, nz = sz + dz;
-          if(!inMap(nx, nz)) continue;
-          if(cellOwner[ci(nx, nz)] === -1) paint.add(ci(nx, nz));
-        }
+      for(const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx = sx + dx, nz = sz + dz;
+        if(!inMap(nx, nz)) continue;
+        if(cellOwner[ci(nx, nz)] === -1) paint.add(ci(nx, nz));
       }
     }
 
