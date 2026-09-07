@@ -291,7 +291,7 @@ const DECO = [
   '                                                        ',
   '              B     T                                   ',
   '                                                        ',
-  '        F                   G                           ',
+  '                            G                           ',
   '                                                        ',
   '          T                                             ',
   '                                                        ',
@@ -301,15 +301,15 @@ const DECO = [
   '                                                        ',
   '        T                                     T         ',
   '                                                        ',
-  '                      F           T       B             ',
+  '                                  T       B             ',
   '                                                        ',
   '      R                                                 ',
   '                                                        ',
-  '                        F               T       T       ',
+  '                                        T       T       ',
   '                                                        ',
-  '                                  F                     ',
   '                                                        ',
-  '                      C         T             F         ',
+  '                                                        ',
+  '                      C         T                       ',
   '                                                        ',
   '                                      T     T           ',
   '                                                        ',
@@ -784,7 +784,15 @@ terrainMat.onBeforeCompile = sh => {
         vec2 q = vTPos.xz * 2.4;
         vec2 warp = vec2(mgNoise(q), mgNoise(q + 41.3)) - 0.5;
         warp += (vec2(mgNoise(q * 2.6 + 17.0), mgNoise(q * 2.6 + 71.0)) - 0.5) * 0.4;
-        uv = (floor(vTPos.xz + warp * 0.26 - uMapMin) + 0.5) / uMapCells;
+        vec2 uvW = (floor(vTPos.xz + warp * 0.26 - uMapMin) + 0.5) / uMapCells;
+
+        /* Nur uebernehmen, wenn die getroffene Zelle auf DERSELBEN HOEHE
+           liegt (die steht im Alphakanal der Karte). Sonst greift die
+           Verzerrung ueber eine Stufe hinweg und setzt kleine Flecken
+           fremden Materials mitten in eine Flaeche — eine Sandzunge auf
+           dem Fels unter der Kante etwa. Auf gleicher Hoehe ist der
+           Wechsel dagegen genau das Gewollte. */
+        if(abs(texture2D(uTop, uvW).a - texture2D(uTop, uv).a) < 0.02) uv = uvW;
       }
 
       /* Deckflaeche gegen Flanke entscheidet die NEIGUNG, und zwar je
