@@ -440,7 +440,9 @@ sun.castShadow = true;
    deshalb viermal so gross und deckt einen kleineren Ausschnitt ab.
    Zusammen sind das gut 100 Texel je Meter statt 21. */
 sun.shadow.mapSize.set(4096, 4096);
-sun.shadow.normalBias = .035;
+// Klein halten: je groesser der Versatz, desto staerker verzerrt er die
+// Silhouette, die den Schatten wirft. Die feine Karte braucht wenig.
+sun.shadow.normalBias = .012;
 // Die Schattenkamera folgt der Figur (siehe Schleife). Ihr Ausschnitt
 // deckt nur die nahe Umgebung ab — ueber die ganze Karte gespannt waere
 // jedes Texel so grob, dass die Schatten ausfransen.
@@ -498,7 +500,14 @@ resize();
    grosse Mehrheit der Distanzauswertungen.
 --------------------------------------------------------------------- */
 const BOX_ROUND = 0.30;   // Rundungsradius der senkrechten Kanten
-const ROUND_Y   = 0.03;   // Rundung der waagerechten Kanten (10 % davon)
+/* Deutlich groesser als /blocks' 0.03. Grund ist die Aufloesung: eine
+   fast scharfe Kante laesst sich auf dem 0.25-m-Gitter von Marching Cubes
+   nicht sauber abbilden, die Iso-Flaeche springt zwischen den Samples und
+   die Stufenkante wird gezackt — an der Silhouette wie im Schattenwurf.
+   Eine Rundung ueber mehrere Samples hinweg ist auflösbar. Gegenueber
+   BOX_ROUND (0.30) bleibt sie klein genug, dass die Terrassen ihre klare
+   Kante behalten. */
+const ROUND_Y   = 0.12;   // Rundung der waagerechten Kanten
 const BLEND     = 0.32;   // Weichheit der Verschmelzung
 const BOX_FLAT  = CELL / 2 - BOX_ROUND;      // flacher Kern in x/z
 const Y_SQUEEZE = BOX_ROUND / ROUND_Y;
@@ -899,15 +908,15 @@ function buildTerrain(only){
 
           cellOut.push(_own[0], _own[1]);
 
+          /* Keine Begradigung mehr: fast waagerechte Normalen auf exakt
+             (0,1,0) zu schnappen sprang an Gelaendekanten hart um, und
+             weil `normalBias` die Vertices beim Schattenrendern entlang
+             ihrer Normalen verschiebt, wurde daraus ein gezackter
+             Schattenrand. Noetig war die Begradigung ohnehin nur gegen die
+             Mikrowoelbung zwischen gleich hohen Saeulen — die ist seit der
+             Verbreiterung der Grundrisse (buildBoxes) verschwunden. */
           normalAt(px, py, pz, _nrm);
-          /* Fast waagerechte Normalen exakt waagerecht stellen. Das
-             Verschmelzen zweier gleich hoher Saeulen hinterlaesst an der
-             Zellgrenze eine winzige Woelbung; sie ist zu klein, um sie zu
-             sehen, aber die Beleuchtung macht daraus ein Netz feiner
-             Linien ueber der ganzen Wiese. Nur die flachen Bereiche
-             werden begradigt — Kanten und Flanken bleiben, wie sie sind. */
-          if(_nrm[1] > 0.93) nrmOut.push(0, 1, 0);
-          else nrmOut.push(_nrm[0], _nrm[1], _nrm[2]);
+          nrmOut.push(_nrm[0], _nrm[1], _nrm[2]);
 
         }
       }
@@ -1069,7 +1078,12 @@ function buildWater(){
   waterMesh = new THREE.Mesh(geo, waterMat);
   waterMesh.renderOrder = 1;
   waterMesh.frustumCulled = false;
-  waterMesh.receiveShadow = true;
+  /* Kein Schattenempfang auf dem Spiegel. Der Schatten der Uferwand faellt
+     hier streifend auf eine fast waagerechte Flaeche — der Fall, in dem
+     die Schattenkarte am staerksten treppt, und genau deshalb sah die
+     Uferkante NUR IM WASSER wie eine Saege aus. Der Grund unter dem
+     Wasser nimmt den Schatten weiterhin an, das reicht voellig. */
+  waterMesh.receiveShadow = false;
   scene.add(waterMesh);
   syncFish();
 }
