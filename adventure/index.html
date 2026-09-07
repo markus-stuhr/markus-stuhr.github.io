@@ -520,8 +520,78 @@ function sdColumn(dx, dy, dz, hy){
   return Math.sqrt(qx*qx + qy*qy + qz*qz) - BOX_ROUND;
 }
 
-const terrainMat = new THREE.MeshStandardMaterial({
-  vertexColors: true, roughness: .95, metalness: 0});
+/* Die Karte als Datentextur: je Zelle ein Pixel mit ihrer Deckfarbe, eine
+   zweite mit der Flankenfarbe, und in beiden Alphakanaelen die Hoehe.
+
+   Warum ueberhaupt: die Farbe je VERTEX zu setzen und von der GPU
+   interpolieren zu lassen, macht aus jeder Materialgrenze einen weichen
+   Verlauf — bei Marching Cubes liegen die Vertices ~0.25 m auseinander,
+   und ein Dreieck kann in zwei verschiedenen Zellen liegen. Aus der
+   Textur je FRAGMENT gelesen (mit NearestFilter) ist die Grenze dagegen
+   pixelgenau scharf, ohne dass sich an der organischen Form irgendetwas
+   aendert. */
+const HMAX = 15;                 // Hoehen bis hierher passen in den Alphakanal
+const mapTopTex = new THREE.DataTexture(new Uint8Array(MW * MH * 4), MW, MH);
+const mapSideTex = new THREE.DataTexture(new Uint8Array(MW * MH * 4), MW, MH);
+for(const t of [mapTopTex, mapSideTex]){
+  t.magFilter = t.minFilter = THREE.NearestFilter;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.generateMipmaps = false;
+}
+
+const _srgb = {r: 0, g: 0, b: 0};
+
+function updateMapTexture(){
+  const a = mapTopTex.image.data, b = mapSideTex.image.data;
+  const c = new THREE.Color();
+  for(let z = 0; z < MH; z++){
+    for(let x = 0; x < MW; x++){
+      const i = (z * MW + x) * 4;
+      /* In sRGB schreiben, nicht die internen Werte: `Color.set('#...')`
+         liefert LINEARE Komponenten. Direkt in eine sRGB-Textur gelegt
+         wuerden sie beim Sampling ein zweites Mal umgerechnet, und das
+         ganze Gelaende kaeme deutlich zu dunkel heraus. */
+      const pal = PAL[cellG(x, z)] || PAL.g;
+      c.set(pal.top).getRGB(_srgb, THREE.SRGBColorSpace);
+      a[i] = _srgb.r * 255; a[i+1] = _srgb.g * 255; a[i+2] = _srgb.b * 255;
+      c.set(pal.side).getRGB(_srgb, THREE.SRGBColorSpace);
+      b[i] = _srgb.r * 255; b[i+1] = _srgb.g * 255; b[i+2] = _srgb.b * 255;
+      // Hoehe in beide Alphakanaele, damit der Shader sie ohne dritte
+      // Textur kennt
+      a[i+3] = b[i+3] = Math.round(cellH(x, z) / HMAX * 255);
+    }
+  }
+  mapTopTex.needsUpdate = mapSideTex.needsUpdate = true;
+}
+
+const terrainMat = new THREE.MeshStandardMaterial({roughness: .95, metalness: 0});
+terrainMat.onBeforeCompile = sh => {
+  sh.uniforms.uTop = {value: mapTopTex};
+  sh.uniforms.uSide = {value: mapSideTex};
+  sh.uniforms.uMapMin = {value: new THREE.Vector2(wx(0) - CELL/2, wz(0) - CELL/2)};
+  sh.uniforms.uMapSize = {value: new THREE.Vector2(MW * CELL, MH * CELL)};
+  sh.uniforms.uLift = {value: LIFT};
+
+  sh.vertexShader = 'varying vec3 vTPos;\n' + sh.vertexShader.replace(
+    '#include <begin_vertex>',
+    '#include <begin_vertex>\n  vTPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+
+  sh.fragmentShader = `varying vec3 vTPos;
+    uniform sampler2D uTop, uSide;
+    uniform vec2 uMapMin, uMapSize;
+    uniform float uLift;
+  ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
+    {
+      vec2 uv = (vTPos.xz - uMapMin) / uMapSize;
+      vec4 t = texture2D(uTop, uv);
+      vec4 s = texture2D(uSide, uv);
+      // Deckflaeche gegen Flanke entscheidet die Hoehe des Fragments:
+      // die Normale kippt auf der verschmolzenen Oberflaeche stellenweise
+      // zu weit und wuerde mitten in der Wiese Erdstreifen erzeugen.
+      float cellTop = t.a * ${HMAX}.0 * uLift;
+      diffuseColor.rgb *= (vTPos.y > cellTop - 0.22) ? t.rgb : s.rgb;
+    }`);
+};
 
 /* Jede Kachel bekommt ihr eigenes Mesh. Der Grund ist der Editor: ein
    voller Neuaufbau aller Kacheln dauert rund 400 ms, und so lange darf
@@ -550,6 +620,7 @@ function tilesAround(x, z){
 }
 
 function buildTerrain(only){
+  updateMapTexture();
   if(!mc){
     mc = new MarchingCubes(MC_RES, terrainMat, false, false, 400000);
     // Der Standardwert ist 80 — bei Feldwerten um Null loest dann nichts
@@ -580,7 +651,7 @@ function buildTerrain(only){
 
   for(const [tx, tz] of todo){
     {
-      const posOut = [], nrmOut = [], colOut = [];
+      const posOut = [], nrmOut = [];
       // Weltbereich dieser Kachel (Kern plus Ueberlappung)
       const x0 = tx * TILE - PAD, z0 = tz * TILE - PAD;
       const wx0 = wx(x0) - CELL / 2, wz0 = wz(z0) - CELL / 2;
@@ -654,27 +725,9 @@ function buildTerrain(only){
         if(mx < coreX0 || mx >= coreX1 || mz < coreZ0 || mz >= coreZ1) continue;
         for(let k = 0; k < 3; k++){
           const j = (v + k) * 3;
-          const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
-          posOut.push(px, py, pz);
+          posOut.push(p[j] * sx + ox, p[j+1] * sy + oy, p[j+2] * sx + oz);
           nrmOut.push(n[j], n[j+1], n[j+2]);
 
-          /* Farbe aus der KARTE, nicht aus dem Feld. Die Palette von
-             Marching Cubes wird je Feldpunkt gesetzt und zwischen den
-             Punkten interpoliert — an Kachelgrenzen kommen die Saeulen in
-             anderer Reihenfolge zum Zug, und die Wiese bekam dadurch ein
-             rechteckiges Fleckenmuster in Kachelgroesse. Aus der Karte
-             gelesen ist die Farbe dagegen eindeutig, egal welche Kachel
-             das Dreieck erzeugt hat.
-
-             Deckflaeche gegen Flanke entscheidet die HOEHE des Punktes,
-             nicht seine Normale: auf der verschmolzenen Oberflaeche kippt
-             die Normale stellenweise weit genug, um mitten in der Wiese
-             Erdstreifen zu erzeugen. Der Abstand zur Zelloberkante ist
-             dagegen eindeutig. */
-          const gx2 = cx(px), gz2 = cz(pz);
-          const pal = PAL[cellG(gx2, gz2)] || PAL.g;
-          _tc.set(py > cellH(gx2, gz2) * LIFT - 0.22 ? pal.top : pal.side);
-          colOut.push(_tc.r, _tc.g, _tc.b);
         }
       }
 
@@ -686,7 +739,6 @@ function buildTerrain(only){
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(posOut, 3));
       geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrmOut, 3));
-      geo.setAttribute('color', new THREE.Float32BufferAttribute(colOut, 3));
       const tile = new THREE.Mesh(geo, terrainMat);
       tile.castShadow = true; tile.receiveShadow = true;
       terrainGroup.add(tile);
