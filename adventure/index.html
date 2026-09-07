@@ -705,6 +705,25 @@ function normalAt(px, py, pz, out){
   const dz = sdfAt(px, py, pz + NRM_EPS) - sdfAt(px, py, pz - NRM_EPS);
   const len = Math.hypot(dx, dy, dz) || 1;
   out[0] = dx / len; out[1] = dy / len; out[2] = dz / len;
+
+  /* Fast waagerechte Normalen GLEITEND zur Senkrechten ziehen. Das
+     Verschmelzen laesst jede Flaeche minimal woelben, und die Beleuchtung
+     macht daraus einen sichtbaren Schattenverlauf auf jeder Wiese.
+
+     Entscheidend ist das gleitende Anziehen: hart umgeschaltet (ny > 0.93
+     auf exakt senkrecht) springt die Normale an Gelaendekanten, und weil
+     normalBias die Vertices beim Schattenrendern entlang ihrer Normalen
+     verschiebt, wird daraus ein gezackter Schattenrand. Ueber ein
+     smoothstep-Fenster laeuft der Uebergang stetig, und Kanten unter 0.88
+     bleiben ganz unberuehrt. */
+  const t = (out[1] - 0.88) / 0.12;
+  if(t > 0){
+    const k = t >= 1 ? 1 : t * t * (3 - 2 * t);
+    out[0] *= 1 - k; out[2] *= 1 - k;
+    const l2 = Math.hypot(out[0], out[1], out[2]) || 1;
+    out[0] /= l2; out[1] /= l2; out[2] /= l2;
+  }
+
   nrmCache.set(key, [out[0], out[1], out[2]]);
 }
 
