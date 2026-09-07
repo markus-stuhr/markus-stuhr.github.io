@@ -607,19 +607,34 @@ function sdfAt(px, py, pz){
    raeumlich schon ueber der Pfadzelle, und der Pfad faerbte auf das Gras
    ab. Nach der naechsten Saeule gefragt bleibt die Kante dagegen gruen,
    weil sie geometrisch zur Grassaeule gehoert. */
-function ownerCell(px, py, pz, out){
+function ownerCell(px, py, pz, out, waagerecht){
   const gx = cx(px), gz = cz(pz);
   let best = Infinity;
   out[0] = gx; out[1] = gz;
-  for(let dz = -1; dz <= 1; dz++){
-    for(let dx = -1; dx <= 1; dx++){
-      const x = gx + dx, z = gz + dz;
-      if(!inMap(x, z)) continue;
-      const top = cellH(x, z) * LIFT;
-      const d = sdColumn(px - wx(x), py - (top + BASE) / 2, pz - wz(z),
-                         (top - BASE) / 2);
-      if(d < best){ best = d; out[0] = x; out[1] = z; }
+
+  /* Auf einer waagerechten Flaeche zaehlen nur Saeulen, deren OBERKANTE
+     auf dieser Hoehe liegt. Ohne diese Bedingung schnappt sich eine hohe
+     Nachbarsaeule den Boden an ihrem Fuss — er liegt ihr am naechsten —,
+     und weil er gegen deren Oberkante tief liegt, wird er als Flanke
+     eingefaerbt: ein brauner Hof rund um jede Saeule. */
+  const passt = waagerecht
+    ? (x, z) => Math.abs(cellH(x, z) * LIFT - py) < 0.35
+    : () => true;
+
+  for(let pass = 0; pass < 2; pass++){
+    for(let dz = -1; dz <= 1; dz++){
+      for(let dx = -1; dx <= 1; dx++){
+        const x = gx + dx, z = gz + dz;
+        if(!inMap(x, z)) continue;
+        // Erster Durchgang mit Bedingung; findet er nichts, zweiter ohne.
+        if(pass === 0 && !passt(x, z)) continue;
+        const top = cellH(x, z) * LIFT;
+        const d = sdColumn(px - wx(x), py - (top + BASE) / 2, pz - wz(z),
+                           (top - BASE) / 2);
+        if(d < best){ best = d; out[0] = x; out[1] = z; }
+      }
     }
+    if(best < Infinity) return;
   }
 }
 
@@ -825,7 +840,10 @@ function buildTerrain(only){
            Konstant je Dreieck kann das nicht passieren; die Materialkante
            verlaeuft dann entlang der Dreieckskanten, und die sind mit
            0.25 m fein genug. */
-        ownerCell(mx, my, mz, _own);
+        // Die Normale des Schwerpunkts entscheidet, ob das Dreieck zur
+        // Deckflaeche oder zur Flanke gehoert.
+        normalAt(mx, my, mz, _nrm);
+        ownerCell(mx, my, mz, _own, _nrm[1] > 0.7);
         for(let k = 0; k < 3; k++){
           const j = (v + k) * 3;
           const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
