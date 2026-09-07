@@ -659,19 +659,25 @@ function sdfAt(px, py, pz){
    raeumlich schon ueber der Pfadzelle, und der Pfad faerbte auf das Gras
    ab. Nach der naechsten Saeule gefragt bleibt die Kante dagegen gruen,
    weil sie geometrisch zur Grassaeule gehoert. */
-function ownerCell(px, py, pz, out, waagerecht){
+function ownerCell(px, py, pz, out){
   const gx = cx(px), gz = cz(pz);
   let best = Infinity;
   out[0] = gx; out[1] = gz;
 
-  /* Auf einer waagerechten Flaeche zaehlen nur Saeulen, deren OBERKANTE
-     auf dieser Hoehe liegt. Ohne diese Bedingung schnappt sich eine hohe
-     Nachbarsaeule den Boden an ihrem Fuss — er liegt ihr am naechsten —,
-     und weil er gegen deren Oberkante tief liegt, wird er als Flanke
-     eingefaerbt: ein brauner Hof rund um jede Saeule. */
-  const passt = waagerecht
-    ? (x, z) => Math.abs(cellH(x, z) * LIFT - py) < 0.35
-    : () => true;
+  /* Im ersten Durchgang zaehlen nur Saeulen, deren OBERKANTE auf der
+     Hoehe des Punktes liegt — unabhaengig von der Neigung des Dreiecks.
+
+     Ohne diese Bedingung schnappt sich eine hoehere Nachbarsaeule alles,
+     was ihr am naechsten liegt: den Boden an ihrem Fuss (ein brauner Hof
+     rund um jede Erhebung) und die abgerundete Oberkante der
+     Nachbarflaeche, die dann als gruene Zunge in den Sand ragt.
+
+     Die Bedingung an die Neigung zu knuepfen reichte nicht — an einer
+     gerundeten Kante sind die Dreiecke schraeg genug, um durchzurutschen.
+     An einer echten Wand greift stattdessen der zweite Durchgang: auf
+     halber Hoehe hat keine Zelle ihre Oberkante, dort gilt wieder die
+     naechstliegende Saeule. */
+  const passt = (x, z) => Math.abs(cellH(x, z) * LIFT - py) < 0.35;
 
   for(let pass = 0; pass < 2; pass++){
     for(let dz = -1; dz <= 1; dz++){
@@ -972,15 +978,9 @@ function buildTerrain(only){
            0.25 m fein genug. */
         // Die Normale des Schwerpunkts entscheidet, ob das Dreieck zur
         // Deckflaeche oder zur Flanke gehoert.
-        normalAt(mx, my, mz, _nrm);
-        /* Deckflaeche oder Flanke entscheidet die Neigung des DREIECKS,
-           einmal fuer alle drei Ecken. Vorher rechnete der Shader das aus
-           der Hoehe gegen die Oberkante der zugeordneten Zelle — und die
-           wechselt an einer Wand von Dreieck zu Dreieck zwischen oberer
-           und unterer Saeule, wodurch die Farbgrenze zickzack lief statt
-           der Kante zu folgen. */
-        const oben = _nrm[1] > 0.7;
-        ownerCell(mx, my, mz, _own, oben);
+        // Die Zelle gilt fuer alle drei Ecken (siehe unten), bestimmt
+        // aus dem Schwerpunkt des Dreiecks.
+        ownerCell(mx, my, mz, _own);
         for(let k = 0; k < 3; k++){
           const j = (v + k) * 3;
           const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
