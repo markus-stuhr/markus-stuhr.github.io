@@ -713,7 +713,11 @@ const touch = {x: 0, z: 0, active: false};
    der feste Winkel ist es, der die Diorama-Lesbarkeit erzeugt. */
 const CAM_PITCH = 0.62;                // ~35 Grad ueber dem Horizont
 const CAM_DIST = 15;
-let camYaw = Math.PI * .25, camYawTarget = camYaw;
+/* Blick genau nach Norden, also achsenparallel zur Karte. Ein Startwinkel
+   von 45 Grad sah nicht nur schief aus, er verdreht auch die Steuerung:
+   die Laufrichtung wird in den Kameraraum gedreht, und diagonal zur Karte
+   laeuft W dann eben diagonal. */
+let camYaw = 0, camYawTarget = 0;
 const camLook = new THREE.Vector3();
 
 function turnCam(dir){ camYawTarget += dir * Math.PI / 2; }
