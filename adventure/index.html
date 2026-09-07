@@ -779,10 +779,12 @@ terrainMat.onBeforeCompile = sh => {
          gehoert — derselbe Fehler, der schon einmal Farbstreifen an den
          Kanten erzeugt hat. */
       if(vUp > 0.88){
-        vec2 q = vTPos.xz * 1.7;
+        // Feinere Wellen, kleinere Auslenkung: die Kante soll gewachsen
+        // wirken, nicht ausgefranst. Die Amplitude ist die Stellschraube.
+        vec2 q = vTPos.xz * 2.4;
         vec2 warp = vec2(mgNoise(q), mgNoise(q + 41.3)) - 0.5;
-        warp += (vec2(mgNoise(q * 2.6 + 17.0), mgNoise(q * 2.6 + 71.0)) - 0.5) * 0.5;
-        uv = (floor(vTPos.xz + warp * 0.85 - uMapMin) + 0.5) / uMapCells;
+        warp += (vec2(mgNoise(q * 2.6 + 17.0), mgNoise(q * 2.6 + 71.0)) - 0.5) * 0.4;
+        uv = (floor(vTPos.xz + warp * 0.42 - uMapMin) + 0.5) / uMapCells;
       }
 
       /* Deckflaeche gegen Flanke entscheidet die NEIGUNG, und zwar je
