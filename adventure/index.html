@@ -1129,12 +1129,21 @@ function buildWater(){
       const x0 = wx(x) - CELL/2, x1 = x0 + CELL;
       const z0 = wz(z) - CELL/2, z1 = z0 + CELL;
 
+      /* Ueber einer UFERzelle liegt der Spiegel ein Stueck tiefer. Er soll
+         dort die Luecke an der gerundeten Blockkante schliessen, aber
+         unsichtbar bleiben — und die verschmolzene Gelaendeoberflaeche
+         liegt an Aussenecken tiefer, als die Zelle nominell hoch ist.
+         Ohne den Versatz schaut das Wasser genau dort als milchiges
+         Rechteck aus dem Sand heraus. */
+      const ufer = cellOwner[c] === -1;
+      const yq = ufer ? y - 0.22 : y;
+
       for(let sj = 0; sj < WAVE_SUB; sj++){
         const az = z0 + (z1 - z0) * sj / WAVE_SUB, bz = z0 + (z1 - z0) * (sj+1) / WAVE_SUB;
         for(let si = 0; si < WAVE_SUB; si++){
           const ax = x0 + (x1 - x0) * si / WAVE_SUB, bx = x0 + (x1 - x0) * (si+1) / WAVE_SUB;
           const v = pos.length / 3;
-          pos.push(ax, y, az,  bx, y, az,  ax, y, bz,  bx, y, bz);
+          pos.push(ax, yq, az,  bx, yq, az,  ax, yq, bz,  bx, yq, bz);
           nrm.push(0,1,0, 0,1,0, 0,1,0, 0,1,0);
           wav.push(1, 1, 1, 1);
           idx.push(v, v + 2, v + 1,  v + 1, v + 2, v + 3);
@@ -1165,7 +1174,7 @@ function buildWater(){
         const az = dz !== 0 ? (dz > 0 ? z1 : z0) : z0;
         const bz2 = dz !== 0 ? (dz > 0 ? z1 : z0) : z1;
         const v = pos.length / 3;
-        pos.push(ax, y, az,  bx2, y, bz2,  ax, floor, az,  bx2, floor, bz2);
+        pos.push(ax, yq, az,  bx2, yq, bz2,  ax, floor, az,  bx2, floor, bz2);
         for(let k = 0; k < 4; k++) nrm.push(dx, 0, dz);
         wav.push(1, 1, 0, 0);            // unten steht die Wand still
         idx.push(v, v + 2, v + 1,  v + 1, v + 2, v + 3);
