@@ -717,30 +717,34 @@ terrainMat.onBeforeCompile = sh => {
   sh.uniforms.uMapCells = {value: new THREE.Vector2(MW, MH)};
   sh.uniforms.uLift = {value: LIFT};
 
-  sh.vertexShader = 'varying vec3 vTPos;\nvarying vec2 vCell;\nattribute vec2 aCell;\n'
+  sh.vertexShader = 'varying vec2 vCell;\nvarying float vUp;\n'
+    + 'attribute vec2 aCell;\n'
     + sh.vertexShader.replace('#include <begin_vertex>',
       `#include <begin_vertex>
-       vTPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-       vCell = aCell;`);
+       vCell = aCell;
+       vUp = normalize(mat3(modelMatrix) * objectNormal).y;`);
 
-  sh.fragmentShader = `varying vec3 vTPos;
-    varying vec2 vCell;
+  sh.fragmentShader = `varying vec2 vCell;
+    varying float vUp;
     uniform sampler2D uTop, uSide;
-    uniform vec2 uMapMin, uMapSize;
     uniform vec2 uMapCells;
-    uniform float uLift;
   ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
     {
-      // Gerundet, weil die Zellnummer zwischen den Vertices interpoliert
-      // wird: so springt sie in der Mitte um statt zu verlaufen.
+      // Die Zellnummer wird gerundet: so springt sie in der Mitte zwischen
+      // den Vertices um, statt zu verlaufen — scharfe Materialgrenzen.
       vec2 uv = (floor(vCell + 0.5) + 0.5) / uMapCells;
-      vec4 t = texture2D(uTop, uv);
-      vec4 s = texture2D(uSide, uv);
-      // Deckflaeche gegen Flanke entscheidet die Hoehe des Fragments:
-      // die Normale kippt auf der verschmolzenen Oberflaeche stellenweise
-      // zu weit und wuerde mitten in der Wiese Erdstreifen erzeugen.
-      float cellTop = t.a * ${HMAX}.0 * uLift;
-      diffuseColor.rgb *= (vTPos.y > cellTop - 0.22) ? t.rgb : s.rgb;
+
+      /* Deckflaeche gegen Flanke entscheidet die NEIGUNG, und zwar je
+         Fragment ueber die interpolierte Normale. Je Dreieck entschieden
+         (oder aus der Hoehe gegen die Oberkante der zugeordneten Zelle)
+         springt die Grenze von Dreieck zu Dreieck und franst die Kante zu
+         einem Zackensaum aus. Die Normale ist der einzige Wert, der ueber
+         die gerundete Kante hinweg glatt laeuft; der schmale weiche
+         Uebergang laesst den Grasrand ausserdem ein Stueck ueber die Kante
+         wandern — derselbe Effekt wie in /blocks. */
+      vec3 top = texture2D(uTop, uv).rgb;
+      vec3 side = texture2D(uSide, uv).rgb;
+      diffuseColor.rgb *= mix(side, top, smoothstep(0.50, 0.72, vUp));
     }`);
 };
 
@@ -900,7 +904,14 @@ function buildTerrain(only){
         // Die Normale des Schwerpunkts entscheidet, ob das Dreieck zur
         // Deckflaeche oder zur Flanke gehoert.
         normalAt(mx, my, mz, _nrm);
-        ownerCell(mx, my, mz, _own, _nrm[1] > 0.7);
+        /* Deckflaeche oder Flanke entscheidet die Neigung des DREIECKS,
+           einmal fuer alle drei Ecken. Vorher rechnete der Shader das aus
+           der Hoehe gegen die Oberkante der zugeordneten Zelle — und die
+           wechselt an einer Wand von Dreieck zu Dreieck zwischen oberer
+           und unterer Saeule, wodurch die Farbgrenze zickzack lief statt
+           der Kante zu folgen. */
+        const oben = _nrm[1] > 0.7;
+        ownerCell(mx, my, mz, _own, oben);
         for(let k = 0; k < 3; k++){
           const j = (v + k) * 3;
           const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
