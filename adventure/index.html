@@ -805,19 +805,32 @@ function buildTerrain(only){
       const coreZ0 = wz(tz * TILE) - CELL / 2, coreZ1 = coreZ0 + TILE * CELL;
 
       for(let v = 0; v < mc.count; v += 3){
-        let mx = 0, mz = 0;
+        let mx = 0, my = 0, mz = 0;
         for(let k = 0; k < 3; k++){
           mx += p[(v+k)*3] * sx + ox;
+          my += p[(v+k)*3+1] * sy + oy;
           mz += p[(v+k)*3+2] * sx + oz;
         }
-        mx /= 3; mz /= 3;
+        mx /= 3; my /= 3; mz /= 3;
         if(mx < coreX0 || mx >= coreX1 || mz < coreZ0 || mz >= coreZ1) continue;
+
+        /* Die Zelle wird EINMAL je Dreieck bestimmt, aus seinem
+           Schwerpunkt, und alle drei Ecken bekommen sie.
+
+           Je Ecke zugeordnet entstehen sonst Farbstreifen: die GPU
+           interpoliert x und z unabhaengig, und zwischen den Ecken (10,20)
+           und (11,21) liegen Zwischenwerte wie (11,20) — eine Zelle, zu
+           der keine der drei Ecken gehoert. Hat die ein anderes Material,
+           zieht sich ein duenner Streifen davon die Kante entlang.
+           Konstant je Dreieck kann das nicht passieren; die Materialkante
+           verlaeuft dann entlang der Dreieckskanten, und die sind mit
+           0.25 m fein genug. */
+        ownerCell(mx, my, mz, _own);
         for(let k = 0; k < 3; k++){
           const j = (v + k) * 3;
           const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
           posOut.push(px, py, pz);
 
-          ownerCell(px, py, pz, _own);
           cellOut.push(_own[0], _own[1]);
 
           normalAt(px, py, pz, _nrm);
