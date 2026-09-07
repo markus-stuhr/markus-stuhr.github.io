@@ -426,14 +426,36 @@ function bakeFlat(root){
   return parts.length ? mergeGeometries(parts, false) : null;
 }
 
+/* Ausblenden per Dither statt per Transparenz. Ein halbdurchsichtiger
+   Baum aus echter Transparenz sortiert sich selbst falsch — die hinteren
+   Blattkarten scheinen durch die vorderen und der Baum bekommt Loecher.
+   Mit einem Bayer-Muster bleibt das Material opak, der Tiefenpuffer
+   stimmt, und aus zwei Metern Bildschirmabstand liest sich das Raster
+   als gleichmaessiger Schleier.
+
+   Die Schwelle kommt je Instanz aus `aFade` (1 = voll da, 0 = weg). */
 const decoMats = new Map();
 function decoMaterial(map){
   const key = map ? map.uuid : 'flat';
   if(!decoMats.has(key)){
-    decoMats.set(key, new THREE.MeshStandardMaterial({
+    const m = new THREE.MeshStandardMaterial({
       roughness: .93, metalness: 0,
       side: THREE.DoubleSide,          // Blattkarten sind einseitig gebaut
-      ...(map ? {map} : {vertexColors: true})}));
+      ...(map ? {map} : {vertexColors: true})});
+    m.onBeforeCompile = sh => {
+      sh.vertexShader = 'attribute float aFade;\nvarying float vFade;\n'
+        + sh.vertexShader.replace('#include <begin_vertex>',
+          '#include <begin_vertex>\n  vFade = aFade;');
+      // Bayer 4x4, rekursiv aus 2x2 aufgebaut — kommt ohne Arrays aus und
+      // laeuft damit auch im GLSL1-Pfad, den three hier erzeugt.
+      sh.fragmentShader = `varying float vFade;
+        float bayer2(vec2 a){ a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
+        float bayer4(vec2 a){ return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+        ` + sh.fragmentShader.replace('#include <clipping_planes_fragment>',
+          `if(vFade < 0.995 && bayer4(gl_FragCoord.xy) > vFade) discard;
+           #include <clipping_planes_fragment>`);
+    };
+    decoMats.set(key, m);
   }
   return decoMats.get(key);
 }
@@ -481,6 +503,9 @@ function normalize(gltf, def){
 
 // Was auf dem Feld steht, blockiert die Figur: Zelle -> Radius
 const blockers = new Map();
+// Alle Deko-Meshes: Kandidaten dafuer, der Kamera im Weg zu stehen
+const occluders = [];
+const fadeParts = [];        // {mesh, fade} — je Mesh ein aFade-Attribut
 // Truhen und Tor sind Spielobjekte, keine Kulisse
 const chests = [];
 let gateObj = null, gateCell = null;
@@ -536,6 +561,11 @@ async function buildDeco(){
       if(!list.length) return;
       const mesh = new THREE.InstancedMesh(v.geo, v.mat, list.length);
       mesh.castShadow = true; mesh.receiveShadow = true;
+      // Jede Instanz traegt ihre eigene Deckung. Anfangs sind alle voll da.
+      const fade = new THREE.InstancedBufferAttribute(
+        new Float32Array(list.length).fill(1), 1);
+      v.geo.setAttribute('aFade', fade);
+      fadeParts.push({mesh, fade});
       list.forEach((it, i) => {
         _pos.set(wx(it.x) + it.ox, topY(it.x, it.z), wz(it.z) + it.oz);
         _qt.setFromAxisAngle(UP, it.yaw);
@@ -550,6 +580,7 @@ async function buildDeco(){
       });
       mesh.instanceMatrix.needsUpdate = true;
       scene.add(mesh);
+      occluders.push(mesh);
     });
   }
 }
@@ -915,6 +946,8 @@ function step(dt){
   sun.target.position.copy(pos);
   sun.target.updateMatrixWorld();
 
+  updateOcclusion(dt);
+
   // --- Spielobjekte ---------------------------------------------------
   for(const c of chests){
     if(!c.open || c.sunk >= 1.4) continue;
@@ -936,6 +969,46 @@ function step(dt){
     promptEl.style.display = 'none';
   }
   if(toastUntil && T > toastUntil){ toastEl.classList.remove('on'); toastUntil = 0; }
+}
+
+/* Was zwischen Kamera und Figur steht, wird ausgeblendet. Ein Strahl von
+   der Kamera zur Brust der Figur, alles was er unterwegs trifft, faedet
+   herunter — und wieder herauf, sobald der Weg frei ist. Das Nachziehen
+   ueber mehrere Frames ist wichtig: hart umgeschaltet flackert ein Baum,
+   an dessen Kante man entlanglaeuft. */
+const FADE_MIN = .3;          // Restdeckung eines verdeckenden Objekts
+const FADE_SPEED = 6;         // wie schnell auf- und abgeblendet wird
+const rc = new THREE.Raycaster();
+const occluding = new Set();
+const _ray = new THREE.Vector3(), _eye = new THREE.Vector3();
+
+function updateOcclusion(dt){
+  if(!occluders.length) return;
+
+  occluding.clear();
+  _eye.set(pos.x, pos.y + CHAR_H * .6, pos.z);      // Brusthoehe
+  _ray.subVectors(_eye, cam.position);
+  const dist = _ray.length();
+  rc.set(cam.position, _ray.divideScalar(dist));
+  rc.near = 0; rc.far = dist;
+  for(const hit of rc.intersectObjects(occluders, false)){
+    if(hit.instanceId !== undefined) occluding.add(hit.object.id + ':' + hit.instanceId);
+  }
+
+  // Alle Instanzen ihrem Ziel naeherbringen. Es sind wenige Dutzend —
+  // teurer als das Suchen nach den geaenderten waere das Buchhalten.
+  const k = Math.min(1, dt * FADE_SPEED);
+  for(const {mesh, fade} of fadeParts){
+    const a = fade.array;
+    let dirty = false;
+    for(let i = 0; i < a.length; i++){
+      const want = occluding.has(mesh.id + ':' + i) ? FADE_MIN : 1;
+      if(Math.abs(a[i] - want) < .003){ if(a[i] !== want){ a[i] = want; dirty = true; } continue; }
+      a[i] += (want - a[i]) * k;
+      dirty = true;
+    }
+    if(dirty) fade.needsUpdate = true;
+  }
 }
 
 function frame(){
@@ -969,6 +1042,15 @@ function frame(){
     setYaw(a){ camYaw = camYawTarget = a; },
     setPitch(a){ CAM_PITCH = a; },
     render: () => renderer.render(scene, cam),
+    get occlusion(){
+      let hidden = 0, min = 1;
+      for(const {fade} of fadeParts) for(const v of fade.array){
+        if(v < .99) hidden++;
+        min = Math.min(min, v);
+      }
+      return {verdecker: occluding.size, ausgeblendet: hidden, minFade: +min.toFixed(2)};
+    },
+    get keys(){ return [...keys]; },
     walkable, groundAt, interact, get target(){ return target; },
   };
   boot.classList.add('gone');
