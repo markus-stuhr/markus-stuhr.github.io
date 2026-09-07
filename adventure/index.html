@@ -144,70 +144,81 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 =================================================================== */
 
 const CELL = 1.0;        // Kantenlaenge einer Zelle in Weltmetern
-const LIFT = 0.5;        // Hoehe EINER Stufe. Bewusst flach: so ist jede
-                         // Terrasse begehbar, ohne dass die Figur klettert.
+const LIFT = 1.0;        /* Hoehe EINER Stufe — so hoch wie die Zelle breit
+                            ist, also ein echter Wuerfel. Bewusst so hoch,
+                            dass schon ein einzelner Absatz gesprungen werden
+                            muss; Rampen und Treppen als bequemer Weg nach
+                            oben kommen spaeter als eigene Bauteile. */
 const BASE = -1.2;       // Unterkante aller Saeulen (Diorama-Sockel)
-const STEP_UP = 0.62;    // was die Figur im Gehen hochsteigt (= eine Stufe)
+const STEP_UP = 0.34;    /* was die Figur im Gehen ueberwindet. Deutlich
+                            unter LIFT: eine Stufe ist damit KEIN Schritt
+                            mehr, sondern ein Sprung. */
 
-/* Wasser hat eine TIEFE, keinen Ein/Aus-Schalter. Die Hoehe einer
-   Wasserzelle ist ihr GRUND, der Spiegel liegt fuer die ganze Karte auf
-   `WATER_LEVEL`. Was daraus folgt, ist der Sinn der Sache: eine Zelle mit
-   Grund knapp unter dem Spiegel ist eine Furt, die man durchwatet, eine
-   tiefe Zelle bleibt Sperre. Im Editor entsteht der Uebergang von selbst,
-   indem man den Grund zum Ufer hin anhebt. */
-const WATER_LEVEL = 2;   // Spiegelhoehe in Stufen
-const WADE_MAX = 1;      // bis hierher (in Stufen) laesst es sich waten
-const WADE_SLOW = .55;   // Tempo im Wasser
+/* Wasser als BECKEN, uebernommen aus /blocks.
+
+   Kein globaler Spiegel mehr: zusammenhaengende Wasserzellen bilden einen
+   Koerper mit eigenem Pegel, und der Pegel folgt dem Gelaende. Steigt das
+   Ufer, staut das Becken; oeffnet sich eine Scharte, laeuft es in den
+   Nachbar. Ein Bergsee und ein Strandsaum koennen so nebeneinander
+   bestehen — mit einem gemeinsamen Spiegel ginge das nicht.
+
+   Der Pegel liegt INNERHALB der obersten gefluteten Stufe (WATER_FILL),
+   nicht auf ihrer Oberkante. Dadurch bleibt flaches Wasser durchwatbar,
+   waehrend tiefe Becken sperren. */
+const WATER_FILL = 0.45;    // Anteil der Stufe, bis zu dem der Pegel steht
+const WATER_SINK = 0.40;    // wie tief die Seitenflaechen ins Gestein tauchen
+const WADE_DEPTH = 0.75;    // bis hierher (in Metern) laesst es sich waten
+const WADE_SLOW = .55;      // Tempo im Wasser
 
 const HEIGHT = [
-  '77777777777777777777777777777777777777777777777777777777',
-  '77777777777777777777777777777777777777777777777777777777',
-  '77555555555555555555555555555555555555555555555555555577',
-  '77555555555555555555555555555555555555555555555555555577',
-  '77553333333333333333333333333333333333333333333333335577',
-  '77553333333333333333333333333333333333333333333333335577',
-  '77553322222222222222222222222222222222222222222222335577',
-  '77553322222222222222222222222222222222222222222222335577',
-  '77553322222222222222222222222222222244444444444444335577',
-  '77553322222222222222222222222222222244444444444444335577',
-  '77553322222222222222222222222222223344444444444444335577',
-  '77553322222222222222222222222222223344444444444444335577',
-  '77553322222222222222222222222222333344444444444444335577',
-  '77553322222222222222222222222222333344444444444444335577',
-  '77553322222222222222222222222222333344444444444444335577',
-  '77553322222222222222222222222222333344444444444444335577',
-  '77553322222222222222222222222222333344444444444444335577',
-  '77553322222222222222222222222222333344444444444444335577',
-  '77553322222222222222222222222222223344444444444444335577',
-  '77553322222222222222222222222222223344444444444444335577',
-  '77553322222222222222222222222222222244444444444444335577',
-  '77553322222222222222222222222222222244444444444444335577',
-  '77553322222222222222222222222222222222222222222222335577',
-  '77553322222222222222222222222222222222222222222222335577',
-  '77553322222222222222222222222222222222222222222222335577',
-  '77553322222222222222222222222222222222222222222222335577',
-  '77553322222222112222222222222222222222222222222222335577',
-  '77553322222222112222222222222222222222222222222222335577',
-  '77553322221111111111222222222222222222222222222222335577',
-  '77553322221111111111222222222222222222222222222222335577',
-  '77553322111111001111112222222222222222222222222222335577',
-  '77553322111111001111112222222222222222222222222222335577',
-  '77553322111100000011112222222222222222222222222222335577',
-  '77553322111100000011112222222222222222222222222222335577',
-  '77553311110000000000111122222222222222222222222222335577',
-  '77553311110000000000111122222222222222222222222222335577',
-  '77553322111100000011112222222222222222222222222222335577',
-  '77553322111100000011112222222222222222222222222222335577',
-  '77553322111111001111112222222222222222222222222222335577',
-  '77553322111111001111112222222222222222222222222222335577',
-  '77553322221111111111222222222222222222222222222222335577',
-  '77553322221111111111222222222222222222222222222222335577',
-  '77553333333333333333333333333333333333333333333333335577',
-  '77553333333333333333333333333333333333333333333333335577',
-  '77555555555555555555555555555555555555555555555555555577',
-  '77555555555555555555555555555555555555555555555555555577',
-  '77777777777777777777777777777777777777777777777777777777',
-  '77777777777777777777777777777777777777777777777777777777',
+  '44444444444444444444444444444444444444444444444444444444',
+  '44444444444444444444444444444444444444444444444444444444',
+  '44333333333333333333333333333333333333333333333333333344',
+  '44333333333333333333333333333333333333333333333333333344',
+  '44332222222222222222222222222222222222222222222222223344',
+  '44332222222222222222222222222222222222222222222222223344',
+  '44332211111111111111111111111111111111111111111111223344',
+  '44332211111111111111111111111111111111111111111111223344',
+  '44332211111111111111111111111111111122222222222222223344',
+  '44332211111111111111111111111111111122222222222222223344',
+  '44332211111111111111111111111111112222222222222222223344',
+  '44332211111111111111111111111111112222222222222222223344',
+  '44332211111111111111111111111111222222222222222222223344',
+  '44332211111111111111111111111111222222222222222222223344',
+  '44332211111111111111111111111111222222222222222222223344',
+  '44332211111111111111111111111111222222222222222222223344',
+  '44332211111111111111111111111111222222222222222222223344',
+  '44332211111111111111111111111111222222222222222222223344',
+  '44332211111111111111111111111111112222222222222222223344',
+  '44332211111111111111111111111111112222222222222222223344',
+  '44332211111111111111111111111111111122222222222222223344',
+  '44332211111111111111111111111111111122222222222222223344',
+  '44332211111111111111111111111111111111111111111111223344',
+  '44332211111111111111111111111111111111111111111111223344',
+  '44332211111111111111111111111111111111111111111111223344',
+  '44332211111111111111111111111111111111111111111111223344',
+  '44332211111111001111111111111111111111111111111111223344',
+  '44332211111111001111111111111111111111111111111111223344',
+  '44332211110000000000111111111111111111111111111111223344',
+  '44332211110000000000111111111111111111111111111111223344',
+  '44332211000000000000001111111111111111111111111111223344',
+  '44332211000000000000001111111111111111111111111111223344',
+  '44332211000000000000001111111111111111111111111111223344',
+  '44332211000000000000001111111111111111111111111111223344',
+  '44332200000000000000000011111111111111111111111111223344',
+  '44332200000000000000000011111111111111111111111111223344',
+  '44332211000000000000001111111111111111111111111111223344',
+  '44332211000000000000001111111111111111111111111111223344',
+  '44332211000000000000001111111111111111111111111111223344',
+  '44332211000000000000001111111111111111111111111111223344',
+  '44332211110000000000111111111111111111111111111111223344',
+  '44332211110000000000111111111111111111111111111111223344',
+  '44332222222222222222222222222222222222222222222222223344',
+  '44332222222222222222222222222222222222222222222222223344',
+  '44333333333333333333333333333333333333333333333333333344',
+  '44333333333333333333333333333333333333333333333333333344',
+  '44444444444444444444444444444444444444444444444444444444',
+  '44444444444444444444444444444444444444444444444444444444',
 ];
 const GROUND = [
   'rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr',
@@ -328,8 +339,64 @@ const cellD = (x, z) => inMap(x, z) ? dmap[z][x] : ' ';
 const topY = (x, z) => cellH(x, z) * LIFT;
 const isWater = (x, z) => cellG(x, z) === 'w';
 // Wassertiefe in Stufen; 0 bei allem, was kein Wasser ist.
-const depthAt = (x, z) => isWater(x, z) ? Math.max(0, WATER_LEVEL - cellH(x, z)) : 0;
-const wadable = (x, z) => depthAt(x, z) <= WADE_MAX;
+const ci = (x, z) => x + z * MW;
+
+/* Becken: aufgeloest aus den Wasserzellen der Karte. `cellOwner` sagt je
+   Zelle, zu welchem Koerper sie gehoert (-1 = trocken). */
+let bodies = [];
+let cellOwner = new Int16Array(MW * MH).fill(-1);
+
+// Wasserspiegel eines Beckens in Metern. `level` ist die oberste geflutete
+// Stufe; der Spiegel steht ein Stueck darin, nicht auf ihrer Oberkante.
+const bodyY = (b) => (b.level - 1 + WATER_FILL) * LIFT;
+
+function waterYAt(x, z){
+  const id = inMap(x, z) ? cellOwner[ci(x, z)] : -1;
+  return id === -1 ? -Infinity : bodyY(bodies[id]);
+}
+// Wassertiefe ueber dem Grund einer Zelle, in Metern
+const depthAt = (x, z) => Math.max(0, waterYAt(x, z) - topY(x, z));
+const wadable = (x, z) => depthAt(x, z) <= WADE_DEPTH;
+
+/* Auflösen wie in /blocks: jede Wasserzelle ist eine Saat, das hoechste
+   Becken zuerst. Von der Saat aus flutet ein Fill alles, was tiefer liegt
+   als sein Pegel — und schluckt dabei tiefer stehende Nachbarbecken. */
+function resolvePools(){
+  cellOwner.fill(-1);
+  bodies = [];
+
+  const seeds = [];
+  for(let z = 0; z < MH; z++){
+    for(let x = 0; x < MW; x++){
+      // Eine gemalte Wasserzelle traegt ihren Pegel eine Stufe ueber
+      // ihrem eigenen Grund — sie soll ja unter Wasser stehen.
+      if(cellG(x, z) === 'w') seeds.push({x, z, level: cellH(x, z) + 1});
+    }
+  }
+  seeds.sort((a, b) => b.level - a.level);
+
+  for(const p of seeds){
+    const start = ci(p.x, p.z);
+    if(cellOwner[start] !== -1) continue;        // schon von hoeherem Becken
+    if(cellH(p.x, p.z) >= p.level) continue;     // Pegel unter dem Grund
+
+    const id = bodies.length;
+    const cells = [start];
+    cellOwner[start] = id;
+    for(let head = 0; head < cells.length; head++){
+      const c = cells[head], sx = c % MW, sz = (c / MW) | 0;
+      for(const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx = sx + dx, nz = sz + dz;
+        if(!inMap(nx, nz)) continue;
+        const nc = ci(nx, nz);
+        if(cellOwner[nc] !== -1 || cellH(nx, nz) >= p.level) continue;
+        cellOwner[nc] = id;
+        cells.push(nc);
+      }
+    }
+    bodies.push({level: p.level, cells});
+  }
+}
 
 // Kartenzelle -> Weltmitte. Die Karte wird um den Ursprung zentriert,
 // damit Kamera und Nebel nicht mit einer Ecke rechnen muessen.
@@ -628,20 +695,58 @@ function buildTerrain(only){
   }
 }
 
-/* Wasser: eine Flaeche knapp ueber dem Teichboden. Die Welle laeuft im
-   Vertexshader — zwei gekreuzte Sinuswellen reichen voellig, solange die
-   Flaeche fein genug unterteilt ist. */
-const waterTime = {value: 0};
+/* Wasserflaeche, nach dem Vorbild von /blocks.
 
-const waterMat = new THREE.MeshStandardMaterial({
-  color: 0x4fa9c4, roughness: .25, metalness: .1,
-  transparent: true, opacity: .82});
+   Je Zelle EIN Quad — dadurch kann sich nichts ueberlappen. Gezeichnet
+   wird nicht nur das Becken selbst, sondern zusaetzlich ein Ring aus
+   Uferzellen: ueber einer Uferzelle liegt der Spiegel im Gestein und ist
+   unsichtbar, er schliesst aber die Luecke, die an der gerundeten
+   Blockkante sonst offen bliebe.
+
+   Die Quads sind unterteilt (WAVE_SUB), weil die Wellen die Flaeche
+   wirklich verformen: mit nur vier Stuetzpunkten bliebe die Silhouette
+   schnurgerade und die Wellen waeren bloss zu ahnen. */
+const WAVE_SUB = 4;
+
+const waterTime = {value: 0};
+const waterMat = new THREE.MeshPhongMaterial({
+  color: '#4e9db8', specular: '#7fb6c9', shininess: 130,
+  /* Recht durchsichtig, damit die Fische zu sehen sind. /blocks kann sich
+     mehr Deckkraft leisten, weil es die Wassersaeule aus einer Tiefentextur
+     berechnet und flaches Wasser dadurch von selbst klar wird; das ist hier
+     (noch) nicht nachgebaut. */
+  transparent: true, opacity: .62, depthWrite: false, side: THREE.DoubleSide});
+
 waterMat.onBeforeCompile = sh => {
-  sh.uniforms.uT = waterTime;
-  sh.vertexShader = 'uniform float uT;\n' + sh.vertexShader.replace(
-    '#include <begin_vertex>', `#include <begin_vertex>
-    transformed.y += sin(transformed.x * .9 + uT * 1.6) * .045
-                   + sin(transformed.z * 1.3 - uT * 1.1) * .035;`);
+  sh.uniforms.uTime = waterTime;
+  sh.vertexShader = 'varying float vTop;\nvarying vec3 vWPos;\nattribute float aWave;\nuniform float uTime;\n'
+    + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      // Echte Auslenkung, nicht nur Beleuchtung: sonst bleibt die Kante
+      // schnurgerade und die Wellen sind nur an der Flaeche zu ahnen.
+      float h = 0.045 * sin(transformed.x * 5.00 + uTime * 1.80)
+              + 0.036 * sin(transformed.z * 6.50 - uTime * 1.50)
+              + 0.024 * sin((transformed.x + transformed.z) * 4.00 + uTime * 2.40);
+      transformed.y += h * aWave;
+      vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+      vTop = objectNormal.y;`);
+
+  sh.fragmentShader = 'varying float vTop;\nvarying vec3 vWPos;\nuniform float uTime;\n'
+    + sh.fragmentShader
+    // Wellen stoeren nur die Normale — so haengen sie nicht an der
+    // Tessellierung. Nur auf dem Spiegel, nicht an der Aussenwand.
+    .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+      if(vTop > 0.5){
+        float t = uTime, wx = vWPos.x, wz = vWPos.z;
+        float dx = 0.045 * 5.00 * cos(wx * 5.00 + t * 1.80)
+                 + 0.024 * 4.00 * cos((wx + wz) * 4.00 + t * 2.40);
+        float dz = -0.036 * 6.50 * cos(wz * 6.50 - t * 1.50)
+                 + 0.024 * 4.00 * cos((wx + wz) * 4.00 + t * 2.40);
+        vec3 nW = normalize(vec3(-dx * 0.25, 1.0, -dz * 0.25));
+        normal = normalize((viewMatrix * vec4(nW, 0.0)).xyz);
+      }`)
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      // Die Aussenwand dunkler, damit sich die Kante zum Spiegel absetzt
+      if(vTop <= 0.5) diffuseColor.rgb *= 0.72;`);
 };
 
 let waterMesh = null;
@@ -652,22 +757,291 @@ function buildWater(){
     waterMesh.geometry.dispose();
     waterMesh = null;
   }
-  const tiles = [];
-  for(let z = 0; z < MH; z++){
-    for(let x = 0; x < MW; x++){
-      if(!isWater(x, z)) continue;
-      const g = new THREE.PlaneGeometry(CELL, CELL, 3, 3).rotateX(-Math.PI/2);
-      // Der Spiegel liegt eine halbe Stufe ueber dem Grund: so ist an der
-      // Tiefe abzulesen, ob man noch waten kann.
-      g.translate(wx(x), WATER_LEVEL * LIFT, wz(z));
-      tiles.push(g);
+  resolvePools();
+  if(!bodies.length) return;
+
+  const pos = [], nrm = [], wav = [], idx = [];
+
+  for(const b of bodies){
+    const y = bodyY(b);
+
+    // Becken plus Uferring (auch diagonal)
+    const paint = new Set(b.cells);
+    for(const c of b.cells){
+      const sx = c % MW, sz = (c / MW) | 0;
+      for(let dz = -1; dz <= 1; dz++){
+        for(let dx = -1; dx <= 1; dx++){
+          const nx = sx + dx, nz = sz + dz;
+          if(!inMap(nx, nz)) continue;
+          if(cellOwner[ci(nx, nz)] === -1) paint.add(ci(nx, nz));
+        }
+      }
+    }
+
+    for(const c of paint){
+      const x = c % MW, z = (c / MW) | 0;
+      const x0 = wx(x) - CELL/2, x1 = x0 + CELL;
+      const z0 = wz(z) - CELL/2, z1 = z0 + CELL;
+
+      for(let sj = 0; sj < WAVE_SUB; sj++){
+        const az = z0 + (z1 - z0) * sj / WAVE_SUB, bz = z0 + (z1 - z0) * (sj+1) / WAVE_SUB;
+        for(let si = 0; si < WAVE_SUB; si++){
+          const ax = x0 + (x1 - x0) * si / WAVE_SUB, bx = x0 + (x1 - x0) * (si+1) / WAVE_SUB;
+          const v = pos.length / 3;
+          pos.push(ax, y, az,  bx, y, az,  ax, y, bz,  bx, y, bz);
+          nrm.push(0,1,0, 0,1,0, 0,1,0, 0,1,0);
+          wav.push(1, 1, 1, 1);
+          idx.push(v, v + 2, v + 1,  v + 1, v + 2, v + 3);
+        }
+      }
+
+      /* Seitenflaeche an jeder Kante, hinter der die Flaeche endet. Sie
+         taucht unten ins Gestein ein — endete sie auf der Blockoberkante,
+         liesse jede kleine Abweichung der verschmolzenen Gelaendeflaeche
+         eine Fuge entstehen.
+
+         Der Grund einer UFERzelle liegt ueber dem Spiegel; naehme man ihn,
+         baute sie gar keine Wand, und die Wasserzelle daneben baut auch
+         keine (der Ufernachbar gehoert ja zur Flaeche). Also gilt der
+         tiefste Grund der Nachbarschaft. */
+      let floor = topY(x, z) - WATER_SINK;
+      for(const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        if(inMap(x+dx, z+dz)) floor = Math.min(floor, topY(x+dx, z+dz) - WATER_SINK);
+      }
+      floor = Math.min(floor, y - 0.02);
+
+      for(const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx = x + dx, nz = z + dz;
+        // Wand nur, wo die Flaeche endet
+        if(inMap(nx, nz) && paint.has(ci(nx, nz))) continue;
+        const ax = dx !== 0 ? (dx > 0 ? x1 : x0) : x0;
+        const bx2 = dx !== 0 ? (dx > 0 ? x1 : x0) : x1;
+        const az = dz !== 0 ? (dz > 0 ? z1 : z0) : z0;
+        const bz2 = dz !== 0 ? (dz > 0 ? z1 : z0) : z1;
+        const v = pos.length / 3;
+        pos.push(ax, y, az,  bx2, y, bz2,  ax, floor, az,  bx2, floor, bz2);
+        for(let k = 0; k < 4; k++) nrm.push(dx, 0, dz);
+        wav.push(1, 1, 0, 0);            // unten steht die Wand still
+        idx.push(v, v + 2, v + 1,  v + 1, v + 2, v + 3);
+      }
     }
   }
-  if(!tiles.length) return;
-  waterMesh = new THREE.Mesh(mergeGeometries(tiles, false), waterMat);
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute('aWave', new THREE.Float32BufferAttribute(wav, 1));
+  geo.setIndex(idx);
+  waterMesh = new THREE.Mesh(geo, waterMat);
+  waterMesh.renderOrder = 1;
+  waterMesh.frustumCulled = false;
   waterMesh.receiveShadow = true;
   scene.add(waterMesh);
-  tiles.forEach(t => t.dispose());
+  syncFish();
+}
+
+
+/* ---------------------------------------------------------------------
+   Fische — uebernommen aus /blocks
+
+   Sie schwimmen frei in ihrem Becken, halten Abstand zum Ufer und
+   wechseln von sich aus die Richtung. Die Verformung steckt im
+   Vertexshader: eine Welle laeuft vom Kopf nach hinten und waechst dabei,
+   der Schwanz schleppt der Bewegung also nach. Ohne dieses Nachlaufen
+   wirkt ein Fisch, als wuerde er geschoben statt zu schwimmen.
+--------------------------------------------------------------------- */
+const FISH_KINDS = [
+  {name:'Elritze',   color:'#e8c45a', belly:'#fff1c0', len:.13, speed:.85, beat:13},
+  {name:'Rotfeder',  color:'#d9603c', belly:'#f6b49a', len:.18, speed:.68, beat:10},
+  {name:'Schleie',   color:'#4e7d46', belly:'#a8c98f', len:.24, speed:.52, beat:7.5},
+  {name:'Blaufisch', color:'#4a86c8', belly:'#bcdcf2', len:.16, speed:.95, beat:15},
+];
+const FISH_PER_CELLS = 16;    // ein Fisch je so vielen Wasserfeldern
+const FISH_PER_BODY = 8;      // aber nie zu viele in einem Becken
+const FISH_MAX = 24;
+
+function makeFishGeometry(){
+  const RINGS = 12, SIDES = 8;
+  const pos = [], col = [], idx = [];
+  // Profil: schlank am Schwanz, bauchig hinter dem Kopf, vorn gerundet
+  const radiusAt = t => 0.055 + 0.42 * Math.sin(Math.PI * Math.pow(t, .75)) * (1 - .25 * t);
+
+  for(let i = 0; i <= RINGS; i++){
+    const t = i / RINGS, x = -0.5 + t, r = radiusAt(t);
+    for(let j = 0; j < SIDES; j++){
+      const a = (j / SIDES) * Math.PI * 2;
+      const cy = Math.cos(a), cz = Math.sin(a);
+      pos.push(x, cy * r, cz * r * .62);       // seitlich abgeflacht
+      col.push(cy < 0 ? 1 : 0, 0, 0);          // Bauch heller als der Ruecken
+    }
+  }
+  for(let i = 0; i < RINGS; i++){
+    for(let j = 0; j < SIDES; j++){
+      const a = i * SIDES + j, b = i * SIDES + (j + 1) % SIDES;
+      idx.push(a, b, a + SIDES,  b, b + SIDES, a + SIDES);
+    }
+  }
+  const fin = (ax, ay, bx, by, cx2, cy2) => {
+    const v = pos.length / 3;
+    pos.push(ax, ay, 0,  bx, by, 0,  cx2, cy2, 0);
+    for(let n = 0; n < 3; n++) col.push(.5, 0, 0);
+    idx.push(v, v+1, v+2,  v, v+2, v+1);       // beidseitig sichtbar
+  };
+  fin(-0.46, 0, -0.72, 0.30, -0.72, -0.30);    // Schwanzflosse
+  fin(-0.02, 0.16, -0.20, 0.42, -0.34, 0.14);  // Rueckenflosse
+
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+function makeFishMaterial(kind){
+  // Etwas Eigenleuchten: sonst verschluckt sie das truebe Wasser.
+  const m = new THREE.MeshLambertMaterial({
+    color: kind.color, vertexColors: true, side: THREE.DoubleSide,
+    emissive: new THREE.Color(kind.color).multiplyScalar(.35)});
+  const uniforms = {uTime:{value:0}, uPhase:{value:Math.random()*6.28},
+                    uBeat:{value:kind.beat}, uBelly:{value:new THREE.Color(kind.belly)}};
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = 'uniform float uTime, uPhase, uBeat;\n' + sh.vertexShader.replace(
+      '#include <begin_vertex>', `#include <begin_vertex>
+        // Carangiform: die Welle laeuft VOM KOPF nach hinten und waechst
+        // dabei — deshalb eilt die Phase mit dem Abstand zum Kopf nach.
+        float head = transformed.x + 0.5;
+        float tail = 1.0 - head;
+        float ph = uPhase + uTime * uBeat - tail * 5.0;
+        float wave = sin(ph);
+        float amp = 0.035 + pow(tail, 2.2) * 0.42;
+        transformed.z += wave * amp;
+        // Der Kopf giert leicht gegen die Schwanzbewegung
+        transformed.z -= sin(uPhase + uTime * uBeat) * 0.05 * pow(head, 2.0);
+        transformed.x -= abs(wave) * amp * 0.12;
+        objectNormal.z += cos(ph) * amp * 2.0;`);
+    sh.fragmentShader = 'uniform vec3 uBelly;\n' + sh.fragmentShader.replace(
+      '#include <color_fragment>',
+      'diffuseColor.rgb = mix(diffuseColor.rgb, uBelly, vColor.r);');
+  };
+  m.userData.uniforms = uniforms;
+  return m;
+}
+
+const fishGroup = new THREE.Group();
+scene.add(fishGroup);
+const fishGeo = makeFishGeometry();
+let fishes = [];
+
+/* Passt hier ein Fisch dieser Groesse hin? Geprueft wird an fuenf Punkten
+   (Mitte und Ecken), damit er nicht mit der Schnauze im Ufer steckt. */
+function fishSpot(x, z, r){
+  let top = Infinity, bottom = -Infinity;
+  for(const [ox, oz] of [[0,0],[-r,-r],[r,-r],[-r,r],[r,r]]){
+    const gx = cx(x + ox), gz = cz(z + oz);
+    if(!inMap(gx, gz)) return null;
+    const id = cellOwner[ci(gx, gz)];
+    if(id === -1 || !bodies[id]) return null;
+    top = Math.min(top, bodyY(bodies[id]) - 0.10 - r);
+    bottom = Math.max(bottom, topY(gx, gz) + 0.06 + r);
+  }
+  return bottom + 0.02 < top ? {top, bottom} : null;
+}
+
+function placeFish(f, bodyIndex){
+  for(let tries = 0; tries < 60; tries++){
+    const b = bodyIndex === undefined
+      ? bodies[(Math.random() * bodies.length) | 0] : bodies[bodyIndex];
+    if(!b) return false;
+    const c = b.cells[(Math.random() * b.cells.length) | 0];
+    const x = wx(c % MW) + (Math.random() - .5) * .6;
+    const z = wz((c / MW) | 0) + (Math.random() - .5) * .6;
+    const spot = fishSpot(x, z, f.r);
+    if(!spot) continue;
+    f.x = x; f.z = z;
+    // eher in der oberen Haelfte — dort sieht man sie durchs Wasser
+    f.y = spot.bottom + (.45 + Math.random() * .5) * (spot.top - spot.bottom);
+    return true;
+  }
+  return false;
+}
+
+function spawnFish(){
+  const kind = FISH_KINDS[(Math.random() * FISH_KINDS.length) | 0];
+  const mesh = new THREE.Mesh(fishGeo, makeFishMaterial(kind));
+  mesh.scale.setScalar(kind.len);
+  fishGroup.add(mesh);
+  return {kind, mesh, x:0, y:0, z:0, dir: Math.random() * 6.28, want: 0,
+          rise: 0, think: 0, r: kind.len * .55,
+          speed: kind.speed * (.8 + Math.random() * .4)};
+}
+
+/* Nach jeder Aenderung am Wasser: Fische einsammeln, die kein Becken mehr
+   unter sich haben, und fehlende nachsetzen. */
+function syncFish(){
+  const alive = [];
+  for(const f of fishes){
+    if(fishSpot(f.x, f.z, f.r)) alive.push(f);
+    else { fishGroup.remove(f.mesh); f.mesh.material.dispose(); }
+  }
+  fishes = alive;
+
+  let budget = FISH_MAX - fishes.length;
+  for(let i = 0; i < bodies.length && budget > 0; i++){
+    const cells = bodies[i].cells.length;
+    const want = Math.min(FISH_PER_BODY,
+      Math.max(cells >= 6 ? 1 : 0, Math.round(cells / FISH_PER_CELLS)));
+    let have = 0;
+    for(const f of fishes){
+      const gx = cx(f.x), gz = cz(f.z);
+      if(inMap(gx, gz) && cellOwner[ci(gx, gz)] === i) have++;
+    }
+    for(let n = have; n < want && budget > 0; n++){
+      const f = spawnFish();
+      if(placeFish(f, i)){ fishes.push(f); budget--; }
+      else { fishGroup.remove(f.mesh); f.mesh.material.dispose(); break; }
+    }
+  }
+}
+
+function updateFish(t, dt){
+  for(const f of fishes){
+    f.mesh.material.userData.uniforms.uTime.value = t;
+
+    // ab und zu ein neues Ziel, dazu ein sanftes Auf und Ab
+    f.think -= dt;
+    if(f.think <= 0){
+      f.think = 1.5 + Math.random() * 3;
+      f.want = f.dir + (Math.random() - .5) * 2.2;
+      f.rise = (Math.random() - .5) * .35;
+    }
+
+    // vorausschauen: laeuft der Weg ans Ufer, rechtzeitig abdrehen
+    const look = f.r + .35 + f.speed * .35;
+    if(!fishSpot(f.x + Math.cos(f.dir) * look, f.z + Math.sin(f.dir) * look, f.r)){
+      f.want = f.dir + (Math.random() < .5 ? 1 : -1) * (1.4 + Math.random());
+      f.think = .8;
+    }
+
+    let d = ((f.want - f.dir + Math.PI) % (Math.PI*2) + Math.PI*2) % (Math.PI*2) - Math.PI;
+    f.dir += Math.max(-2.2 * dt, Math.min(2.2 * dt, d));
+
+    const step = f.speed * dt;
+    const nx = f.x + Math.cos(f.dir) * step, nz = f.z + Math.sin(f.dir) * step;
+    if(fishSpot(nx, nz, f.r)){ f.x = nx; f.z = nz; }
+    else f.dir += Math.PI * .6;                  // Notbremse am Ufer
+
+    const spot = fishSpot(f.x, f.z, f.r);
+    if(spot){
+      f.y = Math.min(spot.top, Math.max(spot.bottom, f.y + f.rise * dt));
+      if(f.y <= spot.bottom + 1e-3 || f.y >= spot.top - 1e-3) f.rise *= -1;
+    }
+
+    f.mesh.position.set(f.x, f.y, f.z);
+    f.mesh.rotation.set(0, -f.dir, 0);
+    f.mesh.rotateZ(Math.max(-.5, Math.min(.5, f.rise * .9)));   // Nase hoch/runter
+  }
 }
 
 // ----------------------------------------------------------------- Deko
@@ -1127,7 +1501,10 @@ let T = 0;
 let found = 0, gateOpen = false;
 
 const SPEED = {walk: 3.1, run: 6.0};
-const GRAV = 22, JUMP_V = 7.2;
+/* Sprunghoehe = v^2 / 2g = 1.55 m, also gut ein Drittel ueber einer
+   Stufe. Die Reserve ist noetig, damit ein Sprung an der Kante nicht am
+   Millimeter scheitert. */
+const GRAV = 22, JUMP_V = 8.25;
 
 function jump(){
   if(!grounded || T < actUntil) return;
@@ -1309,7 +1686,12 @@ function applyTool(cell, remove){
 /* Die Karte IST das Speicherformat. Was der Editor ablegt, ist genau der
    Text, der oben in der Datei steht — damit laesst sich eine gebaute Welt
    ohne Umweg als neuer Auslieferungszustand einsetzen. */
-const STORAGE_KEY = 'adventure.world.v1';
+/* Die Version zaehlt hoch, sobald sich die BEDEUTUNG der Karte aendert —
+   hier: eine Hoehenstufe ist von 0.5 auf 1.0 m gewachsen. Die Zahlen in
+   einer alten gespeicherten Welt saehen weiter gueltig aus (gleiche
+   Kartengroesse), wuerden aber doppelt so hohe Berge und einen Wasserstand
+   ueber der ganzen Wiese ergeben. */
+const STORAGE_KEY = 'adventure.world.v2';
 
 function mapText(){
   const block = (name, rows) =>
@@ -1464,6 +1846,7 @@ let gateDrop = 0;
 function step(dt){
   T += dt;
   waterTime.value += dt;
+  updateFish(T, dt);
 
   if(editing){ stepEditor(dt); return; }
 
