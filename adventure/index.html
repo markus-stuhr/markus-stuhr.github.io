@@ -711,7 +711,11 @@ const touch = {x: 0, z: 0, active: false};
    Unterschied zwischen "Zelda" und "Third-Person-Adventure". Die freie
    Maussteuerung aus der Sandbox ist hier bewusst nicht uebernommen:
    der feste Winkel ist es, der die Diorama-Lesbarkeit erzeugt. */
-const CAM_PITCH = 0.62;                // ~35 Grad ueber dem Horizont
+/* ~54 Grad ueber dem Horizont. Flacher wird es nicht: schon bei 47 Grad
+   schiebt sich die suedliche Randmauer als graue Wand in den Vordergrund.
+   Deutlich steiler auch nicht — ab etwa 60 Grad verlieren die Baeume ihre
+   Silhouette und werden zu flachen Kreisen. */
+let CAM_PITCH = 0.95;
 const CAM_DIST = 15;
 /* Blick genau nach Norden, also achsenparallel zur Karte. Ein Startwinkel
    von 45 Grad sah nicht nur schief aus, er verdreht auch die Steuerung:
@@ -963,6 +967,7 @@ function frame(){
     teleport(gx, gz){ pos.set(wx(gx), 0, wz(gz)); pos.y = groundAt(pos.x, pos.z); },
     step, press: c => keys.add(c), release: c => keys.delete(c),
     setYaw(a){ camYaw = camYawTarget = a; },
+    setPitch(a){ CAM_PITCH = a; },
     render: () => renderer.render(scene, cam),
     walkable, groundAt, interact, get target(){ return target; },
   };
