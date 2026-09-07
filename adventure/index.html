@@ -659,6 +659,8 @@ function sdfAt(px, py, pz){
    raeumlich schon ueber der Pfadzelle, und der Pfad faerbte auf das Gras
    ab. Nach der naechsten Saeule gefragt bleibt die Kante dagegen gruen,
    weil sie geometrisch zur Grassaeule gehoert. */
+const NEIGH4 = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+
 function ownerCell(px, py, pz, out){
   const gx = cx(px), gz = cz(pz);
   let best = Infinity;
@@ -679,16 +681,19 @@ function ownerCell(px, py, pz, out){
      naechstliegende Saeule. */
   const passt = (x, z) => Math.abs(cellH(x, z) * LIFT - py) < 0.35;
 
+  /* Nur die eigene Zelle und die vier DIREKT anliegenden kommen in Frage,
+     keine diagonalen. In einer Ecke ist die diagonale Saeule oft die
+     naechste und faerbte dann ein Dreieck mit ihrem Material — ein
+     gruener Zipfel, der genau im Eckpunkt sitzt. Ueber Eck vererbt
+     ohnehin niemand seinen Boden. */
   for(let pass = 0; pass < 2; pass++){
-    for(let dz = -1; dz <= 1; dz++){
-      for(let dx = -1; dx <= 1; dx++){
-        const x = gx + dx, z = gz + dz;
-        if(!inMap(x, z)) continue;
-        // Erster Durchgang mit Bedingung; findet er nichts, zweiter ohne.
-        if(pass === 0 && !passt(x, z)) continue;
-        const d = distToCell(x, z, px, py, pz);
-        if(d < best){ best = d; out[0] = x; out[1] = z; }
-      }
+    for(const [dx, dz] of NEIGH4){
+      const x = gx + dx, z = gz + dz;
+      if(!inMap(x, z)) continue;
+      // Erster Durchgang mit Bedingung; findet er nichts, zweiter ohne.
+      if(pass === 0 && !passt(x, z)) continue;
+      const d = distToCell(x, z, px, py, pz);
+      if(d < best){ best = d; out[0] = x; out[1] = z; }
     }
     if(best < Infinity) return;
   }
