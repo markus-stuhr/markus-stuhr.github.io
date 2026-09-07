@@ -456,16 +456,33 @@ function sdColumn(dx, dy, dz, hy){
 const terrainMat = new THREE.MeshStandardMaterial({
   vertexColors: true, roughness: .95, metalness: 0});
 
-let terrainMesh = null;
+/* Jede Kachel bekommt ihr eigenes Mesh. Der Grund ist der Editor: ein
+   voller Neuaufbau aller Kacheln dauert rund 400 ms, und so lange darf
+   ein Mausklick nicht brauchen. Geaendert wird stattdessen nur die
+   betroffene Kachel — samt ihrer Nachbarn, denn die Verschmelzung reicht
+   ueber die Kachelgrenze hinweg. */
+const terrainGroup = new THREE.Group();
+scene.add(terrainGroup);
+const tileMeshes = new Map();
 let mc = null;            // ein einziger Stempel, fuer alle Kacheln benutzt
 const _tc = new THREE.Color();
 
-function buildTerrain(){
-  if(terrainMesh){
-    scene.remove(terrainMesh);
-    terrainMesh.geometry.dispose();
-    terrainMesh = null;
+const TILES_X = Math.ceil(MW / TILE), TILES_Z = Math.ceil(MH / TILE);
+
+// Welche Kacheln muessen neu, wenn diese Zelle sich aendert?
+function tilesAround(x, z){
+  const out = [];
+  const tx = Math.floor(x / TILE), tz = Math.floor(z / TILE);
+  for(let dz = -1; dz <= 1; dz++){
+    for(let dx = -1; dx <= 1; dx++){
+      const a = tx + dx, b = tz + dz;
+      if(a >= 0 && b >= 0 && a < TILES_X && b < TILES_Z) out.push([a, b]);
+    }
   }
+  return out;
+}
+
+function buildTerrain(only){
   if(!mc){
     mc = new MarchingCubes(MC_RES, terrainMat, false, false, 400000);
     // Der Standardwert ist 80 — bei Feldwerten um Null loest dann nichts
@@ -488,10 +505,15 @@ function buildTerrain(){
   const stepY = ySpan / size;
   const reachXZ = Math.ceil((CELL / 2 + BLEND) / stepXZ) + 1;
 
-  const posOut = [], nrmOut = [], colOut = [];
+  const todo = only || (() => {
+    const all = [];
+    for(let b = 0; b < TILES_Z; b++) for(let a = 0; a < TILES_X; a++) all.push([a, b]);
+    return all;
+  })();
 
-  for(let tz = 0; tz * TILE < MH; tz++){
-    for(let tx = 0; tx * TILE < MW; tx++){
+  for(const [tx, tz] of todo){
+    {
+      const posOut = [], nrmOut = [], colOut = [];
       // Weltbereich dieser Kachel (Kern plus Ueberlappung)
       const x0 = tx * TILE - PAD, z0 = tz * TILE - PAD;
       const wx0 = wx(x0) - CELL / 2, wz0 = wz(z0) - CELL / 2;
@@ -588,16 +610,22 @@ function buildTerrain(){
           colOut.push(_tc.r, _tc.g, _tc.b);
         }
       }
+
+      const key = tx + ',' + tz;
+      const old = tileMeshes.get(key);
+      if(old){ terrainGroup.remove(old); old.geometry.dispose(); tileMeshes.delete(key); }
+      if(!posOut.length) continue;
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(posOut, 3));
+      geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrmOut, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(colOut, 3));
+      const tile = new THREE.Mesh(geo, terrainMat);
+      tile.castShadow = true; tile.receiveShadow = true;
+      terrainGroup.add(tile);
+      tileMeshes.set(key, tile);
     }
   }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(posOut, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrmOut, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(colOut, 3));
-  terrainMesh = new THREE.Mesh(geo, terrainMat);
-  terrainMesh.castShadow = true; terrainMesh.receiveShadow = true;
-  scene.add(terrainMesh);
 }
 
 /* Wasser: eine Flaeche knapp ueber dem Teichboden. Die Welle laeuft im
@@ -1246,12 +1274,12 @@ function setEditing(on){
 const _mouse = new THREE.Vector2();
 const _erc = new THREE.Raycaster();
 function pickCell(ev){
-  if(!terrainMesh) return null;
+  if(!terrainGroup.children.length) return null;
   const r = renderer.domElement.getBoundingClientRect();
   _mouse.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
   _mouse.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
   _erc.setFromCamera(_mouse, cam);
-  const hit = _erc.intersectObject(terrainMesh, false)[0];
+  const hit = _erc.intersectObjects(terrainGroup.children, false)[0];
   if(!hit) return null;
   const p = hit.point.clone().addScaledVector(_erc.ray.direction, -0.02);
   const gx = cx(p.x), gz = cz(p.z);
@@ -1269,7 +1297,11 @@ function applyTool(cell, remove){
   }else{
     dmap[z][x] = remove ? ' ' : decoKind;
   }
-  rebuildWorld();
+  // Nur die betroffenen Kacheln neu rechnen — alles neu zu bauen dauert
+  // rund 400 ms und macht das Malen zaeh.
+  buildTerrain(tilesAround(x, z));
+  buildWater();
+  if(decoVariants.size) rebuildDeco();
   saveWorld();
 }
 
