@@ -500,7 +500,12 @@ const Y_SQUEEZE = BOX_ROUND / ROUND_Y;
 
 const SAMPLE = 0.25;      // Kantenlaenge eines Feldpunkts in x/z
 const TILE = 8;           // Zellen je Kachel
-const PAD = 1;            // Ueberlappung in Zellen
+const PAD = 2;            /* Ueberlappung in Zellen. Zwei statt einer:
+                             Marching Cubes bildet seine Normalen aus dem
+                             Feldgradienten, und nahe am Feldrand ist der
+                             einseitig. Mit nur einer Zelle Rand reichte
+                             das bis in den Kachelkern und zeichnete die
+                             Kachelgrenzen als Linien ins Gelaende. */
 const MC_RES = (TILE + 2 * PAD) / SAMPLE;    // 40 Samples je Achse
 
 function smin(a, b, k){
@@ -726,7 +731,16 @@ function buildTerrain(only){
         for(let k = 0; k < 3; k++){
           const j = (v + k) * 3;
           posOut.push(p[j] * sx + ox, p[j+1] * sy + oy, p[j+2] * sx + oz);
-          nrmOut.push(n[j], n[j+1], n[j+2]);
+
+          /* Fast waagerechte Normalen exakt waagerecht stellen. Das
+             Verschmelzen zweier gleich hoher Saeulen hinterlaesst an der
+             Zellgrenze eine winzige Woelbung; sie ist zu klein, um sie zu
+             sehen, aber die Beleuchtung macht daraus ein Netz feiner
+             Linien ueber der ganzen Wiese. Nur die flachen Bereiche
+             werden begradigt — Kanten und Flanken bleiben, wie sie sind,
+             und damit auch die organische Form. */
+          if(n[j+1] > 0.93) nrmOut.push(0, 1, 0);
+          else nrmOut.push(n[j], n[j+1], n[j+2]);
 
         }
       }
