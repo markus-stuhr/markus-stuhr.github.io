@@ -600,12 +600,23 @@ function sdfAt(px, py, pz){
    grobes Wellenmuster — Marching Cubes glaettet sie nur deshalb, weil
    sein Gradient ueber den Sampleabstand gebildet wird. */
 const NRM_EPS = 0.35;
+
+/* Marching Cubes gibt jeden Eckpunkt fuer jedes Dreieck erneut aus — ein
+   Punkt taucht typisch vier- bis sechsmal auf. Weil die Normale sechs
+   Feldauswertungen kostet, lohnt ein Cache ueber die Position deutlich;
+   er wird je Kachel geleert. */
+const nrmCache = new Map();
 function normalAt(px, py, pz, out){
+  const key = Math.round(px * 512) + ',' + Math.round(py * 512) + ',' + Math.round(pz * 512);
+  const hit = nrmCache.get(key);
+  if(hit){ out[0] = hit[0]; out[1] = hit[1]; out[2] = hit[2]; return; }
+
   const dx = sdfAt(px + NRM_EPS, py, pz) - sdfAt(px - NRM_EPS, py, pz);
   const dy = sdfAt(px, py + NRM_EPS, pz) - sdfAt(px, py - NRM_EPS, pz);
   const dz = sdfAt(px, py, pz + NRM_EPS) - sdfAt(px, py, pz - NRM_EPS);
   const len = Math.hypot(dx, dy, dz) || 1;
   out[0] = dx / len; out[1] = dy / len; out[2] = dz / len;
+  nrmCache.set(key, [out[0], out[1], out[2]]);
 }
 
 const terrainMat = new THREE.MeshStandardMaterial({roughness: .95, metalness: 0});
@@ -697,6 +708,7 @@ function buildTerrain(only){
   for(const [tx, tz] of todo){
     {
       const posOut = [], nrmOut = [];
+      nrmCache.clear();
       // Weltbereich dieser Kachel (Kern plus Ueberlappung)
       const x0 = tx * TILE - PAD, z0 = tz * TILE - PAD;
       const wx0 = wx(x0) - CELL / 2, wz0 = wz(z0) - CELL / 2;
