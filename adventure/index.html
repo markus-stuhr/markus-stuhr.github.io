@@ -434,12 +434,17 @@ scene.add(new THREE.HemisphereLight(0xdcefff, 0x54613f, 2.0));
 const sun = new THREE.DirectionalLight(0xfff1d4, 2.3);
 sun.position.set(18, 28, 12);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+/* Der Saegezahn an Gelaendekanten und auf dem Wasser kam nicht aus der
+   Geometrie, sondern aus der Schattenkarte: an einer schraegen Kante
+   treppt ihr Rand. Dagegen hilft nur Aufloesung JE METER — die Karte ist
+   deshalb viermal so gross und deckt einen kleineren Ausschnitt ab.
+   Zusammen sind das gut 100 Texel je Meter statt 21. */
+sun.shadow.mapSize.set(4096, 4096);
 sun.shadow.normalBias = .035;
 // Die Schattenkamera folgt der Figur (siehe Schleife). Ihr Ausschnitt
 // deckt nur die nahe Umgebung ab — ueber die ganze Karte gespannt waere
 // jedes Texel so grob, dass die Schatten ausfransen.
-const SH = 22;
+const SH = 15;            // Halbe Kantenlaenge des Schattenausschnitts
 Object.assign(sun.shadow.camera, {left:-SH, right:SH, top:SH, bottom:-SH, near:1, far:80});
 sun.shadow.camera.updateProjectionMatrix();
 scene.add(sun);
@@ -513,16 +518,56 @@ function smin(a, b, k){
   return b * (1 - h) + a * h - k * h * (1 - h);
 }
 
-/* Abstand zu einer stehenden Saeule. `hy` ist ihre halbe Hoehe. Der
-   Y_SQUEEZE-Trick stammt aus /blocks: die y-Komponente wird gestaucht,
-   bevor der Betrag genommen wird — dadurch faellt die Rundung oben und
-   unten viel kleiner aus als an den Seiten, ohne dass man zwei Radien
-   verrechnen muesste. */
-function sdColumn(dx, dy, dz, hy){
-  const qx = Math.max(Math.abs(dx) - BOX_FLAT, 0);
+/* Abstand zu einer stehenden Saeule. `hy` ist ihre halbe Hoehe, `hx`/`hz`
+   sind ihre halben Grundmasse. Der Y_SQUEEZE-Trick stammt aus /blocks:
+   die y-Komponente wird gestaucht, bevor der Betrag genommen wird —
+   dadurch faellt die Rundung oben und unten viel kleiner aus als an den
+   Seiten, ohne dass man zwei Radien verrechnen muesste. */
+function sdColumn(dx, dy, dz, hy, hx, hz){
+  const qx = Math.max(Math.abs(dx) - (hx - BOX_ROUND), 0);
   const qy = Math.max(Math.abs(dy) - (hy - ROUND_Y), 0) * Y_SQUEEZE;
-  const qz = Math.max(Math.abs(dz) - BOX_FLAT, 0);
+  const qz = Math.max(Math.abs(dz) - (hz - BOX_ROUND), 0);
   return Math.sqrt(qx*qx + qy*qy + qz*qz) - BOX_ROUND;
+}
+
+/* Grundriss je Zelle, einmal je Weltaufbau berechnet.
+
+   Eine Zelle wird zu ihren gleich hohen Nachbarn hin VERBREITERT, und
+   zwar genau um den Rundungsradius. Damit liegt die Rundung dieser Seite
+   im Nachbarn verborgen statt in der gemeinsamen Kante.
+
+   Ohne das zieht sich jede Saeule an allen vier Seiten ein, auch mitten
+   in einer ebenen Flaeche. Zwischen zwei gleich hohen Nachbarn bleibt
+   dann eine Taille, die das Verschmelzen nicht ganz auffuellt — und die
+   modulierte die Kehle am Fuss einer Wand zu einem regelmaessigen
+   Saegezahn, einer Zacke je Zelle. Sichtbar wurde er vor allem im
+   Schattenwurf, der ja die Silhouette abbildet. */
+let boxCX = null, boxCZ = null, boxHX = null, boxHZ = null;
+
+function buildBoxes(){
+  const n = MW * MH;
+  if(!boxCX || boxCX.length !== n){
+    boxCX = new Float32Array(n); boxCZ = new Float32Array(n);
+    boxHX = new Float32Array(n); boxHZ = new Float32Array(n);
+  }
+  for(let z = 0; z < MH; z++){
+    for(let x = 0; x < MW; x++){
+      const i = z * MW + x, h = cellH(x, z);
+      const l = cellH(x - 1, z) === h ? BOX_ROUND : 0;
+      const r = cellH(x + 1, z) === h ? BOX_ROUND : 0;
+      const u = cellH(x, z - 1) === h ? BOX_ROUND : 0;
+      const d = cellH(x, z + 1) === h ? BOX_ROUND : 0;
+      boxCX[i] = wx(x) + (r - l) / 2;  boxHX[i] = CELL / 2 + (l + r) / 2;
+      boxCZ[i] = wz(z) + (d - u) / 2;  boxHZ[i] = CELL / 2 + (u + d) / 2;
+    }
+  }
+}
+
+// Abstand zur Saeule der Zelle (x, z) an einem Weltpunkt
+function distToCell(x, z, px, py, pz){
+  const i = z * MW + x, top = cellH(x, z) * LIFT;
+  return sdColumn(px - boxCX[i], py - (top + BASE) / 2, pz - boxCZ[i],
+                  (top - BASE) / 2, boxHX[i], boxHZ[i]);
 }
 
 /* Die Karte als Datentextur: je Zelle ein Pixel mit ihrer Deckfarbe, eine
@@ -586,9 +631,7 @@ function sdfAt(px, py, pz){
     for(let dx = -2; dx <= 2; dx++){
       const x = gx + dx, z = gz + dz;
       if(!inMap(x, z)) continue;
-      const top = cellH(x, z) * LIFT;
-      d = smin(d, sdColumn(px - wx(x), py - (top + BASE) / 2, pz - wz(z),
-                           (top - BASE) / 2), BLEND);
+      d = smin(d, distToCell(x, z, px, py, pz), BLEND);
     }
   }
   return d;
@@ -628,9 +671,7 @@ function ownerCell(px, py, pz, out, waagerecht){
         if(!inMap(x, z)) continue;
         // Erster Durchgang mit Bedingung; findet er nichts, zweiter ohne.
         if(pass === 0 && !passt(x, z)) continue;
-        const top = cellH(x, z) * LIFT;
-        const d = sdColumn(px - wx(x), py - (top + BASE) / 2, pz - wz(z),
-                           (top - BASE) / 2);
+        const d = distToCell(x, z, px, py, pz);
         if(d < best){ best = d; out[0] = x; out[1] = z; }
       }
     }
@@ -724,6 +765,7 @@ function tilesAround(x, z){
 
 function buildTerrain(only){
   updateMapTexture();
+  buildBoxes();
   if(!mc){
     mc = new MarchingCubes(MC_RES, terrainMat, false, false, 400000);
     // Der Standardwert ist 80 — bei Feldwerten um Null loest dann nichts
@@ -785,16 +827,22 @@ function buildTerrain(only){
           const iz1 = Math.min(size - 1, Math.ceil(fz + reachXZ));
           if(ix1 < ix0 || iz1 < iz0) continue;
 
+          // Grundriss dieser Saeule: zu gleich hohen Nachbarn hin
+          // verbreitert, damit die Rundung nicht in die gemeinsame Kante
+          // faellt (siehe buildBoxes).
+          const bi = z * MW + x;
+          const bcx = boxCX[bi], bcz = boxCZ[bi];
+          const bhx = boxHX[bi], bhz = boxHZ[bi];
+
           for(let iz = iz0; iz <= iz1; iz++){
-            const dz = gwz(iz) - wz(z);
+            const dz = gwz(iz) - bcz;
             for(let iy = 0; iy < size; iy++){
               const dy = gy(iy) - cy;
               // Frueh raus, wenn der Punkt weit ausserhalb der Saeule liegt
               if(Math.abs(dy) > hy + BLEND + CELL) continue;
               const rowBase = iz * size2 + iy * size;
               for(let ix = ix0; ix <= ix1; ix++){
-                const dx = gwx(ix) - wx(x);
-                const d = sdColumn(dx, dy, dz, hy);
+                const d = sdColumn(gwx(ix) - bcx, dy, dz, hy, bhx, bhz);
                 const i = rowBase + ix;
                 dist[i] = smin(dist[i], d, BLEND);
               }
