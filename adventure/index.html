@@ -599,6 +599,30 @@ function sdfAt(px, py, pz){
    zeigt der Gradient jede dieser Woelbungen und die Wiese bekommt ein
    grobes Wellenmuster — Marching Cubes glaettet sie nur deshalb, weil
    sein Gradient ueber den Sampleabstand gebildet wird. */
+/* Zu welcher SAEULE gehoert dieser Punkt? Die naechstliegende gewinnt.
+
+   Gebraucht fuer die Einfaerbung: die Zelle einfach unter der Position zu
+   nehmen faerbt falsch, weil das Verschmelzen eine Saeule ueber ihre
+   Zellgrenze quellen laesst — die gerundete Kante einer Grassaeule liegt
+   raeumlich schon ueber der Pfadzelle, und der Pfad faerbte auf das Gras
+   ab. Nach der naechsten Saeule gefragt bleibt die Kante dagegen gruen,
+   weil sie geometrisch zur Grassaeule gehoert. */
+function ownerCell(px, py, pz, out){
+  const gx = cx(px), gz = cz(pz);
+  let best = Infinity;
+  out[0] = gx; out[1] = gz;
+  for(let dz = -1; dz <= 1; dz++){
+    for(let dx = -1; dx <= 1; dx++){
+      const x = gx + dx, z = gz + dz;
+      if(!inMap(x, z)) continue;
+      const top = cellH(x, z) * LIFT;
+      const d = sdColumn(px - wx(x), py - (top + BASE) / 2, pz - wz(z),
+                         (top - BASE) / 2);
+      if(d < best){ best = d; out[0] = x; out[1] = z; }
+    }
+  }
+}
+
 const NRM_EPS = 0.35;
 
 /* Marching Cubes gibt jeden Eckpunkt fuer jedes Dreieck erneut aus — ein
@@ -625,19 +649,26 @@ terrainMat.onBeforeCompile = sh => {
   sh.uniforms.uSide = {value: mapSideTex};
   sh.uniforms.uMapMin = {value: new THREE.Vector2(wx(0) - CELL/2, wz(0) - CELL/2)};
   sh.uniforms.uMapSize = {value: new THREE.Vector2(MW * CELL, MH * CELL)};
+  sh.uniforms.uMapCells = {value: new THREE.Vector2(MW, MH)};
   sh.uniforms.uLift = {value: LIFT};
 
-  sh.vertexShader = 'varying vec3 vTPos;\n' + sh.vertexShader.replace(
-    '#include <begin_vertex>',
-    '#include <begin_vertex>\n  vTPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+  sh.vertexShader = 'varying vec3 vTPos;\nvarying vec2 vCell;\nattribute vec2 aCell;\n'
+    + sh.vertexShader.replace('#include <begin_vertex>',
+      `#include <begin_vertex>
+       vTPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+       vCell = aCell;`);
 
   sh.fragmentShader = `varying vec3 vTPos;
+    varying vec2 vCell;
     uniform sampler2D uTop, uSide;
     uniform vec2 uMapMin, uMapSize;
+    uniform vec2 uMapCells;
     uniform float uLift;
   ` + sh.fragmentShader.replace('#include <color_fragment>', `#include <color_fragment>
     {
-      vec2 uv = (vTPos.xz - uMapMin) / uMapSize;
+      // Gerundet, weil die Zellnummer zwischen den Vertices interpoliert
+      // wird: so springt sie in der Mitte um statt zu verlaufen.
+      vec2 uv = (floor(vCell + 0.5) + 0.5) / uMapCells;
       vec4 t = texture2D(uTop, uv);
       vec4 s = texture2D(uSide, uv);
       // Deckflaeche gegen Flanke entscheidet die Hoehe des Fragments:
@@ -659,6 +690,7 @@ const tileMeshes = new Map();
 let mc = null;            // ein einziger Stempel, fuer alle Kacheln benutzt
 const _tc = new THREE.Color();
 const _nrm = [0, 0, 0];
+const _own = [0, 0];
 
 const TILES_X = Math.ceil(MW / TILE), TILES_Z = Math.ceil(MH / TILE);
 
@@ -707,7 +739,7 @@ function buildTerrain(only){
 
   for(const [tx, tz] of todo){
     {
-      const posOut = [], nrmOut = [];
+      const posOut = [], nrmOut = [], cellOut = [];
       nrmCache.clear();
       // Weltbereich dieser Kachel (Kern plus Ueberlappung)
       const x0 = tx * TILE - PAD, z0 = tz * TILE - PAD;
@@ -785,6 +817,9 @@ function buildTerrain(only){
           const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
           posOut.push(px, py, pz);
 
+          ownerCell(px, py, pz, _own);
+          cellOut.push(_own[0], _own[1]);
+
           normalAt(px, py, pz, _nrm);
           /* Fast waagerechte Normalen exakt waagerecht stellen. Das
              Verschmelzen zweier gleich hoher Saeulen hinterlaesst an der
@@ -806,6 +841,7 @@ function buildTerrain(only){
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(posOut, 3));
       geo.setAttribute('normal', new THREE.Float32BufferAttribute(nrmOut, 3));
+      geo.setAttribute('aCell', new THREE.Float32BufferAttribute(cellOut, 2));
       const tile = new THREE.Mesh(geo, terrainMat);
       tile.castShadow = true; tile.receiveShadow = true;
       terrainGroup.add(tile);
