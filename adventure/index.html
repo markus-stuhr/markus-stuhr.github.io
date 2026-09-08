@@ -661,25 +661,28 @@ function sdfAt(px, py, pz){
    weil sie geometrisch zur Grassaeule gehoert. */
 const NEIGH4 = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
 
-function ownerCell(px, py, pz, out){
+function ownerCell(px, py, pz, out, flach){
   const gx = cx(px), gz = cz(pz);
   let best = Infinity;
   out[0] = gx; out[1] = gz;
 
   /* Im ersten Durchgang zaehlen nur Saeulen, deren OBERKANTE auf der
-     Hoehe des Punktes liegt — unabhaengig von der Neigung des Dreiecks.
+     Hoehe des Punktes liegt — aber nur auf halbwegs flachen Dreiecken.
 
      Ohne diese Bedingung schnappt sich eine hoehere Nachbarsaeule alles,
      was ihr am naechsten liegt: den Boden an ihrem Fuss (ein brauner Hof
      rund um jede Erhebung) und die abgerundete Oberkante der
      Nachbarflaeche, die dann als gruene Zunge in den Sand ragt.
 
-     Die Bedingung an die Neigung zu knuepfen reichte nicht — an einer
-     gerundeten Kante sind die Dreiecke schraeg genug, um durchzurutschen.
-     An einer echten Wand greift stattdessen der zweite Durchgang: auf
-     halber Hoehe hat keine Zelle ihre Oberkante, dort gilt wieder die
-     naechstliegende Saeule. */
-  const passt = (x, z) => Math.abs(cellH(x, z) * LIFT - py) < 0.35;
+     Auf einer WAND darf sie dagegen nicht gelten: dort laeuft die Flaeche
+     durch alle Hoehen, und auf der Hoehe eines Nachbarbodens schnappt
+     sich dessen Zelle einzelne Dreiecke — ein sandfarbenes Dreieck mitten
+     in der grauen Felswand. Die Schwelle liegt bei 0.5 und damit tief
+     genug, dass gerundete Kanten noch als flach gelten; nur echte Waende
+     fallen heraus und bekommen wie zuvor die naechstliegende Saeule. */
+  const passt = flach
+    ? (x, z) => Math.abs(cellH(x, z) * LIFT - py) < 0.35
+    : () => true;
 
   /* Nur die eigene Zelle und die vier DIREKT anliegenden kommen in Frage,
      keine diagonalen. In einer Ecke ist die diagonale Saeule oft die
@@ -999,8 +1002,10 @@ function buildTerrain(only){
         // Die Normale des Schwerpunkts entscheidet, ob das Dreieck zur
         // Deckflaeche oder zur Flanke gehoert.
         // Die Zelle gilt fuer alle drei Ecken (siehe unten), bestimmt
-        // aus dem Schwerpunkt des Dreiecks.
-        ownerCell(mx, my, mz, _own);
+        // aus dem Schwerpunkt des Dreiecks. Die Normale dort entscheidet,
+        // ob es als flach durchgeht.
+        normalAt(mx, my, mz, _nrm);
+        ownerCell(mx, my, mz, _own, _nrm[1] > 0.5);
         for(let k = 0; k < 3; k++){
           const j = (v + k) * 3;
           const px = p[j] * sx + ox, py = p[j+1] * sy + oy, pz = p[j+2] * sx + oz;
