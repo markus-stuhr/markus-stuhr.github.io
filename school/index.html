@@ -424,9 +424,13 @@ function chart(rows) {
 // Einstufung „Note reicht?“ nach der letzten bekannten Grenznote (nc oder frei)
 function noteStatus(s) {
   if (state.note == null) return null;
-  const e = (s.grenze || []).filter(g => g.nc != null || g.frei).sort((a, b) => b.jahr.localeCompare(a.jahr))[0];
-  if (!e) return null;
+  const last = latest(s), lastQ = quote(last);
+  // nur der neueste Grenznoten-Eintrag zählt, und nur wenn er aktuell ist (ab 2024/25)
+  const e = (s.grenze || []).slice().sort((a, b) => b.jahr.localeCompare(a.jahr))[0];
+  const usable = e && e.jahr >= '2024/25' && !(e.frei && last && last.jahr > e.jahr && lastQ > 100);
+  if (!usable) return lastQ != null && lastQ <= 100 ? { st:'frei', e:null } : null;
   if (e.frei) return { st:'frei', e };
+  if (e.nc == null) return null;
   if (state.note < e.nc - 1e-9) return { st:'sicher', e };
   if (Math.abs(state.note - e.nc) < 1e-9) return { st: /teils noch/.test(e.wert) ? 'knapp' : 'sicher', e };
   return { st:'los', e };
