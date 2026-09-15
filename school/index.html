@@ -52,6 +52,10 @@
   .pill { display:inline-block; background:#1d1f23; color:#fff; border-radius:999px; padding:1px 8px; font-size:11px; font-weight:600; white-space:nowrap; }
   .pill.free { background:var(--ok); }
   .notebox { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:12px; color:var(--mute); flex-wrap:wrap; }
+  .notehint { margin-top:6px; font-size:11.5px; color:var(--mute); }
+  .notehint summary { font-weight:400; color:var(--mute); cursor:pointer; list-style:none; }
+  .notehint summary::-webkit-details-marker { display:none; }
+  .notehint p { margin-top:4px; line-height:1.45; }
   .notebox input { width:84px; margin:0; padding:5px 8px; text-align:center; font-weight:600; }
   .nb { display:inline-block; border-radius:999px; padding:1px 7px; font-size:11px; font-weight:600; white-space:nowrap; border:1.5px solid; margin-left:4px; }
   .nb.sicher { color:var(--ok); border-color:var(--ok); }
@@ -101,10 +105,17 @@
         <button class="chip" id="favShare" title="Link mit euren Favoriten kopieren">🔗 Favoriten teilen</button>
       </div>
       <div class="notebox">
-        <label for="noteIn">Schnitt des Kindes</label>
+        <label for="noteIn">Schnitt des Kindes*</label>
         <input id="noteIn" type="text" inputmode="decimal" placeholder="z. B. 1,7" maxlength="3" autocomplete="off">
         <button class="chip" id="noteOnly" title="Nur Schulen, an denen die Note im letzten bekannten Jahr sicher gereicht hätte (oder die nicht übernachgefragt waren)">✓ Note reicht</button>
       </div>
+      <details class="notehint">
+        <summary>* Grenznoten gibt es nur für Pankow und Lichtenberg</summary>
+        <p><b>Pankow:</b> alle Oberschulen, 2023/24–2026/27 (IFG-Antworten und Pressemitteilung des Bezirksamts).<br>
+        <b>Lichtenberg:</b> alle Oberschulen, 2018/19–2023/24 und 2025/26 (IFG-Antworten des Bezirksamts).<br>
+        <b>Friedrichshain-Kreuzberg, Mitte, Neukölln, Tempelhof-Schöneberg, Treptow-Köpenick:</b> keine veröffentlichten Grenznoten. Dort zeigt „✓ Note reicht“ nur Schulen, die im letzten Jahr nicht übernachgefragt waren.<br>
+        Verglichen wird mit dem neuesten Wert ab 2024/25, ohne Gewähr, dass es im nächsten Jahr genauso ausgeht.</p>
+      </details>
       <input id="search" type="search" placeholder="Schule oder Ortsteil suchen …">
       <div class="row2">
         <details id="bezirkBox" class="multi"><summary id="bezirkSum">Alle Bezirke</summary><div id="bezirkList"></div></details>
