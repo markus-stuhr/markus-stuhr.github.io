@@ -155,7 +155,7 @@ const quote = r => r && r.erst != null && r.plaetze ? Math.round(r.erst / r.plae
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
-fetch('schulen.json?v=3').then(r => r.json()).then(data => {
+fetch('schulen.json?v=4').then(r => r.json()).then(data => {
   schools = data.map(s => ({...s, q: quote(latest(s))}));
   [...new Set(schools.map(s => s.bezirk))].sort().forEach(b => bezirk.add(new Option(b, b)));
   renderFilters(); renderList(); initMap(); route();
@@ -340,7 +340,7 @@ function renderDetail(s) {
     ${rows.length ? chart(rows) + `
     <table style="margin-top:10px"><tr><th>Schuljahr</th><th class="r">Plätze</th><th class="r">Erstwünsche</th><th class="r">Nachfrage</th></tr>
     ${rows.slice().reverse().map(r => { const q = quote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td></tr>`; }).join('')}</table>
-    ${s.dup ? '<div class="warn">2026/27 hat genau dieselben Zahlen wie 2024/25. Das ist wahrscheinlich ein Fehler in der Quelle, bitte bei der Schule nachfragen.</div>' : ''}`
+    ${rows.some(r => r.quelle) ? '<p class="note">2023/24 laut Antwort des Bezirksamts Friedrichshain-Kreuzberg (SA/248/VI). Ältere Zahlen pro Schule veröffentlicht der Senat nicht, zentral erfasst wird erst seit 2024/25.</p>' : ''}`
     : '<p class="note">Für diese Schule sind keine Anmeldezahlen veröffentlicht (z. B. Spezialschule oder eigenes Aufnahmeverfahren).</p>'}
     <h3>Aufnahme bei Übernachfrage</h3>${aufnahme(s)}
     ${s.abi.length ? `<h3>Abitur</h3><table><tr><th>Jahr</th><th class="r">Schnitt</th><th class="r">Bestanden</th><th class="r">Prüflinge</th></tr>
