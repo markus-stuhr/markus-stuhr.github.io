@@ -387,7 +387,15 @@ function chart(rows) {
     if (r.erst != null) g += `<rect x="${x+w+3}" y="${y(r.erst)}" width="${w}" height="${H-pb-y(r.erst)}" fill="${r.erst > (r.plaetze ?? Infinity) ? '#e07a5f' : '#7fb89a'}" rx="2"><title>Erstwünsche: ${r.erst}</title></rect>`;
     g += `<text x="${pl + bw*i + bw/2}" y="${H-8}" font-size="11" text-anchor="middle" fill="#555">${r.jahr}</text>`; });
   const pts = rows.map((r, i) => qs[i] == null ? null : [pl + bw*i + bw/2, yq(qs[i])]).filter(Boolean);
-  if (pts.length > 1) g += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#c83c3c" stroke-width="2"/>`;
+  // Nachfrage-Linie: rot über 100 %, grün bis 100 %; Segmente, die die 100-%-Linie kreuzen, werden dort geteilt
+  const qc = v => v > 100 ? '#c83c3c' : '#2e9b62';
+  const qp = rows.map((r, i) => qs[i] == null ? null : [pl + bw*i + bw/2, yq(qs[i]), qs[i]]).filter(Boolean);
+  for (let k = 1; k < qp.length; k++) {
+    const [x1, y1, v1] = qp[k-1], [x2, y2, v2] = qp[k];
+    const seg = (ax, ay, bx, by, c) => `<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${c}" stroke-width="2" stroke-linecap="round"/>`;
+    if ((v1 > 100) === (v2 > 100)) g += seg(x1, y1, x2, y2, qc(v1));
+    else { const t = (100 - v1) / (v2 - v1), xm = x1 + (x2 - x1) * t, ym = yq(100); g += seg(x1, y1, xm, ym, qc(v1)) + seg(xm, ym, x2, y2, qc(v2)); }
+  }
   // gepunktete Linie: Durchschnitt der bekannten Losquoten, rechts beschriftet
   const avg = losAvg(rows);
   if (avg != null && avg < 100 && rows.filter(r => losQuote(r) != null).length > 1) {
@@ -396,7 +404,7 @@ function chart(rows) {
   }
   // Pillen: rot = Nachfrage, schwarz = Losquote; beide mittig zwischen den Balken, bei Überlappung auseinandergeschoben
   const pill = (cx, cy, t, fill, title) => { const pw = t.length * 5.6 + 14, py = Math.max(pt - 6, Math.min(H - pb - 16, cy - 8));
-    return `<g class="${fill === '#c83c3c' ? 'pq' : 'pl'}"><title>${title}</title><rect x="${cx - pw/2}" y="${py}" width="${pw}" height="16" rx="8" fill="${fill}"/><text x="${cx}" y="${py + 11.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#fff">${t}</text></g>`; };
+    return `<g class="${fill === '#1d1f23' ? 'pl' : 'pq'}"><title>${title}</title><rect x="${cx - pw/2}" y="${py}" width="${pw}" height="16" rx="8" fill="${fill}"/><text x="${cx}" y="${py + 11.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#fff">${t}</text></g>`; };
   rows.forEach((r, i) => {
     const cx = pl + bw*i + bw*.2 + bw*.28 + 1.5, q = qs[i], lq = losQuote(r), l = lq === 100 ? null : lq; // „kein Los“ nur in der Tabelle
     let yQ = q == null ? null : yq(q), yL = l == null ? null : yq(l);
@@ -405,7 +413,7 @@ function chart(rows) {
       yQ = mid + (qTop ? -9 : 9); yL = mid + (qTop ? 9 : -9);
     }
     if (yL != null) g += pill(cx, yL, losLabel(l), '#1d1f23', 'Losquote geschätzt');
-    if (yQ != null) g += pill(cx, yQ, q + ' %', '#c83c3c', 'Nachfrage: Erstwünsche ÷ Plätze');
+    if (yQ != null) g += pill(cx, yQ, q + ' %', q > 100 ? '#c83c3c' : '#2e9b62', 'Nachfrage: Erstwünsche ÷ Plätze');
   });
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Anmeldezahlen im Verlauf">${g}</svg>
     <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <span class="pill" style="background:#c83c3c">%</span> Nachfrage &nbsp; <span class="pill">~%</span> Losquote (geschätzt)</div>`;
