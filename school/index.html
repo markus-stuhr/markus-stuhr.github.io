@@ -241,14 +241,14 @@ function initMap() {
       'icon-image':'fav-star', 'icon-size':['interpolate',['linear'],['get','q'], 0,.65, 250,.85],
       'icon-allow-overlap':true, 'icon-ignore-placement':true } });
     const RADIUS = ['max', ['case', ['get','fav'], 13, 0], ['interpolate',['linear'],['get','q'], 0,4, 100,8, 250,16]];
-    const labelLayout = size => ({
-      'text-field':['get','label'], 'text-font':['Metropolis Semi Bold','Noto Sans Bold'], 'text-size':size,
+    const labelLayout = (size, font) => ({
+      'text-field':['get','label'], 'text-font':font, 'text-size':size,
       'text-variable-anchor':['right','left','top','bottom'], 'text-radial-offset':['+', ['/', RADIUS, size], 0.35],
       'text-justify':'auto', 'text-max-width':12, 'symbol-sort-key':['-', 0, ['get','q']] });
     const labelPaint = { 'text-color':'#1d1f23', 'text-halo-color':'rgba(255,255,255,.95)', 'text-halo-width':1.6 };
-    map.addLayer({ id:'lbl', type:'symbol', source:'s', filter:['!=', ['get','fav'], true], layout:labelLayout(11), paint:labelPaint });
+    map.addLayer({ id:'lbl', type:'symbol', source:'s', filter:['!=', ['get','fav'], true], layout:labelLayout(11, ['Metropolis Medium','Noto Sans Regular']), paint:labelPaint });
     // Favoriten-Beschriftung liegt darüber und wird dadurch zuerst platziert (Vorrang bei Kollisionen)
-    map.addLayer({ id:'lbl-fav', type:'symbol', source:'s', filter:['==', ['get','fav'], true], layout:labelLayout(12.5), paint:labelPaint });
+    map.addLayer({ id:'lbl-fav', type:'symbol', source:'s', filter:['==', ['get','fav'], true], layout:labelLayout(12.5, ['Metropolis Bold','Noto Sans Bold']), paint:labelPaint });
     // Kollisionsflächen der Kreise ganz oben: werden vor allen Beschriftungen platziert, Namen weichen ihnen aus
     map.addLayer({ id:'coll', type:'symbol', source:'s', layout:{ 'icon-image':'blank', 'icon-size':['/', ['*', 2, RADIUS], 32],
       'icon-allow-overlap':true, 'icon-ignore-placement':false } });
