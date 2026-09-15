@@ -352,14 +352,14 @@ function chart(rows) {
   let g = '';
   for (let i = 0; i <= 4; i++) { const v = max / 4 * i;
     g += `<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="#eee"/><text x="${pl-5}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="#999">${Math.round(v)}</text>`; }
-  g += `<line x1="${pl}" x2="${W-pr}" y1="${yq(100)}" y2="${yq(100)}" stroke="#1d1f23" stroke-dasharray="4 3" opacity=".7"/><text x="${W-pr+4}" y="${yq(100)+4}" font-size="10" fill="#1d1f23">100 %</text>`;
+  g += `<line x1="${pl}" x2="${W-pr}" y1="${yq(100)}" y2="${yq(100)}" stroke="#c83c3c" stroke-dasharray="4 3" opacity=".8"/><text x="${W-pr+4}" y="${yq(100)+4}" font-size="10" fill="#c83c3c">100 %</text>`;
   rows.forEach((r, i) => { const x = pl + bw * i + bw * .2, w = bw * .28;
     if (r.plaetze != null) g += `<rect x="${x}" y="${y(r.plaetze)}" width="${w}" height="${H-pb-y(r.plaetze)}" fill="#c9ccd3" rx="2"><title>Plätze: ${r.plaetze}</title></rect>`;
     if (r.erst != null) g += `<rect x="${x+w+3}" y="${y(r.erst)}" width="${w}" height="${H-pb-y(r.erst)}" fill="${r.erst > (r.plaetze ?? Infinity) ? '#e07a5f' : '#7fb89a'}" rx="2"><title>Erstwünsche: ${r.erst}</title></rect>`;
     g += `<text x="${pl + bw*i + bw/2}" y="${H-8}" font-size="11" text-anchor="middle" fill="#555">${r.jahr}</text>`; });
   const pts = rows.map((r, i) => qs[i] == null ? null : [pl + bw*i + bw/2, yq(qs[i])]).filter(Boolean);
-  if (pts.length > 1) g += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#1d1f23" stroke-width="2"/>`;
-  pts.forEach((p, i) => g += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="#1d1f23"/>`);
+  if (pts.length > 1) g += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#c83c3c" stroke-width="2"/>`;
+  pts.forEach((p, i) => g += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="#c83c3c"/>`);
   rows.forEach((r, i) => { const l = losQuote(r); if (l == null) return;
     const t = losLabel(l), pw = t.length * 5.6 + 14, cx = pl + bw*i + bw*0.68, py = yq(l) - 8;
     g += `<g><title>Losquote geschätzt</title><rect x="${cx - pw/2}" y="${py}" width="${pw}" height="16" rx="8" fill="#1d1f23"/><text x="${cx}" y="${py + 11.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#fff">${t}</text></g>`; });
@@ -370,7 +370,7 @@ function chart(rows) {
     g += `<line x1="${pl}" x2="${W-pr}" y1="${ya}" y2="${ya}" stroke="#1d1f23" stroke-width="1.5" stroke-dasharray="1 3" stroke-linecap="round"/><text x="${W-pr+4}" y="${yl+4}" font-size="10" font-weight="600" fill="#1d1f23">Ø ~${avg} %</text>`;
   }
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Anmeldezahlen im Verlauf">${g}</svg>
-    <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <b style="color:#1d1f23">—</b> Nachfrage in % &nbsp; <span class="pill">Los ~%</span> Losquote (geschätzt)</div>`;
+    <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <b style="color:#c83c3c">—</b> Nachfrage in % &nbsp; <span class="pill">Los ~%</span> Losquote (geschätzt)</div>`;
 }
 
 function aufnahme(s) {
