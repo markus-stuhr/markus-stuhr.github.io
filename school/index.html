@@ -179,7 +179,19 @@ function renderList() {
 function geojson() {
   return { type:'FeatureCollection', features: filtered().map(s => ({ type:'Feature',
     geometry:{ type:'Point', coordinates:[s.lon, s.lat] },
-    properties:{ bsn:s.bsn, name:s.name, color:ART[s.art].color, q:s.q ?? 0 } })) };
+    properties:{ bsn:s.bsn, name:s.name, color:ART[s.art].color, q:s.q ?? 0, fav:favs.has(s.bsn), art:s.art } })) };
+}
+
+// Weißer Stern (Canvas → addImage), wird bei Favoriten in den Punkt gelegt
+function starImage(color) {
+  const S = 64, c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d'); g.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const r = i % 2 ? S * .21 : S * .46, a = -Math.PI / 2 + i * Math.PI / 5;
+    g.lineTo(S / 2 + r * Math.cos(a), S / 2 + 2 + r * Math.sin(a));
+  }
+  g.closePath(); g.fillStyle = color; g.fill();
+  return g.getImageData(0, 0, S, S);
 }
 
 function initMap() {
@@ -187,10 +199,14 @@ function initMap() {
   map.addControl(new maplibregl.NavigationControl(), 'top-left');
   map.on('load', () => {
     map.addSource('s', { type:'geojson', data:geojson() });
+    if (!map.hasImage('star')) map.addImage('star', starImage('#fff'), { pixelRatio:2 });
     map.addLayer({ id:'s', type:'circle', source:'s', paint:{
       'circle-color':['get','color'],
-      'circle-radius':['interpolate',['linear'],['get','q'], 0,4, 100,8, 250,16],
+      'circle-radius':['max', ['case', ['get','fav'], 13, 0], ['interpolate',['linear'],['get','q'], 0,4, 100,8, 250,16]],
       'circle-stroke-color':'#fff', 'circle-stroke-width':1.5, 'circle-opacity':.9 } });
+    map.addLayer({ id:'fav', type:'symbol', source:'s', filter:['==', ['get','fav'], true], layout:{
+      'icon-image':'star', 'icon-size':['interpolate',['linear'],['get','q'], 0,.65, 250,.85],
+      'icon-allow-overlap':true, 'icon-ignore-placement':true } });
     map.addLayer({ id:'sel', type:'circle', source:'s', filter:['==','bsn',''], paint:{
       'circle-color':'rgba(0,0,0,0)', 'circle-radius':20, 'circle-stroke-color':'#1d1f23', 'circle-stroke-width':2.5 } });
     const pop = new maplibregl.Popup({ closeButton:false, offset:10 });
