@@ -38,6 +38,7 @@
   .trip { border-top:1px solid #dbe6f2; padding:8px 0 2px; margin-top:8px; }
   .trip .top { display:flex; justify-content:space-between; font-weight:600; }
   .legs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:5px; color:var(--mute); font-size:12px; }
+  .pill { display:inline-block; background:#1d1f23; color:#fff; border-radius:999px; padding:1px 8px; font-size:11px; font-weight:600; white-space:nowrap; }
   .line { color:#fff; border-radius:4px; padding:1px 6px; font-weight:700; font-size:11px; }
   .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; font-size:13px; z-index:20; }
   #map { position:relative; }
@@ -159,7 +160,7 @@ const losQuote = r => {
   if (r.erst <= r.plaetze) return 100;
   return Math.min(100, Math.round(0.3 * r.plaetze / (r.erst - 0.7 * r.plaetze) * 100));
 };
-const LOS_COLOR = '#d98a00';
+const losLabel = l => l === 100 ? 'kein Los' : 'Los ~' + l + ' %';
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
@@ -285,7 +286,7 @@ function profile(s) {
 }
 
 function chart(rows) {
-  const W = 500, H = 190, pl = 34, pr = 34, pt = 14, pb = 26;
+  const W = 500, H = 212, pl = 34, pr = 34, pt = 14, pb = 48;
   const max = Math.max(10, ...rows.flatMap(r => [r.erst || 0, r.plaetze || 0])) * 1.1;
   const qs = rows.map(quote), qmax = Math.max(150, ...qs.filter(Boolean)) * 1.1;
   const bw = (W - pl - pr) / rows.length;
@@ -297,15 +298,15 @@ function chart(rows) {
   rows.forEach((r, i) => { const x = pl + bw * i + bw * .2, w = bw * .28;
     if (r.plaetze != null) g += `<rect x="${x}" y="${y(r.plaetze)}" width="${w}" height="${H-pb-y(r.plaetze)}" fill="#c9ccd3" rx="2"><title>Plätze: ${r.plaetze}</title></rect>`;
     if (r.erst != null) g += `<rect x="${x+w+3}" y="${y(r.erst)}" width="${w}" height="${H-pb-y(r.erst)}" fill="${r.erst > (r.plaetze ?? Infinity) ? '#e07a5f' : '#7fb89a'}" rx="2"><title>Erstwünsche: ${r.erst}</title></rect>`;
-    g += `<text x="${pl + bw*i + bw/2}" y="${H-8}" font-size="11" text-anchor="middle" fill="#555">${r.jahr}</text>`; });
+    g += `<text x="${pl + bw*i + bw/2}" y="${H-pb+16}" font-size="11" text-anchor="middle" fill="#555">${r.jahr}</text>`; });
   const pts = rows.map((r, i) => qs[i] == null ? null : [pl + bw*i + bw/2, yq(qs[i])]).filter(Boolean);
   if (pts.length > 1) g += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#1d1f23" stroke-width="2"/>`;
   pts.forEach((p, i) => g += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="#1d1f23"/>`);
-  const los = rows.map((r, i) => { const l = losQuote(r); return l == null ? null : [pl + bw*i + bw/2, yq(l), l]; }).filter(Boolean);
-  if (los.length > 1) g += `<polyline points="${los.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="${LOS_COLOR}" stroke-width="2"/>`;
-  los.forEach(p => g += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${LOS_COLOR}"><title>Losquote geschätzt: ${p[2]} %</title></circle><text x="${p[0] + 6}" y="${p[1] + 12}" font-size="10" fill="${LOS_COLOR}">${p[2]} %</text>`);
+  rows.forEach((r, i) => { const l = losQuote(r); if (l == null) return;
+    const t = losLabel(l), pw = t.length * 5.6 + 14, cx = pl + bw*i + bw/2, py = H - pb + 24;
+    g += `<g><title>Losquote geschätzt</title><rect x="${cx - pw/2}" y="${py}" width="${pw}" height="16" rx="8" fill="#1d1f23"/><text x="${cx}" y="${py + 11.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#fff">${t}</text></g>`; });
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Anmeldezahlen im Verlauf">${g}</svg>
-    <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <b style="color:#1d1f23">—</b> Nachfrage in % &nbsp; <b style="color:${LOS_COLOR}">—</b> Losquote (geschätzt)</div>`;
+    <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <b style="color:#1d1f23">—</b> Nachfrage in % &nbsp; <span class="pill">Los ~%</span> Losquote (geschätzt)</div>`;
 }
 
 function aufnahme(s) {
@@ -350,7 +351,7 @@ function renderDetail(s) {
     <h3>Anmeldungen für Klasse 7</h3>
     ${rows.length ? chart(rows) + `
     <table style="margin-top:10px"><tr><th>Schuljahr</th><th class="r">Plätze</th><th class="r">Erstwünsche</th><th class="r">Nachfrage</th><th class="r">Losquote*</th></tr>
-    ${rows.slice().reverse().map(r => { const q = quote(r), l = losQuote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td><td class="r" style="color:${LOS_COLOR};font-weight:600">${l == null ? '–' : l === 100 ? 'kein Los' : 'ca. ' + l + ' %'}</td></tr>`; }).join('')}</table>
+    ${rows.slice().reverse().map(r => { const q = quote(r), l = losQuote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td><td class="r">${l == null ? '–' : `<span class="pill">${l === 100 ? 'kein Los' : 'ca. ' + l + ' %'}</span>`}</td></tr>`; }).join('')}</table>
     <p class="note">* Geschätzte Chance im Losverfahren, gerechnet mit 10 % Plätzen für Härtefälle und Geschwister, 60 % nach Kriterien und 30 % per Los unter allen übrigen Erstwunsch-Bewerbungen: 0,3 × Plätze ÷ (Erstwünsche − 0,7 × Plätze). Die echten Zahlen veröffentlichen die Schulämter nicht. Bei Gemeinschaftsschulen (eigene Grundstufe), Profilklassen und SESB-Zügen weicht sie stärker ab.</p>
     ${rows.some(r => r.quelle) ? '<p class="note">2023/24 laut Antwort des Bezirksamts Friedrichshain-Kreuzberg (SA/248/VI). Ältere Zahlen pro Schule veröffentlicht der Senat nicht, zentral erfasst wird erst seit 2024/25.</p>' : ''}`
     : '<p class="note">Für diese Schule sind keine Anmeldezahlen veröffentlicht (z. B. Spezialschule oder eigenes Aufnahmeverfahren).</p>'}
