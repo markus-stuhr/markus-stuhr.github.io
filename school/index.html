@@ -374,10 +374,12 @@ function profile(s) {
 
 function chart(rows) {
   const W = 500, H = 196, pl = 34, pr = 62, pt = 14, pb = 26;
-  const max = Math.max(10, ...rows.flatMap(r => [r.erst || 0, r.plaetze || 0])) * 1.1;
-  const qs = rows.map(quote), qmax = Math.max(150, ...qs.filter(Boolean)) * 1.1;
+  // gemeinsamer Maßstab: 100 % = Plätze des letzten Jahres
+  const qs = rows.map(quote);
+  const P100 = (rows.slice().reverse().find(r => r.plaetze) || {}).plaetze || 100;
+  const max = Math.max(10, P100, ...rows.flatMap(r => [r.erst || 0, r.plaetze || 0]), ...qs.filter(v => v != null).map(v => v * P100 / 100)) * 1.12;
   const bw = (W - pl - pr) / rows.length;
-  const y = v => pt + (H - pt - pb) * (1 - v / max), yq = v => pt + (H - pt - pb) * (1 - v / qmax);
+  const y = v => pt + (H - pt - pb) * (1 - v / max), yq = v => y(v * P100 / 100);
   let g = '';
   for (let i = 0; i <= 4; i++) { const v = max / 4 * i;
     g += `<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="#eee"/><text x="${pl-5}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="#999">${Math.round(v)}</text>`; }
