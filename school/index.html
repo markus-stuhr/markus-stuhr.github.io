@@ -51,6 +51,12 @@
   .legs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:5px; color:var(--mute); font-size:12px; }
   .pill { display:inline-block; background:#1d1f23; color:#fff; border-radius:999px; padding:1px 8px; font-size:11px; font-weight:600; white-space:nowrap; }
   .pill.free { background:var(--ok); }
+  .notebox { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:12px; color:var(--mute); flex-wrap:wrap; }
+  .notebox input { width:64px; margin:0; padding:5px 8px; text-align:center; font-weight:600; }
+  .nb { display:inline-block; border-radius:999px; padding:1px 7px; font-size:11px; font-weight:600; white-space:nowrap; border:1.5px solid; margin-left:4px; }
+  .nb.sicher { color:var(--ok); border-color:var(--ok); }
+  .nb.knapp { color:#b7791f; border-color:#d69e2e; }
+  .nb.los { color:var(--over); border-color:var(--over); }
   .line { color:#fff; border-radius:4px; padding:1px 6px; font-weight:700; font-size:11px; }
   .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; font-size:13px; z-index:20; }
   #map { position:relative; }
@@ -94,6 +100,11 @@
         <button class="chip" id="favOnly">★ Nur Favoriten <span id="favCount">(0)</span></button>
         <button class="chip" id="favShare" title="Link mit euren Favoriten kopieren">🔗 Favoriten teilen</button>
       </div>
+      <div class="notebox">
+        <label for="noteIn">Schnitt des Kindes</label>
+        <input id="noteIn" type="text" inputmode="decimal" placeholder="z. B. 1,7" maxlength="3" autocomplete="off">
+        <button class="chip" id="noteOnly" title="Nur Schulen, an denen die Note im letzten bekannten Jahr sicher gereicht hätte (oder die nicht übernachgefragt waren)">✓ Note reicht</button>
+      </div>
       <input id="search" type="search" placeholder="Schule oder Ortsteil suchen …">
       <div class="row2">
         <details id="bezirkBox" class="multi"><summary id="bezirkSum">Alle Bezirke</summary><div id="bezirkList"></div></details>
@@ -135,7 +146,7 @@ const FILTERS = {
   GemS:{ label:ART.GemS.label, color:ART.GemS.color },
   Gym:{ label:ART.Gym.label, color:ART.Gym.color } };
 const filterKey = s => s.art === 'ISS' ? (s.facts['Gymnasiale Oberstufe'] === 'Ja' ? 'ISSm' : 'ISSo') : s.art;
-const state = { arts:new Set(Object.keys(FILTERS)), q:'', bezirke:new Set(), sort:'quote', favOnly:false, lowOnly:false, highOnly:false };
+const state = { arts:new Set(Object.keys(FILTERS)), q:'', bezirke:new Set(), sort:'quote', favOnly:false, lowOnly:false, highOnly:false, noteOnly:false, note:null };
 let schools = [], map;
 
 // Favoriten: im Browser gespeichert, per Link (?fav=…) zwischen Geräten teilbar
@@ -207,6 +218,7 @@ function filtered() {
     && (!state.favOnly || favs.has(s.bsn))
     && (!state.lowOnly || (s.q != null && s.q <= 100))
     && (!state.highOnly || (s.q != null && s.q > 100))
+    && (!state.noteOnly || state.note == null || ['sicher','frei'].includes((noteStatus(s) || {}).st))
     && (!q || (s.name + ' ' + s.ortsteil).toLowerCase().includes(q)));
 }
 
@@ -219,11 +231,12 @@ function renderList() {
   favOnly.classList.toggle('on', state.favOnly);
   lowOnly.classList.toggle('on', state.lowOnly);
   highOnly.classList.toggle('on', state.highOnly);
+  noteOnly.classList.toggle('on', state.noteOnly);
   list.innerHTML = arr.map(s => `<div class="item" data-b="${s.bsn}">
       ${starBtn(s.bsn)}
       <span class="dot" style="background:${ART[s.art].color}"></span>
       <div><div class="n">${esc(s.name)}</div><div class="m">${esc(s.ortsteil)} · ${ART[s.art].label}${s.art !== 'Gym' ? (s.facts['Gymnasiale Oberstufe'] === 'Ja' ? ' · mit Oberstufe' : ' · ohne Oberstufe') : ''}</div></div>
-      <div class="q" style="color:${qColor(s.q)}">${s.q == null ? '–' : s.q + ' %'}${(l => l == null ? '' : ` <span class="pill${l === 100 ? ' free' : ''}" title="Losquote ${latest(s).jahr} (geschätzt)">${losLabel(l)}</span>`)(losQuote(latest(s)))}</div></div>`).join('')
+      <div class="q" style="color:${qColor(s.q)}">${s.q == null ? '–' : s.q + ' %'}${(l => l == null ? '' : ` <span class="pill${l === 100 ? ' free' : ''}" title="Losquote ${latest(s).jahr} (geschätzt)">${losLabel(l)}</span>`)(losQuote(latest(s)))}${noteBadge(s)}</div></div>`).join('')
     || `<div class="item"><div class="m">${state.favOnly ? 'Noch keine Favoriten. Tippt auf ☆ bei einer Schule.' : 'Keine Schulen gefunden.'}</div></div>`;
   list.querySelectorAll('.item[data-b]').forEach(el => el.onclick = () => location.hash = el.dataset.b);
 }
@@ -311,6 +324,19 @@ function bezirkLabel() {
 document.addEventListener('click', e => { if (bezirkBox.open && !bezirkBox.contains(e.target)) bezirkBox.open = false; });
 sort.onchange = e => { state.sort = e.target.value; renderList(); };
 favOnly.onclick = () => { state.favOnly = !state.favOnly; update(); };
+// Schnitt des Kindes: Eingabe 1,0–4,0, im Browser gespeichert
+const NOTE_KEY = 'school-note';
+function setNote(v, persist = true) {
+  const n = parseFloat(String(v).replace(',', '.'));
+  state.note = isFinite(n) && n >= 1 && n <= 4 ? Math.round(n * 10) / 10 : null;
+  if (persist) try { state.note == null ? localStorage.removeItem(NOTE_KEY) : localStorage.setItem(NOTE_KEY, state.note); } catch (e) {}
+  update();
+  const cur = schools.find(x => x.bsn === location.hash.slice(1));
+  if (cur && !detail.hidden) renderDetail(cur);
+}
+noteIn.oninput = e => setNote(e.target.value);
+noteOnly.onclick = () => { state.noteOnly = !state.noteOnly; update(); };
+try { const v = localStorage.getItem(NOTE_KEY); if (v) { noteIn.value = String(v).replace('.', ','); state.note = parseFloat(v); } } catch (e) {}
 lowOnly.onclick = () => { state.lowOnly = !state.lowOnly; if (state.lowOnly) state.highOnly = false; update(); };
 // Übernachgefragte: direkt nach bester Losquote sortieren
 highOnly.onclick = () => { state.highOnly = !state.highOnly;
@@ -385,11 +411,30 @@ function chart(rows) {
     <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <span class="pill" style="background:#c83c3c">%</span> Nachfrage &nbsp; <span class="pill">~%</span> Losquote (geschätzt)</div>`;
 }
 
+// Einstufung „Note reicht?“ nach der letzten bekannten Grenznote (nc oder frei)
+function noteStatus(s) {
+  if (state.note == null) return null;
+  const e = (s.grenze || []).filter(g => g.nc != null || g.frei).sort((a, b) => b.jahr.localeCompare(a.jahr))[0];
+  if (!e) return null;
+  if (e.frei) return { st:'frei', e };
+  if (state.note < e.nc - 1e-9) return { st:'sicher', e };
+  if (Math.abs(state.note - e.nc) < 1e-9) return { st: /teils noch/.test(e.wert) ? 'knapp' : 'sicher', e };
+  return { st:'los', e };
+}
+function noteBadge(s) {
+  const r = noteStatus(s);
+  if (!r || r.st === 'frei') return '';
+  const nc = String(r.e.nc.toFixed(1)).replace('.', ',');
+  const txt = { sicher:'✓ Note', knapp:'knapp', los:'nur Los' }[r.st];
+  return ` <span class="nb ${r.st}" title="NC ${r.e.jahr}: ${nc}">${txt}</span>`;
+}
+
 // NC-Zelle für die Jahres-Tabelle aus den Grenznoten der Schule
 function ncCell(s, jahr) {
   const e = (s.grenze || []).find(g => g.jahr === jahr);
   if (!e) return '–';
-  if (e.nc != null) return `<b title="${esc(e.wert)} · ${esc(e.quelle)}">${String(e.nc.toFixed(1)).replace('.', ',')}</b>`;
+  if (e.nc != null) { const c = state.note == null ? '' : state.note < e.nc - 1e-9 || (Math.abs(state.note - e.nc) < 1e-9 && !/teils noch/.test(e.wert)) ? 'var(--ok)' : Math.abs(state.note - e.nc) < 1e-9 ? '#b7791f' : 'var(--over)';
+    return `<b title="${esc(e.wert)} · ${esc(e.quelle)}"${c ? ` style="color:${c}"` : ''}>${String(e.nc.toFixed(1)).replace('.', ',')}</b>`; }
   if (e.frei) return `<span style="color:var(--ok)" title="${esc(e.wert)}">alle</span>`;
   return `<span title="${esc(e.wert)} · ${esc(e.quelle)}" style="cursor:help">ⓘ</span>`;
 }
