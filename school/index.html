@@ -173,6 +173,14 @@ const losQuote = r => {
   if (r.erst <= r.plaetze) return 100;
   return Math.min(100, Math.round(0.3 * r.plaetze / (r.erst - 0.7 * r.plaetze) * 100));
 };
+// Durchschnittliche Losquote über alle bekannten Jahre und Abweichung in Prozentpunkten
+const losAvg = rows => { const v = rows.map(losQuote).filter(l => l != null); return v.length ? Math.round(v.reduce((a, b) => a + b, 0) / v.length) : null; };
+const diffPP = (l, avg) => {
+  if (l == null || avg == null) return '–';
+  const d = l - avg;
+  if (d === 0) return '<span style="color:var(--mute)">±0 P.</span>';
+  return `<span style="color:${d > 0 ? 'var(--ok)' : 'var(--over)'};font-weight:600">${d > 0 ? '+' : '−'}${Math.abs(d)} P.</span>`;
+};
 const losLabel = l => l === 100 ? 'kein Los' : '~' + l + ' %';
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
@@ -400,9 +408,10 @@ function renderDetail(s) {
     <h3>Profil</h3><p class="prof">${esc(profile(s))}</p>
     <h3>Anmeldungen für Klasse 7</h3>
     ${rows.length ? chart(rows) + `
-    <table style="margin-top:10px"><tr><th>Schuljahr</th><th class="r">Plätze</th><th class="r">Erstwünsche</th><th class="r">Nachfrage</th><th class="r">Losquote*</th></tr>
-    ${rows.slice().reverse().map(r => { const q = quote(r), l = losQuote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td><td class="r">${l == null ? '–' : `<span class="pill">${l === 100 ? 'kein Los' : '~' + l + ' %'}</span>`}</td></tr>`; }).join('')}</table>
-    <p class="note">* Geschätzte Chance im Losverfahren, gerechnet mit 10 % Plätzen für Härtefälle und Geschwister, 60 % nach Kriterien und 30 % per Los unter allen übrigen Erstwunsch-Bewerbungen: 0,3 × Plätze ÷ (Erstwünsche − 0,7 × Plätze). Die echten Zahlen veröffentlichen die Schulämter nicht. Bei Gemeinschaftsschulen (eigene Grundstufe), Profilklassen und SESB-Zügen weicht sie stärker ab.</p>
+    <table style="margin-top:10px"><tr><th>Schuljahr</th><th class="r">Plätze</th><th class="r">Erstwünsche</th><th class="r">Nachfrage</th><th class="r">Losquote*</th><th class="r">vs. Ø</th></tr>
+    ${rows.slice().reverse().map(r => { const q = quote(r), l = losQuote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td><td class="r">${l == null ? '–' : `<span class="pill">${l === 100 ? 'kein Los' : '~' + l + ' %'}</span>`}</td><td class="r">${diffPP(l, losAvg(rows))}</td></tr>`; }).join('')}
+    ${losAvg(rows) == null ? '' : `<tr><td><b>Ø ${rows.filter(r => losQuote(r) != null).length} Jahre</b></td><td></td><td></td><td></td><td class="r"><span class="pill">~${losAvg(rows)} %</span></td><td></td></tr>`}</table>
+    <p class="note">* Geschätzte Chance im Losverfahren, gerechnet mit 10 % Plätzen für Härtefälle und Geschwister, 60 % nach Kriterien und 30 % per Los unter allen übrigen Erstwunsch-Bewerbungen: 0,3 × Plätze ÷ (Erstwünsche − 0,7 × Plätze). Die echten Zahlen veröffentlichen die Schulämter nicht. Bei Gemeinschaftsschulen (eigene Grundstufe), Profilklassen und SESB-Zügen weicht sie stärker ab. „vs. Ø“ zeigt, um wie viele Prozentpunkte (P.) die Losquote eines Jahres über (grün) oder unter (rot) dem Durchschnitt aller bekannten Jahre lag. Das ist keine Prognose.</p>
     ${rows.some(r => r.quelle) ? '<p class="note">2023/24 laut Antwort des Bezirksamts Friedrichshain-Kreuzberg (SA/248/VI). Ältere Zahlen pro Schule veröffentlicht der Senat nicht, zentral erfasst wird erst seit 2024/25.</p>' : ''}`
     : '<p class="note">Für diese Schule sind keine Anmeldezahlen veröffentlicht (z. B. Spezialschule oder eigenes Aufnahmeverfahren).</p>'}
     <h3>Aufnahme bei Übernachfrage</h3>${aufnahme(s)}
