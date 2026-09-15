@@ -152,6 +152,14 @@ document.addEventListener('click', e => {
 
 const latest = s => s.jahre[s.jahre.length-1];
 const quote = r => r && r.erst != null && r.plaetze ? Math.round(r.erst / r.plaetze * 100) : null;
+// Geschätzte Losquote: 10 % Härtefälle/Geschwister (als voll belegt angenommen) + 60 % Kriterien vorab,
+// die übrigen 30 % der Plätze werden unter allen noch nicht Aufgenommenen verlost.
+const losQuote = r => {
+  if (!r || r.erst == null || !r.plaetze) return null;
+  if (r.erst <= r.plaetze) return 100;
+  return Math.min(100, Math.round(0.3 * r.plaetze / (r.erst - 0.7 * r.plaetze) * 100));
+};
+const LOS_COLOR = '#d98a00';
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
@@ -293,8 +301,11 @@ function chart(rows) {
   const pts = rows.map((r, i) => qs[i] == null ? null : [pl + bw*i + bw/2, yq(qs[i])]).filter(Boolean);
   if (pts.length > 1) g += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#1d1f23" stroke-width="2"/>`;
   pts.forEach((p, i) => g += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="#1d1f23"/>`);
+  const los = rows.map((r, i) => { const l = losQuote(r); return l == null ? null : [pl + bw*i + bw/2, yq(l), l]; }).filter(Boolean);
+  if (los.length > 1) g += `<polyline points="${los.map(p => p[0] + ',' + p[1]).join(' ')}" fill="none" stroke="${LOS_COLOR}" stroke-width="2"/>`;
+  los.forEach(p => g += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="${LOS_COLOR}"><title>Losquote geschätzt: ${p[2]} %</title></circle><text x="${p[0] + 6}" y="${p[1] + 12}" font-size="10" fill="${LOS_COLOR}">${p[2]} %</text>`);
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Anmeldezahlen im Verlauf">${g}</svg>
-    <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; — Linie: Nachfrage in %</div>`;
+    <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <b style="color:#1d1f23">—</b> Nachfrage in % &nbsp; <b style="color:${LOS_COLOR}">—</b> Losquote (geschätzt)</div>`;
 }
 
 function aufnahme(s) {
@@ -338,8 +349,9 @@ function renderDetail(s) {
     <h3>Profil</h3><p class="prof">${esc(profile(s))}</p>
     <h3>Anmeldungen für Klasse 7</h3>
     ${rows.length ? chart(rows) + `
-    <table style="margin-top:10px"><tr><th>Schuljahr</th><th class="r">Plätze</th><th class="r">Erstwünsche</th><th class="r">Nachfrage</th></tr>
-    ${rows.slice().reverse().map(r => { const q = quote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td></tr>`; }).join('')}</table>
+    <table style="margin-top:10px"><tr><th>Schuljahr</th><th class="r">Plätze</th><th class="r">Erstwünsche</th><th class="r">Nachfrage</th><th class="r">Losquote*</th></tr>
+    ${rows.slice().reverse().map(r => { const q = quote(r), l = losQuote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td><td class="r" style="color:${LOS_COLOR};font-weight:600">${l == null ? '–' : l === 100 ? 'kein Los' : 'ca. ' + l + ' %'}</td></tr>`; }).join('')}</table>
+    <p class="note">* Geschätzte Chance im Losverfahren, gerechnet mit 10 % Plätzen für Härtefälle und Geschwister, 60 % nach Kriterien und 30 % per Los unter allen übrigen Erstwunsch-Bewerbungen: 0,3 × Plätze ÷ (Erstwünsche − 0,7 × Plätze). Die echten Zahlen veröffentlichen die Schulämter nicht. Bei Gemeinschaftsschulen (eigene Grundstufe), Profilklassen und SESB-Zügen weicht sie stärker ab.</p>
     ${rows.some(r => r.quelle) ? '<p class="note">2023/24 laut Antwort des Bezirksamts Friedrichshain-Kreuzberg (SA/248/VI). Ältere Zahlen pro Schule veröffentlicht der Senat nicht, zentral erfasst wird erst seit 2024/25.</p>' : ''}`
     : '<p class="note">Für diese Schule sind keine Anmeldezahlen veröffentlicht (z. B. Spezialschule oder eigenes Aufnahmeverfahren).</p>'}
     <h3>Aufnahme bei Übernachfrage</h3>${aufnahme(s)}
