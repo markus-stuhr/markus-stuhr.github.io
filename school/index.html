@@ -361,7 +361,7 @@ function chart(rows) {
   if (pts.length > 1) g += `<polyline points="${pts.map(p => p.join(',')).join(' ')}" fill="none" stroke="#c83c3c" stroke-width="2"/>`;
   pts.forEach((p, i) => g += `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="#c83c3c"/>`);
   rows.forEach((r, i) => { const l = losQuote(r); if (l == null) return;
-    const t = losLabel(l), pw = t.length * 5.6 + 14, cx = pl + bw*i + bw*0.68, py = yq(l) - 8;
+    const t = losLabel(l), pw = t.length * 5.6 + 14, cx = pl + bw*i + bw*.2 + bw*.28 + 1.5, py = yq(l) - 8;
     g += `<g><title>Losquote geschätzt</title><rect x="${cx - pw/2}" y="${py}" width="${pw}" height="16" rx="8" fill="#1d1f23"/><text x="${cx}" y="${py + 11.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#fff">${t}</text></g>`; });
   // gepunktete Linie: Durchschnitt der bekannten Losquoten, rechts beschriftet
   const avg = losAvg(rows);
