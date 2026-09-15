@@ -369,7 +369,7 @@ function chart(rows) {
   const pill = (cx, cy, t, fill, title) => { const pw = t.length * 5.6 + 14, py = Math.max(pt - 6, Math.min(H - pb - 16, cy - 8));
     return `<g class="${fill === '#c83c3c' ? 'pq' : 'pl'}"><title>${title}</title><rect x="${cx - pw/2}" y="${py}" width="${pw}" height="16" rx="8" fill="${fill}"/><text x="${cx}" y="${py + 11.5}" font-size="10" font-weight="600" text-anchor="middle" fill="#fff">${t}</text></g>`; };
   rows.forEach((r, i) => {
-    const cx = pl + bw*i + bw*.2 + bw*.28 + 1.5, q = qs[i], l = losQuote(r);
+    const cx = pl + bw*i + bw*.2 + bw*.28 + 1.5, q = qs[i], lq = losQuote(r), l = lq === 100 ? null : lq; // „kein Los“ nur in der Tabelle
     let yQ = q == null ? null : yq(q), yL = l == null ? null : yq(l);
     if (yQ != null && yL != null && Math.abs(yQ - yL) < 18) {
       const mid = (yQ + yL) / 2, qTop = q >= l;
