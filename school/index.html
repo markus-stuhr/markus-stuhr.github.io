@@ -80,6 +80,7 @@
       <div class="filters" id="artFilter"></div>
       <div class="filters">
         <button class="chip" id="lowOnly" title="Nur Schulen, bei denen 2026/27 alle Erstwünsche einen Platz bekommen haben"><span class="dot" style="background:var(--ok)"></span>Nachfrage bis 100 %</button>
+        <button class="chip" id="highOnly" title="Nur übernachgefragte Schulen, sortiert nach geschätzter Losquote"><span class="dot" style="background:var(--over)"></span>Nachfrage über 100 %</button>
         <button class="chip" id="favOnly">★ Nur Favoriten <span id="favCount">(0)</span></button>
         <button class="chip" id="favShare" title="Link mit euren Favoriten kopieren">🔗 Favoriten teilen</button>
       </div>
@@ -124,7 +125,7 @@ const FILTERS = {
   GemS:{ label:ART.GemS.label, color:ART.GemS.color },
   Gym:{ label:ART.Gym.label, color:ART.Gym.color } };
 const filterKey = s => s.art === 'ISS' ? (s.facts['Gymnasiale Oberstufe'] === 'Ja' ? 'ISSm' : 'ISSo') : s.art;
-const state = { arts:new Set(Object.keys(FILTERS)), q:'', bezirk:'', sort:'quote', favOnly:false, lowOnly:false };
+const state = { arts:new Set(Object.keys(FILTERS)), q:'', bezirk:'', sort:'quote', favOnly:false, lowOnly:false, highOnly:false };
 let schools = [], map;
 
 // Favoriten: im Browser gespeichert, per Link (?fav=…) zwischen Geräten teilbar
@@ -187,6 +188,7 @@ function filtered() {
   return schools.filter(s => state.arts.has(filterKey(s)) &&(!state.bezirk || s.bezirk === state.bezirk)
     && (!state.favOnly || favs.has(s.bsn))
     && (!state.lowOnly || (s.q != null && s.q <= 100))
+    && (!state.highOnly || (s.q != null && s.q > 100))
     && (!q || (s.name + ' ' + s.ortsteil).toLowerCase().includes(q)));
 }
 
@@ -198,6 +200,7 @@ function renderList() {
   favCount.textContent = `(${favs.size})`;
   favOnly.classList.toggle('on', state.favOnly);
   lowOnly.classList.toggle('on', state.lowOnly);
+  highOnly.classList.toggle('on', state.highOnly);
   list.innerHTML = arr.map(s => `<div class="item" data-b="${s.bsn}">
       ${starBtn(s.bsn)}
       <span class="dot" style="background:${ART[s.art].color}"></span>
@@ -274,7 +277,11 @@ search.oninput = e => { state.q = e.target.value; update(); };
 bezirk.onchange = e => { state.bezirk = e.target.value; update(); };
 sort.onchange = e => { state.sort = e.target.value; renderList(); };
 favOnly.onclick = () => { state.favOnly = !state.favOnly; update(); };
-lowOnly.onclick = () => { state.lowOnly = !state.lowOnly; update(); };
+lowOnly.onclick = () => { state.lowOnly = !state.lowOnly; if (state.lowOnly) state.highOnly = false; update(); };
+// Übernachgefragte: direkt nach bester Losquote sortieren
+highOnly.onclick = () => { state.highOnly = !state.highOnly;
+  if (state.highOnly) { state.lowOnly = false; state.sort = sort.value = 'los'; }
+  update(); };
 favShare.onclick = async () => {
   if (!favs.size) return toast('Noch keine Favoriten markiert');
   const url = `${location.origin}${location.pathname}?fav=${[...favs].join(',')}`;
