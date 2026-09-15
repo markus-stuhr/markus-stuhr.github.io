@@ -31,6 +31,14 @@
   .star { border:0; background:none; font-size:18px; cursor:pointer; color:#c9c6bd; line-height:1; padding:2px; }
   .star.on { color:#e8a317; }
   #detail .star { font-size:26px; vertical-align:middle; }
+  .oepnv { background:#f3f7fb; border:1px solid #dbe6f2; border-radius:10px; padding:12px 14px; margin-top:14px; font-size:13px; }
+  .oepnv .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .oepnv button.go { border:1px solid #bcd0e6; background:#fff; border-radius:999px; padding:5px 11px; font-size:12px; cursor:pointer; }
+  .oepnv button.go.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .trip { border-top:1px solid #dbe6f2; padding:8px 0 2px; margin-top:8px; }
+  .trip .top { display:flex; justify-content:space-between; font-weight:600; }
+  .legs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:5px; color:var(--mute); font-size:12px; }
+  .line { color:#fff; border-radius:4px; padding:1px 6px; font-weight:700; font-size:11px; }
   .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; font-size:13px; z-index:20; }
   #map { position:relative; }
   #detail { position:absolute; top:0; right:0; bottom:0; width:min(560px,100%); background:var(--card); border-left:1px solid var(--line); overflow-y:auto; padding:22px 24px 40px; box-shadow:-8px 0 30px rgba(0,0,0,.08); z-index:5; }
@@ -319,6 +327,14 @@ function renderDetail(s) {
     <button class="close" onclick="location.hash=''" aria-label="Schließen">×</button>
     <h2>${starBtn(s.bsn)} ${esc(s.name)}</h2>
     <span class="tag" style="background:${ART[s.art].color}">${ART[s.art].label}</span><span class="tag soft">${esc(s.ortsteil)}</span><span class="tag soft">${esc(s.bezirk)}</span>
+    ${favs.has(s.bsn) ? `<div class="oepnv" id="oepnv">
+      <b>🚆 ÖPNV ab deinem Standort</b>
+      <div class="btns">
+        <button class="go" data-mode="jetzt">Jetzt losfahren</button>
+        <button class="go" data-mode="schule">Schulweg: an 7:50 Uhr (nächster Schultag)</button>
+      </div>
+      <div id="trips" class="note">Wähle eine Option. Dein Standort wird nur für diese Abfrage genutzt.</div>
+    </div>` : ''}
     <h3>Profil</h3><p class="prof">${esc(profile(s))}</p>
     <h3>Anmeldungen für Klasse 7</h3>
     ${rows.length ? chart(rows) + `
@@ -332,6 +348,62 @@ function renderDetail(s) {
     <h3>Steckbrief</h3><table class="facts">${factRows.map(r => `<tr><td>${r[0]}</td><td>${r[0] === 'Website' ? r[1] : esc(r[1])}</td></tr>`).join('')}</table>
     <p class="note" style="margin-top:18px">Quellen: Standorte aus dem Geodienst „Schulen“ (gdi.berlin.de, dl-de/zero-2-0); Anmeldezahlen, Steckbrief und Abitur aufbereitet von <a href="https://oberschulen.berlin/schulen/${s.bsn}/" target="_blank" rel="noopener">oberschulen.berlin</a> nach Daten der Senatsverwaltung; Erstwünsche 2024/25 und 2025/26 mit der IFG-Auskunft der Senatsverwaltung (FragDenStaat, 08/2025) abgeglichen. Aufnahmekriterien, Sprachen, Leistungskurse und Angebote aus dem <a href="https://www.bildung.berlin.de/schulverzeichnis/" target="_blank" rel="noopener">Schulverzeichnis</a>. Grenznoten nur dort, wo sie veröffentlicht wurden.</p>`;
   detail.hidden = false; detail.scrollTop = 0;
+  detail.querySelectorAll('.oepnv button.go').forEach(b => b.onclick = () => loadTrips(s, b.dataset.mode));
+  if (lastMode && favs.has(s.bsn)) loadTrips(s, lastMode);
+}
+
+// ÖPNV-Verbindungen über die VBB-API (v6.vbb.transport.rest, CORS, ohne Key)
+const PRODUCT_COLOR = { suburban:'#008d4f', subway:'#115d91', tram:'#cc0a22', bus:'#95276e', regional:'#e30613', express:'#e30613', ferry:'#0080ba' };
+let myPos = null, lastMode = null;
+function getPos() {
+  if (myPos) return Promise.resolve(myPos);
+  return new Promise((res, rej) => {
+    if (!navigator.geolocation) return rej(new Error('Standortbestimmung wird vom Browser nicht unterstützt'));
+    navigator.geolocation.getCurrentPosition(p => res(myPos = { lat:p.coords.latitude, lon:p.coords.longitude }),
+      e => rej(new Error(e.code === 1 ? 'Standortfreigabe abgelehnt' : 'Standort nicht verfügbar')), { enableHighAccuracy:true, timeout:15000, maximumAge:120000 });
+  });
+}
+function nextSchoolMorning() {
+  const d = new Date(); d.setHours(7, 50, 0, 0);
+  if (new Date() >= d) d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d;
+}
+const hm = iso => new Date(iso).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+async function loadTrips(s, mode) {
+  const box = document.getElementById('trips');
+  if (!box) return;
+  lastMode = mode;
+  detail.querySelectorAll('.oepnv button.go').forEach(b => b.classList.toggle('on', b.dataset.mode === mode));
+  box.className = 'note'; box.textContent = 'Standort wird bestimmt …';
+  try {
+    const p = await getPos();
+    box.textContent = 'Verbindungen werden gesucht …';
+    const q = new URLSearchParams({ 'from.latitude':p.lat, 'from.longitude':p.lon, 'from.address':'Mein Standort',
+      'to.latitude':s.lat, 'to.longitude':s.lon, 'to.address':s.name, results:3, stopovers:false, remarks:false, language:'de' });
+    if (mode === 'schule') q.set('arrival', nextSchoolMorning().toISOString());
+    const r = await fetch('https://v6.vbb.transport.rest/journeys?' + q);
+    if (!r.ok) throw new Error('Fahrplanauskunft nicht erreichbar (' + r.status + ')');
+    const { journeys = [] } = await r.json();
+    if (location.hash.slice(1) !== s.bsn) return;
+    if (!journeys.length) { box.textContent = 'Keine Verbindung gefunden.'; return; }
+    box.className = '';
+    const day = mode === 'schule' ? nextSchoolMorning().toLocaleDateString('de-DE', { weekday:'long', day:'numeric', month:'numeric' }) : '';
+    box.innerHTML = (day ? `<div class="note" style="margin-top:6px">Ankunft bis 7:50 Uhr am ${day}</div>` : '') + journeys.map(j => {
+      const legs = j.legs, dep = legs[0].departure, arr = legs[legs.length - 1].arrival;
+      const min = Math.round((new Date(arr) - new Date(dep)) / 60000);
+      const rides = legs.filter(l => !l.walking);
+      const walk = legs.filter(l => l.walking).reduce((a, l) => a + (l.distance || 0), 0);
+      const parts = legs.map(l => l.walking
+        ? (l.distance ? `🚶 ${Math.round(l.distance)} m` : '')
+        : `<span class="line" style="background:${PRODUCT_COLOR[l.line?.product] || '#555'}">${esc(l.line?.name || '?')}</span> ${esc((l.destination?.name || '').replace(/ \(Berlin\)$/, ''))}`).filter(Boolean);
+      return `<div class="trip"><div class="top"><span>${hm(dep)} → ${hm(arr)}</span><span>${min} Min.</span></div>
+        <div class="note" style="margin:2px 0 0">${rides.length ? `${rides.length - 1} Umstieg${rides.length === 2 ? '' : 'e'}` : 'nur Fußweg'} · ${Math.round(walk)} m zu Fuß</div>
+        <div class="legs">${parts.join(' <span>›</span> ')}</div></div>`;
+    }).join('') + '<p class="note">Fahrplandaten: VBB über v6.vbb.transport.rest</p>';
+  } catch (e) {
+    box.className = 'note'; box.textContent = e.message;
+  }
 }
 </script>
 </body>
