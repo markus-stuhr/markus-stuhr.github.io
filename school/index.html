@@ -230,7 +230,7 @@ function renderList() {
 function geojson() {
   return { type:'FeatureCollection', features: filtered().map(s => ({ type:'Feature',
     geometry:{ type:'Point', coordinates:[s.lon, s.lat] },
-    properties:{ bsn:s.bsn, name:s.name, label:s.name.replace(/\s*\(.*?\)\s*$/, ''), color:ART[s.art].color, q:s.q ?? 0, fav:favs.has(s.bsn), art:s.art } })) };
+    properties:{ bsn:s.bsn, name:s.name, label:s.name.replace(/\s*\(.*?\)\s*$/, ''), color:ART[s.art].color, q:s.q ?? 0, fav:favs.has(s.bsn), sel:location.hash.slice(1) === s.bsn, art:s.art } })) };
 }
 
 // Weißer Stern (Canvas → addImage), wird bei Favoriten in den Punkt gelegt
@@ -261,16 +261,18 @@ function initMap() {
       'icon-image':'fav-star', 'icon-size':['interpolate',['linear'],['get','q'], 0,.65, 250,.85],
       'icon-allow-overlap':true, 'icon-ignore-placement':true } });
     const RADIUS = ['max', ['case', ['get','fav'], 13, 0], ['interpolate',['linear'],['get','q'], 0,4, 100,8, 250,16]];
+    // ausgewählte Schule: Auswahlring (r 20 + Rand) – Name und Kollisionsfläche rücken nach außen
+    const RADIUS_LBL = ['case', ['get','sel'], 23, RADIUS];
     const labelLayout = (size, font) => ({
       'text-field':['get','label'], 'text-font':font, 'text-size':size,
-      'text-variable-anchor':['right','left','top','bottom'], 'text-radial-offset':['+', ['/', RADIUS, size], 0.35],
+      'text-variable-anchor':['right','left','top','bottom'], 'text-radial-offset':['+', ['/', RADIUS_LBL, size], 0.35],
       'text-justify':'auto', 'text-max-width':12, 'symbol-sort-key':['-', 0, ['get','q']] });
     const labelPaint = { 'text-color':'#1d1f23', 'text-halo-color':'rgba(255,255,255,.95)', 'text-halo-width':1.6 };
     map.addLayer({ id:'lbl', type:'symbol', source:'s', filter:['!=', ['get','fav'], true], layout:labelLayout(11, ['Metropolis Medium','Noto Sans Regular']), paint:labelPaint });
     // Favoriten-Beschriftung liegt darüber und wird dadurch zuerst platziert (Vorrang bei Kollisionen)
     map.addLayer({ id:'lbl-fav', type:'symbol', source:'s', filter:['==', ['get','fav'], true], layout:labelLayout(12.5, ['Metropolis Bold','Noto Sans Bold']), paint:labelPaint });
     // Kollisionsflächen der Kreise ganz oben: werden vor allen Beschriftungen platziert, Namen weichen ihnen aus
-    map.addLayer({ id:'coll', type:'symbol', source:'s', layout:{ 'icon-image':'blank', 'icon-size':['/', ['*', 2, RADIUS], 32],
+    map.addLayer({ id:'coll', type:'symbol', source:'s', layout:{ 'icon-image':'blank', 'icon-size':['/', ['*', 2, RADIUS_LBL], 32],
       'icon-allow-overlap':true, 'icon-ignore-placement':false } });
     map.addLayer({ id:'sel', type:'circle', source:'s', filter:['==','bsn',''], paint:{
       'circle-color':'rgba(0,0,0,0)', 'circle-radius':20, 'circle-stroke-color':'#1d1f23', 'circle-stroke-width':2.5 } });
@@ -324,7 +326,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') location.has
 
 function route() {
   const s = schools.find(x => x.bsn === location.hash.slice(1));
-  if (map && map.getLayer('sel')) map.setFilter('sel', ['==','bsn', s ? s.bsn : '']);
+  if (map && map.getLayer('sel')) { map.setFilter('sel', ['==','bsn', s ? s.bsn : '']); map.getSource('s').setData(geojson()); }
   if (!s) { detail.hidden = true; return; }
   renderDetail(s);
   if (map) map.easeTo({ center:[s.lon, s.lat], zoom:Math.max(map.getZoom(), 13), padding:{ right: innerWidth > 800 ? 560 : 0 } });
