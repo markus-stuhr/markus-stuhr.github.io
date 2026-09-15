@@ -198,7 +198,7 @@ function renderList() {
       ${starBtn(s.bsn)}
       <span class="dot" style="background:${ART[s.art].color}"></span>
       <div><div class="n">${esc(s.name)}</div><div class="m">${esc(s.ortsteil)} · ${ART[s.art].label}${s.art !== 'Gym' ? (s.facts['Gymnasiale Oberstufe'] === 'Ja' ? ' · mit Oberstufe' : ' · ohne Oberstufe') : ''}</div></div>
-      <div class="q" style="color:${qColor(s.q)}">${s.q == null ? '–' : s.q + ' %'}</div></div>`).join('')
+      <div class="q" style="color:${qColor(s.q)}">${s.q == null ? '–' : s.q + ' %'}${(l => l == null ? '' : ` <span class="pill" title="Losquote ${latest(s).jahr} (geschätzt)">${losLabel(l)}</span>`)(losQuote(latest(s)))}</div></div>`).join('')
     || `<div class="item"><div class="m">${state.favOnly ? 'Noch keine Favoriten. Tippt auf ☆ bei einer Schule.' : 'Keine Schulen gefunden.'}</div></div>`;
   list.querySelectorAll('.item[data-b]').forEach(el => el.onclick = () => location.hash = el.dataset.b);
 }
