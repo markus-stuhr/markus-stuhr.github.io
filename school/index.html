@@ -21,7 +21,16 @@
   .chip.on { background:var(--ink); color:#fff; border-color:var(--ink); }
   .dot { width:9px; height:9px; border-radius:50%; display:inline-block; }
   input, select { width:100%; margin-top:8px; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; background:#fff; }
-  .row2 { display:flex; gap:6px; } .row2 > * { flex:1; }
+  .row2 { display:flex; gap:6px; } .row2 > * { flex:1; min-width:0; }
+  .multi { position:relative; margin-top:8px; }
+  .multi summary { list-style:none; padding:8px 10px; border:1px solid var(--line); border-radius:8px; font-size:13px; background:#fff; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-weight:400; }
+  .multi summary::-webkit-details-marker { display:none; }
+  .multi summary::after { content:'▾'; float:right; color:var(--mute); }
+  .multi > div { position:absolute; z-index:30; left:0; top:calc(100% + 4px); min-width:220px; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.12); padding:6px; }
+  .multi label { display:flex; align-items:center; gap:8px; padding:5px 6px; font-size:13px; border-radius:6px; cursor:pointer; }
+  .multi label:hover { background:#f3f2ee; }
+  .multi input { width:auto; margin:0; }
+  .multi .reset { border:0; background:none; color:var(--gym); font-size:12px; padding:5px 6px; cursor:pointer; }
   #list { overflow-y:auto; flex:1; }
   .item { padding:10px 18px; border-bottom:1px solid var(--line); cursor:pointer; display:flex; gap:10px; align-items:center; }
   .item:hover { background:#faf9f6; }
@@ -86,7 +95,7 @@
       </div>
       <input id="search" type="search" placeholder="Schule oder Ortsteil suchen …">
       <div class="row2">
-        <select id="bezirk"><option value="">Alle Bezirke</option></select>
+        <details id="bezirkBox" class="multi"><summary id="bezirkSum">Alle Bezirke</summary><div id="bezirkList"></div></details>
         <select id="sort">
           <option value="quote">Sortierung: Nachfrage</option>
           <option value="name">Sortierung: Name</option>
@@ -125,7 +134,7 @@ const FILTERS = {
   GemS:{ label:ART.GemS.label, color:ART.GemS.color },
   Gym:{ label:ART.Gym.label, color:ART.Gym.color } };
 const filterKey = s => s.art === 'ISS' ? (s.facts['Gymnasiale Oberstufe'] === 'Ja' ? 'ISSm' : 'ISSo') : s.art;
-const state = { arts:new Set(Object.keys(FILTERS)), q:'', bezirk:'', sort:'quote', favOnly:false, lowOnly:false, highOnly:false };
+const state = { arts:new Set(Object.keys(FILTERS)), q:'', bezirke:new Set(), sort:'quote', favOnly:false, lowOnly:false, highOnly:false };
 let schools = [], map;
 
 // Favoriten: im Browser gespeichert, per Link (?fav=…) zwischen Geräten teilbar
@@ -170,7 +179,7 @@ const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
 fetch('schulen.json?v=5').then(r => r.json()).then(data => {
   schools = data.map(s => ({...s, q: quote(latest(s))}));
-  [...new Set(schools.map(s => s.bezirk))].sort().forEach(b => bezirk.add(new Option(b, b)));
+  renderBezirke();
   renderFilters(); renderList(); initMap(); route();
 });
 
@@ -185,7 +194,7 @@ function renderFilters() {
 
 function filtered() {
   const q = state.q.toLowerCase();
-  return schools.filter(s => state.arts.has(filterKey(s)) &&(!state.bezirk || s.bezirk === state.bezirk)
+  return schools.filter(s => state.arts.has(filterKey(s)) && (!state.bezirke.size || state.bezirke.has(s.bezirk))
     && (!state.favOnly || favs.has(s.bsn))
     && (!state.lowOnly || (s.q != null && s.q <= 100))
     && (!state.highOnly || (s.q != null && s.q > 100))
@@ -274,7 +283,21 @@ function update() {
 }
 
 search.oninput = e => { state.q = e.target.value; update(); };
-bezirk.onchange = e => { state.bezirk = e.target.value; update(); };
+// Bezirk-Mehrfachauswahl: leer = alle Bezirke
+function renderBezirke() {
+  const all = [...new Set(schools.map(s => s.bezirk))].sort((a, b) => a.localeCompare(b, 'de'));
+  bezirkList.innerHTML = all.map(b => `<label><input type="checkbox" value="${esc(b)}" ${state.bezirke.has(b) ? 'checked' : ''}> ${esc(b)}</label>`).join('')
+    + '<button class="reset" type="button">Alle Bezirke</button>';
+  bezirkList.querySelectorAll('input').forEach(i => i.onchange = () => {
+    i.checked ? state.bezirke.add(i.value) : state.bezirke.delete(i.value); bezirkLabel(); update(); });
+  bezirkList.querySelector('.reset').onclick = () => { state.bezirke.clear(); renderBezirke(); update(); };
+  bezirkLabel();
+}
+function bezirkLabel() {
+  const n = state.bezirke.size;
+  bezirkSum.textContent = !n ? 'Alle Bezirke' : n === 1 ? [...state.bezirke][0] : `${n} Bezirke`;
+}
+document.addEventListener('click', e => { if (bezirkBox.open && !bezirkBox.contains(e.target)) bezirkBox.open = false; });
 sort.onchange = e => { state.sort = e.target.value; renderList(); };
 favOnly.onclick = () => { state.favOnly = !state.favOnly; update(); };
 lowOnly.onclick = () => { state.lowOnly = !state.lowOnly; if (state.lowOnly) state.highOnly = false; update(); };
