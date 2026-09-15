@@ -210,7 +210,7 @@ function renderList() {
 function geojson() {
   return { type:'FeatureCollection', features: filtered().map(s => ({ type:'Feature',
     geometry:{ type:'Point', coordinates:[s.lon, s.lat] },
-    properties:{ bsn:s.bsn, name:s.name, color:ART[s.art].color, q:s.q ?? 0, fav:favs.has(s.bsn), art:s.art } })) };
+    properties:{ bsn:s.bsn, name:s.name, label:s.name.replace(/\s*\(.*?\)\s*$/, ''), color:ART[s.art].color, q:s.q ?? 0, fav:favs.has(s.bsn), art:s.art } })) };
 }
 
 // Weißer Stern (Canvas → addImage), wird bei Favoriten in den Punkt gelegt
@@ -231,6 +231,8 @@ function initMap() {
   map.on('load', () => {
     map.addSource('s', { type:'geojson', data:geojson() });
     if (!map.hasImage('fav-star')) map.addImage('fav-star', starImage('#fff'), { pixelRatio:2 });
+    // unsichtbares 32-px-Quadrat: Platzhalter in Kreisgröße, dem die Beschriftungen ausweichen
+    if (!map.hasImage('blank')) map.addImage('blank', { width:32, height:32, data:new Uint8Array(32 * 32 * 4) });
     map.addLayer({ id:'s', type:'circle', source:'s', paint:{
       'circle-color':['get','color'],
       'circle-radius':['max', ['case', ['get','fav'], 13, 0], ['interpolate',['linear'],['get','q'], 0,4, 100,8, 250,16]],
@@ -238,6 +240,18 @@ function initMap() {
     map.addLayer({ id:'fav', type:'symbol', source:'s', filter:['==', ['get','fav'], true], layout:{
       'icon-image':'fav-star', 'icon-size':['interpolate',['linear'],['get','q'], 0,.65, 250,.85],
       'icon-allow-overlap':true, 'icon-ignore-placement':true } });
+    const RADIUS = ['max', ['case', ['get','fav'], 13, 0], ['interpolate',['linear'],['get','q'], 0,4, 100,8, 250,16]];
+    const labelLayout = size => ({
+      'text-field':['get','label'], 'text-font':['Metropolis Semi Bold','Noto Sans Bold'], 'text-size':size,
+      'text-variable-anchor':['right','left','top','bottom'], 'text-radial-offset':['+', ['/', RADIUS, size], 0.35],
+      'text-justify':'auto', 'text-max-width':12, 'symbol-sort-key':['-', 0, ['get','q']] });
+    const labelPaint = { 'text-color':'#1d1f23', 'text-halo-color':'rgba(255,255,255,.95)', 'text-halo-width':1.6 };
+    map.addLayer({ id:'lbl', type:'symbol', source:'s', filter:['!=', ['get','fav'], true], layout:labelLayout(11), paint:labelPaint });
+    // Favoriten-Beschriftung liegt darüber und wird dadurch zuerst platziert (Vorrang bei Kollisionen)
+    map.addLayer({ id:'lbl-fav', type:'symbol', source:'s', filter:['==', ['get','fav'], true], layout:labelLayout(12.5), paint:labelPaint });
+    // Kollisionsflächen der Kreise ganz oben: werden vor allen Beschriftungen platziert, Namen weichen ihnen aus
+    map.addLayer({ id:'coll', type:'symbol', source:'s', layout:{ 'icon-image':'blank', 'icon-size':['/', ['*', 2, RADIUS], 32],
+      'icon-allow-overlap':true, 'icon-ignore-placement':false } });
     map.addLayer({ id:'sel', type:'circle', source:'s', filter:['==','bsn',''], paint:{
       'circle-color':'rgba(0,0,0,0)', 'circle-radius':20, 'circle-stroke-color':'#1d1f23', 'circle-stroke-width':2.5 } });
     const pop = new maplibregl.Popup({ closeButton:false, offset:10 });
@@ -245,6 +259,8 @@ function initMap() {
       const p = e.features[0].properties; pop.setLngLat(e.lngLat).setHTML(`<b>${esc(p.name)}</b><br>Nachfrage ${p.q ? p.q + ' %' : '–'}`).addTo(map); });
     map.on('mouseleave', 's', () => { map.getCanvas().style.cursor = ''; pop.remove(); });
     map.on('click', 's', e => location.hash = e.features[0].properties.bsn);
+    ['lbl','lbl-fav'].forEach(id => { map.on('click', id, e => location.hash = e.features[0].properties.bsn);
+      map.on('mouseenter', id, () => map.getCanvas().style.cursor = 'pointer'); map.on('mouseleave', id, () => map.getCanvas().style.cursor = ''); });
     route();
   });
 }
