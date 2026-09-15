@@ -185,7 +185,7 @@ const losLabel = l => l === 100 ? 'kein Los' : '~' + l + ' %';
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
-fetch('schulen.json?v=7').then(r => r.json()).then(data => {
+fetch('schulen.json?v=8').then(r => r.json()).then(data => {
   schools = data.map(s => ({...s, q: quote(latest(s))}));
   renderBezirke();
   renderFilters(); renderList(); initMap(); route();
