@@ -199,13 +199,13 @@ function initMap() {
   map.addControl(new maplibregl.NavigationControl(), 'top-left');
   map.on('load', () => {
     map.addSource('s', { type:'geojson', data:geojson() });
-    if (!map.hasImage('star')) map.addImage('star', starImage('#fff'), { pixelRatio:2 });
+    if (!map.hasImage('fav-star')) map.addImage('fav-star', starImage('#fff'), { pixelRatio:2 });
     map.addLayer({ id:'s', type:'circle', source:'s', paint:{
       'circle-color':['get','color'],
       'circle-radius':['max', ['case', ['get','fav'], 13, 0], ['interpolate',['linear'],['get','q'], 0,4, 100,8, 250,16]],
       'circle-stroke-color':'#fff', 'circle-stroke-width':1.5, 'circle-opacity':.9 } });
     map.addLayer({ id:'fav', type:'symbol', source:'s', filter:['==', ['get','fav'], true], layout:{
-      'icon-image':'star', 'icon-size':['interpolate',['linear'],['get','q'], 0,.65, 250,.85],
+      'icon-image':'fav-star', 'icon-size':['interpolate',['linear'],['get','q'], 0,.65, 250,.85],
       'icon-allow-overlap':true, 'icon-ignore-placement':true } });
     map.addLayer({ id:'sel', type:'circle', source:'s', filter:['==','bsn',''], paint:{
       'circle-color':'rgba(0,0,0,0)', 'circle-radius':20, 'circle-stroke-color':'#1d1f23', 'circle-stroke-width':2.5 } });
