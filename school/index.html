@@ -51,6 +51,8 @@
   .legs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:5px; color:var(--mute); font-size:12px; }
   .pill { display:inline-block; background:#1d1f23; color:#fff; border-radius:999px; padding:1px 8px; font-size:11px; font-weight:600; white-space:nowrap; }
   .pill.free { background:var(--ok); }
+  .regeln { background:#f7f6f2; border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-top:10px; font-size:13px; line-height:1.5; }
+  .regeln p { margin:4px 0 6px; }
   .notebox { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:12px; color:var(--mute); flex-wrap:wrap; }
   .notehint { margin-top:6px; font-size:11.5px; color:var(--mute); }
   .notehint summary { font-weight:400; color:var(--mute); cursor:pointer; list-style:none; }
@@ -208,7 +210,7 @@ const losLabel = l => l === 100 ? 'kein Los' : '~' + l + ' %';
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
-fetch('schulen.json?v=9').then(r => r.json()).then(data => {
+fetch('schulen.json?v=10').then(r => r.json()).then(data => {
   schools = data.map(s => ({...s, q: quote(latest(s))}));
   renderBezirke();
   renderFilters(); renderList(); initMap(); route();
@@ -481,12 +483,13 @@ function aufnahme(s) {
     ${g.map(x => `<tr><td>${x.jahr}</td><td><b>${esc(x.wert)}</b><div class="note" style="margin:0">${esc(x.quelle)}</div></td></tr>`).join('')}</table>`;
   const regeln = [];
   if (k.note) regeln.push('<b>Durchschnittsnote der Förderprognose:</b> Die Plätze aus der Kriterien-Quote (mind. 60 %) gehen der Note nach an die Besten. Die schlechteste Note, die noch angenommen wird, ist der „NC“ des Jahres.');
-  if (k.andere) regeln.push(`<b>Eigene Kriterien:</b> z. B. Notensumme in Profilfächern, Tests, Auswahlgespräch oder Gewichtungen${k.pdf ? `, siehe <a href="${k.pdf}" target="_blank" rel="noopener">Formblatt der Schule (PDF)</a>` : ''}.`);
+  if (k.andere && !k.regeln) regeln.push(`<b>Eigene Kriterien:</b> z. B. Notensumme in Profilfächern, Tests, Auswahlgespräch oder Gewichtungen${k.pdf ? `, siehe <a href="${k.pdf}" target="_blank" rel="noopener">Formblatt der Schule (PDF)</a>` : ''}.`);
   if (!k.note && !k.andere && s.krit) regeln.push('<b>Im Schulverzeichnis sind keine Kriterien angegeben.</b> Wahrscheinlich entscheidet nach Härtefällen und Geschwistern das Los. Bitte bei der Schule nachfragen.');
   if (s.art === 'GemS') regeln.push('Gemeinschaftsschule: Kinder aus der eigenen Grundstufe und aus kooperierenden Grundschulen werden zuerst aufgenommen, dadurch gibt es oft weniger freie Plätze.');
   regeln.push('Immer gilt: bis 10 % Härtefälle und Geschwister, mind. 60 % nach Kriterien, 30 % der Plätze per Los. Wer über die Kriterien keinen Platz bekommt, nimmt anschließend noch an der Verlosung teil.');
   h += `<ul style="margin:10px 0 0 18px;font-size:13px;line-height:1.5">${regeln.map(r => `<li style="margin-bottom:4px">${r}</li>`).join('')}</ul>`;
   if (s.hinweis) h += `<div class="warn" style="margin-top:10px">🎨 ${esc(s.hinweis)}${s.hinweisLink ? ` <a href="${esc(s.hinweisLink)}" target="_blank" rel="noopener">Zur Schulseite</a>` : ''}</div>`;
+  if (k.regeln) h += `<div class="regeln"><b>Aufnahmeregeln der Schule</b>${k.regelnStand && k.regelnStand !== '–' ? ` <span class="note" style="margin:0">(Stand ${esc(k.regelnStand)})</span>` : ''}<p>${esc(k.regeln)}</p>${k.pdf ? `<a href="${k.pdf}" target="_blank" rel="noopener">Formblatt der Schule (PDF)</a>` : ''}</div>`;
   if (k.auszug) h += `<details style="margin-top:8px;font-size:12px"><summary>Auszug aus den Aufnahmeregeln der Schule</summary><p class="note">${esc(k.auszug)} …</p></details>`;
   if (!g.length) h += '<p class="note">Die tatsächliche Grenznote veröffentlicht nicht jeder Bezirk. Fragt beim Tag der offenen Tür danach, die Schulen nennen sie meist.</p>';
   return h;
