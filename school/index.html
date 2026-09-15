@@ -416,7 +416,7 @@ function chart(rows) {
     if (yQ != null) g += pill(cx, yQ, q + ' %', q > 100 ? '#c83c3c' : '#2e9b62', 'Nachfrage: Erstwünsche ÷ Plätze');
   });
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Anmeldezahlen im Verlauf">${g}</svg>
-    <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <span class="pill" style="background:#c83c3c">%</span> Nachfrage &nbsp; <span class="pill">~%</span> Losquote (geschätzt)</div>`;
+    <div class="note"><span class="dot" style="background:#c9ccd3"></span> Plätze &nbsp; <span class="dot" style="background:#e07a5f"></span> Erstwünsche (rot = mehr Wünsche als Plätze) &nbsp; <span class="pill" style="background:#c83c3c">%</span> Nachfrage${rows.some(r => { const l = losQuote(r); return l != null && l < 100; }) ? ' &nbsp; <span class="pill">~%</span> Losquote (geschätzt)' : ''}</div>`;
 }
 
 // Einstufung „Note reicht?“ nach der letzten bekannten Grenznote (nc oder frei)
