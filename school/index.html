@@ -285,7 +285,7 @@ function chart(rows) {
   let g = '';
   for (let i = 0; i <= 4; i++) { const v = max / 4 * i;
     g += `<line x1="${pl}" x2="${W-pr}" y1="${y(v)}" y2="${y(v)}" stroke="#eee"/><text x="${pl-5}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="#999">${Math.round(v)}</text>`; }
-  g += `<line x1="${pl}" x2="${W-pr}" y1="${yq(100)}" y2="${yq(100)}" stroke="#c83c3c" stroke-dasharray="3 3" opacity=".5"/><text x="${W-pr+4}" y="${yq(100)+4}" font-size="10" fill="#c83c3c">100 %</text>`;
+  g += `<line x1="${pl}" x2="${W-pr}" y1="${yq(100)}" y2="${yq(100)}" stroke="#1d1f23" stroke-dasharray="4 3" opacity=".7"/><text x="${W-pr+4}" y="${yq(100)+4}" font-size="10" fill="#1d1f23">100 %</text>`;
   rows.forEach((r, i) => { const x = pl + bw * i + bw * .2, w = bw * .28;
     if (r.plaetze != null) g += `<rect x="${x}" y="${y(r.plaetze)}" width="${w}" height="${H-pb-y(r.plaetze)}" fill="#c9ccd3" rx="2"><title>Plätze: ${r.plaetze}</title></rect>`;
     if (r.erst != null) g += `<rect x="${x+w+3}" y="${y(r.erst)}" width="${w}" height="${H-pb-y(r.erst)}" fill="${r.erst > (r.plaetze ?? Infinity) ? '#e07a5f' : '#7fb89a'}" rx="2"><title>Erstwünsche: ${r.erst}</title></rect>`;
