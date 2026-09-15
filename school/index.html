@@ -208,7 +208,7 @@ const losLabel = l => l === 100 ? 'kein Los' : '~' + l + ' %';
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
-fetch('schulen.json?v=8').then(r => r.json()).then(data => {
+fetch('schulen.json?v=9').then(r => r.json()).then(data => {
   schools = data.map(s => ({...s, q: quote(latest(s))}));
   renderBezirke();
   renderFilters(); renderList(); initMap(); route();
@@ -464,6 +464,16 @@ function ncCell(s, jahr) {
   return `<span title="${esc(e.wert)} · ${esc(e.quelle)}" style="cursor:help">ⓘ</span>`;
 }
 
+// Termine (Elternabende, Tag der offenen Tür); vergangene werden ausgeblendet
+function termine(s) {
+  const heute = new Date().toISOString().slice(0, 10);
+  const t = (s.termine || []).filter(x => x.datum >= heute);
+  if (!t.length) return '';
+  const fmt = iso => new Date(iso + 'T12:00').toLocaleDateString('de-DE', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
+  return `<h3>Termine</h3><table>${t.map(x => `<tr><td style="white-space:nowrap"><b>${fmt(x.datum)}</b>${x.zeit ? `<div class="note" style="margin:0">${x.zeit} Uhr</div>` : ''}</td><td>${esc(x.titel)}${x.ort ? `<div class="note" style="margin:0">${esc(x.ort)}</div>` : ''}</td></tr>`).join('')}</table>`
+    + (s.termineQuelle ? `<p class="note">Quelle: <a href="${esc(s.termineQuelle)}" target="_blank" rel="noopener">Website der Schule</a></p>` : '');
+}
+
 function aufnahme(s) {
   const k = s.krit || {}, g = s.grenze || [];
   let h = '';
@@ -502,6 +512,7 @@ function renderDetail(s) {
       </div>
       <div id="trips" class="note">Wähle eine Option. Dein Standort wird nur für diese Abfrage genutzt.</div>
     </div>` : ''}
+    ${termine(s)}
     <h3>Profil</h3><p class="prof">${esc(profile(s))}</p>
     <h3>Anmeldungen für Klasse 7</h3>
     ${rows.length ? chart(rows) + `
