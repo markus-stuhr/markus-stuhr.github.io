@@ -50,6 +50,7 @@
   .trip .top { display:flex; justify-content:space-between; font-weight:600; }
   .legs { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin-top:5px; color:var(--mute); font-size:12px; }
   .pill { display:inline-block; background:#1d1f23; color:#fff; border-radius:999px; padding:1px 8px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .pill.free { background:var(--ok); }
   .line { color:#fff; border-radius:4px; padding:1px 6px; font-weight:700; font-size:11px; }
   .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:8px 14px; border-radius:8px; font-size:13px; z-index:20; }
   #map { position:relative; }
@@ -222,7 +223,7 @@ function renderList() {
       ${starBtn(s.bsn)}
       <span class="dot" style="background:${ART[s.art].color}"></span>
       <div><div class="n">${esc(s.name)}</div><div class="m">${esc(s.ortsteil)} · ${ART[s.art].label}${s.art !== 'Gym' ? (s.facts['Gymnasiale Oberstufe'] === 'Ja' ? ' · mit Oberstufe' : ' · ohne Oberstufe') : ''}</div></div>
-      <div class="q" style="color:${qColor(s.q)}">${s.q == null ? '–' : s.q + ' %'}${(l => l == null ? '' : ` <span class="pill" title="Losquote ${latest(s).jahr} (geschätzt)">${losLabel(l)}</span>`)(losQuote(latest(s)))}</div></div>`).join('')
+      <div class="q" style="color:${qColor(s.q)}">${s.q == null ? '–' : s.q + ' %'}${(l => l == null ? '' : ` <span class="pill${l === 100 ? ' free' : ''}" title="Losquote ${latest(s).jahr} (geschätzt)">${losLabel(l)}</span>`)(losQuote(latest(s)))}</div></div>`).join('')
     || `<div class="item"><div class="m">${state.favOnly ? 'Noch keine Favoriten. Tippt auf ☆ bei einer Schule.' : 'Keine Schulen gefunden.'}</div></div>`;
   list.querySelectorAll('.item[data-b]').forEach(el => el.onclick = () => location.hash = el.dataset.b);
 }
@@ -435,7 +436,7 @@ function renderDetail(s) {
     <h3>Anmeldungen für Klasse 7</h3>
     ${rows.length ? chart(rows) + `
     <table style="margin-top:10px"><tr><th>Schuljahr</th><th class="r">Plätze</th><th class="r">Erstwünsche</th><th class="r" title="Schlechteste Durchschnittsnote der Förderprognose, mit der noch über die Note aufgenommen wurde">NC</th><th class="r">Nachfrage</th><th class="r">Losquote*</th><th class="r">vs. Ø</th></tr>
-    ${rows.slice().reverse().map(r => { const q = quote(r), l = losQuote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r">${ncCell(s, r.jahr)}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td><td class="r">${l == null ? '–' : `<span class="pill">${l === 100 ? 'kein Los' : '~' + l + ' %'}</span>`}</td><td class="r">${diffPP(l, losAvg(rows))}</td></tr>`; }).join('')}
+    ${rows.slice().reverse().map(r => { const q = quote(r), l = losQuote(r); return `<tr><td>${r.jahr}</td><td class="r">${r.plaetze ?? '–'}</td><td class="r">${r.erst ?? '–'}</td><td class="r">${ncCell(s, r.jahr)}</td><td class="r" style="color:${qColor(q)};font-weight:600">${q == null ? '–' : q + ' %'}</td><td class="r">${l == null ? '–' : `<span class="pill${l === 100 ? ' free' : ''}">${l === 100 ? 'kein Los' : '~' + l + ' %'}</span>`}</td><td class="r">${diffPP(l, losAvg(rows))}</td></tr>`; }).join('')}
     ${losAvg(rows) == null ? '' : `<tr><td><b>Ø ${rows.filter(r => losQuote(r) != null).length} Jahre</b></td><td></td><td></td><td></td><td></td><td class="r"><b style="padding-right:8px">${losLabel(losAvg(rows))}</b></td><td></td></tr>`}</table>
     <p class="note">* Geschätzte Chance im Losverfahren, gerechnet mit 10 % Plätzen für Härtefälle und Geschwister, 60 % nach Kriterien und 30 % per Los unter allen übrigen Erstwunsch-Bewerbungen: 0,3 × Plätze ÷ (Erstwünsche − 0,7 × Plätze). Die echten Zahlen veröffentlichen die Schulämter nicht. Bei Gemeinschaftsschulen (eigene Grundstufe), Profilklassen und SESB-Zügen weicht sie stärker ab. „NC“ ist die schlechteste Durchschnittsnote der Förderprognose, mit der im jeweiligen Jahr noch über die Note aufgenommen wurde („alle“ = nicht übernachgefragt; Details unter „Aufnahme bei Übernachfrage“), soweit das Schulamt sie veröffentlicht hat. „vs. Ø“ zeigt, um wie viele Prozentpunkte die Losquote eines Jahres über (grün) oder unter (rot) dem Durchschnitt aller bekannten Jahre lag. Das ist keine Prognose.</p>
     ${rows.some(r => r.quelle) ? '<p class="note">2023/24 laut Antwort des Bezirksamts Friedrichshain-Kreuzberg (SA/248/VI). Ältere Zahlen pro Schule veröffentlicht der Senat nicht, zentral erfasst wird erst seit 2024/25.</p>' : ''}`
