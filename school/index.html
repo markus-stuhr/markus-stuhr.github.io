@@ -155,7 +155,7 @@ const quote = r => r && r.erst != null && r.plaetze ? Math.round(r.erst / r.plae
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
-fetch('schulen.json?v=4').then(r => r.json()).then(data => {
+fetch('schulen.json?v=5').then(r => r.json()).then(data => {
   schools = data.map(s => ({...s, q: quote(latest(s))}));
   [...new Set(schools.map(s => s.bezirk))].sort().forEach(b => bezirk.add(new Option(b, b)));
   renderFilters(); renderList(); initMap(); route();
