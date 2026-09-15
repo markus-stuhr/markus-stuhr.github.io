@@ -147,7 +147,7 @@ const quote = r => r && r.erst != null && r.plaetze ? Math.round(r.erst / r.plae
 const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const qColor = q => q == null ? '#999' : q > 100 ? 'var(--over)' : 'var(--ok)';
 
-fetch('schulen.json?v=2').then(r => r.json()).then(data => {
+fetch('schulen.json?v=3').then(r => r.json()).then(data => {
   schools = data.map(s => ({...s, q: quote(latest(s))}));
   [...new Set(schools.map(s => s.bezirk))].sort().forEach(b => bezirk.add(new Option(b, b)));
   renderFilters(); renderList(); initMap(); route();
@@ -301,6 +301,7 @@ function aufnahme(s) {
   if (s.art === 'GemS') regeln.push('Gemeinschaftsschule: Kinder aus der eigenen Grundstufe und aus kooperierenden Grundschulen werden zuerst aufgenommen, dadurch gibt es oft weniger freie Plätze.');
   regeln.push('Immer gilt: bis 10 % Härtefälle und Geschwister, mind. 60 % nach Kriterien, 30 % der Plätze per Los. Wer über die Kriterien keinen Platz bekommt, nimmt anschließend noch an der Verlosung teil.');
   h += `<ul style="margin:10px 0 0 18px;font-size:13px;line-height:1.5">${regeln.map(r => `<li style="margin-bottom:4px">${r}</li>`).join('')}</ul>`;
+  if (s.hinweis) h += `<div class="warn" style="margin-top:10px">🎨 ${esc(s.hinweis)}${s.hinweisLink ? ` <a href="${esc(s.hinweisLink)}" target="_blank" rel="noopener">Zur Schulseite</a>` : ''}</div>`;
   if (k.auszug) h += `<details style="margin-top:8px;font-size:12px"><summary>Auszug aus den Aufnahmeregeln der Schule</summary><p class="note">${esc(k.auszug)} …</p></details>`;
   if (!g.length) h += '<p class="note">Die tatsächliche Grenznote veröffentlicht nicht jeder Bezirk. Fragt beim Tag der offenen Tür danach, die Schulen nennen sie meist.</p>';
   return h;
