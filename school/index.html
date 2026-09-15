@@ -68,6 +68,7 @@
       <div class="sub">Anmeldungen für Klasse 7: öffentliche ISS, Gemeinschaftsschulen und Gymnasien in Friedrichshain-Kreuzberg und den Nachbarbezirken</div>
       <div class="filters" id="artFilter"></div>
       <div class="filters">
+        <button class="chip" id="lowOnly" title="Nur Schulen, bei denen 2026/27 alle Erstwünsche einen Platz bekommen haben"><span class="dot" style="background:var(--ok)"></span>Nachfrage bis 100 %</button>
         <button class="chip" id="favOnly">★ Nur Favoriten <span id="favCount">(0)</span></button>
         <button class="chip" id="favShare" title="Link mit euren Favoriten kopieren">🔗 Favoriten teilen</button>
       </div>
@@ -104,7 +105,14 @@
 <script>
 const MAPTILER_KEY = 'lT9jK8r0OXrZinP9JSOT';
 const ART = { ISS:{label:'ISS', color:'#e0662f'}, GemS:{label:'Gemeinschaftsschule', color:'#8a5cc7'}, Gym:{label:'Gymnasium', color:'#2f6fd6'} };
-const state = { arts:new Set(['ISS','GemS','Gym']), q:'', bezirk:'', sort:'quote', favOnly:false };
+// Filter-Pillen: ISS getrennt nach eigener gymnasialer Oberstufe
+const FILTERS = {
+  ISSm:{ label:'ISS mit Oberstufe', color:ART.ISS.color },
+  ISSo:{ label:'ISS ohne Oberstufe', color:ART.ISS.color, ring:true },
+  GemS:{ label:ART.GemS.label, color:ART.GemS.color },
+  Gym:{ label:ART.Gym.label, color:ART.Gym.color } };
+const filterKey = s => s.art === 'ISS' ? (s.facts['Gymnasiale Oberstufe'] === 'Ja' ? 'ISSm' : 'ISSo') : s.art;
+const state = { arts:new Set(Object.keys(FILTERS)), q:'', bezirk:'', sort:'quote', favOnly:false, lowOnly:false };
 let schools = [], map;
 
 // Favoriten: im Browser gespeichert, per Link (?fav=…) zwischen Geräten teilbar
@@ -146,8 +154,8 @@ fetch('schulen.json?v=2').then(r => r.json()).then(data => {
 });
 
 function renderFilters() {
-  artFilter.innerHTML = Object.entries(ART).map(([k, a]) =>
-    `<button class="chip ${state.arts.has(k) ? 'on' : ''}" data-k="${k}"><span class="dot" style="background:${a.color}"></span>${a.label}</button>`).join('');
+  artFilter.innerHTML = Object.entries(FILTERS).map(([k, a]) =>
+    `<button class="chip ${state.arts.has(k) ? 'on' : ''}" data-k="${k}"><span class="dot" style="${a.ring ? `border:2px solid ${a.color};background:transparent;box-sizing:border-box` : `background:${a.color}`}"></span>${a.label}</button>`).join('');
   artFilter.querySelectorAll('button').forEach(b => b.onclick = () => {
     state.arts.has(b.dataset.k) ? state.arts.delete(b.dataset.k) : state.arts.add(b.dataset.k);
     renderFilters(); update();
@@ -156,8 +164,9 @@ function renderFilters() {
 
 function filtered() {
   const q = state.q.toLowerCase();
-  return schools.filter(s => state.arts.has(s.art) && (!state.bezirk || s.bezirk === state.bezirk)
+  return schools.filter(s => state.arts.has(filterKey(s)) &&(!state.bezirk || s.bezirk === state.bezirk)
     && (!state.favOnly || favs.has(s.bsn))
+    && (!state.lowOnly || (s.q != null && s.q <= 100))
     && (!q || (s.name + ' ' + s.ortsteil).toLowerCase().includes(q)));
 }
 
@@ -167,6 +176,7 @@ function renderList() {
   arr.sort(by[state.sort]);
   favCount.textContent = `(${favs.size})`;
   favOnly.classList.toggle('on', state.favOnly);
+  lowOnly.classList.toggle('on', state.lowOnly);
   list.innerHTML = arr.map(s => `<div class="item" data-b="${s.bsn}">
       ${starBtn(s.bsn)}
       <span class="dot" style="background:${ART[s.art].color}"></span>
@@ -227,6 +237,7 @@ search.oninput = e => { state.q = e.target.value; update(); };
 bezirk.onchange = e => { state.bezirk = e.target.value; update(); };
 sort.onchange = e => { state.sort = e.target.value; renderList(); };
 favOnly.onclick = () => { state.favOnly = !state.favOnly; update(); };
+lowOnly.onclick = () => { state.lowOnly = !state.lowOnly; update(); };
 favShare.onclick = async () => {
   if (!favs.size) return toast('Noch keine Favoriten markiert');
   const url = `${location.origin}${location.pathname}?fav=${[...favs].join(',')}`;
