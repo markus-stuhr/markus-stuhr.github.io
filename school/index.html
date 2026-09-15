@@ -88,6 +88,7 @@
           <option value="quote">Sortierung: Nachfrage</option>
           <option value="name">Sortierung: Name</option>
           <option value="erst">Sortierung: Erstwünsche</option>
+          <option value="los">Sortierung: Losquote (beste Chance zuerst)</option>
         </select>
       </div>
     </header>
@@ -189,7 +190,8 @@ function filtered() {
 
 function renderList() {
   const arr = filtered();
-  const by = { quote:(a,b) => (b.q ?? -1) - (a.q ?? -1), name:(a,b) => a.name.localeCompare(b.name, 'de'), erst:(a,b) => ((latest(b)||{}).erst ?? -1) - ((latest(a)||{}).erst ?? -1) };
+  const by = { quote:(a,b) => (b.q ?? -1) - (a.q ?? -1), name:(a,b) => a.name.localeCompare(b.name, 'de'), erst:(a,b) => ((latest(b)||{}).erst ?? -1) - ((latest(a)||{}).erst ?? -1),
+    los:(a,b) => (losQuote(latest(b)) ?? -1) - (losQuote(latest(a)) ?? -1) || (a.q ?? 999) - (b.q ?? 999) };
   arr.sort(by[state.sort]);
   favCount.textContent = `(${favs.size})`;
   favOnly.classList.toggle('on', state.favOnly);
