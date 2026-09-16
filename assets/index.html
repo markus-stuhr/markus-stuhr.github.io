@@ -120,7 +120,7 @@ try{ favs = new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); }catch(e
 function saveFavs(){
   try{ localStorage.setItem(FAV_KEY, JSON.stringify([...favs])); }catch(e){}
 }
-let favOnly = false, animOnly = false;
+let favOnly = false, animOnly = false, sortBeforeAnim = null;
 function saveState(){
   try{
     sessionStorage.setItem(STATE_KEY, JSON.stringify({
@@ -347,7 +347,12 @@ function apply(){
     favOnly = !favOnly; favBtn.ariaPressed = favOnly; apply();
   });
   animBtn.addEventListener('click', ()=>{
-    animOnly = !animOnly; animBtn.ariaPressed = animOnly; apply();
+    animOnly = !animOnly; animBtn.ariaPressed = animOnly;
+    // Animierte Modelle nach Pack gruppieren; beim Ausschalten die
+    // vorherige Sortierung wiederherstellen.
+    if(animOnly){ sortBeforeAnim = sortEl.value; sortEl.value = 'pack'; }
+    else if(sortBeforeAnim){ sortEl.value = sortBeforeAnim; sortBeforeAnim = null; }
+    apply();
   });
   addEventListener('scroll', ()=>{
     clearTimeout(saveState.t);
