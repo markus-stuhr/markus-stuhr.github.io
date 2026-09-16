@@ -43,6 +43,10 @@ def rig_signature(j):
                 break
         else:
             vals.append('-')
+    # Fremdes Skelett ohne KayKit-Knochennamen (z.B. Quaternius): keine
+    # Signatur, sonst teilten sich alle solchen Figuren ein Schein-Rig.
+    if all(v == '-' for v in vals):
+        return None
     return '|'.join(vals)
 
 
@@ -96,7 +100,7 @@ for root, dirs, files in os.walk(MODELS):
 
 packs = sorted({i['pack'] for i in items})
 man = {
-    'generated': '2026-09-05',
+    'generated': '2026-09-16',
     'packs': [{'id': p, 'label': pack_label(p),
                'count': sum(1 for i in items if i['pack'] == p)} for p in packs],
     'libs': libs,

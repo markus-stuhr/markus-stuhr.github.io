@@ -68,6 +68,9 @@ button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc)}
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+// Quaternius-Modelle sind Draco-komprimiert (halbiert die Repo-Groesse)
+const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/');
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 
 const file = new URLSearchParams(location.search).get('m');
@@ -171,7 +174,7 @@ function resetView(){
   controls.update();
 }
 
-new GLTFLoader().load(url, g=>{
+new GLTFLoader().setDRACOLoader(draco).load(url, g=>{
   msg.remove();
   pivot.add(g.scene);
   let tris = 0, meshes = 0, mats = new Set();
@@ -253,7 +256,7 @@ async function ensureClip(i){
   const url = 'models/' + c.lib.file.split('/').map(encodeURIComponent).join('/');
   if(!libCache.has(c.lib.file)){
     libCache.set(c.lib.file, new Promise((res,rej)=>
-      new GLTFLoader().load(url, g=>res(g.animations), undefined, rej)));
+      new GLTFLoader().setDRACOLoader(draco).load(url, g=>res(g.animations), undefined, rej)));
   }
   const anims = await libCache.get(c.lib.file);
   const src = anims.find(a => a.name === c.name);

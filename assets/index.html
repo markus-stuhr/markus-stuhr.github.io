@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>3D-Asset-Katalog · KayKit</title>
+<title>3D-Asset-Katalog · KayKit &amp; Quaternius</title>
 <script defer src="/analytics.js"></script>
 <style>
 :root{
@@ -87,7 +87,8 @@ footer a{color:var(--acc)}
 </header>
 <div class="grid" id="grid"></div>
 <footer>
-  Modelle: <b>KayKit</b> von Kay Lousberg (<a href="https://kaylousberg.com" target="_blank" rel="noopener">kaylousberg.com</a>) — freie Packs, CC0.
+  Modelle: <b>KayKit</b> von Kay Lousberg (<a href="https://kaylousberg.com" target="_blank" rel="noopener">kaylousberg.com</a>) — freie Packs, CC0.<br>
+  Modelle: <b>Quaternius</b> (<a href="https://quaternius.com" target="_blank" rel="noopener">quaternius.com</a>) — freie Packs, CC0; ältere Packs aus .blend nach glTF konvertiert.
 </footer>
 
 <script type="importmap">
@@ -99,6 +100,9 @@ footer a{color:var(--acc)}
 <script type="module">
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+// Quaternius-Modelle sind Draco-komprimiert (halbiert die Repo-Groesse)
+const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/');
 
 const TH = 256;                      // Renderaufloesung der Vorschau
 const grid = document.getElementById('grid');
@@ -132,7 +136,7 @@ const renderer = new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDraw
 renderer.setSize(TH,TH,false);
 renderer.setPixelRatio(1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-const loader = new GLTFLoader();
+const loader = new GLTFLoader().setDRACOLoader(draco);
 
 function makeScene(){
   const s = new THREE.Scene();
