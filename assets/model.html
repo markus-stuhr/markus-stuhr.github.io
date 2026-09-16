@@ -312,7 +312,15 @@ let spin = true, wire = false;
 const rotBtn = document.getElementById('rot');
 const wireBtn = document.getElementById('wire');
 const gridBtn = document.getElementById('grid');
-rotBtn.onclick = ()=>{ spin = !spin; rotBtn.ariaPressed = spin; };
+rotBtn.onclick = ()=>{ spin = !spin; rotBtn.ariaPressed = spin; ramp = spin ? 1 : 0; };
+
+// Rotation = Kamerafahrt um das Objekt. Greift man selbst ein, stoppt sie;
+// nach IDLE Sekunden Ruhe laeuft sie ueber RAMP Sekunden wieder weich an.
+const SPEED = .5 * 60 / (2 * Math.PI);        // autoRotateSpeed fuer 0.5 rad/s
+const IDLE = 3, RAMP = 2;
+let dragging = false, idleSince = 0, ramp = 1;
+controls.addEventListener('start', ()=>{ dragging = true; ramp = 0; });
+controls.addEventListener('end', ()=>{ dragging = false; idleSince = performance.now(); });
 wireBtn.onclick = ()=>{
   wire = !wire; wireBtn.ariaPressed = wire;
   pivot.traverse(o=>{ if(o.isMesh) for(const m of [].concat(o.material)) m.wireframe = wire; });
@@ -348,8 +356,11 @@ addEventListener('resize', resize); resize();
 renderer.setAnimationLoop(()=>{
   const dt = clock.getDelta();
   if(mixer) mixer.update(dt);
-  if(spin) pivot.rotation.y += dt*.5;
-  controls.update();
+  if(spin && !dragging && ramp < 1 && performance.now() - idleSince > IDLE * 1000)
+    ramp = Math.min(1, ramp + dt / RAMP);
+  controls.autoRotate = spin && !dragging && ramp > 0;
+  controls.autoRotateSpeed = SPEED * ramp * ramp * (3 - 2 * ramp);   // smoothstep
+  controls.update(dt);
   renderer.render(scene,cam);
 });
 </script>
