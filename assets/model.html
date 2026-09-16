@@ -18,7 +18,11 @@ header{display:flex;align-items:center;gap:14px;padding:12px 18px;
 .back{border:1px solid var(--line);background:var(--panel2);border-radius:8px;
   padding:6px 12px;font-size:14px;text-decoration:none;white-space:nowrap}
 .back:hover{border-color:var(--acc)}
-.tt{min-width:0}
+.tt{min-width:0;flex:1}
+.nav{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.nav a{min-width:34px;text-align:center}
+.nav a[aria-disabled="true"]{opacity:.35;pointer-events:none}
+.pos{font-size:12px;color:var(--dim);white-space:nowrap}
 h1{font-size:17px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sub{font-size:12px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 main{flex:1;position:relative;min-height:0}
@@ -44,6 +48,11 @@ button[aria-pressed="true"]{border-color:var(--acc);color:var(--acc)}
 <header>
   <a class="back" href="index.html">← Katalog</a>
   <div class="tt"><h1 id="title">…</h1><div class="sub" id="sub"></div></div>
+  <nav class="nav" id="nav" hidden>
+    <a class="back" id="prev" href="#" title="Vorheriges Modell (←)" aria-label="Vorheriges Modell">←</a>
+    <span class="pos" id="pos"></span>
+    <a class="back" id="next" href="#" title="Nächstes Modell (→)" aria-label="Nächstes Modell">→</a>
+  </nav>
 </header>
 <main id="stage">
   <div class="msg" id="msg">Lade …</div>
@@ -76,6 +85,33 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 const file = new URLSearchParams(location.search).get('m');
 if(!file){ location.replace('index.html'); }
 const url = 'models/' + file.split('/').map(encodeURIComponent).join('/');
+
+// Blaettern in der Reihenfolge der zuletzt angezeigten Uebersicht.
+// replace statt href: "Zurueck" im Browser fuehrt weiter direkt zum Katalog.
+let order = [];
+try{ order = JSON.parse(sessionStorage.getItem('kaykit.order') || '[]'); }catch(e){}
+const idx = order.indexOf(file);
+const hrefOf = f => 'model.html?m=' + encodeURIComponent(f);
+function go(d){
+  const f = order[idx + d];
+  if(f) location.replace(hrefOf(f));
+}
+if(idx >= 0 && order.length > 1){
+  const nav = document.getElementById('nav');
+  nav.hidden = false;
+  document.getElementById('pos').textContent = (idx + 1) + ' / ' + order.length;
+  for(const [id, d] of [['prev', -1], ['next', 1]]){
+    const a = document.getElementById(id);
+    if(order[idx + d]) a.href = hrefOf(order[idx + d]);
+    else a.setAttribute('aria-disabled', 'true');
+    a.addEventListener('click', e => { e.preventDefault(); go(d); });
+  }
+}
+addEventListener('keydown', e => {
+  if(e.target.closest('input,select,textarea') || e.altKey || e.metaKey || e.ctrlKey) return;
+  if(e.key === 'ArrowLeft') go(-1);
+  else if(e.key === 'ArrowRight') go(1);
+});
 const stage = document.getElementById('stage');
 const msg = document.getElementById('msg');
 document.getElementById('dl').href = url;

@@ -114,7 +114,7 @@ const favBtn = document.getElementById('favBtn');
 const animBtn = document.getElementById('animBtn');
 
 // --- Favoriten (localStorage) und Ansichtszustand (sessionStorage) ---
-const FAV_KEY = 'kaykit.favs', STATE_KEY = 'kaykit.state';
+const FAV_KEY = 'kaykit.favs', STATE_KEY = 'kaykit.state', ORDER_KEY = 'kaykit.order';
 let favs = new Set();
 try{ favs = new Set(JSON.parse(localStorage.getItem(FAV_KEY) || '[]')); }catch(e){}
 function saveFavs(){
@@ -128,6 +128,10 @@ function saveState(){
       favOnly, animOnly, y: scrollY
     }));
   }catch(e){}
+}
+// Reihenfolge der aktuellen Uebersicht fuer die Pfeil-Navigation der Detailseite
+function saveOrder(){
+  try{ sessionStorage.setItem(ORDER_KEY, JSON.stringify(view.map(i => i.file))); }catch(e){}
 }
 
 // --- ein einziger WebGL-Kontext rendert alle Thumbnails nacheinander und
@@ -301,6 +305,7 @@ function apply(){
   queue.length = 0;
   render();
   saveState();
+  saveOrder();
 }
 
 (async ()=>{
