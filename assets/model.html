@@ -314,13 +314,31 @@ const wireBtn = document.getElementById('wire');
 const gridBtn = document.getElementById('grid');
 rotBtn.onclick = ()=>{ spin = !spin; rotBtn.ariaPressed = spin; ramp = spin ? 1 : 0; };
 
-// Rotation = Kamerafahrt um das Objekt. Greift man selbst ein, stoppt sie;
-// nach IDLE Sekunden Ruhe laeuft sie ueber RAMP Sekunden wieder weich an.
+// Rotation = Kamerafahrt um das Objekt. Nur eigenes Drehen stoppt sie
+// (Zoomen per Rad/Pinch und Schwenken nicht); nach IDLE Sekunden Ruhe
+// laeuft sie ueber RAMP Sekunden wieder weich an. Die start/end-Events der
+// OrbitControls kommen auch beim Zoomen, deshalb eigene Zeigerauswertung:
+// Drehen = linke Maustaste ohne Modifier (die schwenken) oder genau ein Finger.
 const SPEED = .5 * 60 / (2 * Math.PI);        // autoRotateSpeed fuer 0.5 rad/s
 const IDLE = 3, RAMP = 2;
 let dragging = false, idleSince = 0, ramp = 1;
-controls.addEventListener('start', ()=>{ dragging = true; ramp = 0; });
-controls.addEventListener('end', ()=>{ dragging = false; idleSince = performance.now(); });
+const touches = new Set();
+const el = renderer.domElement;
+el.addEventListener('pointerdown', e=>{
+  if(e.pointerType === 'touch') touches.add(e.pointerId);
+});
+el.addEventListener('pointermove', e=>{
+  const rotating = e.pointerType === 'touch'
+    ? touches.size === 1 && touches.has(e.pointerId)
+    : (e.buttons & 1) && !(e.ctrlKey || e.metaKey || e.shiftKey);
+  if(rotating){ dragging = true; ramp = 0; }
+});
+const release = e=>{
+  touches.delete(e.pointerId);
+  if(dragging && !touches.size){ dragging = false; idleSince = performance.now(); }
+};
+el.addEventListener('pointerup', release);
+el.addEventListener('pointercancel', release);
 wireBtn.onclick = ()=>{
   wire = !wire; wireBtn.ariaPressed = wire;
   pivot.traverse(o=>{ if(o.isMesh) for(const m of [].concat(o.material)) m.wireframe = wire; });
