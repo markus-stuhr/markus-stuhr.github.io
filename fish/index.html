@@ -167,7 +167,7 @@ scene.add(sky);
 
 // Sichttiefe im Wasser: alles unter der Oberfläche geht mit der Tiefe in die
 // Wasserfarbe über. Bei etwa 5 m ist nichts mehr zu erkennen.
-const WATER_VIS = 2.2;                 // Abklinglänge in Metern (bei 5 m fast blind)
+const WATER_VIS = 3.5;                 // Abklinglänge; bei etwa 8 m Tiefe sieht man nichts mehr
 const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles Tiefwasser
 function underwaterFade(mat){
   const prev = mat.onBeforeCompile;
@@ -727,7 +727,7 @@ async function buildIslandHouse(){
 
   // Haus etwas landeinwärts, zum Steg ausgerichtet
   try{
-    const house = (await load(M + 'Quaternius Medieval Village Pack/glTF/Buildings/House_2.glb')).scene;
+    const house = (await load(M + 'Quaternius Ultimate Buildings Pack/glTF/Models with Materials/1Story_GableRoof_Mat.glb')).scene;
     fit(house, 14, 'x');
     shadows(house);
     const hx = sx - dir.x * 8, hz = sz - dir.y * 8;
