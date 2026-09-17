@@ -714,24 +714,30 @@ async function buildBoat(){
   const woodMat = new THREE.MeshLambertMaterial({color: 0x6d4026});
   const bladeMat = new THREE.MeshLambertMaterial({color: 0xc9a06a});
   const makeOar = (side) => {
-    const parts = [];
     const shaft = new THREE.CylinderGeometry(0.028, 0.034, IN + OUT, 8)
       .rotateZ(Math.PI / 2).translate((OUT - IN) / 2 * side, 0, 0);
     const oarGrp = new THREE.Group();
     const shaftMesh = new THREE.Mesh(shaft, woodMat);
     oarGrp.add(shaftMesh);
-    // Blatt: flach, nach außen hin breiter. Die Verjüngung muss auf die
-    // Außenrichtung bezogen sein, sonst sind die Seiten spiegelverkehrt.
-    const bl = new THREE.BoxGeometry(0.54, 0.025, 0.2);
-    const bp = bl.attributes.position;
-    for(let i = 0; i < bp.count; i++){
-      const t = side * bp.getX(i) / 0.54 + 0.5;       // 0 innen, 1 außen
-      bp.setZ(i, bp.getZ(i) * (0.4 + t * 1.0));
-    }
+    // Blatt: schmaler Hals, gerades Stück, rundes Ende. Das Profil liegt in der
+    // XY-Ebene (Länge x, Breite y) und wird nur in der Dicke extrudiert, damit
+    // das Blatt von sich aus aufrecht steht.
+    const L = 0.56, w = 0.105, neck = 0.04, r = 0.15;
+    const sh = new THREE.Shape();
+    sh.moveTo(0, -neck);
+    sh.lineTo(0.13, -w);
+    sh.lineTo(L - r, -w);                       // gerades Stück
+    sh.quadraticCurveTo(L, -w, L, 0);           // rundes Ende
+    sh.quadraticCurveTo(L, w, L - r, w);
+    sh.lineTo(0.13, w);
+    sh.lineTo(0, neck);
+    sh.closePath();
+    const bl = new THREE.ExtrudeGeometry(sh, {depth: 0.026, bevelEnabled: false, curveSegments: 10})
+      .translate(0, 0, -0.013);
     bl.computeVertexNormals();
     const blade = new THREE.Mesh(bl, bladeMat);
-    blade.rotation.x = Math.PI / 2;        // Blatt steht aufrecht im Wasser
-    blade.position.x = side * (OUT - 0.24);
+    blade.scale.x = side;                       // beide Seiten gleich geformt
+    blade.position.x = side * (OUT - L);
     oarGrp.add(blade);
     const tip = new THREE.Object3D();
     tip.position.x = side * OUT;
