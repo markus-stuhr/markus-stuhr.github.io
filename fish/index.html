@@ -68,6 +68,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 
 const M = '../assets/models/';
 const FISHPACK = M + 'Quaternius Animated Cute Fish Pack/glTF/';
@@ -278,6 +279,196 @@ waterShadow.receiveShadow = true;
 waterShadow.renderOrder = 3;
 scene.add(waterShadow);
 
+// ---------- Unterwasserpflanzen ----------
+// Prozedural: Seegras-Büschel im Flachen, lange Tangbänder im Tieferen.
+// Wiegen sich per Vertex-Shader; Stärke wächst mit der Höhe am Halm.
+const plantTime = {value: 0};
+function swayMaterial(amp, speed){
+  const m = new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide});
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.time = plantTime;
+    sh.vertexShader = 'uniform float time;\n' + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
+      float ph = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23;
+      float hh = position.y * position.y;
+      transformed.x += sin(time * ${speed.toFixed(2)} + ph + position.y * 2.2) * ${amp.toFixed(3)} * hh;
+      transformed.z += cos(time * ${(speed * 0.8).toFixed(2)} + ph * 1.3 + position.y * 1.7) * ${(amp * 0.6).toFixed(3)} * hh;`);
+  };
+  return m;
+}
+function colorRamp(geo, base, tip){
+  const pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
+  for(let i = 0; i < pos.count; i++){
+    c.copy(base).lerp(tip, Math.min(1, Math.max(0, pos.getY(i))));
+    col.set([c.r, c.g, c.b], i * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return geo;
+}
+function blade(w, segs, taper, bend){
+  const g = new THREE.PlaneGeometry(w, 1, 1, segs).translate(0, 0.5, 0);
+  const p = g.attributes.position;
+  for(let i = 0; i < p.count; i++){
+    const y = p.getY(i);
+    p.setX(i, p.getX(i) * (1 - y * taper));
+    p.setZ(i, y * y * bend);
+  }
+  return g;
+}
+function seagrassGeo(){
+  const parts = [];
+  for(let i = 0; i < 6; i++){
+    const b = blade(0.05, 4, 0.85, 0.15 + Math.random() * 0.2);
+    b.scale(1, 0.6 + Math.random() * 0.6, 1);
+    b.rotateY(Math.random() * Math.PI);
+    b.translate((Math.random() - 0.5) * 0.25, 0, (Math.random() - 0.5) * 0.25);
+    parts.push(b);
+  }
+  const g = mergeGeometries(parts);
+  g.computeVertexNormals();
+  return colorRamp(g, new THREE.Color(0x1f4a30), new THREE.Color(0x7fae55));
+}
+function kelpGeo(){
+  // gewelltes Band, zwei Stränge über Kreuz
+  const parts = [];
+  for(let k = 0; k < 2; k++){
+    const b = new THREE.PlaneGeometry(0.22, 1, 1, 14).translate(0, 0.5, 0);
+    const p = b.attributes.position;
+    for(let i = 0; i < p.count; i++){
+      const y = p.getY(i);
+      const w = Math.sin(y * 40) * 0.25 + 1;
+      p.setX(i, p.getX(i) * w * (0.4 + Math.sin(y * Math.PI) * 0.9));
+      p.setZ(i, Math.sin(y * 6 + k) * 0.08);
+    }
+    b.rotateY(k * Math.PI / 2 + 0.3);
+    parts.push(b);
+  }
+  const g = mergeGeometries(parts);
+  g.computeVertexNormals();
+  return colorRamp(g, new THREE.Color(0x2e3a18), new THREE.Color(0x8a8f3a));
+}
+// Korallen: verzweigte Äste, runde Hirnkorallen, Fächer
+function branchCoralGeo(){
+  const parts = [];
+  const grow = (x, y, z, dx, dz, r, len, depth) => {
+    const g = new THREE.CylinderGeometry(r * 0.6, r, len, 6, 1);
+    g.translate(0, len / 2, 0);
+    g.rotateX(dz * 0.9); g.rotateZ(-dx * 0.9);
+    g.translate(x, y, z);
+    parts.push(g);
+    if(depth <= 0) return;
+    const ny = y + len * 0.85;
+    for(let i = 0; i < 2; i++){
+      const a = Math.random() * 6.28;
+      grow(x + dx * len * 0.6, ny, z + dz * len * 0.6,
+        Math.cos(a) * 0.5, Math.sin(a) * 0.5, r * 0.7, len * 0.7, depth - 1);
+    }
+  };
+  grow(0, 0, 0, 0, 0, 0.06, 0.32, 3);
+  const g = mergeGeometries(parts);
+  g.computeVertexNormals();
+  return g;
+}
+function brainCoralGeo(){
+  const g = new THREE.IcosahedronGeometry(0.35, 2);
+  const p = g.attributes.position, v = new THREE.Vector3();
+  for(let i = 0; i < p.count; i++){
+    v.fromBufferAttribute(p, i);
+    const n = 1 + fbm(v.x * 9, v.z * 9 + v.y * 5) * 0.35;
+    p.setXYZ(i, v.x * n, Math.max(v.y * 0.65 * n, -0.02), v.z * n);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+function fanCoralGeo(){
+  const parts = [];
+  for(let i = 0; i < 9; i++){
+    const a = (i / 8 - 0.5) * 1.5;
+    const g = new THREE.CylinderGeometry(0.012, 0.02, 0.5 + Math.cos(a) * 0.25, 4, 1);
+    g.translate(0, (0.5 + Math.cos(a) * 0.25) / 2, 0);
+    g.rotateZ(a);
+    parts.push(g);
+  }
+  const g = mergeGeometries(parts);
+  g.rotateY(Math.random() * 3);
+  g.computeVertexNormals();
+  return g;
+}
+const CORAL_COLORS = [0xd06a7a, 0xe08a5a, 0xa06aa8, 0xd8a45a, 0xc85a6a, 0x7a8ab8];
+function buildCorals(){
+  const kinds = [
+    {geo: branchCoralGeo(), list: [], scale: [0.8, 1.6]},
+    {geo: brainCoralGeo(), list: [], scale: [0.7, 1.5]},
+    {geo: fanCoralGeo(), list: [], scale: [0.9, 1.8]},
+  ];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(),
+    p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  for(let i = 0; i < 160000; i++){
+    const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
+    const h = height(x, z), d = -h;
+    if(d < 1.2 || d > 9) continue;
+    // Riffe wachsen in Flecken, gern an Hängen
+    if(fbm(x * 0.05 - 21, z * 0.05 + 8) < 0.12) continue;
+    const k = kinds[(rnd() * kinds.length) | 0];
+    const s = k.scale[0] + rnd() * (k.scale[1] - k.scale[0]);
+    p.set(x, h - 0.04, z); q.setFromAxisAngle(up, rnd() * 6.28); sc.setScalar(s);
+    k.list.push({m: m.compose(p, q, sc).clone(), c: CORAL_COLORS[(rnd() * CORAL_COLORS.length) | 0]});
+  }
+  const teal = new THREE.Color(0x1d5560), col = new THREE.Color();
+  let count = 0;
+  for(const k of kinds){
+    if(!k.list.length) continue;
+    const mat = new THREE.MeshLambertMaterial({});
+    const im = new THREE.InstancedMesh(k.geo, mat, k.list.length);
+    k.list.forEach((e, i) => {
+      im.setMatrixAt(i, e.m);
+      im.setColorAt(i, col.setHex(e.c).lerp(teal, 0.4));   // unter Wasser gedämpft
+    });
+    im.computeBoundingSphere();
+    im.receiveShadow = true;
+    scene.add(im);
+    count += k.list.length;
+  }
+  return count;
+}
+
+function buildPlants(){
+  const CH = 8, cell = WORLD / CH;
+  const grass = Array.from({length: CH * CH}, () => []);
+  const kelp = Array.from({length: CH * CH}, () => []);
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  const put = (arr, x, z, y, s, h) => {
+    const ci = Math.min(CH - 1, Math.floor((x + WORLD / 2) / cell)) + Math.min(CH - 1, Math.floor((z + WORLD / 2) / cell)) * CH;
+    p.set(x, y, z); q.setFromAxisAngle(up, rnd() * 6.28); sc.set(s, h, s);
+    arr[ci].push(m.compose(p, q, sc).clone());
+  };
+  for(let i = 0; i < 420000; i++){
+    const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
+    const h = height(x, z), d = -h;
+    if(d < 2 || d > 12) continue;
+    const patch = fbm(x * 0.04 + 11, z * 0.04 - 3);
+    if(d < 5.5 && patch > -0.08){
+      put(grass, x, z, h - 0.05, 1.2 + rnd() * 1.3, Math.min(d - 0.5, 0.5 + rnd() * 1.2));
+    } else if(d > 3.5 && patch > 0.08 && rnd() < 0.35){
+      put(kelp, x, z, h - 0.1, 1 + rnd() * 0.8, Math.min(d - 0.8, d * (0.45 + rnd() * 0.4)));
+    }
+  }
+  const gGeo = seagrassGeo(), kGeo = kelpGeo();
+  const gMat = swayMaterial(0.12, 1.1), kMat = swayMaterial(0.35, 0.6);
+  let count = 0;
+  const add = (lists, geo, mat) => lists.forEach(list => {
+    if(!list.length) return;
+    const im = new THREE.InstancedMesh(geo, mat, list.length);
+    list.forEach((mm, i) => im.setMatrixAt(i, mm));
+    im.computeBoundingSphere();
+    im.receiveShadow = true;
+    scene.add(im);
+    count += list.length;
+  });
+  add(grass, gGeo, gMat);
+  add(kelp, kGeo, kMat);
+  return count;
+}
+
 // ---------- Laden ----------
 const loader = new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
@@ -358,6 +549,8 @@ boat.add(hull);
 const seat = new THREE.Group();   // Figur dreht sich hierin zum Auswerfen
 hull.add(seat);
 
+const BENCH_Y = 0.2;
+let seatRowY = 0;                    // Sitzhöhe auf der Bank, einmal eingemessen                 // Oberkante der Querbank
 let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bucketEmpty, bucketFull;
 
 function retarget(clip){
@@ -453,10 +646,16 @@ async function buildBoat(){
   window.boatModel = bm;
 
   const c = ch.scene;
-  fit(c, 1.25);            // kleine, runde Figur im Boot
+  fit(c, 1.4);             // kleine, runde Figur im Boot
   shadows(c);
   seat.add(c);
-  seat.position.set(0, 0.02, 0.35);
+  const bench = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.26),
+    new THREE.MeshLambertMaterial({color: 0x7a4a2c}));
+  bench.position.set(0, BENCH_Y, 0.1);
+  shadows(bench);
+  hull.add(bench);
+  seat.position.set(0, 0, 0.1);
+  seat.userData.fitToBench = true;   // Sitzhöhe beim ersten Frame einmessen
 
   mixer = new THREE.AnimationMixer(c);
   const libs = [tools, sim, gen];
@@ -482,19 +681,30 @@ async function buildBoat(){
   rod.children[0] ? rod.children[0].add(rodTip) : rod.add(rodTip);
   rod.visible = false;
 
+  // Ruder in Dollen am Bootsrand: 2,4 m lang, davon 0,7 m Griff nach innen
+  const OARLOCK = {x: 0.86, y: 0.30, z: 0.16};
+  const woodMat = new THREE.MeshLambertMaterial({color: 0x6d4026});
   const makeOar = (side) => {
     const o = oar.scene.clone();
-    fit(o, 2.0, 'z');                  // Paddel liegt längs Z
+    fit(o, 2.4, 'z');                  // Paddel liegt längs Z
     shadows(o);
     const arm = new THREE.Group();
-    arm.rotation.y = side * Math.PI / 2; // Länge quer zum Boot, Blatt außen
-    arm.position.x = side * 0.55;      // Griff innen, Blatt außen
+    arm.rotation.y = side * Math.PI / 2;
+    arm.position.x = side * 0.5;       // Griff 0,7 m innen, Blatt 1,7 m außen
     arm.add(o);
     const pivot = new THREE.Group();
-    pivot.position.set(side * 0.8, 0.5, 0.05);
+    pivot.position.set(side * OARLOCK.x, OARLOCK.y, OARLOCK.z);
     pivot.userData.side = side;
     pivot.add(arm);
     hull.add(pivot);
+    // sichtbare Dolle: Pflock mit Ring
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.16, 8), woodMat);
+    post.position.set(side * OARLOCK.x, OARLOCK.y - 0.07, OARLOCK.z);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.016, 6, 14), woodMat);
+    ring.position.set(side * OARLOCK.x, OARLOCK.y, OARLOCK.z);
+    ring.rotation.y = Math.PI / 2;
+    shadows(post); shadows(ring);
+    hull.add(post, ring);
     return pivot;
   };
   oars = [makeOar(-1), makeOar(1)];
@@ -502,12 +712,80 @@ async function buildBoat(){
   bucketEmpty = fit(be.scene, 0.34); bucketFull = fit(bf.scene, 0.34);
   for(const bk of [bucketEmpty, bucketFull]){ shadows(bk); bk.position.set(0.35, 0.05, -0.75); hull.add(bk); }
   bucketFull.visible = false;
+  grabBones(c);
   hull.traverse(o => {
     o.layers.set(BOAT_LAYER);
     if(o.isMesh) o.material = boatShadowMaterial(o.material);
   });
   hull.add(makeHullMask(bm));
-  play('Sit_Floor_Idle');
+  play('Sit_Chair_Idle');
+}
+
+// ---------- Ruderbewegung (zwei-Knochen-IK auf die Rudergriffe) ----------
+let bones = null;
+function grabBones(ch){
+  const g = (n) => ch.getObjectByName(n);
+  bones = {spine: g('spine'), chest: g('chest'),
+    hips: g('hips'),
+    l: [g('upperarml'), g('lowerarml'), g('handl')],
+    r: [g('upperarmr'), g('lowerarmr'), g('handr')]};
+}
+const _qa = new THREE.Quaternion(), _qb = new THREE.Quaternion();
+const _qw = new THREE.Quaternion(), _qp = new THREE.Quaternion();   // nur in rotateBoneWorld
+const _tl = new THREE.Vector3(), _tr = new THREE.Vector3();          // Zielpunkte der Hände
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _c = new THREE.Vector3(),
+      _u = new THREE.Vector3(), _v = new THREE.Vector3(), _n = new THREE.Vector3();
+// Weltdrehung auf einen Knochen anwenden (lokal umgerechnet)
+function rotateBoneWorld(bone, q){
+  bone.getWorldQuaternion(_qw);
+  bone.parent.getWorldQuaternion(_qp);
+  bone.quaternion.copy(_qp.invert().multiply(q).multiply(_qw));
+  bone.updateMatrixWorld(true);
+}
+function solveArm(chain, target){
+  const [up, lo, hand] = chain;
+  if(!up || !lo || !hand) return;
+  up.updateMatrixWorld(true);
+  up.getWorldPosition(_a); lo.getWorldPosition(_b); hand.getWorldPosition(_c);
+  const l1 = _a.distanceTo(_b), l2 = _b.distanceTo(_c);
+  const d = THREE.MathUtils.clamp(_a.distanceTo(target), Math.abs(l1 - l2) + 0.02, l1 + l2 - 0.02);
+  // Ellbogenwinkel über den Kosinussatz auf den Zielabstand bringen
+  _u.copy(_a).sub(_b); _v.copy(_c).sub(_b);
+  const cur = Math.acos(THREE.MathUtils.clamp(_u.dot(_v) / (_u.length() * _v.length()), -1, 1));
+  const des = Math.acos(THREE.MathUtils.clamp((l1 * l1 + l2 * l2 - d * d) / (2 * l1 * l2), -1, 1));
+  _n.copy(_u).cross(_v);
+  if(_n.lengthSq() < 1e-8) _n.set(0, 1, 0); else _n.normalize();
+  rotateBoneWorld(lo, _qa.setFromAxisAngle(_n, des - cur));
+  // Oberarm so drehen, dass die Hand aufs Ziel zeigt
+  hand.getWorldPosition(_b);
+  _u.copy(_b).sub(_a).normalize();
+  _v.copy(target).sub(_a).normalize();
+  rotateBoneWorld(up, _qa.setFromUnitVectors(_u, _v));
+}
+// Griffpunkt einer Riemen-Halterung in Weltkoordinaten
+function gripOf(pivot, side, out){
+  return pivot.localToWorld(out.set(-side * 0.68, 0.03, 0));
+}
+// Die Sitzhaltung hebt die Hüfte über den Boden – Höhe einmal an die Bank anpassen
+function fitSeatToBench(){
+  const hipsLocal = hull.worldToLocal(bones.hips.getWorldPosition(new THREE.Vector3())).y;
+  seat.position.y += BENCH_Y + 0.07 - hipsLocal;
+  seatRowY = seat.position.y;
+  seat.userData.fitToBench = false;
+}
+let rowPoseRuns = 0, rowPoseErr = null;
+function applyRowPose(){
+  if(seat.userData.fitToBench && bones) fitSeatToBench();
+  rowPoseRuns++;
+  if(!bones || !oars.length || state.mode !== 'row') return;
+  // Oberkörper wiegt sich mit dem Schlag
+  if(bones.spine){
+    rotateBoneWorld(bones.spine, _qb.setFromAxisAngle(
+      _n.set(1, 0, 0).applyQuaternion(seat.getWorldQuaternion(_qa)), state.stroke * 0.3));
+  }
+  // Die Schulter "l" des Rigs liegt im Boot auf der +x-Seite, daher gekreuzt zuordnen
+  solveArm(bones.l, gripOf(oars[1], 1, _tl.set(0, 0, 0)));
+  solveArm(bones.r, gripOf(oars[0], -1, _tr.set(0, 0, 0)));
 }
 
 // ---------- Fischschwärme ----------
@@ -608,7 +886,7 @@ scene.add(aimRing);
 const state = {
   mode: 'row',            // row | fish
   phase: 'idle',          // idle | casting | flying | waiting | bite | fight | catch
-  speed: 0, heading: 0, turn: 0,
+  speed: 0, heading: 0, turn: 0, rowPhase: 0, stroke: 0,
   castFrom: new THREE.Vector3(), castTo: new THREE.Vector3(), t: 0,
   biteAt: 0, school: null, fish: null, tension: 0, progress: 0, surge: 0,
   bucket: [],
@@ -634,6 +912,7 @@ function enterFishing(){
   if(Math.abs(state.speed) > 0.6){ toast('Erst anhalten', 'Das Boot treibt noch zu schnell.', 1600); return; }
   state.mode = 'fish'; state.phase = 'idle';
   rod.visible = true;
+  seat.position.set(0, 0.02, -0.35);   // zum Angeln steht die Figur vor der Bank
   oars.forEach(o => o.visible = false);
   play('Fishing_Idle', {fade: 0.6});
   document.getElementById('modeBtn').textContent = 'Rudern (F)';
@@ -645,9 +924,10 @@ function leaveFishing(){
   state.mode = 'row'; state.phase = 'idle';
   rod.visible = false; bobber.visible = false; line.visible = false; aimRing.visible = false;
   oars.forEach(o => o.visible = true);
+  seat.position.set(0, seatRowY, 0.1);
   seat.rotation.y = 0;
   document.getElementById('fight').style.display = 'none';
-  play('Sit_Floor_Idle', {fade: 0.6});
+  play('Sit_Chair_Idle', {fade: 0.6});
   document.getElementById('modeBtn').textContent = 'Angeln (F)';
   setHint(pick('Joystick zum Rudern · Angeln, wenn du Fische siehst', 'W A S D rudern · F angeln · Ziehen dreht die Kamera', 'Linker Stick rudern · Ⓨ angeln · Rechter Stick dreht die Kamera'));
 }
@@ -871,16 +1151,21 @@ function updateBoat(dt, t){
   hull.rotation.x = (waveH(x, z - 1.5, t) - waveH(x, z + 1.5, t)) * 0.6 + state.speed * 0.012;
   hull.rotation.z = (waveH(x + 0.8, z, t) - waveH(x - 0.8, z, t)) * 0.8 - state.turn * state.speed * 0.02;
 
-  // Ruder
+  // Ruderschlag: stroke = +1 ausholen (Hände weit vorn), -1 durchgezogen
   const rowing = state.mode === 'row' && (Math.abs(fwd) > 0.05 || Math.abs(turn) > 0.05);
-  state.rowPhase = (state.rowPhase || 0) + dt * (rowing ? 5 : 0);
+  const rate = rowing ? 2.6 : 0;
+  state.rowPhase += dt * rate * Math.PI;
+  const targetStroke = rowing ? Math.cos(state.rowPhase) : 0.15;
+  state.stroke += (targetStroke - state.stroke) * Math.min(1, dt * 12);
+  const inWater = rowing ? Math.sin(state.rowPhase) > 0 : true;   // Durchzug: Blatt im Wasser
   oars.forEach((o, i) => {
     const side = i ? 1 : -1;
-    const drive = rowing ? fwd || -turn * side : 0;
-    const k = rowing ? 1 : 0;
-    const ph = state.rowPhase * Math.sign(drive || 1);
-    o.rotation.y += ((side * Math.sin(ph) * 0.55 * k) - o.rotation.y) * Math.min(1, dt * 8);
-    o.rotation.z += ((-side * (0.38 + Math.cos(ph) * 0.16 * k)) - o.rotation.z) * Math.min(1, dt * 8);
+    // vorwärts beide, beim Drehen zieht eine Seite und die andere hält gegen
+    const dirSide = THREE.MathUtils.clamp(fwd - turn * side * 0.9, -1, 1) || 0;
+    const sweep = side * state.stroke * 0.28 * (rowing ? Math.sign(dirSide) || 1 : 1);
+    const dip = -side * (inWater && rowing ? 0.42 : 0.24);
+    o.rotation.y += (sweep - o.rotation.y) * Math.min(1, dt * 10);
+    o.rotation.z += (dip - o.rotation.z) * Math.min(1, dt * 10);
   });
   if(rowing && Math.random() < dt * 3) sfxSoft();
   // Kielwasser
@@ -1228,9 +1513,11 @@ const PAD_HINT_FISH = 'Linker Stick zielen · Ⓐ auswerfen · Ⓨ zurück zum R
 function loop(){
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   waterUniforms.time.value = t;
+  plantTime.value = t;
   updatePad(dt);
   updateBoat(dt, t);
   if(mixer) mixer.update(dt);
+  try{ applyRowPose(); }catch(e){ rowPoseErr = e.message; }
   updateFishing(dt, t);
   updateSchools(dt, t);
   updateRings(dt);
@@ -1251,6 +1538,7 @@ addEventListener('resize', () => {
   while(height(boat.position.x, boat.position.z) > -1.5) boat.position.z += 2;
   state.heading = 0;
   loadMsg.textContent = 'Das Boot wird zu Wasser gelassen …';
+  window.__plants = [buildPlants(), buildCorals()];
   await buildBoat();
   loadMsg.textContent = 'Die Fische versammeln sich …';
   await Promise.all([buildSchools(), buildNature(), buildDock().catch(e => console.warn(e))]);
@@ -1261,7 +1549,7 @@ addEventListener('resize', () => {
   setTimeout(() => document.getElementById('loading').remove(), 900);
   loop();
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {THREE, state, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {THREE, state, get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
