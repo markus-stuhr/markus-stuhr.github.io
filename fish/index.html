@@ -199,6 +199,7 @@ const tgeo = new THREE.PlaneGeometry(WORLD, WORLD, SEG, SEG).rotateX(-Math.PI / 
 }
 const terrain = new THREE.Mesh(tgeo, new THREE.MeshLambertMaterial({vertexColors:true}));
 terrain.receiveShadow = true;
+terrain.castShadow = true;           // Hügel und Inseln werfen selbst Schatten
 scene.add(terrain);
 
 // ---------- Wasser ----------
