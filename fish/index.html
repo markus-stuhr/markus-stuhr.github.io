@@ -1,0 +1,1098 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Abendangeln</title>
+<script defer src="/analytics.js"></script>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#2a1f33;font-family:Georgia,'Times New Roman',serif;color:#fff4e6;
+    -webkit-user-select:none;user-select:none;touch-action:none}
+  canvas{display:block}
+  .hud{position:fixed;pointer-events:none;text-shadow:0 1px 3px rgba(40,20,30,.7)}
+  #title{top:16px;left:20px}
+  #title h1{margin:0;font-size:26px;font-weight:normal;letter-spacing:.04em}
+  #title p{margin:2px 0 0;font-size:13px;opacity:.75;font-style:italic}
+  #bucket{top:16px;right:18px;text-align:right;background:rgba(40,25,40,.35);padding:10px 14px;border-radius:12px;
+    backdrop-filter:blur(4px);min-width:150px}
+  #bucket b{font-size:15px;font-weight:normal;letter-spacing:.05em}
+  #bucket ul{list-style:none;margin:6px 0 0;padding:0;font-size:13px;line-height:1.5}
+  #bucket li span{opacity:.65}
+  #hint{bottom:22px;left:50%;transform:translateX(-50%);font-size:15px;background:rgba(40,25,40,.4);padding:8px 16px;
+    border-radius:20px;white-space:nowrap;backdrop-filter:blur(4px);transition:opacity .4s}
+  #toast{top:38%;left:50%;transform:translate(-50%,-50%) scale(.9);font-size:30px;opacity:0;transition:all .5s;text-align:center}
+  #toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  #toast small{display:block;font-size:15px;font-style:italic;opacity:.8}
+  #fight{bottom:70px;left:50%;transform:translateX(-50%);width:260px;display:none}
+  .bar{height:10px;border-radius:5px;background:rgba(0,0,0,.35);overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;width:0}
+  #tension i{background:linear-gradient(90deg,#9fd3a8,#f3d27a 60%,#e8665a)}
+  #progress i{background:#f6e7c8}
+  #fight label{font-size:12px;opacity:.8}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
+    background:linear-gradient(#3b2a4a,#c9786a);z-index:5;transition:opacity .8s}
+  #loading div{font-size:28px;letter-spacing:.05em}
+  #loading small{margin-top:8px;opacity:.7;font-style:italic}
+  .btn{position:fixed;pointer-events:auto;border:1px solid rgba(255,240,220,.4);background:rgba(40,25,40,.45);color:#fff4e6;
+    font:inherit;font-size:15px;padding:10px 18px;border-radius:24px;cursor:pointer;backdrop-filter:blur(4px)}
+  #modeBtn{bottom:18px;right:18px}
+  #soundBtn{bottom:18px;left:18px;padding:10px 13px}
+  #stick{position:fixed;left:30px;bottom:80px;width:120px;height:120px;border-radius:50%;border:1px solid rgba(255,240,220,.35);
+    background:rgba(40,25,40,.2);display:none;touch-action:none}
+  #stick i{position:absolute;left:40px;top:40px;width:40px;height:40px;border-radius:50%;background:rgba(255,240,220,.45)}
+  @media (max-width:600px){#title h1{font-size:20px}#title p{display:none}#hint{font-size:13px;bottom:auto;top:64px;white-space:normal;text-align:center;width:max-content;max-width:86vw}#bucket{min-width:0}}
+</style>
+</head>
+<body>
+<div id="loading"><div>Abendangeln</div><small id="loadMsg">Die Sonne sinkt …</small></div>
+<div id="title" class="hud"><h1>Abendangeln</h1><p>Eine stille Bucht, ein Ruderboot, ein Eimer.</p></div>
+<div id="bucket" class="hud"><b>Eimer · <span id="count">0</span>/10</b><ul id="list"></ul></div>
+<div id="hint" class="hud"></div>
+<div id="toast" class="hud"></div>
+<div id="fight" class="hud">
+  <label>Schnurspannung</label><div class="bar" id="tension"><i></i></div>
+  <label>Einholen</label><div class="bar" id="progress"><i></i></div>
+</div>
+<button id="modeBtn" class="btn">Angeln (F)</button>
+<button id="soundBtn" class="btn" title="Ton">🔈</button>
+<div id="stick"><i></i></div>
+
+<script type="importmap">
+{"imports":{
+ "three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+ "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+const M = '../assets/models/';
+const FISHPACK = M + 'Quaternius Animated Cute Fish Pack/glTF/';
+const NATURE = M + 'KayKit_Forest_Nature_Pack_1.0_FREE/Assets/gltf/';
+const CHAR = M + 'KayKit_Adventurers_2.0_FREE/Characters/gltf/Ranger.glb';
+const LIB_TOOLS = M + 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_Tools.glb';
+const LIB_SIM = M + 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_Simulation.glb';
+const LIB_GENERAL = M + 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_General.glb';
+
+const SPECIES = {
+  RedSnapper:   {de:'Roter Schnapper', kg:[0.8, 3.5]},
+  Flatfish:     {de:'Scholle',         kg:[0.4, 2.0]},
+  Turbot:       {de:'Steinbutt',       kg:[1.0, 6.0]},
+  CoralGrouper: {de:'Zackenbarsch',    kg:[2.0, 9.0]},
+  Tuna:         {de:'Thunfisch',       kg:[6.0, 30.0]},
+  Puffer:       {de:'Kugelfisch',      kg:[0.3, 1.5]},
+  Sunfish:      {de:'Mondfisch',       kg:[20.0, 80.0]},
+  Swordfish:    {de:'Schwertfisch',    kg:[15.0, 60.0]},
+};
+// Seichte Arten nahe der Küste, seltene im tiefen Wasser
+const SHALLOW = ['RedSnapper', 'RedSnapper', 'Flatfish', 'Flatfish', 'Turbot', 'Puffer', 'CoralGrouper'];
+const DEEP = ['Tuna', 'Tuna', 'Tuna', 'CoralGrouper', 'CoralGrouper', 'RedSnapper', 'Turbot', 'Sunfish', 'Swordfish'];
+
+// ---------- Renderer, Szene ----------
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+const FOG = new THREE.Color(0xd9957e);
+scene.fog = new THREE.FogExp2(FOG, 0.0032);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 2000);
+
+// Sonne tief im Westen
+const SUN_DIR = new THREE.Vector3(-0.8, 0.13, -0.55).normalize();
+const sun = new THREE.DirectionalLight(0xffb98a, 2.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+Object.assign(sun.shadow.camera, {left:-8, right:8, top:8, bottom:-8, near:1, far:80});
+sun.shadow.bias = -0.0008;
+scene.add(sun, sun.target);
+scene.add(new THREE.HemisphereLight(0xffc4b0, 0x3b4a70, 0.9));
+
+// Himmel
+const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: {sunDir: {value: SUN_DIR}},
+  vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `uniform vec3 sunDir; varying vec3 vDir;
+    void main(){
+      float h = vDir.y;
+      vec3 top = vec3(0.16,0.14,0.32), mid = vec3(0.72,0.42,0.55), hor = vec3(1.0,0.66,0.45);
+      vec3 c = mix(hor, mid, smoothstep(0.0, 0.18, h));
+      c = mix(c, top, smoothstep(0.15, 0.6, h));
+      if(h < 0.0) c = mix(hor, vec3(0.85,0.55,0.48), smoothstep(0.0,-0.2,h));
+      float s = max(dot(vDir, sunDir), 0.0);
+      c += vec3(1.0,0.55,0.25) * pow(s, 8.0) * 0.55;
+      c += vec3(1.0,0.85,0.6) * smoothstep(0.9975, 0.999, s) * 1.6;
+      gl_FragColor = vec4(c, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`
+}));
+scene.add(sky);
+
+// ---------- Rauschen und Gelände ----------
+function hash(x, z){ const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
+function vnoise(x, z){
+  const ix = Math.floor(x), iz = Math.floor(z), fx = x - ix, fz = z - iz;
+  const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
+  const a = hash(ix, iz), b = hash(ix + 1, iz), c = hash(ix, iz + 1), d = hash(ix + 1, iz + 1);
+  return (a + (b - a) * u) * (1 - v) + (c + (d - c) * u) * v;
+}
+function fbm(x, z){ let s = 0, a = 0.5, f = 1; for(let i = 0; i < 5; i++){ s += a * vnoise(x * f, z * f); f *= 2.03; a *= 0.5; } return s - 0.5; }
+
+const ISLANDS = [[70, 40, 28], [-60, 110, 20], [150, -20, 16], [-20, 190, 34], [210, 140, 26]];
+// v < 0 Wasser, v > 0 Land. Festland im Norden und Westen, dazu Inseln.
+function landness(x, z){
+  const n = fbm(x * 0.009, z * 0.009);
+  let v = (-z - 70 + n * 90) / 45;
+  v = Math.max(v, (-x - 170 + n * 70) / 45);
+  for(const [ix, iz, r] of ISLANDS){
+    const d = Math.hypot(x - ix, z - iz);
+    v = Math.max(v, (r - d + n * 22) / (r * 0.9));
+  }
+  return v;
+}
+function height(x, z){
+  const v = landness(x, z);
+  const detail = fbm(x * 0.05 + 7, z * 0.05) * 0.8;
+  if(v < 0) return Math.max(v * 11, -14) + detail * 0.6 - 0.15;
+  const hills = Math.max(0, fbm(x * 0.02 + 3, z * 0.02 - 5) + 0.25) * 26;
+  return Math.min(v, 1.5) * 2.2 + hills * THREE.MathUtils.smoothstep(v, 0.1, 1.4) + detail;
+}
+
+const WORLD = 760, SEG = 300;
+const tgeo = new THREE.PlaneGeometry(WORLD, WORLD, SEG, SEG).rotateX(-Math.PI / 2);
+{
+  const p = tgeo.attributes.position, col = new Float32Array(p.count * 3), c = new THREE.Color();
+  const sand = new THREE.Color(0xd8c29a), wetSand = new THREE.Color(0xa99470), weed = new THREE.Color(0x3f6a58),
+    deep = new THREE.Color(0x0e2e40), grass = new THREE.Color(0x6f8a46), dark = new THREE.Color(0x3c5a33), rock = new THREE.Color(0x8a7d72);
+  for(let i = 0; i < p.count; i++){
+    const x = p.getX(i), z = p.getZ(i), h = height(x, z);
+    p.setY(i, h);
+    if(h < -0.2){
+      const t = Math.min(1, -h / 12);
+      c.copy(wetSand).lerp(weed, THREE.MathUtils.smoothstep(t, 0.08, 0.35) * (0.5 + hash(x * .3, z * .3) * 0.5));
+      c.lerp(deep, THREE.MathUtils.smoothstep(t, 0.25, 1.0));
+    } else if(h < 1.3){
+      c.copy(sand);
+    } else {
+      const g = THREE.MathUtils.smoothstep(h, 1.3, 2.4);
+      c.copy(sand).lerp(grass, g).lerp(dark, Math.max(0, fbm(x * 0.03, z * 0.03) + 0.2) * g);
+      c.lerp(rock, THREE.MathUtils.smoothstep(h, 12, 22));
+    }
+    col.set([c.r, c.g, c.b], i * 3);
+  }
+  tgeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  tgeo.computeVertexNormals();
+}
+const terrain = new THREE.Mesh(tgeo, new THREE.MeshLambertMaterial({vertexColors:true}));
+terrain.receiveShadow = true;
+scene.add(terrain);
+
+// ---------- Wasser ----------
+function waveH(x, z, t){
+  return Math.sin(x * 0.35 + t * 0.9) * 0.05 + Math.sin(z * 0.28 - t * 0.7) * 0.05
+       + Math.sin((x + z) * 0.9 + t * 1.6) * 0.02;
+}
+const waterUniforms = {
+  time: {value: 0}, sunDir: {value: SUN_DIR},
+  fogColor: {value: FOG}, fogDensity: {value: scene.fog.density},
+};
+const water = new THREE.Mesh(
+  new THREE.PlaneGeometry(1800, 1800, 1, 1).rotateX(-Math.PI / 2),
+  new THREE.ShaderMaterial({
+    transparent: true, depthWrite: false, uniforms: waterUniforms,
+    vertexShader: `varying vec3 vW; varying float vFogDepth;
+      void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz;
+        vec4 mv = viewMatrix * w; vFogDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity;
+      varying vec3 vW; varying float vFogDepth;
+      vec3 wn(vec2 p, float t){
+        // Summe schräg laufender Wellen, damit kein Karomuster entsteht
+        vec2 g = vec2(0.0);
+        float k = 0.31, a = 0.05, w = 0.8;
+        float ang = 0.4;
+        for(int i = 0; i < 7; i++){
+          vec2 d = vec2(cos(ang), sin(ang));
+          g += d * k * a * cos(dot(d, p) * k + t * w + float(i) * 1.7);
+          k *= 1.73; a *= 0.62; w *= 1.3; ang += 2.1;
+        }
+        return normalize(vec3(-g.x * 1.6, 1.0, -g.y * 1.6));
+      }
+      void main(){
+        vec3 n = wn(vW.xz, time);
+        vec3 v = normalize(cameraPosition - vW);
+        float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+        vec3 r = reflect(-v, n);
+        float h = max(r.y, 0.0);
+        vec3 skyc = mix(vec3(1.0,0.66,0.45), vec3(0.72,0.42,0.55), smoothstep(0.0,0.18,h));
+        skyc = mix(skyc, vec3(0.16,0.14,0.32), smoothstep(0.15,0.6,h));
+        float s = max(dot(r, sunDir), 0.0);
+        vec3 spec = vec3(1.0,0.75,0.45) * (pow(s, 250.0) * 6.0 + pow(s, 30.0) * 0.35);
+        vec3 body = vec3(0.10,0.30,0.36);
+        float a = mix(0.36, 0.92, fres);
+        vec3 c = mix(body, skyc, fres) + spec;
+        a = min(1.0, a + length(spec) * 0.5);
+        float fogF = 1.0 - exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
+        c = mix(c, fogColor, fogF);
+        a = mix(a, 1.0, fogF);
+        gl_FragColor = vec4(c, a);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`
+  }));
+water.renderOrder = 2;
+scene.add(water);
+
+// ---------- Laden ----------
+const loader = new GLTFLoader();
+loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
+const enc = (p)=> p.split('/').map(encodeURIComponent).join('/');
+const load = (p)=> loader.loadAsync(enc(p));
+const loadMsg = document.getElementById('loadMsg');
+
+function fit(obj, size, axis = 'y'){
+  const b = new THREE.Box3().setFromObject(obj), s = new THREE.Vector3();
+  b.getSize(s);
+  obj.scale.multiplyScalar(size / s[axis]);
+  return obj;
+}
+function shadows(o, cast = true){ o.traverse(m => { if(m.isMesh){ m.castShadow = cast; m.receiveShadow = true; } }); }
+
+// Viele gleiche Modelle als InstancedMesh (pro Teilmesh eines)
+function scatter(gltfScene, mats){
+  gltfScene.updateMatrixWorld(true);
+  gltfScene.traverse(m => {
+    if(!m.isMesh) return;
+    const im = new THREE.InstancedMesh(m.geometry, m.material, mats.length);
+    const tmp = new THREE.Matrix4();
+    mats.forEach((mm, i) => im.setMatrixAt(i, tmp.multiplyMatrices(mm, m.matrixWorld)));
+    im.castShadow = false; im.receiveShadow = true;
+    scene.add(im);
+  });
+}
+
+const rnd = (() => { let s = 12345; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+
+async function buildNature(){
+  const trees = ['Tree_1_A', 'Tree_2_A', 'Tree_3_A', 'Tree_4_A', 'Tree_2_C'];
+  const rocks = ['Rock_1_A', 'Rock_2_A', 'Rock_3_A', 'Rock_1_F'];
+  const buckets = {};
+  for(const n of [...trees, ...rocks]) buckets[n] = [];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  for(let i = 0; i < 9000; i++){
+    const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
+    const h = height(x, z);
+    if(h < -1.5 || h > 24) continue;
+    const slope = Math.abs(height(x + 1, z) - h) + Math.abs(height(x, z + 1) - h);
+    let name;
+    if(h < 1.6){ if(rnd() < 0.12) name = rocks[(rnd() * rocks.length) | 0]; else continue; }
+    else if(slope > 1.4){ if(rnd() < 0.3) name = rocks[(rnd() * rocks.length) | 0]; else continue; }
+    else if(fbm(x * 0.02 + 50, z * 0.02) > -0.08 || rnd() < 0.15) name = trees[(rnd() * trees.length) | 0];
+    else continue;
+    const isRock = name.startsWith('Rock');
+    const sc = isRock ? 2 + rnd() * 5 : 1.4 + rnd() * 1.2;
+    p.set(x, h - (isRock ? 0.4 * sc * 0.3 : 0.1), z);
+    q.setFromAxisAngle(up, rnd() * 6.28);
+    s.setScalar(sc);
+    buckets[name].push(m.compose(p, q, s).clone());
+  }
+  await Promise.all(Object.keys(buckets).map(async n => {
+    if(!buckets[n].length) return;
+    try{ scatter((await load(NATURE + n + '_Color1.gltf')).scene, buckets[n]); }
+    catch(e){ console.warn('Natur fehlt', n, e); }
+  }));
+}
+
+// Bootssteg an der Nordküste
+async function buildDock(){
+  const g = (await load(FISHPACK + 'Dock_Long.glb')).scene;
+  // Ufer suchen: von der Startposition nach Norden
+  let z = 0; while(height(0, z) < 0.3 && z > -200) z -= 1;
+  fit(g, 12, 'z');
+  shadows(g);
+  g.position.set(0, 0.05, z + 4);
+  scene.add(g);
+  return g;
+}
+
+// ---------- Boot und Figur ----------
+const boat = new THREE.Group();   // bewegt sich, Bug zeigt nach -Z (lokal)
+scene.add(boat);
+const hull = new THREE.Group();   // schaukelt
+boat.add(hull);
+const seat = new THREE.Group();   // Figur dreht sich hierin zum Auswerfen
+hull.add(seat);
+
+let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bucketEmpty, bucketFull;
+
+function retarget(clip){
+  const keep = clip.tracks.filter(t => !t.name.endsWith('.scale') &&
+    (!t.name.endsWith('.position') || /^(root|hips)\./.test(t.name)));
+  return new THREE.AnimationClip(clip.name, clip.duration, keep);
+}
+function play(name, {fade = 0.3, once = false, speed = 1} = {}){
+  const a = actions[name];
+  if(!a) return null;
+  if(curAction === a && !once) return a;
+  a.reset(); a.timeScale = speed;
+  a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
+  a.clampWhenFinished = once;
+  a.enabled = true;
+  if(curAction && curAction !== a) a.crossFadeFrom(curAction, fade, false);
+  a.play();
+  curAction = a;
+  return a;
+}
+
+async function buildBoat(){
+  const [b, ch, tools, sim, gen, r, oar, be, bf] = await Promise.all([
+    load(FISHPACK + 'Boat.glb'), load(CHAR), load(LIB_TOOLS), load(LIB_SIM), load(LIB_GENERAL),
+    load(FISHPACK + 'FishingRod_Lvl2.glb'), load(M + 'Quaternius Survival Pack/glTF/Raft_Paddle.glb'),
+    load(M + 'Quaternius Pirate Kit/glTF/Prop_Bucket.glb'), load(M + 'Quaternius Pirate Kit/glTF/Prop_Bucket_Fishes.glb'),
+  ]);
+  const bm = b.scene;
+  fit(bm, 3.6, 'z');
+  shadows(bm);
+  bm.position.y = -0.12;
+  bm.rotation.y = Math.PI;            // Spitze nach -Z (vorn)
+  hull.add(bm);
+  window.boatModel = bm;
+
+  const c = ch.scene;
+  fit(c, 1.25);            // kleine, runde Figur im Boot
+  shadows(c);
+  seat.add(c);
+  seat.position.set(0, 0.02, 0.35);
+
+  mixer = new THREE.AnimationMixer(c);
+  const libs = [tools, sim, gen];
+  for(const name of ['Fishing_Cast', 'Fishing_Idle', 'Fishing_Bite', 'Fishing_Tug', 'Fishing_Reeling',
+    'Fishing_Struggling', 'Fishing_Catch', 'Sit_Floor_Idle', 'Idle_A', 'Cheering', 'Sit_Chair_Idle']){
+    const clip = libs.map(l => l.animations.find(a => a.name === name)).find(Boolean);
+    if(!clip){ console.warn('Clip fehlt', name); continue; }
+    actions[name] = mixer.clipAction(retarget(clip));
+  }
+
+  rod = r.scene;
+  fit(rod, 1.9);
+  const slot = c.getObjectByName('handslotr') || c.getObjectByName('handslot.r');
+  // Maßstab der Figur ausgleichen, damit die Angel ihre Weltgröße behält
+  const holder = new THREE.Group();
+  holder.scale.setScalar(1 / c.scale.x);
+  holder.add(rod);
+  rod.position.y = -0.35;
+  slot.add(holder);
+  // Spitze der Angel: oberes Ende der Modellbox
+  const rb = new THREE.Box3().setFromObject(rod); // noch ohne Elterntransform, siehe unten
+  rodTip.position.set(0, 4.95, 0);
+  rod.children[0] ? rod.children[0].add(rodTip) : rod.add(rodTip);
+  rod.visible = false;
+
+  const makeOar = (side) => {
+    const o = oar.scene.clone();
+    fit(o, 2.0, 'z');                  // Paddel liegt längs Z
+    shadows(o);
+    const arm = new THREE.Group();
+    arm.rotation.y = side * Math.PI / 2; // Länge quer zum Boot, Blatt außen
+    arm.position.x = side * 0.55;      // Griff innen, Blatt außen
+    arm.add(o);
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.8, 0.5, 0.05);
+    pivot.userData.side = side;
+    pivot.add(arm);
+    hull.add(pivot);
+    return pivot;
+  };
+  oars = [makeOar(-1), makeOar(1)];
+
+  bucketEmpty = fit(be.scene, 0.34); bucketFull = fit(bf.scene, 0.34);
+  for(const bk of [bucketEmpty, bucketFull]){ shadows(bk); bk.position.set(0.35, 0.05, -0.75); hull.add(bk); }
+  bucketFull.visible = false;
+  play('Sit_Floor_Idle');
+}
+
+// ---------- Fischschwärme ----------
+const fishProto = {};
+const schools = [];
+const HIDDEN_Y = -40;
+
+async function buildSchools(){
+  const names = [...new Set([...SHALLOW, ...DEEP])];
+  const teal = new THREE.Color(0x1d5560);
+  await Promise.all(names.map(async n => {
+    const g = await load(FISHPACK + n + '.glb');
+    // unter Wasser: Farben gedämpft und blaugrün getönt
+    g.scene.traverse(m => {
+      if(!m.isMesh) return;
+      const mat = m.material.clone();
+      mat.color.lerp(teal, 0.45);
+      if(mat.emissive) mat.emissive.setRGB(0, 0, 0);
+      mat.roughness = 1; mat.metalness = 0;
+      m.material = mat;
+    });
+    fishProto[n] = g;
+  }));
+  const spots = [];
+  // Plätze mit genug Wassertiefe suchen
+  for(let tries = 0; spots.length < 16 && tries < 5000; tries++){
+    const x = (rnd() - 0.5) * 560, z = (rnd() - 0.5) * 560 + 40;
+    const d = -height(x, z);
+    if(d < 3 || Math.hypot(x, z - 0) < 25) continue;
+    if(spots.some(s => Math.hypot(s.x - x, s.z - z) < 45)) continue;
+    spots.push({x, z, d});
+  }
+  for(const sp of spots){
+    const pool = sp.d > 10 ? DEEP : SHALLOW;
+    const species = pool[(rnd() * pool.length) | 0];
+    const school = {species, home: new THREE.Vector2(sp.x, sp.z), center: new THREE.Vector3(sp.x, 0, sp.z),
+      depth: Math.min(sp.d - 1, 1.3 + rnd() * 1.2), fish: [], wander: rnd() * 10, max: 5 + ((rnd() * 5) | 0), regrow: 0};
+    for(let i = 0; i < school.max; i++) school.fish.push(makeFish(school, i));
+    schools.push(school);
+  }
+}
+function makeFish(school, i){
+  const src = fishProto[school.species];
+  const f = SkeletonUtils.clone(src.scene);
+  const big = ['Tuna', 'Sunfish', 'Swordfish'].includes(school.species);
+  fit(f, big ? 1.2 : 0.75, 'z');
+  f.traverse(m => { if(m.isMesh){ m.castShadow = false; m.frustumCulled = false; } });
+  const wrap = new THREE.Group();
+  wrap.add(f);
+  scene.add(wrap);
+  const mx = new THREE.AnimationMixer(f);
+  const clip = src.animations.find(a => a.name === 'Swimming_Normal') || src.animations[0];
+  const act = mx.clipAction(clip); act.play(); act.time = rnd() * clip.duration; act.timeScale = 0.7 + rnd() * 0.5;
+  return {obj: wrap, model: f, mixer: mx, anims: src.animations, phase: rnd() * 6.28, rad: 0.8 + rnd() * 2.2,
+    speed: 0.3 + rnd() * 0.25, yoff: (rnd() - 0.5) * 0.8, school, mode: 'school', prev: new THREE.Vector3()};
+}
+function fishClip(f, name, once = false){
+  f.mixer.stopAllAction();
+  const clip = f.anims.find(a => a.name === name);
+  if(!clip) return;
+  const a = f.mixer.clipAction(clip);
+  a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); a.clampWhenFinished = once;
+  a.reset().play();
+}
+
+// Kreise an der Oberfläche verraten Schwärme
+const rings = [];
+const ringGeo = new THREE.RingGeometry(0.85, 1, 40).rotateX(-Math.PI / 2);
+function spawnRing(x, z, size = 1, life = 2.2, alpha = 0.45){
+  const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({color: 0xffe6cc, transparent: true, opacity: 0.5, depthWrite: false}));
+  m.position.set(x, 0.06, z); m.renderOrder = 3;
+  scene.add(m);
+  rings.push({m, t: 0, life, size, alpha});
+}
+
+// ---------- Angelschnur und Pose ----------
+const bobber = new THREE.Group();
+{
+  const top = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8, 0, 6.3, 0, 1.6), new THREE.MeshLambertMaterial({color: 0xe8483a, emissive: 0x401010}));
+  const bot = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8, 0, 6.3, 1.55, 1.6), new THREE.MeshLambertMaterial({color: 0xf6f0e6}));
+  const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.14), new THREE.MeshLambertMaterial({color: 0x222222}));
+  stick.position.y = 0.1;
+  bobber.add(top, bot, stick);
+}
+bobber.visible = false;
+scene.add(bobber);
+const LINE_N = 30;
+const lineGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(LINE_N * 3), 3));
+const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({color: 0xfff2dd, transparent: true, opacity: 0.75}));
+line.frustumCulled = false; line.visible = false;
+scene.add(line);
+const aimRing = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.45, 32).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({color: 0xfff0d8, transparent: true, opacity: 0.6, depthWrite: false}));
+aimRing.renderOrder = 4; aimRing.visible = false;
+scene.add(aimRing);
+
+// ---------- Zustand ----------
+const state = {
+  mode: 'row',            // row | fish
+  phase: 'idle',          // idle | casting | flying | waiting | bite | fight | catch
+  speed: 0, heading: 0, turn: 0,
+  castFrom: new THREE.Vector3(), castTo: new THREE.Vector3(), t: 0,
+  biteAt: 0, school: null, fish: null, tension: 0, progress: 0, surge: 0,
+  bucket: [],
+};
+const keys = {};
+let pointerDown = false, holdReel = false;
+const hintEl = document.getElementById('hint');
+const setHint = (s) => { hintEl.innerHTML = s; hintEl.style.opacity = s ? 1 : 0; };
+const isTouch = matchMedia('(pointer:coarse)').matches;
+
+function toast(big, small, ms = 2600){
+  const t = document.getElementById('toast');
+  t.innerHTML = big + (small ? `<small>${small}</small>` : '');
+  t.classList.add('show');
+  clearTimeout(toast.h);
+  toast.h = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function enterFishing(){
+  if(state.mode === 'fish') return;
+  if(Math.abs(state.speed) > 0.6){ toast('Erst anhalten', 'Das Boot treibt noch zu schnell.', 1600); return; }
+  state.mode = 'fish'; state.phase = 'idle';
+  rod.visible = true;
+  oars.forEach(o => o.visible = false);
+  play('Fishing_Idle', {fade: 0.6});
+  document.getElementById('modeBtn').textContent = 'Rudern (F)';
+  setHint(isTouch ? 'Tippe aufs Wasser, um auszuwerfen' : 'Klicke aufs Wasser, um auszuwerfen · F zurück zum Rudern');
+}
+function leaveFishing(){
+  if(state.mode !== 'fish') return;
+  if(state.fish) releaseFish();
+  state.mode = 'row'; state.phase = 'idle';
+  rod.visible = false; bobber.visible = false; line.visible = false; aimRing.visible = false;
+  oars.forEach(o => o.visible = true);
+  seat.rotation.y = 0;
+  document.getElementById('fight').style.display = 'none';
+  play('Sit_Floor_Idle', {fade: 0.6});
+  document.getElementById('modeBtn').textContent = 'Angeln (F)';
+  setHint(isTouch ? 'Joystick zum Rudern · Angeln, wenn du Fische siehst' : 'W A S D rudern · F angeln · Ziehen dreht die Kamera');
+}
+
+function cast(target){
+  const bp = boat.position;
+  const d = new THREE.Vector3(target.x - bp.x, 0, target.z - bp.z);
+  const len = THREE.MathUtils.clamp(d.length(), 3, 22);
+  d.setLength(len);
+  state.castTo.set(bp.x + d.x, 0, bp.z + d.z);
+  // Figur dreht sich zum Ziel (lokal im Boot); Figur schaut lokal nach +Z
+  const local = boat.worldToLocal(state.castTo.clone());
+  seat.userData.targetYaw = Math.atan2(local.x, local.z - seat.position.z);
+  state.phase = 'casting'; state.t = 0;
+  bobber.visible = false; line.visible = false;
+  play('Fishing_Cast', {once: true, fade: 0.2});
+  setHint('');
+  sfx('whoosh');
+}
+function reelIn(){
+  state.phase = 'retrieve'; state.t = 0;
+  state.castFrom.copy(bobber.position);
+  play('Fishing_Reeling', {fade: 0.2, speed: 1.6});
+}
+function hookFish(){
+  state.phase = 'fight';
+  state.tension = 0.25; state.progress = 0.05; state.surge = 0;
+  document.getElementById('fight').style.display = 'block';
+  play('Fishing_Struggling', {fade: 0.15});
+  setHint(isTouch ? 'Halten zum Einholen – nicht zu fest!' : 'Maustaste oder Leertaste halten zum Einholen – Spannung beachten!');
+  sfx('splash');
+}
+function releaseFish(){
+  const f = state.fish;
+  if(!f) return;
+  f.mode = 'flee'; f.fleeT = 0;
+  fishClip(f, 'Swimming_Fast');
+  state.fish = null;
+}
+function missed(msg, sub){
+  toast(msg, sub, 2000);
+  releaseFish();
+  document.getElementById('fight').style.display = 'none';
+  state.phase = 'idle'; bobber.visible = false; line.visible = false;
+  play('Fishing_Idle', {fade: 0.4});
+  setHint(isTouch ? 'Tippe aufs Wasser, um erneut auszuwerfen' : 'Klicke aufs Wasser, um erneut auszuwerfen');
+}
+function landFish(){
+  const f = state.fish;
+  const sp = SPECIES[f.school.species];
+  const kg = sp.kg[0] + Math.pow(Math.random(), 2) * (sp.kg[1] - sp.kg[0]);
+  state.phase = 'catch'; state.t = 0;
+  document.getElementById('fight').style.display = 'none';
+  play('Fishing_Catch', {once: true, fade: 0.2});
+  fishClip(f, 'Out_Of_Water');
+  f.mode = 'landed';
+  setHint('');
+  f.landFrom = f.obj.position.clone();
+  sfx('splash');
+  if(state.bucket.length < 10){
+    state.bucket.push({name: sp.de, kg});
+    toast(sp.de + '!', kg.toFixed(1).replace('.', ',') + ' kg – ab in den Eimer', 2800);
+  } else {
+    toast(sp.de + '!', 'Der Eimer ist voll – du lässt ihn wieder frei.', 2800);
+    f.releaseAfter = true;
+  }
+  renderBucket();
+}
+function renderBucket(){
+  document.getElementById('count').textContent = state.bucket.length;
+  document.getElementById('list').innerHTML = state.bucket.slice(-6).reverse()
+    .map(b => `<li>${b.name} <span>${b.kg.toFixed(1).replace('.', ',')} kg</span></li>`).join('') +
+    (state.bucket.length ? `<li><span>gesamt ${state.bucket.reduce((s, b) => s + b.kg, 0).toFixed(1).replace('.', ',')} kg</span></li>` : '');
+  bucketEmpty.visible = !state.bucket.length;
+  bucketFull.visible = !!state.bucket.length;
+}
+
+// ---------- Eingabe ----------
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const cam = {yaw: 0.35, pitch: 0.36, dist: 11, lastDrag: -99};
+let drag = null;
+function waterPoint(e){
+  ndc.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const p = new THREE.Vector3();
+  return ray.ray.intersectPlane(waterPlane, p) ? p : null;
+}
+const cv = renderer.domElement;
+cv.addEventListener('pointerdown', e => {
+  startAudio();
+  drag = {x: e.clientX, y: e.clientY, moved: false, id: e.pointerId};
+  pointerDown = true;
+  if(state.mode === 'fish'){
+    if(state.phase === 'bite'){ hookFish(); drag.used = true; }
+    else if(state.phase === 'fight'){ holdReel = true; drag.used = true; }
+  }
+});
+addEventListener('pointermove', e => {
+  if(drag && drag.id === e.pointerId){
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if(!drag.moved && Math.hypot(dx, dy) > 6 && !drag.used) drag.moved = true;
+    if(drag.moved){
+      cam.yaw -= dx * 0.006; cam.pitch = THREE.MathUtils.clamp(cam.pitch + dy * 0.004, 0.08, 1.2);
+      cam.lastDrag = clock.elapsedTime;
+      drag.x = e.clientX; drag.y = e.clientY;
+    }
+  }
+  if(state.mode === 'fish' && (state.phase === 'idle' || state.phase === 'waiting') && !isTouch){
+    const p = waterPoint(e);
+    if(p){
+      const d = new THREE.Vector3(p.x - boat.position.x, 0, p.z - boat.position.z);
+      d.setLength(THREE.MathUtils.clamp(d.length(), 3, 22));
+      aimRing.position.set(boat.position.x + d.x, 0.07, boat.position.z + d.z);
+      aimRing.visible = true;
+    }
+  }
+});
+addEventListener('pointerup', e => {
+  pointerDown = false; holdReel = false;
+  if(!drag || drag.id !== e.pointerId) return;
+  const wasClick = !drag.moved && !drag.used;
+  drag = null;
+  if(!wasClick || state.mode !== 'fish') return;
+  if(state.phase === 'idle'){ const p = waterPoint(e); if(p) cast(p); }
+  else if(state.phase === 'waiting'){ reelIn(); }
+});
+cv.addEventListener('wheel', e => { cam.dist = THREE.MathUtils.clamp(cam.dist * (1 + e.deltaY * 0.001), 4, 40); }, {passive: true});
+// e.code fehlt bei manchen Tastaturen/Automationen – aus e.key ableiten
+const codeOf = (e) => e.code || (e.key === ' ' ? 'Space' : e.key.length === 1 ? 'Key' + e.key.toUpperCase() : e.key);
+addEventListener('keydown', e => {
+  const code = codeOf(e);
+  keys[code] = true;
+  startAudio();
+  if(code === 'KeyF'){ state.mode === 'fish' ? leaveFishing() : enterFishing(); }
+  if(code === 'Space'){
+    e.preventDefault();
+    if(state.phase === 'bite') hookFish();
+    else if(state.phase === 'fight') holdReel = true;
+    else if(state.phase === 'waiting') reelIn();
+  }
+});
+addEventListener('keyup', e => { const code = codeOf(e); keys[code] = false; if(code === 'Space' && !pointerDown) holdReel = false; });
+document.getElementById('modeBtn').addEventListener('click', () => { startAudio(); state.mode === 'fish' ? leaveFishing() : enterFishing(); });
+
+// Touch-Joystick
+const stick = document.getElementById('stick'), knob = stick.querySelector('i');
+const joy = {x: 0, y: 0};
+if(isTouch) stick.style.display = 'block';
+stick.addEventListener('pointerdown', e => { e.stopPropagation(); stick.setPointerCapture(e.pointerId); moveJoy(e); startAudio(); });
+stick.addEventListener('pointermove', e => { if(stick.hasPointerCapture(e.pointerId)) moveJoy(e); });
+stick.addEventListener('pointerup', () => { joy.x = joy.y = 0; knob.style.transform = ''; });
+function moveJoy(e){
+  const r = stick.getBoundingClientRect();
+  let x = (e.clientX - r.left - 60) / 50, y = (e.clientY - r.top - 60) / 50;
+  const l = Math.hypot(x, y); if(l > 1){ x /= l; y /= l; }
+  joy.x = x; joy.y = y;
+  knob.style.transform = `translate(${x * 40}px,${y * 40}px)`;
+}
+
+// ---------- Ton (leises Wellenrauschen) ----------
+let actx = null, soundOn = true, master;
+function startAudio(){
+  if(actx) return;
+  try{
+    actx = new AudioContext();
+    master = actx.createGain(); master.gain.value = soundOn ? 0.5 : 0; master.connect(actx.destination);
+    const buf = actx.createBuffer(1, actx.sampleRate * 4, actx.sampleRate), d = buf.getChannelData(0);
+    let b = 0; for(let i = 0; i < d.length; i++){ b = b * 0.98 + (Math.random() * 2 - 1) * 0.02; d[i] = b * 3; }
+    const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
+    const g = actx.createGain(); g.gain.value = 0.25;
+    const lfo = actx.createOscillator(); lfo.frequency.value = 0.12;
+    const lg = actx.createGain(); lg.gain.value = 0.15; lfo.connect(lg); lg.connect(g.gain); lfo.start();
+    src.connect(lp); lp.connect(g); g.connect(master); src.start();
+  } catch(e){ actx = null; }
+}
+function sfx(kind){
+  if(!actx || !soundOn) return;
+  const t = actx.currentTime, len = kind === 'whoosh' ? 0.5 : 0.35;
+  const buf = actx.createBuffer(1, actx.sampleRate * len, actx.sampleRate), d = buf.getChannelData(0);
+  for(let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
+  const s = actx.createBufferSource(); s.buffer = buf;
+  const f = actx.createBiquadFilter(); f.type = 'bandpass';
+  f.frequency.setValueAtTime(kind === 'whoosh' ? 2500 : 900, t);
+  f.frequency.exponentialRampToValueAtTime(kind === 'whoosh' ? 600 : 300, t + len);
+  const g = actx.createGain(); g.gain.value = kind === 'whoosh' ? 0.25 : 0.6;
+  s.connect(f); f.connect(g); g.connect(master); s.start();
+}
+document.getElementById('soundBtn').addEventListener('click', e => {
+  startAudio(); soundOn = !soundOn;
+  if(master) master.gain.value = soundOn ? 0.5 : 0;
+  e.target.textContent = soundOn ? '🔈' : '🔇';
+});
+
+// ---------- Hauptschleife ----------
+const clock = new THREE.Clock();
+const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
+
+function updateBoat(dt, t){
+  let fwd = 0, turn = 0;
+  if(state.mode === 'row'){
+    fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y;
+    turn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - joy.x;
+    fwd = THREE.MathUtils.clamp(fwd, -1, 1); turn = THREE.MathUtils.clamp(turn, -1, 1);
+  }
+  state.speed += (fwd * (fwd > 0 ? 4.2 : 1.8) - state.speed) * dt * (fwd ? 0.6 : 0.35);
+  state.turn += (turn * 0.75 - state.turn) * dt * 2.5;
+  state.heading += state.turn * dt;
+  const dir = tmpV.set(-Math.sin(state.heading), 0, -Math.cos(state.heading));
+  const next = boat.position.clone().addScaledVector(dir, state.speed * dt);
+  const probe = next.clone().addScaledVector(dir, Math.sign(state.speed || 1) * 2);
+  if(height(probe.x, probe.z) > -0.45 || Math.abs(next.x) > WORLD / 2 - 20 || Math.abs(next.z) > WORLD / 2 - 20){
+    state.speed *= -0.25;           // sanft abprallen
+  } else boat.position.copy(next);
+  boat.rotation.y = state.heading;
+
+  // Schaukeln
+  const x = boat.position.x, z = boat.position.z;
+  hull.position.y = waveH(x, z, t) + 0.02;
+  hull.rotation.x = (waveH(x, z - 1.5, t) - waveH(x, z + 1.5, t)) * 0.6 + state.speed * 0.012;
+  hull.rotation.z = (waveH(x + 0.8, z, t) - waveH(x - 0.8, z, t)) * 0.8 - state.turn * state.speed * 0.02;
+
+  // Ruder
+  const rowing = state.mode === 'row' && (Math.abs(fwd) > 0.05 || Math.abs(turn) > 0.05);
+  state.rowPhase = (state.rowPhase || 0) + dt * (rowing ? 5 : 0);
+  oars.forEach((o, i) => {
+    const side = i ? 1 : -1;
+    const drive = rowing ? fwd || -turn * side : 0;
+    const k = rowing ? 1 : 0;
+    const ph = state.rowPhase * Math.sign(drive || 1);
+    o.rotation.y += ((side * Math.sin(ph) * 0.55 * k) - o.rotation.y) * Math.min(1, dt * 8);
+    o.rotation.z += ((-side * (0.38 + Math.cos(ph) * 0.16 * k)) - o.rotation.z) * Math.min(1, dt * 8);
+  });
+  if(rowing && Math.random() < dt * 3) sfxSoft();
+  // Kielwasser
+  if(Math.abs(state.speed) > 1 && Math.random() < dt * 3){
+    tmpV2.copy(boat.position).addScaledVector(dir, -1.9 * Math.sign(state.speed));
+    spawnRing(tmpV2.x, tmpV2.z, 0.5, 1.4, 0.14);
+  }
+}
+function sfxSoft(){}
+
+function updateFishing(dt, t){
+  // Figur sanft zum Wurfziel drehen
+  if(state.mode === 'fish' && seat.userData.targetYaw !== undefined){
+    let d = seat.userData.targetYaw - seat.rotation.y;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    seat.rotation.y += d * Math.min(1, dt * 5);
+  }
+  if(state.mode !== 'fish') return;
+  boat.updateMatrixWorld(true);
+  const tip = rodTip.getWorldPosition(new THREE.Vector3());
+  state.t += dt;
+
+  switch(state.phase){
+    case 'casting': {
+      const dur = actions.Fishing_Cast.getClip().duration;
+      if(state.t > dur * 0.45){
+        state.phase = 'flying'; state.t = 0;
+        state.castFrom.copy(tip);
+        bobber.visible = true; line.visible = true;
+      }
+      break;
+    }
+    case 'flying': {
+      const k = Math.min(1, state.t / 0.9);
+      bobber.position.lerpVectors(state.castFrom, state.castTo, k);
+      bobber.position.y = THREE.MathUtils.lerp(state.castFrom.y, 0, k) + Math.sin(k * Math.PI) * 3;
+      if(k >= 1){
+        state.phase = 'waiting'; state.t = 0;
+        spawnRing(state.castTo.x, state.castTo.z, 0.6, 1.5);
+        sfx('splash');
+        play('Fishing_Idle', {fade: 0.5});
+        planBite();
+        setHint(isTouch ? 'Warten … Tippen holt die Schnur ein' : 'Warten … Klick oder Leertaste holt die Schnur ein');
+      }
+      break;
+    }
+    case 'waiting': {
+      bobber.position.set(state.castTo.x, waveH(state.castTo.x, state.castTo.z, t) + 0.02, state.castTo.z);
+      bobber.rotation.z = Math.sin(t * 1.3) * 0.08;
+      // Knabbern kurz vor dem Biss
+      if(state.fish){
+        const f = state.fish;
+        const target = tmpV.set(state.castTo.x, -0.45, state.castTo.z);
+        f.obj.position.lerp(target, Math.min(1, dt * 0.8));
+        faceTo(f, target, dt);
+        if(state.t > state.biteAt - 1.5) bobber.position.y -= Math.abs(Math.sin(t * 14)) * 0.03;
+      }
+      if(state.fish && state.t > state.biteAt){
+        state.phase = 'bite'; state.t = 0;
+        play('Fishing_Bite', {once: true, fade: 0.15});
+        spawnRing(state.castTo.x, state.castTo.z, 0.8, 1);
+        sfx('splash');
+        setHint('<b>Biss!</b> ' + (isTouch ? 'Jetzt tippen!' : 'Jetzt klicken oder Leertaste!'));
+      }
+      if(!state.fish && state.t > state.biteAt) planBite(true);
+      break;
+    }
+    case 'bite': {
+      bobber.position.y = -0.12 + Math.sin(t * 20) * 0.04;
+      if(state.fish) state.fish.obj.position.set(state.castTo.x, -0.35, state.castTo.z);
+      if(state.t > 1.3) missed('Zu langsam …', 'Der Fisch hat den Köder geklaut.');
+      break;
+    }
+    case 'fight': {
+      const f = state.fish;
+      // Der Fisch zieht in Schüben
+      state.surge -= dt;
+      if(state.surge < 0) state.surge = 0.6 + Math.random() * 1.6;
+      const pull = state.surge > 0.35 ? 0 : (0.9 + f.power * 0.6);
+      if(holdReel){
+        state.tension += dt * (0.32 + pull * 0.55);
+        state.progress += dt * (0.2 / f.power) * (pull ? 0.2 : 1);
+        play('Fishing_Reeling', {fade: 0.15});
+      } else {
+        state.tension -= dt * 0.55;
+        state.progress -= dt * pull * 0.03;
+        play('Fishing_Struggling', {fade: 0.15});
+      }
+      state.tension = THREE.MathUtils.clamp(state.tension, 0, 1.2);
+      state.progress = THREE.MathUtils.clamp(state.progress, 0, 1);
+      document.querySelector('#tension i').style.width = Math.min(100, state.tension * 100) + '%';
+      document.querySelector('#progress i').style.width = state.progress * 100 + '%';
+      if(state.tension >= 1){ missed('Schnur gerissen!', 'Nicht so fest ziehen, wenn er kämpft.'); break; }
+      if(state.progress <= 0 && state.t > 3){ missed('Entwischt …', 'Der Fisch hat sich losgerissen.'); break; }
+      // Pose wandert zum Boot, Fisch zappelt daneben
+      const bp = boat.position;
+      const k = state.progress;
+      const px = THREE.MathUtils.lerp(state.castTo.x, bp.x, k * 0.85) + Math.sin(t * 3.1) * (1 - k) * 0.9;
+      const pz = THREE.MathUtils.lerp(state.castTo.z, bp.z, k * 0.85) + Math.cos(t * 2.3) * (1 - k) * 0.9;
+      bobber.position.set(px, -0.05 + Math.sin(t * 9) * 0.04, pz);
+      const target = tmpV.set(px + Math.sin(t * 5) * 0.4, -0.3 - (pull ? 0.2 : 0), pz + Math.cos(t * 4) * 0.4);
+      const prevF = f.obj.position.clone();
+      f.obj.position.lerp(target, Math.min(1, dt * 6));
+      faceTo(f, tmpV2.copy(f.obj.position).add(f.obj.position).sub(prevF), dt * 3);
+      if(pull && Math.random() < dt * 4) spawnRing(px, pz, 0.7, 0.8);
+      if(state.progress >= 1) landFish();
+      break;
+    }
+    case 'catch': {
+      const f = state.fish;
+      const dur = 1.2;
+      const k = Math.min(1, state.t / dur);
+      if(f){
+        const bk = (f.releaseAfter ? bucketEmpty : bucketEmpty).getWorldPosition(new THREE.Vector3());
+        if(k < 0.5){ f.obj.position.lerpVectors(f.landFrom, tip.clone().add(tmpV.set(0, -0.4, 0)), k * 2); }
+        else { f.obj.position.lerpVectors(tip.clone().add(tmpV.set(0, -0.4, 0)), bk.add(tmpV.set(0, 0.25, 0)), (k - 0.5) * 2); }
+        f.obj.rotation.z += dt * 6;
+        bobber.position.copy(f.obj.position).y += 0.3;
+      }
+      if(k >= 1){
+        if(f){
+          if(f.releaseAfter){ f.obj.position.y = -1; f.releaseAfter = false; releaseFish(); }
+          else { removeFish(f); state.fish = null; }
+        }
+        bobber.visible = false; line.visible = false;
+      }
+      if(state.t > actions.Fishing_Catch.getClip().duration + 0.2){
+        state.phase = 'idle';
+        play(state.bucket.length === 10 ? 'Cheering' : 'Fishing_Idle', {fade: 0.4});
+        setHint(state.bucket.length >= 10 ? 'Der Eimer ist voll. Ein schöner Abend.' :
+          (isTouch ? 'Tippe aufs Wasser, um erneut auszuwerfen' : 'Klicke aufs Wasser, um erneut auszuwerfen'));
+      }
+      break;
+    }
+    case 'retrieve': {
+      const k = Math.min(1, state.t / 1.1);
+      bobber.position.lerpVectors(state.castFrom, tip, k);
+      bobber.position.y += Math.sin(k * Math.PI) * 0.4;
+      if(k >= 1){
+        releaseFish();
+        state.phase = 'idle'; bobber.visible = false; line.visible = false;
+        play('Fishing_Idle', {fade: 0.3});
+        setHint(isTouch ? 'Tippe aufs Wasser, um auszuwerfen' : 'Klicke aufs Wasser, um auszuwerfen');
+      }
+      break;
+    }
+  }
+
+  aimRing.visible = aimRing.visible && (state.phase === 'idle' || state.phase === 'waiting') && !isTouch;
+  aimRing.material.opacity = 0.35 + Math.sin(t * 3) * 0.2;
+
+  // Schnur: durchhängend beim Warten, gespannt im Drill
+  if(line.visible){
+    const a = tip, b = bobber.position, p = lineGeo.attributes.position;
+    const sag = state.phase === 'fight' ? 0.05 : state.phase === 'flying' ? 0.2 : 0.9;
+    for(let i = 0; i < LINE_N; i++){
+      const u = i / (LINE_N - 1);
+      p.setXYZ(i, a.x + (b.x - a.x) * u, a.y + (b.y + 0.05 - a.y) * u - Math.sin(u * Math.PI) * sag, a.z + (b.z - a.z) * u);
+    }
+    p.needsUpdate = true;
+  }
+}
+
+// Biss planen: je näher ein Schwarm an der Pose, desto schneller
+function planBite(retry){
+  let best = null, bd = 1e9;
+  for(const s of schools){
+    const alive = s.fish.filter(f => f.mode === 'school');
+    if(!alive.length) continue;
+    const d = Math.hypot(s.center.x - state.castTo.x, s.center.z - state.castTo.z);
+    if(d < bd){ bd = d; best = s; }
+  }
+  const chance = best ? Math.exp(-bd / 7) : 0;
+  if(best && Math.random() < chance * 0.9 + 0.03){
+    const f = best.fish.find(f => f.mode === 'school');
+    f.mode = 'bait';
+    f.power = ['Tuna', 'Sunfish', 'Swordfish'].includes(best.species) ? 1.8 : best.species === 'CoralGrouper' || best.species === 'Turbot' ? 1.3 : 1;
+    state.fish = f;
+    fishClip(f, 'Swimming_Impulse');
+    state.t = 0;
+    state.biteAt = 3 + Math.random() * 5 + bd * 0.15;
+  } else {
+    state.t = 0;
+    state.biteAt = 4 + Math.random() * 4;
+    if(retry && Math.random() < 0.35) setHint('Hier beißt nichts … such dir einen Schwarm.');
+  }
+}
+
+function faceTo(f, target, dt){
+  const dx = target.x - f.obj.position.x, dz = target.z - f.obj.position.z;
+  if(dx * dx + dz * dz < 1e-6) return;
+  const yaw = Math.atan2(dx, dz);
+  let d = yaw - f.obj.rotation.y; d = Math.atan2(Math.sin(d), Math.cos(d));
+  f.obj.rotation.y += d * Math.min(1, dt * 4);
+}
+
+function removeFish(f){
+  scene.remove(f.obj);
+  const s = f.school;
+  s.fish.splice(s.fish.indexOf(f), 1);
+}
+
+function updateSchools(dt, t){
+  const bp = boat.position;
+  for(const s of schools){
+    // Schwarm wandert langsam um seinen Heimatplatz
+    s.wander += dt * 0.05;
+    const nx = s.home.x + Math.sin(s.wander) * 10, nz = s.home.y + Math.cos(s.wander * 0.7) * 10;
+    if(height(nx, nz) < -s.depth - 0.8){ s.center.x = nx; s.center.z = nz; }
+    // langsam nachwachsen
+    if(s.fish.length < s.max){ s.regrow += dt; if(s.regrow > 60){ s.regrow = 0; s.fish.push(makeFish(s, 0)); } }
+    const near = Math.hypot(s.center.x - bp.x, s.center.z - bp.z) < 140;
+    for(const f of s.fish){
+      f.obj.visible = near || f.mode !== 'school';
+      if(!f.obj.visible) continue;
+      f.mixer.update(dt);
+      if(f.mode === 'school'){
+        f.phase += dt * f.speed;
+        const tx = s.center.x + Math.cos(f.phase) * f.rad, tz = s.center.z + Math.sin(f.phase * 1.3) * f.rad;
+        const ty = -s.depth + f.yoff + Math.sin(f.phase * 2) * 0.15;
+        tmpV.set(tx, ty, tz);
+        faceTo(f, tmpV, dt);
+        f.obj.position.lerp(tmpV, Math.min(1, dt * 1.5));
+      } else if(f.mode === 'flee'){
+        f.fleeT += dt;
+        tmpV.set(s.center.x, -s.depth, s.center.z);
+        faceTo(f, tmpV, dt * 2);
+        f.obj.position.lerp(tmpV, Math.min(1, dt * 1.2));
+        if(f.fleeT > 3){ f.mode = 'school'; fishClip(f, 'Swimming_Normal'); }
+      }
+    }
+    // gelegentliche Ringe verraten den Schwarm
+    if(near && s.fish.length && Math.random() < dt * 0.25){
+      spawnRing(s.center.x + (Math.random() - 0.5) * 4, s.center.z + (Math.random() - 0.5) * 4, 0.9, 2.4);
+    }
+  }
+}
+
+function updateRings(dt){
+  for(let i = rings.length - 1; i >= 0; i--){
+    const r = rings[i];
+    r.t += dt;
+    const k = r.t / r.life;
+    r.m.scale.setScalar(0.2 + k * 2.2 * r.size);
+    r.m.material.opacity = r.alpha * (1 - k);
+    if(k >= 1){ scene.remove(r.m); r.m.material.dispose(); rings.splice(i, 1); }
+  }
+}
+
+function updateCamera(dt){
+  // Beim Rudern schwenkt die Kamera hinter das Boot zurück
+  if(state.mode === 'row' && clock.elapsedTime - cam.lastDrag > 2.5 && Math.abs(state.speed) > 0.3){
+    let d = state.heading - cam.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
+    cam.yaw += d * Math.min(1, dt * 0.8);
+  }
+  const target = tmpV.copy(boat.position).add(tmpV2.set(0, 1.0, 0));
+  const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)).multiplyScalar(cam.dist);
+  camera.position.copy(target).add(off);
+  const gh = Math.max(height(camera.position.x, camera.position.z), 0) + 0.6;
+  if(camera.position.y < gh) camera.position.y = gh;
+  camera.lookAt(target);
+  sun.position.copy(boat.position).addScaledVector(SUN_DIR, 40);
+  sun.target.position.copy(boat.position);
+  sky.position.copy(camera.position);
+  water.position.x = Math.round(camera.position.x / 50) * 50;
+  water.position.z = Math.round(camera.position.z / 50) * 50;
+}
+
+function loop(){
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  waterUniforms.time.value = t;
+  updateBoat(dt, t);
+  if(mixer) mixer.update(dt);
+  updateFishing(dt, t);
+  updateSchools(dt, t);
+  updateRings(dt);
+  updateCamera(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- Start ----------
+(async () => {
+  boat.position.set(0, 0, 10);
+  // Startplatz im Wasser sicherstellen
+  while(height(boat.position.x, boat.position.z) > -1.5) boat.position.z += 2;
+  state.heading = 0;
+  loadMsg.textContent = 'Das Boot wird zu Wasser gelassen …';
+  await buildBoat();
+  loadMsg.textContent = 'Die Fische versammeln sich …';
+  await Promise.all([buildSchools(), buildNature(), buildDock().catch(e => console.warn(e))]);
+  renderBucket();
+  state.mode = 'fish';
+  leaveFishing();
+  document.getElementById('loading').style.opacity = 0;
+  setTimeout(() => document.getElementById('loading').remove(), 900);
+  loop();
+})().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
+window.__fish = {THREE, state, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+</script>
+</body>
+</html>
