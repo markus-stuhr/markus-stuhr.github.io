@@ -105,6 +105,7 @@ const scene = new THREE.Scene();
 const FOG = new THREE.Color(0xd9957e);
 scene.fog = new THREE.FogExp2(FOG, 0.0032);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 2000);
+camera.layers.enable(1);   // Boot-Layer
 
 // Sonne tief im Westen
 const SUN_DIR = new THREE.Vector3(-0.8, 0.34, -0.55).normalize();
@@ -119,6 +120,17 @@ sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
 sun.position.copy(SUN_DIR).multiplyScalar(700);
 scene.add(sun, sun.target);
+// Eigene scharfe Schattenkarte nur fürs Boot (Layer 1). Das Licht ist praktisch dunkel –
+// die ShadowMaterial-Fläche auf dem Wasser zeigt seinen Schatten trotzdem.
+// Das Boot selbst liegt nicht auf Layer 0 und fehlt deshalb in der groben Weltkarte.
+const BOAT_LAYER = 1;
+const boatSun = new THREE.DirectionalLight(0xffffff, 0.0001);
+boatSun.castShadow = true;
+boatSun.shadow.mapSize.set(2048, 2048);
+Object.assign(boatSun.shadow.camera, {left:-7, right:7, top:7, bottom:-7, near:1, far:60});
+boatSun.shadow.camera.layers.set(BOAT_LAYER);
+boatSun.shadow.bias = -0.0005;
+scene.add(boatSun, boatSun.target);
 scene.add(new THREE.HemisphereLight(0xffc4b0, 0x3b4a70, 0.9));
 
 // Himmel
@@ -431,6 +443,7 @@ async function buildBoat(){
   bucketEmpty = fit(be.scene, 0.34); bucketFull = fit(bf.scene, 0.34);
   for(const bk of [bucketEmpty, bucketFull]){ shadows(bk); bk.position.set(0.35, 0.05, -0.75); hull.add(bk); }
   bucketFull.visible = false;
+  hull.traverse(o => o.layers.set(BOAT_LAYER));
   play('Sit_Floor_Idle');
 }
 
@@ -1066,6 +1079,8 @@ function updateCamera(dt){
   const gh = Math.max(height(camera.position.x, camera.position.z), 0) + 0.6;
   if(camera.position.y < gh) camera.position.y = gh;
   camera.lookAt(target);
+  boatSun.target.position.copy(boat.position);
+  boatSun.position.copy(boat.position).addScaledVector(SUN_DIR, 30);
   sky.position.copy(camera.position);
   water.position.x = Math.round(camera.position.x / 50) * 50;
   water.position.z = Math.round(camera.position.z / 50) * 50;
