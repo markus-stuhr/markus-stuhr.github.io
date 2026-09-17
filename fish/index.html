@@ -766,6 +766,8 @@ async function buildBoat(){
   bucketEmpty = fit(be.scene, 0.34); bucketFull = fit(bf.scene, 0.34);
   for(const bk of [bucketEmpty, bucketFull]){ shadows(bk); bk.position.set(0.35, 0.05, -0.75); hull.add(bk); }
   bucketFull.visible = false;
+  // Der Pfeilköcher des Rangers gehört nicht zum Angler
+  c.traverse(o => { if(/Quiver/i.test(o.name)) o.visible = false; });
   grabBones(c);
   hull.traverse(o => {
     o.layers.set(BOAT_LAYER);
