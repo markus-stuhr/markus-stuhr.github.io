@@ -571,6 +571,7 @@ hull.add(seat);
 
 const BENCH_Y = 0.34;                // Oberkante der Querbank, passend zum hohen Bootsrand
 let seatRowY = 0;                    // Sitzhöhe auf der Bank, einmal eingemessen
+let benchParts = [];                 // Bank und Stützen, werden an die Hüfte gesetzt
 let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bucketEmpty, bucketFull;
 
 function retarget(clip){
@@ -674,11 +675,13 @@ async function buildBoat(){
   bench.position.set(0, BENCH_Y, 0.1);
   shadows(bench);
   hull.add(bench);
+  benchParts = [bench];
   for(const sx of [-1, 1]){        // zwei Stützen unter der Bank
     const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, BENCH_Y + 0.15, 0.2), benchMat);
     leg.position.set(sx * 0.55, BENCH_Y - (BENCH_Y + 0.15) / 2, 0.1);
     shadows(leg);
     hull.add(leg);
+    benchParts.push(leg);
   }
   seat.position.set(0, 0, 0.1);
   seat.userData.fitToBench = true;   // Sitzhöhe beim ersten Frame einmessen
@@ -819,9 +822,11 @@ function gripOf(pivot, side, out){
 }
 // Die Sitzhaltung hebt die Hüfte über den Boden – Höhe einmal an die Bank anpassen
 function fitSeatToBench(){
-  const hipsLocal = hull.worldToLocal(bones.hips.getWorldPosition(new THREE.Vector3())).y;
-  seat.position.y += BENCH_Y + 0.07 - hipsLocal;
+  const hips = hull.worldToLocal(bones.hips.getWorldPosition(new THREE.Vector3()));
+  seat.position.y += BENCH_Y + 0.07 - hips.y;
   seatRowY = seat.position.y;
+  // Die Bank gehört unter den Hintern, nicht unter die Beine: an die Hüfte rücken
+  for(const part of benchParts) part.position.z = hips.z - 0.02;
   seat.userData.fitToBench = false;
 }
 let rowPoseRuns = 0, rowPoseErr = null;
