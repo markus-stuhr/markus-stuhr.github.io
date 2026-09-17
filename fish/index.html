@@ -165,6 +165,30 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.Shad
 }));
 scene.add(sky);
 
+// Sichttiefe im Wasser: alles unter der Oberfläche geht mit der Tiefe in die
+// Wasserfarbe über. Bei etwa 5 m ist nichts mehr zu erkennen.
+const WATER_VIS = 2.2;                 // Abklinglänge in Metern (bei 5 m fast blind)
+const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles Tiefwasser
+function underwaterFade(mat){
+  const prev = mat.onBeforeCompile;
+  mat.onBeforeCompile = (sh, renderer) => {
+    if(prev) prev(sh, renderer);
+    sh.vertexShader = 'varying float vWY;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+      vec4 _wp = vec4(transformed, 1.0);
+      #ifdef USE_INSTANCING
+        _wp = instanceMatrix * _wp;
+      #endif
+      vWY = (modelMatrix * _wp).y;`);
+    sh.fragmentShader = 'varying float vWY;\n' + sh.fragmentShader.replace('#include <opaque_fragment>',
+      `outgoingLight = mix(outgoingLight, vec3(${WATER_BODY.x}, ${WATER_BODY.y}, ${WATER_BODY.z}),
+         1.0 - exp(-max(0.0, -vWY) / ${WATER_VIS.toFixed(2)}));
+       #include <opaque_fragment>`);
+  };
+  const key = mat.customProgramCacheKey;
+  mat.customProgramCacheKey = () => 'uwFade' + (key ? key.call(mat) : mat.type);
+  return mat;
+}
+
 // ---------- Rauschen und Gelände ----------
 function hash(x, z){ const s = Math.sin(x * 127.1 + z * 311.7) * 43758.5453; return s - Math.floor(s); }
 function vnoise(x, z){
@@ -242,10 +266,10 @@ const tgeo = new THREE.PlaneGeometry(WORLD, WORLD, SEG, SEG).rotateX(-Math.PI / 
 }
 // Tiefsee: eine große flache Fläche auf Bodenniveau, damit der Grund nirgends endet
 const abyss = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000).rotateX(-Math.PI / 2),
-  new THREE.MeshLambertMaterial({color: 0x0c2735}));
+  underwaterFade(new THREE.MeshLambertMaterial({color: 0x0c2735})));
 abyss.position.y = -14.05;
 scene.add(abyss);
-const terrain = new THREE.Mesh(tgeo, new THREE.MeshLambertMaterial({vertexColors:true}));
+const terrain = new THREE.Mesh(tgeo, underwaterFade(new THREE.MeshLambertMaterial({vertexColors:true})));
 terrain.receiveShadow = true;
 terrain.castShadow = true;           // Hügel und Inseln werfen selbst Schatten
 scene.add(terrain);
@@ -290,7 +314,7 @@ const water = new THREE.Mesh(
         skyc = mix(skyc, vec3(0.16,0.14,0.32), smoothstep(0.15,0.6,h));
         float s = max(dot(r, sunDir), 0.0);
         vec3 spec = vec3(1.0,0.75,0.45) * (pow(s, 250.0) * 6.0 + pow(s, 30.0) * 0.35);
-        vec3 body = vec3(0.10,0.30,0.36);
+        vec3 body = vec3(0.035,0.105,0.135);   // dunkel wie das Tiefwasser darunter
         float a = mix(0.36, 0.92, fres);
         vec3 c = mix(body, skyc, fres) + spec;
         a = min(1.0, a + length(spec) * 0.5);
@@ -324,10 +348,11 @@ function swayInject(sh, amp, speed){
     transformed.x += sin(time * ${speed.toFixed(2)} + ph + position.y * 2.2) * ${amp.toFixed(3)} * hh;
     transformed.z += cos(time * ${(speed * 0.8).toFixed(2)} + ph * 1.3 + position.y * 1.7) * ${(amp * 0.6).toFixed(3)} * hh;`);
 }
-function swayMaterial(amp, speed){
+function swayMaterial(amp, speed, underwater){
   const m = new THREE.MeshLambertMaterial({vertexColors: true, side: THREE.DoubleSide});
   m.onBeforeCompile = (sh) => swayInject(sh, amp, speed);
-  return m;
+  m.customProgramCacheKey = () => 'sway' + amp;
+  return underwater ? underwaterFade(m) : m;
 }
 // Der Schattenwurf braucht dieselbe Bewegung, sonst steht der Schatten still
 function swayDepthMaterial(amp, speed){
@@ -459,7 +484,7 @@ function buildCorals(){
   let count = 0;
   for(const k of kinds){
     if(!k.list.length) continue;
-    const mat = new THREE.MeshLambertMaterial({});
+    const mat = underwaterFade(new THREE.MeshLambertMaterial({}));
     const im = new THREE.InstancedMesh(k.geo, mat, k.list.length);
     k.list.forEach((e, i) => {
       im.setMatrixAt(i, e.m);
@@ -506,7 +531,7 @@ function buildPlants(){
   const gGeo = grassClumpGeo(new THREE.Color(0x1f4a30), new THREE.Color(0x7fae55));
   const lGeo = grassClumpGeo(new THREE.Color(0x46601f), new THREE.Color(0x9cbc52));
   const kGeo = kelpGeo();
-  const gMat = swayMaterial(0.12, 1.1), kMat = swayMaterial(0.35, 0.6), lMat = swayMaterial(0.05, 1.7);
+  const gMat = swayMaterial(0.12, 1.1, true), kMat = swayMaterial(0.35, 0.6, true), lMat = swayMaterial(0.05, 1.7);
   const gDepth = swayDepthMaterial(0.12, 1.1), kDepth = swayDepthMaterial(0.35, 0.6), lDepth = swayDepthMaterial(0.05, 1.7);
   let count = 0;
   const add = (lists, geo, mat, depth) => lists.forEach(list => {
@@ -548,9 +573,8 @@ function scatter(gltfScene, mats, underwater){
   gltfScene.traverse(m => {
     if(!m.isMesh) return;
     let mat = m.material;
-    if(underwater){                      // unter Wasser gedämpft und blaugrün
-      mat = mat.clone();
-      mat.color.lerp(uwTint, 0.55).multiplyScalar(0.8);
+    if(underwater){                      // Sichttiefe wie bei allem unter Wasser
+      mat = underwaterFade(mat.clone());
     }
     const im = new THREE.InstancedMesh(m.geometry, mat, mats.length);
     const tmp = new THREE.Matrix4();
@@ -576,6 +600,15 @@ const ROCK_FILES = [
   NATURE + 'Rock_3_K_Color1.gltf', NATURE + 'Rock_3_M_Color1.gltf',
   NATURE + 'Rock_3_O_Color1.gltf', NATURE + 'Rock_3_Q_Color1.gltf',
 ];
+
+// Platz des Fischerhauses: Ufer der ersten Insel in Richtung Bucht
+const HOUSE_SPOT = (() => {
+  const [cx, cz, r] = [ISLANDS[0][0], ISLANDS[0][1], ISLANDS[0][2]];
+  const dir = new THREE.Vector2(-cx, 20 - cz).normalize();
+  let t = 0;
+  while(t < r + 40 && terrainH(cx + dir.x * t, cz + dir.y * t) > 0.25) t += 0.5;
+  return {x: cx + dir.x * t, z: cz + dir.y * t, dir};
+})();
 
 async function buildNature(){
   const trees = ['Tree_1_A', 'Tree_2_A', 'Tree_3_A', 'Tree_4_A', 'Tree_2_C'];
@@ -614,6 +647,8 @@ async function buildNature(){
       continue;
     }
     if(h < -1.5) continue;
+    // rund um Haus und Steg bleibt es frei
+    if(Math.hypot(x - HOUSE_SPOT.x, z - HOUSE_SPOT.z) < 16) continue;
     const slope = Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h);
     if(h < 1.6){
       if(rnd() > 0.12) continue;
@@ -647,14 +682,7 @@ async function buildNature(){
 // Fischerhaus mit flachem Steg auf einer Insel. Der Steg ist selbst gebaut,
 // damit er niedrig genug liegt, um mit dem Ruderboot anzulegen.
 async function buildIslandHouse(){
-  const [cx, , r] = ISLANDS[0];
-  const cz = ISLANDS[0][1];
-  // Richtung zur Bucht, davor liegt der Steg
-  const dir = new THREE.Vector2(-cx, 20 - cz).normalize();
-  // Uferlinie suchen
-  let t = 0;
-  while(t < r + 40 && meshH(cx + dir.x * t, cz + dir.y * t) > 0.25) t += 0.5;
-  const sx = cx + dir.x * t, sz = cz + dir.y * t;          // Ufer
+  const {x: sx, z: sz, dir} = HOUSE_SPOT;                  // Ufer der Insel
   const wood = new THREE.MeshLambertMaterial({color: 0x8a5a33});
   const woodDark = new THREE.MeshLambertMaterial({color: 0x5c3a22});
   const group = new THREE.Group();
@@ -699,10 +727,10 @@ async function buildIslandHouse(){
 
   // Haus etwas landeinwärts, zum Steg ausgerichtet
   try{
-    const house = (await load(M + 'Quaternius Pirate Kit/glTF/Environment_House1.glb')).scene;
-    fit(house, 21, 'x');      // dreimal so groß wie zuerst
+    const house = (await load(M + 'Quaternius Medieval Village Pack/glTF/Buildings/House_2.glb')).scene;
+    fit(house, 14, 'x');
     shadows(house);
-    const hx = sx - dir.x * 16, hz = sz - dir.y * 16;
+    const hx = sx - dir.x * 8, hz = sz - dir.y * 8;
     house.position.set(hx, meshH(hx, hz) - 0.4, hz);
     house.rotation.y = ang + Math.PI;
     scene.add(house);
@@ -1024,10 +1052,10 @@ async function buildSchools(){
     g.scene.traverse(m => {
       if(!m.isMesh) return;
       const mat = m.material.clone();
-      mat.color.lerp(teal, 0.45);
+      mat.color.lerp(teal, 0.2);
       if(mat.emissive) mat.emissive.setRGB(0, 0, 0);
       mat.roughness = 1; mat.metalness = 0;
-      m.material = mat;
+      m.material = underwaterFade(mat);
     });
     fishProto[n] = g;
   }));
