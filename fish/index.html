@@ -196,16 +196,33 @@ function height(x, z){
 }
 
 const WORLD = 760, SEG = 300;
+// Endgültige Geländehöhe: wie height(), aber zum Weltrand hin auf Tiefwasser
+// abgesenkt. Alles, was auf dem Grund steht, muss diese Funktion benutzen.
+function terrainH(x, z){
+  const e = THREE.MathUtils.smoothstep(Math.max(Math.abs(x), Math.abs(z)) / (WORLD / 2), 0.8, 1.0);
+  return e > 0 ? THREE.MathUtils.lerp(height(x, z), -14, e) : height(x, z);
+}
+
+
+// Höhe der tatsächlich gezeichneten Gitterfläche: zwischen den Stützpunkten liegt
+// sie unter der berechneten Höhe – sonst schweben Bäume auf Kuppen.
+const CELL = WORLD / SEG;
+function meshH(x, z){
+  const gx = Math.floor((x + WORLD / 2) / CELL), gz = Math.floor((z + WORLD / 2) / CELL);
+  const x0 = -WORLD / 2 + gx * CELL, z0 = -WORLD / 2 + gz * CELL;
+  const tx = (x - x0) / CELL, tz = (z - z0) / CELL;
+  const h00 = terrainH(x0, z0), h10 = terrainH(x0 + CELL, z0),
+        h01 = terrainH(x0, z0 + CELL), h11 = terrainH(x0 + CELL, z0 + CELL);
+  return THREE.MathUtils.lerp(THREE.MathUtils.lerp(h00, h10, tx), THREE.MathUtils.lerp(h01, h11, tx), tz);
+}
+
 const tgeo = new THREE.PlaneGeometry(WORLD, WORLD, SEG, SEG).rotateX(-Math.PI / 2);
 {
   const p = tgeo.attributes.position, col = new Float32Array(p.count * 3), c = new THREE.Color();
   const sand = new THREE.Color(0xd8c29a), wetSand = new THREE.Color(0xa99470), weed = new THREE.Color(0x3f6a58),
     deep = new THREE.Color(0x0e2e40), grass = new THREE.Color(0x6f8a46), dark = new THREE.Color(0x3c5a33), rock = new THREE.Color(0x8a7d72);
   for(let i = 0; i < p.count; i++){
-    const x = p.getX(i), z = p.getZ(i);
-    // Zum Rand hin sanft auf Tiefwasser absenken, damit keine Kante sichtbar wird
-    const e = THREE.MathUtils.smoothstep(Math.max(Math.abs(x), Math.abs(z)) / (WORLD / 2), 0.8, 1.0);
-    const h = THREE.MathUtils.lerp(height(x, z), -14, e);
+    const x = p.getX(i), z = p.getZ(i), h = terrainH(x, z);
     p.setY(i, h);
     if(h < -0.2){
       const t = Math.min(1, -h / 12);
@@ -428,7 +445,7 @@ function buildCorals(){
     p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   for(let i = 0; i < 160000; i++){
     const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
-    const h = height(x, z), d = -h;
+    const h = meshH(x, z), d = -h;
     if(d < 1.2 || d > 9) continue;
     // Riffe wachsen in Flecken, gern an Hängen
     if(fbm(x * 0.05 - 21, z * 0.05 + 8) < 0.12) continue;
@@ -468,7 +485,7 @@ function buildPlants(){
   };
   for(let i = 0; i < 420000; i++){
     const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
-    const h = height(x, z), d = -h;
+    const h = meshH(x, z), d = -h;
     if(d < 2 || d > 12) continue;
     const patch = fbm(x * 0.04 + 11, z * 0.04 - 3);
     if(d < 5.5 && patch > -0.08){
@@ -535,9 +552,9 @@ async function buildNature(){
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   for(let i = 0; i < 9000; i++){
     const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
-    const h = height(x, z);
+    const h = meshH(x, z);
     if(h < -1.5 || h > 24) continue;
-    const slope = Math.abs(height(x + 1, z) - h) + Math.abs(height(x, z + 1) - h);
+    const slope = Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h);
     let name;
     if(h < 1.6){ if(rnd() < 0.12) name = rocks[(rnd() * rocks.length) | 0]; else continue; }
     else if(slope > 1.4){ if(rnd() < 0.3) name = rocks[(rnd() * rocks.length) | 0]; else continue; }
@@ -561,7 +578,7 @@ async function buildNature(){
 async function buildDock(){
   const g = (await load(FISHPACK + 'Dock_Long.glb')).scene;
   // Ufer suchen: von der Startposition nach Norden
-  let z = 0; while(height(0, z) < 0.3 && z > -200) z -= 1;
+  let z = 0; while(terrainH(0, z) < 0.3 && z > -200) z -= 1;
   fit(g, 12, 'z');
   shadows(g);
   g.position.set(0, 0.05, z + 4);
@@ -879,7 +896,7 @@ async function buildSchools(){
   // Plätze mit genug Wassertiefe suchen
   for(let tries = 0; spots.length < 16 && tries < 5000; tries++){
     const x = (rnd() - 0.5) * 560, z = (rnd() - 0.5) * 560 + 40;
-    const d = -height(x, z);
+    const d = -terrainH(x, z);
     if(d < 3 || Math.hypot(x, z - 0) < 25) continue;
     if(spots.some(s => Math.hypot(s.x - x, s.z - z) < 45)) continue;
     spots.push({x, z, d});
@@ -1206,7 +1223,7 @@ function updateBoat(dt, t){
   const dir = tmpV.set(-Math.sin(state.heading), 0, -Math.cos(state.heading));
   const next = boat.position.clone().addScaledVector(dir, state.speed * dt);
   const probe = next.clone().addScaledVector(dir, Math.sign(state.speed || 1) * 2);
-  if(height(probe.x, probe.z) > -0.45 || Math.abs(next.x) > WORLD / 2 - 20 || Math.abs(next.z) > WORLD / 2 - 20){
+  if(terrainH(probe.x, probe.z) > -0.45 || Math.abs(next.x) > WORLD / 2 - 20 || Math.abs(next.z) > WORLD / 2 - 20){
     state.speed *= -0.25;           // sanft abprallen
   } else boat.position.copy(next);
   boat.rotation.y = state.heading;
@@ -1448,7 +1465,7 @@ function updateSchools(dt, t){
     // Schwarm wandert langsam um seinen Heimatplatz
     s.wander += dt * 0.05;
     const nx = s.home.x + Math.sin(s.wander) * 10, nz = s.home.y + Math.cos(s.wander * 0.7) * 10;
-    if(height(nx, nz) < -s.depth - 0.8){ s.center.x = nx; s.center.z = nz; }
+    if(terrainH(nx, nz) < -s.depth - 0.8){ s.center.x = nx; s.center.z = nz; }
     // langsam nachwachsen
     if(s.fish.length < s.max){ s.regrow += dt; if(s.regrow > 60){ s.regrow = 0; s.fish.push(makeFish(s, 0)); } }
     const near = Math.hypot(s.center.x - bp.x, s.center.z - bp.z) < 140;
@@ -1498,7 +1515,7 @@ function updateCamera(dt){
   const target = tmpV.copy(boat.position).add(tmpV2.set(0, 1.0, 0));
   const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)).multiplyScalar(cam.dist);
   camera.position.copy(target).add(off);
-  const gh = Math.max(height(camera.position.x, camera.position.z), 0) + 0.6;
+  const gh = Math.max(terrainH(camera.position.x, camera.position.z), 0) + 0.6;
   if(camera.position.y < gh) camera.position.y = gh;
   camera.lookAt(target);
   boatSun.target.position.copy(boat.position);
@@ -1612,7 +1629,7 @@ addEventListener('resize', () => {
 (async () => {
   boat.position.set(0, 0, 10);
   // Startplatz im Wasser sicherstellen
-  while(height(boat.position.x, boat.position.z) > -1.5) boat.position.z += 2;
+  while(terrainH(boat.position.x, boat.position.z) > -1.5) boat.position.z += 2;
   state.heading = 0;
   loadMsg.textContent = 'Das Boot wird zu Wasser gelassen …';
   window.__plants = [buildPlants(), buildCorals()];
