@@ -409,22 +409,6 @@ function branchCoralGeo(){
   g.computeVertexNormals();
   return g;
 }
-// Runde Brocken: verrauschte Kugel. Die KayKit-Felsen sind gestufte
-// Steinplattformen und wirken unter Wasser fehl am Platz.
-function boulderGeo(seed){
-  const g = new THREE.IcosahedronGeometry(1, 2);
-  const p = g.attributes.position, v = new THREE.Vector3();
-  for(let i = 0; i < p.count; i++){
-    v.fromBufferAttribute(p, i);
-    const n = 1 + fbm(v.x * 1.7 + seed, v.z * 1.7 + v.y * 1.1 + seed) * 0.55;
-    p.setXYZ(i, v.x * n, v.y * n * 0.78, v.z * n);
-  }
-  g.computeVertexNormals();
-  return g;
-}
-const BOULDER_GEOS = [boulderGeo(3), boulderGeo(17), boulderGeo(41)];
-const BOULDER_COLORS = [0x7a776f, 0x6a6862, 0x857f75, 0x5e6165];
-
 function brainCoralGeo(){
   const g = new THREE.IcosahedronGeometry(0.35, 2);
   const p = g.attributes.position, v = new THREE.Vector3();
@@ -571,6 +555,7 @@ function scatter(gltfScene, mats, underwater){
     const im = new THREE.InstancedMesh(m.geometry, mat, mats.length);
     const tmp = new THREE.Matrix4();
     mats.forEach((mm, i) => im.setMatrixAt(i, tmp.multiplyMatrices(mm, m.matrixWorld)));
+    im.computeBoundingSphere();      // sonst cullt three die Instanzen weg
     im.castShadow = true; im.receiveShadow = true;
     scene.add(im);
   });
@@ -578,46 +563,66 @@ function scatter(gltfScene, mats, underwater){
 
 const rnd = (() => { let s = 12345; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
 
+// Runde Felsmodelle: Pirate Kit und die Rock_3-Reihe aus dem Forest Nature Pack.
+// Die anderen KayKit-Felsen sind gestufte Plattformen und passen nicht.
+const ROCK_FILES = [
+  M + 'Quaternius Pirate Kit/glTF/Environment_Rock_1.glb',
+  M + 'Quaternius Pirate Kit/glTF/Environment_Rock_2.glb',
+  M + 'Quaternius Pirate Kit/glTF/Environment_Rock_3.glb',
+  M + 'Quaternius Pirate Kit/glTF/Environment_Rock_4.glb',
+  M + 'Quaternius Pirate Kit/glTF/Environment_Rock_5.glb',
+  NATURE + 'Rock_3_C_Color1.gltf', NATURE + 'Rock_3_E_Color1.gltf',
+  NATURE + 'Rock_3_G_Color1.gltf', NATURE + 'Rock_3_I_Color1.gltf',
+  NATURE + 'Rock_3_K_Color1.gltf', NATURE + 'Rock_3_M_Color1.gltf',
+  NATURE + 'Rock_3_O_Color1.gltf', NATURE + 'Rock_3_Q_Color1.gltf',
+];
+
 async function buildNature(){
   const trees = ['Tree_1_A', 'Tree_2_A', 'Tree_3_A', 'Tree_4_A', 'Tree_2_C'];
   const buckets = {};
   for(const n of trees) buckets[n] = [];
-  // Brocken: je Geometrie eine Liste für Land und eine für unter Wasser
-  const boulders = BOULDER_GEOS.map(() => ({land: [], uw: []}));
+  // Felsmodelle vorab laden und ihre Größe messen, um auf Zielgrößen zu normieren
+  const rocks = [];
+  for(const f of ROCK_FILES){
+    try{
+      const g = await load(f);
+      const box = new THREE.Box3().setFromObject(g.scene), size = new THREE.Vector3();
+      box.getSize(size);
+      rocks.push({scene: g.scene, unit: Math.max(size.x, size.y, size.z), land: [], uw: []});
+    } catch(e){ console.warn('Fels fehlt', f, e); }
+  }
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(),
     p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), axis = new THREE.Vector3();
-  const putBoulder = (list, x, z, y, sc) => {
-    p.set(x, y, z);
-    axis.set(rnd() - 0.5, 1, rnd() - 0.5).normalize();      // leicht verkippt
+  const putRock = (r, list, x, z, h, target, sink) => {
+    const k = target / r.unit;
+    p.set(x, h - target * sink, z);
+    axis.set((rnd() - 0.5) * 0.35, 1, (rnd() - 0.5) * 0.35).normalize();   // leicht verkippt
     q.setFromAxisAngle(axis, rnd() * 6.28);
-    s.set(sc * (0.8 + rnd() * 0.5), sc * (0.7 + rnd() * 0.5), sc * (0.8 + rnd() * 0.5));
+    s.set(k * (0.85 + rnd() * 0.35), k * (0.8 + rnd() * 0.4), k * (0.85 + rnd() * 0.35));
     list.push(m.compose(p, q, s).clone());
   };
   for(let i = 0; i < 9000; i++){
     const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
     const h = meshH(x, z);
-    if(h > 24) continue;
-    const gi = (rnd() * BOULDER_GEOS.length) | 0;
+    if(h > 24 || !rocks.length) continue;
+    const r = rocks[(rnd() * rocks.length) | 0];
     if(h < -1.2){
       // große Brocken auf dem Grund: selten, fleckenweise
       if(h < -13 || rnd() > 0.09) continue;
       if(fbm(x * 0.035 + 61, z * 0.035 - 12) < 0.02) continue;
-      const sc = 0.9 + rnd() * 2.6;
-      putBoulder(boulders[gi].uw, x, z, h + sc * 0.35, sc);
+      putRock(r, r.uw, x, z, h, 1.6 + rnd() * 3.0, 0.3);
       continue;
     }
     if(h < -1.5) continue;
     const slope = Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h);
     if(h < 1.6){
       if(rnd() > 0.12) continue;
-      const sc = 0.3 + rnd() * 0.7;
-      putBoulder(boulders[gi].land, x, z, h + sc * 0.3, sc);
+      putRock(r, r.land, x, z, h, 0.4 + rnd() * 0.9, 0.25);
       continue;
     }
     if(slope > 1.4){
       if(rnd() > 0.3) continue;
-      const sc = 0.4 + rnd() * 1.1;
-      putBoulder(boulders[gi].land, x, z, h + sc * 0.3, sc);
+      putRock(r, r.land, x, z, h, 0.5 + rnd() * 1.3, 0.25);
       continue;
     }
     if(fbm(x * 0.02 + 50, z * 0.02) > -0.08 || rnd() < 0.15){
@@ -628,25 +633,10 @@ async function buildNature(){
       buckets[name].push(m.compose(p, q, s).clone());
     }
   }
-  // Brocken einhängen
-  const col = new THREE.Color(), uwTintC = new THREE.Color(0x1d5560);
-  BOULDER_GEOS.forEach((geo, gi) => {
-    for(const kind of ['land', 'uw']){
-      const list = boulders[gi][kind];
-      if(!list.length) continue;
-      const mat = new THREE.MeshLambertMaterial({});
-      const im = new THREE.InstancedMesh(geo, mat, list.length);
-      list.forEach((mm, i) => {
-        im.setMatrixAt(i, mm);
-        col.setHex(BOULDER_COLORS[(i + gi) % BOULDER_COLORS.length]);
-        if(kind === 'uw') col.lerp(uwTintC, 0.6).multiplyScalar(0.6);
-        im.setColorAt(i, col);
-      });
-      im.computeBoundingSphere();
-      im.castShadow = true; im.receiveShadow = true;
-      scene.add(im);
-    }
-  });
+  for(const r of rocks){
+    if(r.land.length) scatter(r.scene, r.land, false);
+    if(r.uw.length) scatter(r.scene, r.uw, true);
+  }
   await Promise.all(Object.keys(buckets).map(async n => {
     if(!buckets[n].length) return;
     try{ scatter((await load(NATURE + n + '_Color1.gltf')).scene, buckets[n]); }
@@ -654,16 +644,85 @@ async function buildNature(){
   }));
 }
 
-// Bootssteg an der Nordküste
-async function buildDock(){
-  const g = (await load(FISHPACK + 'Dock_Long.glb')).scene;
-  // Ufer suchen: von der Startposition nach Norden
-  let z = 0; while(terrainH(0, z) < 0.3 && z > -200) z -= 1;
-  fit(g, 12, 'z');
-  shadows(g);
-  g.position.set(0, 0.05, z + 4);
-  scene.add(g);
-  return g;
+// Fischerhaus mit flachem Steg auf einer Insel. Der Steg ist selbst gebaut,
+// damit er niedrig genug liegt, um mit dem Ruderboot anzulegen.
+async function buildIslandHouse(){
+  const [cx, , r] = ISLANDS[0];
+  const cz = ISLANDS[0][1];
+  // Richtung zur Bucht, davor liegt der Steg
+  const dir = new THREE.Vector2(-cx, 20 - cz).normalize();
+  // Uferlinie suchen
+  let t = 0;
+  while(t < r + 40 && meshH(cx + dir.x * t, cz + dir.y * t) > 0.25) t += 0.5;
+  const sx = cx + dir.x * t, sz = cz + dir.y * t;          // Ufer
+  const wood = new THREE.MeshLambertMaterial({color: 0x8a5a33});
+  const woodDark = new THREE.MeshLambertMaterial({color: 0x5c3a22});
+  const group = new THREE.Group();
+
+  const DECK_Y = 0.42, LEN = 12, WIDTH = 1.7;
+  const ang = Math.atan2(dir.x, dir.y);
+  group.position.set(sx, 0, sz);
+  group.rotation.y = ang;
+  // Planken quer, mit kleinen Fugen
+  for(let i = 0; i < 24; i++){
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(WIDTH, 0.07, 0.42), i % 3 ? wood : woodDark);
+    plank.position.set(0, DECK_Y, 0.5 + i * 0.48);
+    shadows(plank);
+    group.add(plank);
+  }
+  // Längsträger und Pfosten bis zum Grund
+  for(const sxSide of [-1, 1]){
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, LEN), woodDark);
+    beam.position.set(sxSide * (WIDTH / 2 - 0.1), DECK_Y - 0.09, 0.5 + LEN / 2 - 0.3);
+    shadows(beam);
+    group.add(beam);
+    for(let i = 0; i <= 5; i++){
+      const zz = 0.8 + i * 2.2;
+      const gx = sx + dir.x * zz + dir.y * sxSide * (WIDTH / 2 - 0.1);
+      const gz = sz + dir.y * zz - dir.x * sxSide * (WIDTH / 2 - 0.1);
+      const ground = meshH(gx, gz);
+      const h = DECK_Y - ground + 0.2;
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.085, h, 7), woodDark);
+      post.position.set(sxSide * (WIDTH / 2 - 0.1), DECK_Y - h / 2, zz);
+      shadows(post);
+      group.add(post);
+    }
+  }
+  // zwei Pfosten zum Festmachen
+  for(const sxSide of [-1, 1]){
+    const bol = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.55, 7), wood);
+    bol.position.set(sxSide * (WIDTH / 2 + 0.06), DECK_Y + 0.2, 0.5 + LEN - 1.2);
+    shadows(bol);
+    group.add(bol);
+  }
+  scene.add(group);
+
+  // Haus etwas landeinwärts, zum Steg ausgerichtet
+  try{
+    const house = (await load(M + 'Quaternius Pirate Kit/glTF/Environment_House1.glb')).scene;
+    fit(house, 21, 'x');      // dreimal so groß wie zuerst
+    shadows(house);
+    const hx = sx - dir.x * 16, hz = sz - dir.y * 16;
+    house.position.set(hx, meshH(hx, hz) - 0.4, hz);
+    house.rotation.y = ang + Math.PI;
+    scene.add(house);
+  } catch(e){ console.warn('Haus fehlt', e); }
+
+  // ein paar Fässer am Ufer
+  try{
+    const barrel = (await load(M + 'Quaternius Pirate Kit/glTF/Prop_Barrel.glb')).scene;
+    for(let i = 0; i < 3; i++){
+      const b = barrel.clone();
+      fit(b, 0.7, 'y');
+      shadows(b);
+      const bx = sx - dir.x * (2.5 + i * 0.9) + dir.y * (1.6 - i * 0.5);
+      const bz = sz - dir.y * (2.5 + i * 0.9) - dir.x * (1.6 - i * 0.5);
+      b.position.set(bx, meshH(bx, bz) - 0.05, bz);
+      b.rotation.y = i * 1.3;
+      scene.add(b);
+    }
+  } catch(e){ console.warn('Fass fehlt', e); }
+  return {x: sx, z: sz, dir};
 }
 
 // ---------- Boot und Figur ----------
@@ -1715,7 +1774,7 @@ addEventListener('resize', () => {
   window.__plants = [buildPlants(), buildCorals()];
   await buildBoat();
   loadMsg.textContent = 'Die Fische versammeln sich …';
-  await Promise.all([buildSchools(), buildNature(), buildDock().catch(e => console.warn(e))]);
+  await Promise.all([buildSchools(), buildNature(), buildIslandHouse().catch(e => console.warn(e))]);
   renderBucket();
   state.mode = 'fish';
   leaveFishing();
