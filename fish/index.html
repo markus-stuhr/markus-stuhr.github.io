@@ -110,9 +110,12 @@ const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 20
 const SUN_DIR = new THREE.Vector3(-0.8, 0.13, -0.55).normalize();
 const sun = new THREE.DirectionalLight(0xffb98a, 2.6);
 sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
-Object.assign(sun.shadow.camera, {left:-8, right:8, top:8, bottom:-8, near:1, far:80});
-sun.shadow.bias = -0.0008;
+sun.shadow.mapSize.set(4096, 4096);
+// Schattenbereich folgt dem Boot; die tiefe Sonne wirft lange Schatten
+const SHADOW_R = 70;
+Object.assign(sun.shadow.camera, {left:-SHADOW_R, right:SHADOW_R, top:SHADOW_R, bottom:-SHADOW_R, near:1, far:400});
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 scene.add(new THREE.HemisphereLight(0xffc4b0, 0x3b4a70, 0.9));
 
@@ -252,6 +255,20 @@ const water = new THREE.Mesh(
   }));
 water.renderOrder = 2;
 scene.add(water);
+// Der Wasser-Shader kennt keine Schatten – eine ShadowMaterial-Fläche knapp darüber zeigt sie
+const waterShadow = new THREE.Mesh(new THREE.PlaneGeometry(SHADOW_R * 2, SHADOW_R * 2).rotateX(-Math.PI / 2),
+  new THREE.ShadowMaterial({color: 0x1a0f2a, opacity: 0.32, depthWrite: false}));
+// zum Rand des Schattenbereichs weich ausblenden
+waterShadow.material.onBeforeCompile = (sh) => {
+  sh.vertexShader = 'varying vec2 vPos;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvPos = position.xz;');
+  sh.fragmentShader = 'varying vec2 vPos;\n' + sh.fragmentShader.replace(
+    'opacity * ( 1.0 - getShadowMask() )',
+    'opacity * ( 1.0 - getShadowMask() ) * (1.0 - smoothstep(' + (SHADOW_R * 0.55).toFixed(1) + ', ' + (SHADOW_R * 0.95).toFixed(1) + ', length(vPos)))');
+};
+waterShadow.position.y = 0.04;
+waterShadow.receiveShadow = true;
+waterShadow.renderOrder = 3;
+scene.add(waterShadow);
 
 // ---------- Laden ----------
 const loader = new GLTFLoader();
@@ -276,7 +293,7 @@ function scatter(gltfScene, mats){
     const im = new THREE.InstancedMesh(m.geometry, m.material, mats.length);
     const tmp = new THREE.Matrix4();
     mats.forEach((mm, i) => im.setMatrixAt(i, tmp.multiplyMatrices(mm, m.matrixWorld)));
-    im.castShadow = false; im.receiveShadow = true;
+    im.castShadow = true; im.receiveShadow = true;
     scene.add(im);
   });
 }
@@ -529,6 +546,8 @@ let pointerDown = false, holdReel = false;
 const hintEl = document.getElementById('hint');
 const setHint = (s) => { hintEl.innerHTML = s; hintEl.style.opacity = s ? 1 : 0; };
 const isTouch = matchMedia('(pointer:coarse)').matches;
+let usingPad = false;
+const pick = (touch, mouse, pad) => usingPad ? pad : isTouch ? touch : mouse;
 
 function toast(big, small, ms = 2600){
   const t = document.getElementById('toast');
@@ -546,7 +565,7 @@ function enterFishing(){
   oars.forEach(o => o.visible = false);
   play('Fishing_Idle', {fade: 0.6});
   document.getElementById('modeBtn').textContent = 'Rudern (F)';
-  setHint(isTouch ? 'Tippe aufs Wasser, um auszuwerfen' : 'Klicke aufs Wasser, um auszuwerfen · F zurück zum Rudern');
+  setHint(pick('Tippe aufs Wasser, um auszuwerfen', 'Klicke aufs Wasser, um auszuwerfen · F zurück zum Rudern', 'Linker Stick zielen · Ⓐ auswerfen · Ⓨ zurück zum Rudern'));
 }
 function leaveFishing(){
   if(state.mode !== 'fish') return;
@@ -558,7 +577,7 @@ function leaveFishing(){
   document.getElementById('fight').style.display = 'none';
   play('Sit_Floor_Idle', {fade: 0.6});
   document.getElementById('modeBtn').textContent = 'Angeln (F)';
-  setHint(isTouch ? 'Joystick zum Rudern · Angeln, wenn du Fische siehst' : 'W A S D rudern · F angeln · Ziehen dreht die Kamera');
+  setHint(pick('Joystick zum Rudern · Angeln, wenn du Fische siehst', 'W A S D rudern · F angeln · Ziehen dreht die Kamera', 'Linker Stick rudern · Ⓨ angeln · Rechter Stick dreht die Kamera'));
 }
 
 function cast(target){
@@ -586,7 +605,7 @@ function hookFish(){
   state.tension = 0.25; state.progress = 0.05; state.surge = 0;
   document.getElementById('fight').style.display = 'block';
   play('Fishing_Struggling', {fade: 0.15});
-  setHint(isTouch ? 'Halten zum Einholen – nicht zu fest!' : 'Maustaste oder Leertaste halten zum Einholen – Spannung beachten!');
+  setHint(pick('Halten zum Einholen – nicht zu fest!', 'Maustaste oder Leertaste halten zum Einholen – Spannung beachten!', 'Ⓐ oder RT halten zum Einholen – Spannung beachten!'));
   sfx('splash');
 }
 function releaseFish(){
@@ -602,7 +621,7 @@ function missed(msg, sub){
   document.getElementById('fight').style.display = 'none';
   state.phase = 'idle'; bobber.visible = false; line.visible = false;
   play('Fishing_Idle', {fade: 0.4});
-  setHint(isTouch ? 'Tippe aufs Wasser, um erneut auszuwerfen' : 'Klicke aufs Wasser, um erneut auszuwerfen');
+  setHint(pick('Tippe aufs Wasser, um erneut auszuwerfen', 'Klicke aufs Wasser, um erneut auszuwerfen', 'Linker Stick zielen · Ⓐ erneut auswerfen'));
 }
 function landFish(){
   const f = state.fish;
@@ -647,6 +666,7 @@ function waterPoint(e){
 const cv = renderer.domElement;
 cv.addEventListener('pointerdown', e => {
   startAudio();
+  usingPad = false;
   drag = {x: e.clientX, y: e.clientY, moved: false, id: e.pointerId};
   pointerDown = true;
   if(state.mode === 'fish'){
@@ -758,8 +778,8 @@ const tmpV = new THREE.Vector3(), tmpV2 = new THREE.Vector3();
 function updateBoat(dt, t){
   let fwd = 0, turn = 0;
   if(state.mode === 'row'){
-    fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y;
-    turn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - joy.x;
+    fwd = (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y - pad.y;
+    turn = (keys.KeyA || keys.ArrowLeft ? 1 : 0) - (keys.KeyD || keys.ArrowRight ? 1 : 0) - joy.x - pad.x;
     fwd = THREE.MathUtils.clamp(fwd, -1, 1); turn = THREE.MathUtils.clamp(turn, -1, 1);
   }
   state.speed += (fwd * (fwd > 0 ? 4.2 : 1.8) - state.speed) * dt * (fwd ? 0.6 : 0.35);
@@ -831,7 +851,7 @@ function updateFishing(dt, t){
         sfx('splash');
         play('Fishing_Idle', {fade: 0.5});
         planBite();
-        setHint(isTouch ? 'Warten … Tippen holt die Schnur ein' : 'Warten … Klick oder Leertaste holt die Schnur ein');
+        setHint(pick('Warten … Tippen holt die Schnur ein', 'Warten … Klick oder Leertaste holt die Schnur ein', 'Warten … Ⓑ holt die Schnur ein'));
       }
       break;
     }
@@ -851,7 +871,7 @@ function updateFishing(dt, t){
         play('Fishing_Bite', {once: true, fade: 0.15});
         spawnRing(state.castTo.x, state.castTo.z, 0.8, 1);
         sfx('splash');
-        setHint('<b>Biss!</b> ' + (isTouch ? 'Jetzt tippen!' : 'Jetzt klicken oder Leertaste!'));
+        setHint('<b>Biss!</b> ' + (pick('Jetzt tippen!', 'Jetzt klicken oder Leertaste!', 'Jetzt Ⓐ drücken!')));
       }
       if(!state.fish && state.t > state.biteAt) planBite(true);
       break;
@@ -868,7 +888,7 @@ function updateFishing(dt, t){
       state.surge -= dt;
       if(state.surge < 0) state.surge = 0.6 + Math.random() * 1.6;
       const pull = state.surge > 0.35 ? 0 : (0.9 + f.power * 0.6);
-      if(holdReel){
+      if(holdReel || pad.hold){
         state.tension += dt * (0.32 + pull * 0.55);
         state.progress += dt * (0.2 / f.power) * (pull ? 0.2 : 1);
         play('Fishing_Reeling', {fade: 0.15});
@@ -919,7 +939,7 @@ function updateFishing(dt, t){
         state.phase = 'idle';
         play(state.bucket.length === 10 ? 'Cheering' : 'Fishing_Idle', {fade: 0.4});
         setHint(state.bucket.length >= 10 ? 'Der Eimer ist voll. Ein schöner Abend.' :
-          (isTouch ? 'Tippe aufs Wasser, um erneut auszuwerfen' : 'Klicke aufs Wasser, um erneut auszuwerfen'));
+          (pick('Tippe aufs Wasser, um erneut auszuwerfen', 'Klicke aufs Wasser, um erneut auszuwerfen', 'Linker Stick zielen · Ⓐ erneut auswerfen')));
       }
       break;
     }
@@ -931,13 +951,13 @@ function updateFishing(dt, t){
         releaseFish();
         state.phase = 'idle'; bobber.visible = false; line.visible = false;
         play('Fishing_Idle', {fade: 0.3});
-        setHint(isTouch ? 'Tippe aufs Wasser, um auszuwerfen' : 'Klicke aufs Wasser, um auszuwerfen');
+        setHint(pick('Tippe aufs Wasser, um auszuwerfen', 'Klicke aufs Wasser, um auszuwerfen', 'Linker Stick zielen · Ⓐ auswerfen'));
       }
       break;
     }
   }
 
-  aimRing.visible = aimRing.visible && (state.phase === 'idle' || state.phase === 'waiting') && !isTouch;
+  aimRing.visible = aimRing.visible && (state.phase === 'idle' || state.phase === 'waiting') && (!isTouch || usingPad);
   aimRing.material.opacity = 0.35 + Math.sin(t * 3) * 0.2;
 
   // Schnur: durchhängend beim Warten, gespannt im Drill
@@ -1050,16 +1070,97 @@ function updateCamera(dt){
   const gh = Math.max(height(camera.position.x, camera.position.z), 0) + 0.6;
   if(camera.position.y < gh) camera.position.y = gh;
   camera.lookAt(target);
-  sun.position.copy(boat.position).addScaledVector(SUN_DIR, 40);
-  sun.target.position.copy(boat.position);
+  // Texelraster einrasten, damit Schattenkanten beim Fahren nicht flimmern
+  const snap = SHADOW_R * 2 / 4096;
+  const cx = Math.round(boat.position.x / snap) * snap, cz = Math.round(boat.position.z / snap) * snap;
+  sun.target.position.set(cx, 0, cz);
+  sun.position.set(cx, 0, cz).addScaledVector(SUN_DIR, 200);
+  waterShadow.position.x = cx; waterShadow.position.z = cz;
   sky.position.copy(camera.position);
   water.position.x = Math.round(camera.position.x / 50) * 50;
   water.position.z = Math.round(camera.position.z / 50) * 50;
 }
 
+// ---------- Controller (Gamepad API, Standard-Layout) ----------
+// Linker Stick / D-Pad: rudern bzw. zielen · Rechter Stick: Kamera · LB/RB: Zoom
+// Ⓐ angeln, auswerfen, anschlagen, einholen (halten) · RT einholen
+// Ⓑ Schnur einholen / zurück zum Rudern · Ⓨ Modus wechseln
+const pad = {x: 0, y: 0, prev: [], aim: new THREE.Vector3(0, 0, 8), hold: false, bit: false};
+const DEAD = 0.18;
+const dz = (v) => Math.abs(v) < DEAD ? 0 : (v - Math.sign(v) * DEAD) / (1 - DEAD);
+function rumble(gp, ms, strong){
+  gp.vibrationActuator?.playEffect?.('dual-rumble', {duration: ms, strongMagnitude: strong, weakMagnitude: strong * 0.6})?.catch?.(() => {});
+}
+addEventListener('gamepadconnected', () => toast('Controller verbunden', 'Ⓨ angeln · Ⓐ auswerfen', 2000));
+function updatePad(dt){
+  const gp = [...(navigator.getGamepads?.() || [])].find(g => g && g.connected);
+  pad.x = pad.y = 0; pad.hold = false;
+  if(!gp) return;
+  const b = (i) => !!gp.buttons[i]?.pressed;
+  const down = (i) => b(i) && !pad.prev[i];
+  const ax = gp.axes;
+  let lx = dz(ax[0] || 0), ly = dz(ax[1] || 0);
+  if(b(14)) lx = -1; if(b(15)) lx = 1; if(b(12)) ly = -1; if(b(13)) ly = 1;
+  const rx = dz(ax[2] || 0), ry = dz(ax[3] || 0);
+  const any = lx || ly || rx || ry || gp.buttons.some(x => x.pressed);
+  if(any){
+    startAudio();
+    if(!usingPad){
+      usingPad = true;
+      stick.style.display = 'none';
+      if(state.phase === 'idle') setHint(state.mode === 'fish' ? PAD_HINT_FISH : PAD_HINT_ROW);
+    }
+  }
+
+  if(rx || ry){
+    cam.yaw -= rx * dt * 2.2;
+    cam.pitch = THREE.MathUtils.clamp(cam.pitch + ry * dt * 1.2, 0.08, 1.2);
+    cam.lastDrag = clock.elapsedTime;
+  }
+  if(b(4)) cam.dist = Math.min(40, cam.dist * (1 + dt * 1.5));
+  if(b(5)) cam.dist = Math.max(4, cam.dist * (1 - dt * 1.5));
+
+  if(down(3)) state.mode === 'fish' ? leaveFishing() : enterFishing();
+
+  if(state.mode === 'row'){
+    pad.x = lx; pad.y = ly;
+    if(down(0)) enterFishing();
+  } else {
+    // Zielen: Stick verschiebt den Zielpunkt relativ zur Blickrichtung der Kamera
+    if(state.phase === 'idle' || state.phase === 'waiting'){
+      const fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw);
+      pad.aim.x += (-fz * lx - fx * ly) * dt * 12;
+      pad.aim.z += ( fx * lx - fz * ly) * dt * 12;
+      const len = Math.hypot(pad.aim.x, pad.aim.z) || 1;
+      const k = THREE.MathUtils.clamp(len, 3, 22) / len;
+      pad.aim.x *= k; pad.aim.z *= k;
+      if(state.phase === 'idle' && usingPad){
+        aimRing.position.set(boat.position.x + pad.aim.x, 0.07, boat.position.z + pad.aim.z);
+        aimRing.visible = true;
+      }
+    }
+    if(down(0)){
+      if(state.phase === 'idle') cast(new THREE.Vector3(boat.position.x + pad.aim.x, 0, boat.position.z + pad.aim.z));
+      else if(state.phase === 'bite') hookFish();
+    }
+    if(down(1)){
+      if(state.phase === 'waiting') reelIn();
+      else if(state.phase === 'idle') leaveFishing();
+    }
+    pad.hold = state.phase === 'fight' && (b(0) || (gp.buttons[7]?.value || 0) > 0.3);
+    if(state.phase === 'bite' && !pad.bit){ rumble(gp, 300, 0.8); pad.bit = true; }
+    if(state.phase !== 'bite') pad.bit = false;
+    if(pad.hold && state.tension > 0.8) rumble(gp, 60, Math.min(1, (state.tension - 0.8) * 3));
+  }
+  pad.prev = gp.buttons.map(x => x.pressed);
+}
+const PAD_HINT_ROW = 'Linker Stick rudern · Ⓨ angeln · Rechter Stick dreht die Kamera';
+const PAD_HINT_FISH = 'Linker Stick zielen · Ⓐ auswerfen · Ⓨ zurück zum Rudern';
+
 function loop(){
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   waterUniforms.time.value = t;
+  updatePad(dt);
   updateBoat(dt, t);
   if(mixer) mixer.update(dt);
   updateFishing(dt, t);
