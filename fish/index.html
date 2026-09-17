@@ -107,12 +107,12 @@ scene.fog = new THREE.FogExp2(FOG, 0.0032);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 2000);
 
 // Sonne tief im Westen
-const SUN_DIR = new THREE.Vector3(-0.8, 0.13, -0.55).normalize();
+const SUN_DIR = new THREE.Vector3(-0.8, 0.34, -0.55).normalize();
 const sun = new THREE.DirectionalLight(0xffb98a, 2.6);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
 // Schattenbereich folgt dem Boot; die tiefe Sonne wirft lange Schatten
-const SHADOW_R = 70;
+const SHADOW_R = 50;
 Object.assign(sun.shadow.camera, {left:-SHADOW_R, right:SHADOW_R, top:SHADOW_R, bottom:-SHADOW_R, near:1, far:400});
 sun.shadow.bias = -0.0004;
 sun.shadow.normalBias = 0.04;
