@@ -355,7 +355,7 @@ function blade(w, segs, taper, bend){
   }
   return g;
 }
-function seagrassGeo(){
+function grassClumpGeo(base, tip){
   const parts = [];
   for(let i = 0; i < 6; i++){
     const b = blade(0.05, 4, 0.85, 0.15 + Math.random() * 0.2);
@@ -366,7 +366,7 @@ function seagrassGeo(){
   }
   const g = mergeGeometries(parts);
   g.computeVertexNormals();
-  return colorRamp(g, new THREE.Color(0x1f4a30), new THREE.Color(0x7fae55));
+  return colorRamp(g, base, tip);
 }
 function kelpGeo(){
   // gewelltes Band, zwei Stränge über Kreuz
@@ -447,8 +447,9 @@ function buildCorals(){
     const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
     const h = meshH(x, z), d = -h;
     if(d < 1.2 || d > 9) continue;
-    // Riffe wachsen in Flecken, gern an Hängen
+    // Korallen sind selten: nur in wenigen Flecken und dort einzeln verteilt
     if(fbm(x * 0.05 - 21, z * 0.05 + 8) < 0.12) continue;
+    if(rnd() > 0.09) continue;
     const k = kinds[(rnd() * kinds.length) | 0];
     const s = k.scale[0] + rnd() * (k.scale[1] - k.scale[0]);
     p.set(x, h - 0.04, z); q.setFromAxisAngle(up, rnd() * 6.28); sc.setScalar(s);
@@ -477,6 +478,7 @@ function buildPlants(){
   const CH = 8, cell = WORLD / CH;
   const grass = Array.from({length: CH * CH}, () => []);
   const kelp = Array.from({length: CH * CH}, () => []);
+  const land = Array.from({length: CH * CH}, () => []);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   const put = (arr, x, z, y, s, h) => {
     const ci = Math.min(CH - 1, Math.floor((x + WORLD / 2) / cell)) + Math.min(CH - 1, Math.floor((z + WORLD / 2) / cell)) * CH;
@@ -486,17 +488,26 @@ function buildPlants(){
   for(let i = 0; i < 420000; i++){
     const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
     const h = meshH(x, z), d = -h;
-    if(d < 2 || d > 12) continue;
     const patch = fbm(x * 0.04 + 11, z * 0.04 - 3);
+    if(h > 1.4 && h < 22){
+      // Grasbüschel an Land, fleckenweise auf flachem Grund
+      const slope = Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h);
+      if(slope < 1.2 && fbm(x * 0.03 - 31, z * 0.03 + 17) > 0.06)
+        put(land, x, z, h - 0.03, 1 + rnd() * 1.1, 0.3 + rnd() * 0.45);
+      continue;
+    }
+    if(d < 2 || d > 12) continue;
     if(d < 5.5 && patch > -0.08){
       put(grass, x, z, h - 0.05, 1.2 + rnd() * 1.3, Math.min(d - 0.5, 0.5 + rnd() * 1.2));
     } else if(d > 3.5 && patch > 0.08 && rnd() < 0.35){
       put(kelp, x, z, h - 0.1, 1 + rnd() * 0.8, Math.min(d - 0.8, d * (0.45 + rnd() * 0.4)));
     }
   }
-  const gGeo = seagrassGeo(), kGeo = kelpGeo();
-  const gMat = swayMaterial(0.12, 1.1), kMat = swayMaterial(0.35, 0.6);
-  const gDepth = swayDepthMaterial(0.12, 1.1), kDepth = swayDepthMaterial(0.35, 0.6);
+  const gGeo = grassClumpGeo(new THREE.Color(0x1f4a30), new THREE.Color(0x7fae55));
+  const lGeo = grassClumpGeo(new THREE.Color(0x46601f), new THREE.Color(0x9cbc52));
+  const kGeo = kelpGeo();
+  const gMat = swayMaterial(0.12, 1.1), kMat = swayMaterial(0.35, 0.6), lMat = swayMaterial(0.05, 1.7);
+  const gDepth = swayDepthMaterial(0.12, 1.1), kDepth = swayDepthMaterial(0.35, 0.6), lDepth = swayDepthMaterial(0.05, 1.7);
   let count = 0;
   const add = (lists, geo, mat, depth) => lists.forEach(list => {
     if(!list.length) return;
@@ -511,6 +522,7 @@ function buildPlants(){
   });
   add(grass, gGeo, gMat, gDepth);
   add(kelp, kGeo, kMat, kDepth);
+  add(land, lGeo, lMat, lDepth);
   return count;
 }
 
