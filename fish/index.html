@@ -202,7 +202,10 @@ const tgeo = new THREE.PlaneGeometry(WORLD, WORLD, SEG, SEG).rotateX(-Math.PI / 
   const sand = new THREE.Color(0xd8c29a), wetSand = new THREE.Color(0xa99470), weed = new THREE.Color(0x3f6a58),
     deep = new THREE.Color(0x0e2e40), grass = new THREE.Color(0x6f8a46), dark = new THREE.Color(0x3c5a33), rock = new THREE.Color(0x8a7d72);
   for(let i = 0; i < p.count; i++){
-    const x = p.getX(i), z = p.getZ(i), h = height(x, z);
+    const x = p.getX(i), z = p.getZ(i);
+    // Zum Rand hin sanft auf Tiefwasser absenken, damit keine Kante sichtbar wird
+    const e = THREE.MathUtils.smoothstep(Math.max(Math.abs(x), Math.abs(z)) / (WORLD / 2), 0.8, 1.0);
+    const h = THREE.MathUtils.lerp(height(x, z), -14, e);
     p.setY(i, h);
     if(h < -0.2){
       const t = Math.min(1, -h / 12);
@@ -220,6 +223,11 @@ const tgeo = new THREE.PlaneGeometry(WORLD, WORLD, SEG, SEG).rotateX(-Math.PI / 
   tgeo.setAttribute('color', new THREE.BufferAttribute(col, 3));
   tgeo.computeVertexNormals();
 }
+// Tiefsee: eine große flache Fläche auf Bodenniveau, damit der Grund nirgends endet
+const abyss = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000).rotateX(-Math.PI / 2),
+  new THREE.MeshLambertMaterial({color: 0x0c2735}));
+abyss.position.y = -14.05;
+scene.add(abyss);
 const terrain = new THREE.Mesh(tgeo, new THREE.MeshLambertMaterial({vertexColors:true}));
 terrain.receiveShadow = true;
 terrain.castShadow = true;           // Hügel und Inseln werfen selbst Schatten
