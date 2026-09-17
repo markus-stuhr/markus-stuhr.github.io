@@ -409,6 +409,22 @@ function branchCoralGeo(){
   g.computeVertexNormals();
   return g;
 }
+// Runde Brocken: verrauschte Kugel. Die KayKit-Felsen sind gestufte
+// Steinplattformen und wirken unter Wasser fehl am Platz.
+function boulderGeo(seed){
+  const g = new THREE.IcosahedronGeometry(1, 2);
+  const p = g.attributes.position, v = new THREE.Vector3();
+  for(let i = 0; i < p.count; i++){
+    v.fromBufferAttribute(p, i);
+    const n = 1 + fbm(v.x * 1.7 + seed, v.z * 1.7 + v.y * 1.1 + seed) * 0.55;
+    p.setXYZ(i, v.x * n, v.y * n * 0.78, v.z * n);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+const BOULDER_GEOS = [boulderGeo(3), boulderGeo(17), boulderGeo(41)];
+const BOULDER_COLORS = [0x7a776f, 0x6a6862, 0x857f75, 0x5e6165];
+
 function brainCoralGeo(){
   const g = new THREE.IcosahedronGeometry(0.35, 2);
   const p = g.attributes.position, v = new THREE.Vector3();
@@ -542,11 +558,17 @@ function fit(obj, size, axis = 'y'){
 function shadows(o, cast = true){ o.traverse(m => { if(m.isMesh){ m.castShadow = cast; m.receiveShadow = true; } }); }
 
 // Viele gleiche Modelle als InstancedMesh (pro Teilmesh eines)
-function scatter(gltfScene, mats){
+const uwTint = new THREE.Color(0x1d5560);
+function scatter(gltfScene, mats, underwater){
   gltfScene.updateMatrixWorld(true);
   gltfScene.traverse(m => {
     if(!m.isMesh) return;
-    const im = new THREE.InstancedMesh(m.geometry, m.material, mats.length);
+    let mat = m.material;
+    if(underwater){                      // unter Wasser gedämpft und blaugrün
+      mat = mat.clone();
+      mat.color.lerp(uwTint, 0.55).multiplyScalar(0.8);
+    }
+    const im = new THREE.InstancedMesh(m.geometry, mat, mats.length);
     const tmp = new THREE.Matrix4();
     mats.forEach((mm, i) => im.setMatrixAt(i, tmp.multiplyMatrices(mm, m.matrixWorld)));
     im.castShadow = true; im.receiveShadow = true;
@@ -558,27 +580,73 @@ const rnd = (() => { let s = 12345; return () => (s = (s * 16807) % 2147483647) 
 
 async function buildNature(){
   const trees = ['Tree_1_A', 'Tree_2_A', 'Tree_3_A', 'Tree_4_A', 'Tree_2_C'];
-  const rocks = ['Rock_1_A', 'Rock_2_A', 'Rock_3_A', 'Rock_1_F'];
   const buckets = {};
-  for(const n of [...trees, ...rocks]) buckets[n] = [];
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+  for(const n of trees) buckets[n] = [];
+  // Brocken: je Geometrie eine Liste für Land und eine für unter Wasser
+  const boulders = BOULDER_GEOS.map(() => ({land: [], uw: []}));
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(),
+    p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), axis = new THREE.Vector3();
+  const putBoulder = (list, x, z, y, sc) => {
+    p.set(x, y, z);
+    axis.set(rnd() - 0.5, 1, rnd() - 0.5).normalize();      // leicht verkippt
+    q.setFromAxisAngle(axis, rnd() * 6.28);
+    s.set(sc * (0.8 + rnd() * 0.5), sc * (0.7 + rnd() * 0.5), sc * (0.8 + rnd() * 0.5));
+    list.push(m.compose(p, q, s).clone());
+  };
   for(let i = 0; i < 9000; i++){
     const x = (rnd() - 0.5) * WORLD * 0.96, z = (rnd() - 0.5) * WORLD * 0.96;
     const h = meshH(x, z);
-    if(h < -1.5 || h > 24) continue;
+    if(h > 24) continue;
+    const gi = (rnd() * BOULDER_GEOS.length) | 0;
+    if(h < -1.2){
+      // große Brocken auf dem Grund: selten, fleckenweise
+      if(h < -13 || rnd() > 0.09) continue;
+      if(fbm(x * 0.035 + 61, z * 0.035 - 12) < 0.02) continue;
+      const sc = 0.9 + rnd() * 2.6;
+      putBoulder(boulders[gi].uw, x, z, h + sc * 0.35, sc);
+      continue;
+    }
+    if(h < -1.5) continue;
     const slope = Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h);
-    let name;
-    if(h < 1.6){ if(rnd() < 0.12) name = rocks[(rnd() * rocks.length) | 0]; else continue; }
-    else if(slope > 1.4){ if(rnd() < 0.3) name = rocks[(rnd() * rocks.length) | 0]; else continue; }
-    else if(fbm(x * 0.02 + 50, z * 0.02) > -0.08 || rnd() < 0.15) name = trees[(rnd() * trees.length) | 0];
-    else continue;
-    const isRock = name.startsWith('Rock');
-    const sc = isRock ? 2 + rnd() * 5 : 1.4 + rnd() * 1.2;
-    p.set(x, h - (isRock ? 0.4 * sc * 0.3 : 0.1), z);
-    q.setFromAxisAngle(up, rnd() * 6.28);
-    s.setScalar(sc);
-    buckets[name].push(m.compose(p, q, s).clone());
+    if(h < 1.6){
+      if(rnd() > 0.12) continue;
+      const sc = 0.3 + rnd() * 0.7;
+      putBoulder(boulders[gi].land, x, z, h + sc * 0.3, sc);
+      continue;
+    }
+    if(slope > 1.4){
+      if(rnd() > 0.3) continue;
+      const sc = 0.4 + rnd() * 1.1;
+      putBoulder(boulders[gi].land, x, z, h + sc * 0.3, sc);
+      continue;
+    }
+    if(fbm(x * 0.02 + 50, z * 0.02) > -0.08 || rnd() < 0.15){
+      const name = trees[(rnd() * trees.length) | 0];
+      p.set(x, h - 0.1, z);
+      q.setFromAxisAngle(up, rnd() * 6.28);
+      s.setScalar(1.4 + rnd() * 1.2);
+      buckets[name].push(m.compose(p, q, s).clone());
+    }
   }
+  // Brocken einhängen
+  const col = new THREE.Color(), uwTintC = new THREE.Color(0x1d5560);
+  BOULDER_GEOS.forEach((geo, gi) => {
+    for(const kind of ['land', 'uw']){
+      const list = boulders[gi][kind];
+      if(!list.length) continue;
+      const mat = new THREE.MeshLambertMaterial({});
+      const im = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach((mm, i) => {
+        im.setMatrixAt(i, mm);
+        col.setHex(BOULDER_COLORS[(i + gi) % BOULDER_COLORS.length]);
+        if(kind === 'uw') col.lerp(uwTintC, 0.6).multiplyScalar(0.6);
+        im.setColorAt(i, col);
+      });
+      im.computeBoundingSphere();
+      im.castShadow = true; im.receiveShadow = true;
+      scene.add(im);
+    }
+  });
   await Promise.all(Object.keys(buckets).map(async n => {
     if(!buckets[n].length) return;
     try{ scatter((await load(NATURE + n + '_Color1.gltf')).scene, buckets[n]); }
@@ -926,7 +994,7 @@ function makeFish(school, i){
   const src = fishProto[school.species];
   const f = SkeletonUtils.clone(src.scene);
   const big = ['Tuna', 'Sunfish', 'Swordfish'].includes(school.species);
-  fit(f, big ? 1.2 : 0.75, 'z');
+  fit(f, big ? 0.6 : 0.38, 'z');   // bewusst klein: halbe Größe
   f.traverse(m => { if(m.isMesh){ m.castShadow = false; m.frustumCulled = false; } });
   const wrap = new THREE.Group();
   wrap.add(f);
