@@ -569,8 +569,8 @@ boat.add(hull);
 const seat = new THREE.Group();   // Figur dreht sich hierin zum Auswerfen
 hull.add(seat);
 
-const BENCH_Y = 0.2;
-let seatRowY = 0;                    // Sitzhöhe auf der Bank, einmal eingemessen                 // Oberkante der Querbank
+const BENCH_Y = 0.34;                // Oberkante der Querbank, passend zum hohen Bootsrand
+let seatRowY = 0;                    // Sitzhöhe auf der Bank, einmal eingemessen
 let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bucketEmpty, bucketFull;
 
 function retarget(clip){
@@ -652,9 +652,9 @@ function convexHull(p){
 }
 
 async function buildBoat(){
-  const [b, ch, tools, sim, gen, r, oar, be, bf] = await Promise.all([
+  const [b, ch, tools, sim, gen, r, be, bf] = await Promise.all([
     load(FISHPACK + 'Boat.glb'), load(CHAR), load(LIB_TOOLS), load(LIB_SIM), load(LIB_GENERAL),
-    load(FISHPACK + 'FishingRod_Lvl2.glb'), load(M + 'Quaternius Survival Pack/glTF/Raft_Paddle.glb'),
+    load(FISHPACK + 'FishingRod_Lvl2.glb'),
     load(M + 'Quaternius Pirate Kit/glTF/Prop_Bucket.glb'), load(M + 'Quaternius Pirate Kit/glTF/Prop_Bucket_Fishes.glb'),
   ]);
   const bm = b.scene;
@@ -669,11 +669,17 @@ async function buildBoat(){
   fit(c, 1.4);             // kleine, runde Figur im Boot
   shadows(c);
   seat.add(c);
-  const bench = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.26),
-    new THREE.MeshLambertMaterial({color: 0x7a4a2c}));
+  const benchMat = new THREE.MeshLambertMaterial({color: 0x7a4a2c});
+  const bench = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.28), benchMat);
   bench.position.set(0, BENCH_Y, 0.1);
   shadows(bench);
   hull.add(bench);
+  for(const sx of [-1, 1]){        // zwei Stützen unter der Bank
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, BENCH_Y + 0.15, 0.2), benchMat);
+    leg.position.set(sx * 0.55, BENCH_Y - (BENCH_Y + 0.15) / 2, 0.1);
+    shadows(leg);
+    hull.add(leg);
+  }
   seat.position.set(0, 0, 0.1);
   seat.userData.fitToBench = true;   // Sitzhöhe beim ersten Frame einmessen
 
@@ -701,26 +707,45 @@ async function buildBoat(){
   rod.children[0] ? rod.children[0].add(rodTip) : rod.add(rodTip);
   rod.visible = false;
 
-  // Ruder in Dollen am Bootsrand: 2,4 m lang, davon 0,7 m Griff nach innen
-  const OARLOCK = {x: 0.86, y: 0.30, z: 0.16};
+  // Eigene Ruder: schlichter Schaft ohne Griff, Blatt am Ende, Dolle auf dem Bootsrand.
+  // Das Paddelmodell aus dem Pack hat einen T-Griff, der hier nicht passt.
+  const OARLOCK = {x: 0.85, y: 0.54, z: 0.2};   // Höhe des Bootsrands
+  const IN = 0.60, OUT = 1.55;                  // Schaft nach innen / nach außen
   const woodMat = new THREE.MeshLambertMaterial({color: 0x6d4026});
+  const bladeMat = new THREE.MeshLambertMaterial({color: 0xc9a06a});
   const makeOar = (side) => {
-    const o = oar.scene.clone();
-    fit(o, 2.4, 'z');                  // Paddel liegt längs Z
-    shadows(o);
-    const arm = new THREE.Group();
-    arm.rotation.y = side * Math.PI / 2;
-    arm.position.x = side * 0.5;       // Griff 0,7 m innen, Blatt 1,7 m außen
-    arm.add(o);
+    const parts = [];
+    const shaft = new THREE.CylinderGeometry(0.028, 0.034, IN + OUT, 8)
+      .rotateZ(Math.PI / 2).translate((OUT - IN) / 2 * side, 0, 0);
+    const oarGrp = new THREE.Group();
+    const shaftMesh = new THREE.Mesh(shaft, woodMat);
+    oarGrp.add(shaftMesh);
+    // Blatt: flach, nach außen hin breiter. Die Verjüngung muss auf die
+    // Außenrichtung bezogen sein, sonst sind die Seiten spiegelverkehrt.
+    const bl = new THREE.BoxGeometry(0.54, 0.025, 0.2);
+    const bp = bl.attributes.position;
+    for(let i = 0; i < bp.count; i++){
+      const t = side * bp.getX(i) / 0.54 + 0.5;       // 0 innen, 1 außen
+      bp.setZ(i, bp.getZ(i) * (0.4 + t * 1.0));
+    }
+    bl.computeVertexNormals();
+    const blade = new THREE.Mesh(bl, bladeMat);
+    blade.rotation.x = Math.PI / 2;        // Blatt steht aufrecht im Wasser
+    blade.position.x = side * (OUT - 0.24);
+    oarGrp.add(blade);
+    const tip = new THREE.Object3D();
+    tip.position.x = side * OUT;
+    oarGrp.add(tip);
+    shadows(oarGrp);
     const pivot = new THREE.Group();
     pivot.position.set(side * OARLOCK.x, OARLOCK.y, OARLOCK.z);
-    pivot.userData.side = side;
-    pivot.add(arm);
+    pivot.userData = {side, tip};
+    pivot.add(oarGrp);
     hull.add(pivot);
-    // sichtbare Dolle: Pflock mit Ring
-    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.16, 8), woodMat);
-    post.position.set(side * OARLOCK.x, OARLOCK.y - 0.07, OARLOCK.z);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.016, 6, 14), woodMat);
+    // sichtbare Dolle: Pflock mit Ring, der Schaft liegt darin
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.032, 0.14, 8), woodMat);
+    post.position.set(side * OARLOCK.x, OARLOCK.y - 0.08, OARLOCK.z);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.014, 6, 14), woodMat);
     ring.position.set(side * OARLOCK.x, OARLOCK.y, OARLOCK.z);
     ring.rotation.y = Math.PI / 2;
     shadows(post); shadows(ring);
@@ -784,7 +809,7 @@ function solveArm(chain, target){
 }
 // Griffpunkt einer Riemen-Halterung in Weltkoordinaten
 function gripOf(pivot, side, out){
-  return pivot.localToWorld(out.set(-side * 0.68, 0.03, 0));
+  return pivot.localToWorld(out.set(-side * 0.57, 0, 0));
 }
 // Die Sitzhaltung hebt die Hüfte über den Boden – Höhe einmal an die Bank anpassen
 function fitSeatToBench(){
@@ -1178,14 +1203,22 @@ function updateBoat(dt, t){
   const targetStroke = rowing ? Math.cos(state.rowPhase) : 0.15;
   state.stroke += (targetStroke - state.stroke) * Math.min(1, dt * 12);
   const inWater = rowing ? Math.sin(state.rowPhase) > 0 : true;   // Durchzug: Blatt im Wasser
+  const tipPos = new THREE.Vector3();
   oars.forEach((o, i) => {
     const side = i ? 1 : -1;
     // vorwärts beide, beim Drehen zieht eine Seite und die andere hält gegen
     const dirSide = THREE.MathUtils.clamp(fwd - turn * side * 0.9, -1, 1) || 0;
-    const sweep = side * state.stroke * 0.28 * (rowing ? Math.sign(dirSide) || 1 : 1);
-    const dip = -side * (inWater && rowing ? 0.42 : 0.24);
+    const sweep = side * state.stroke * 0.3 * (rowing ? Math.sign(dirSide) || 1 : 1);
+    const dip = -side * (inWater && rowing ? 0.45 : 0.28);
     o.rotation.y += (sweep - o.rotation.y) * Math.min(1, dt * 10);
     o.rotation.z += (dip - o.rotation.z) * Math.min(1, dt * 10);
+    // Wo das Blatt eintaucht, kräuselt sich das Wasser
+    o.updateMatrixWorld(true);
+    o.userData.tip.getWorldPosition(tipPos);
+    const wet = tipPos.y < waveH(tipPos.x, tipPos.z, t) + 0.05;
+    if(wet && rowing && Math.random() < dt * 8) spawnRing(tipPos.x, tipPos.z, 0.1, 1.0, 0.22);
+    if(wet && !o.userData.wasWet) spawnRing(tipPos.x, tipPos.z, 0.14, 1.2, 0.3);   // Eintauchen
+    o.userData.wasWet = wet;
   });
   if(rowing && Math.random() < dt * 3) sfxSoft();
   // Kielwasser
