@@ -283,18 +283,39 @@ function waveH(x, z, t){
   return Math.sin(x * 0.35 + t * 0.9) * 0.05 + Math.sin(z * 0.28 - t * 0.7) * 0.05
        + Math.sin((x + z) * 0.9 + t * 1.6) * 0.02;
 }
-const waterUniforms = {
-  time: {value: 0}, sunDir: {value: SUN_DIR},
-  fogColor: {value: FOG}, fogDensity: {value: scene.fog.density},
-};
+// Der Wasser-Shader fragt die Schattenkarten selbst ab (lights: true plus die
+// shadowmap-Chunks), damit im Schatten die Sonnenreflexion wegfällt, ohne dass
+// die Schattenfläche kräftig deckt.
+const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
+  time: {value: 0}, sunDir: {value: null},
+  fogColor: {value: null}, fogDensity: {value: 0},
+}]);
+waterUniforms.sunDir.value = SUN_DIR;
+waterUniforms.fogColor.value = FOG;
+waterUniforms.fogDensity.value = scene.fog.density;
 const water = new THREE.Mesh(
   new THREE.PlaneGeometry(1800, 1800, 1, 1).rotateX(-Math.PI / 2),
   new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, uniforms: waterUniforms,
-    vertexShader: `varying vec3 vW; varying float vFogDepth;
-      void main(){ vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz;
-        vec4 mv = viewMatrix * w; vFogDepth = -mv.z; gl_Position = projectionMatrix * mv; }`,
-    fragmentShader: `uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity;
+    transparent: true, depthWrite: false, uniforms: waterUniforms, lights: true,
+    vertexShader: `
+      #include <common>
+      #include <shadowmap_pars_vertex>
+      varying vec3 vW; varying float vFogDepth;
+      void main(){
+        vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz;
+        vec4 mv = viewMatrix * w; vFogDepth = -mv.z;
+        gl_Position = projectionMatrix * mv;
+        vec4 worldPosition = w;                      // von shadowmap_vertex erwartet
+        vec3 transformedNormal = vec3(0.0, 1.0, 0.0);  // ebenso
+        #include <shadowmap_vertex>
+      }`,
+    fragmentShader: `
+      #include <common>
+      #include <packing>
+      uniform bool receiveShadow;                    // setzt der Renderer je Objekt
+      #include <shadowmap_pars_fragment>
+      #include <shadowmask_pars_fragment>
+      uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity;
       varying vec3 vW; varying float vFogDepth;
       vec3 wn(vec2 p, float t){
         // Summe schräg laufender Wellen, damit kein Karomuster entsteht
@@ -324,9 +345,12 @@ const water = new THREE.Mesh(
         vec3 spec = vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, sf) * 2.2
                   + vec3(1.0,0.8,0.5) * pow(sf, 1600.0) * 0.45
                   + vec3(1.0,0.78,0.48) * pow(s, 45.0) * 0.5;
+        // Im Schatten liegt keine Sonne auf dem Wasser: Reflexion ausknipsen
+        float shade = getShadowMask();
+        spec *= shade;
         vec3 body = vec3(0.035,0.105,0.135);   // dunkel wie das Tiefwasser darunter
         float a = mix(0.36, 0.92, fres);
-        vec3 c = mix(body, skyc, fres) + spec;
+        vec3 c = mix(body, skyc * mix(0.82, 1.0, shade), fres) + spec;
         a = min(1.0, a + length(spec) * 0.5);
         float fogF = 1.0 - exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
         c = mix(c, fogColor, fogF);
@@ -336,23 +360,12 @@ const water = new THREE.Mesh(
         #include <colorspace_fragment>
       }`
   }));
+water.receiveShadow = true;
 water.renderOrder = 2;
 scene.add(water);
 // Der Wasser-Shader kennt keine Schatten – eine ShadowMaterial-Fläche knapp darüber zeigt sie
 const waterShadow = new THREE.Mesh(new THREE.PlaneGeometry(SHADOW_R * 2, SHADOW_R * 2).rotateX(-Math.PI / 2),
-  new THREE.ShadowMaterial({color: 0x13333d, opacity: 1, depthWrite: false}));
-// Deckkraft blickabhängig: genau dort, wo sich die Sonne spiegelt, deckt der
-// Schatten voll ab (kein Sonnenlicht auf dem Wasser). Seitlich bleibt er zart.
-waterShadow.material.onBeforeCompile = (sh) => {
-  sh.uniforms.sunDir = {value: SUN_DIR};
-  sh.vertexShader = 'varying vec3 vWPos;\n' + sh.vertexShader.replace('#include <project_vertex>',
-    '#include <project_vertex>\n vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-  sh.fragmentShader = 'uniform vec3 sunDir;\nvarying vec3 vWPos;\n' + sh.fragmentShader.replace(
-    'opacity * ( 1.0 - getShadowMask() )',
-    `mix(0.3, 1.0, smoothstep(0.75, 0.995,
-        dot(reflect(-normalize(cameraPosition - vWPos), vec3(0.0, 1.0, 0.0)), sunDir)))
-      * ( 1.0 - getShadowMask() )`);
-};
+  new THREE.ShadowMaterial({color: 0x102b34, opacity: 0.3, depthWrite: false}));
 waterShadow.position.y = 0.04;
 waterShadow.receiveShadow = true;
 waterShadow.renderOrder = 3;
