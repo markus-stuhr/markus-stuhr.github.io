@@ -1265,6 +1265,91 @@ function updateWhale(dt, t){
   }
 }
 
+// ---------- Vögel ----------
+// Schlanke Möwen, selbst gebaut: das Taubenmodell aus dem Monster-Pack ist zu
+// pummelig. Kreisen über der Bucht, legen sich in die Kurven, schlagen die Flügel.
+const birds = [];
+const gullBody = new THREE.MeshLambertMaterial({color: 0xf2efe8});
+const gullDark = new THREE.MeshLambertMaterial({color: 0x9aa2ab});
+function makeGull(){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), gullBody);
+  body.scale.set(0.42, 0.42, 1.25);          // schlanker Rumpf
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), gullBody);
+  head.scale.set(0.5, 0.5, 0.6);
+  head.position.set(0, 0.07, 0.62);
+  g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 5), gullDark);
+  beak.rotation.x = Math.PI / 2;
+  beak.position.set(0, 0.05, 0.86);
+  g.add(beak);
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.5, 4), gullBody);
+  tail.rotation.set(-Math.PI / 2, Math.PI / 4, 0);
+  tail.position.set(0, 0.02, -0.75);
+  tail.scale.set(1, 1, 0.3);
+  g.add(tail);
+  // Flügel: schmales Dreiecksprofil, Drehpunkt am Rumpf
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0, 0.22);
+  wingShape.lineTo(1.25, 0.06);
+  wingShape.lineTo(1.35, -0.04);
+  wingShape.lineTo(0.2, -0.28);
+  wingShape.closePath();
+  const wingGeo = new THREE.ExtrudeGeometry(wingShape, {depth: 0.03, bevelEnabled: false})
+    .rotateX(-Math.PI / 2).translate(0, 0, 0);
+  const wings = [-1, 1].map(side => {
+    const pivot = new THREE.Group();
+    const m = new THREE.Mesh(wingGeo, gullBody);
+    m.scale.x = side;
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.03, 0.16), gullDark);
+    tip.position.set(side * 1.2, 0.01, 0.02);
+    pivot.add(m, tip);
+    g.add(pivot);
+    return pivot;
+  });
+  return {g, wings};
+}
+
+function buildBirds(){
+  for(let i = 0; i < 7; i++){
+    const {g, wings} = makeGull();
+    g.scale.setScalar(0.7 + rnd() * 0.5);
+    scene.add(g);
+    birds.push({obj: g, wings, flap: 2.2 + rnd() * 1.4, phFlap: rnd() * 6.28,
+      cx: (rnd() - 0.5) * 260, cz: (rnd() - 0.5) * 260 + 60,
+      r: 18 + rnd() * 45, y: 9 + rnd() * 16,
+      sp: 0.12 + rnd() * 0.12, ph: rnd() * 6.28, drift: rnd() * 6.28});
+  }
+}
+function updateBirds(dt, t){
+  const tmp = new THREE.Vector3();
+  for(const b of birds){
+    b.ph += dt * b.sp;
+    b.drift += dt * 0.03;
+    // der Kreismittelpunkt wandert langsam, damit es nicht nach Karussell aussieht
+    const cx = b.cx + Math.sin(b.drift) * 40, cz = b.cz + Math.cos(b.drift * 0.7) * 40;
+    const x = cx + Math.cos(b.ph) * b.r, z = cz + Math.sin(b.ph) * b.r;
+    const y = b.y + Math.sin(b.ph * 1.7) * 1.2;
+    tmp.set(x, y, z);
+    const prev = b.obj.position;
+    if(prev.lengthSq() > 0){
+      const yaw = Math.atan2(x - prev.x, z - prev.z);
+      let d = yaw - b.obj.rotation.y;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      b.obj.rotation.y += d * Math.min(1, dt * 4);
+      b.obj.rotation.z = THREE.MathUtils.lerp(b.obj.rotation.z, -0.3, Math.min(1, dt * 2));
+    }
+    b.obj.position.copy(tmp);
+    // Flügelschlag mit Gleitpausen
+    b.phFlap += dt * b.flap;
+    const glide = Math.max(0, Math.sin(b.phFlap * 0.12));
+    const swing = Math.sin(b.phFlap) * (0.15 + 0.6 * (1 - glide));
+    b.wings[0].rotation.z = -swing;
+    b.wings[1].rotation.z = swing;
+  }
+}
+
 // ---------- Angelschnur und Pose ----------
 const bobber = new THREE.Group();
 {
@@ -1935,6 +2020,7 @@ function loop(){
   updateFishing(dt, t);
   updateSchools(dt, t);
   updateWhale(dt, t);
+  updateBirds(dt, t);
   updateRings(dt);
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -1955,6 +2041,7 @@ addEventListener('resize', () => {
   state.heading = 0;
   loadMsg.textContent = 'Das Boot wird zu Wasser gelassen …';
   window.__plants = [buildPlants(), buildCorals()];
+  buildBirds();
   await buildBoat();
   loadMsg.textContent = 'Die Fische versammeln sich …';
   await Promise.all([buildSchools(), buildNature(), buildIslandHouse().catch(e => console.warn(e)), buildWhale().catch(e => console.warn(e))]);
