@@ -179,8 +179,8 @@ const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles 
 // Zwei Regler: Objekte unter Wasser blenden mit der Entfernung aus, und die
 // Wasseroberfläche wird ab einer Entfernung undurchsichtig. Erst zusammen
 // verdecken sie auch Dinge, deren Material nicht angefasst ist (Stegpfähle).
-const WATER_SIGHT_NEAR = 30, WATER_SIGHT_FAR = 60;            // Objekte
-const SURFACE_OPAQUE_NEAR = 26, SURFACE_OPAQUE_FAR = 55;      // Oberfläche
+const WATER_SIGHT_NEAR = 60, WATER_SIGHT_FAR = 120;           // Objekte
+const SURFACE_OPAQUE_NEAR = 52, SURFACE_OPAQUE_FAR = 110;     // Oberfläche
 function underwaterFade(mat){
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, renderer) => {
