@@ -1146,6 +1146,37 @@ function spawnRing(x, z, size = 1, life = 2.2, alpha = 0.45){
   rings.push({m, t: 0, life, size, alpha});
 }
 
+// Weiche Schattierung: Flächennormalen je Position mitteln. computeVertexNormals
+// allein reicht nicht, weil die Modelle an den Kanten getrennte Vertices haben.
+function smoothNormals(geo, tol = 1e-4){
+  const pos = geo.attributes.position;
+  const idx = geo.index ? geo.index.array : null;
+  const count = idx ? idx.length : pos.count;
+  const acc = new Map(), normals = new Float32Array(pos.count * 3);
+  const key = (i) => [pos.getX(i), pos.getY(i), pos.getZ(i)]
+    .map(v => Math.round(v / tol)).join(',');
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(),
+    ab = new THREE.Vector3(), ac = new THREE.Vector3(), n = new THREE.Vector3();
+  for(let f = 0; f < count; f += 3){
+    const i0 = idx ? idx[f] : f, i1 = idx ? idx[f + 1] : f + 1, i2 = idx ? idx[f + 2] : f + 2;
+    a.fromBufferAttribute(pos, i0); b.fromBufferAttribute(pos, i1); c.fromBufferAttribute(pos, i2);
+    n.copy(ab.subVectors(b, a)).cross(ac.subVectors(c, a));      // Länge = Flächeninhalt
+    for(const i of [i0, i1, i2]){
+      const k = key(i);
+      const e = acc.get(k) || acc.set(k, new THREE.Vector3()).get(k);
+      e.add(n);
+    }
+  }
+  for(let i = 0; i < pos.count; i++){
+    const e = acc.get(key(i));
+    if(!e) continue;
+    n.copy(e).normalize();
+    normals.set([n.x, n.y, n.z], i * 3);
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  return geo;
+}
+
 // ---------- Wal auf dem offenen Meer ----------
 // Zieht weit draußen im tiefen Wasser seine Runden, meist knapp außer Sicht,
 // taucht gelegentlich auf und bläst.
@@ -1157,7 +1188,15 @@ async function buildWhale(){
   const g = await load(M + 'Quaternius Animated Fish Pack/glTF/Whale.glb');
   const w = g.scene;
   fit(w, 39, 'z');            // dreimal so groß
-  w.traverse(m => { if(m.isMesh){ m.castShadow = false; m.frustumCulled = false; m.material = underwaterFade(m.material.clone()); } });
+  w.traverse(m => {
+    if(!m.isMesh) return;
+    m.castShadow = false;
+    m.frustumCulled = false;
+    smoothNormals(m.geometry);              // weiche statt facettierter Schattierung
+    const mat = m.material.clone();
+    mat.flatShading = false;
+    m.material = underwaterFade(mat);
+  });
   const wrap = new THREE.Group();
   wrap.add(w);
   scene.add(wrap);
