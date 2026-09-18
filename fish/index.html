@@ -825,7 +825,7 @@ hull.add(seat);
 const BENCH_Y = 0.34;                // Oberkante der Querbank, passend zum hohen Bootsrand
 let seatRowY = 0;                    // Sitzhöhe auf der Bank, einmal eingemessen
 let benchParts = [];                 // Bank und Stützen, werden an die Hüfte gesetzt
-let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bucketEmpty, bucketFull;
+let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bowFoam = [], bucketEmpty, bucketFull;
 
 function retarget(clip){
   const keep = clip.tracks.filter(t => !t.name.endsWith('.scale') &&
@@ -1016,6 +1016,28 @@ async function buildBoat(){
   };
   oars = [makeOar(-1), makeOar(1)];
 
+  // V-Bugwelle: zwei flache Bänder, die vom Bug nach hinten außen laufen
+  bowFoam = [-1, 1].map(side => {
+    const g = new THREE.PlaneGeometry(0.5, 2.6, 1, 8).rotateX(-Math.PI / 2).translate(0, 0, 1.3);
+    const uvA = g.attributes.uv;
+    const c = new Float32Array(uvA.count * 4);
+    for(let i = 0; i < uvA.count; i++){
+      const v = uvA.getY(i);                 // 0 am Bug, 1 hinten
+      c.set([1, 1, 1, Math.sin(v * Math.PI) * 0.9], i * 4);
+    }
+    g.setAttribute('color', new THREE.BufferAttribute(c, 4));
+    const mat = new THREE.MeshBasicMaterial({
+      map: foamTex, transparent: true, depthWrite: false, vertexColors: true,
+      side: THREE.DoubleSide, opacity: 0});
+    mat.onBeforeCompile = foamEdgeFade;
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.position.set(side * 0.35, 0.06 - hull.position.y, -1.5);
+    mesh.rotation.y = -side * 0.22;
+    mesh.renderOrder = 4;
+    hull.add(mesh);
+    return mesh;
+  });
+
   bucketEmpty = fit(be.scene, 0.34); bucketFull = fit(bf.scene, 0.34);
   for(const bk of [bucketEmpty, bucketFull]){ shadows(bk); bk.position.set(0.35, 0.05, -0.75); hull.add(bk); }
   bucketFull.visible = false;
@@ -1201,6 +1223,109 @@ function smoothNormals(geo, tol = 1e-4){
   }
   geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
   return geo;
+}
+
+// ---------- Bugwasser und Schaumspur ----------
+// Die Spur ist ein Band aus den letzten Bootspositionen: es wird nach hinten
+// breiter, altert und verblasst. Am Bug liegen zwei kurze Bänder als V-Welle.
+function makeFoamTexture(){
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.clearRect(0, 0, 256, 256);
+  for(let i = 0; i < 420; i++){
+    const x = Math.random() * 256, y = Math.random() * 256, r = 3 + Math.random() * 14;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    const a = 0.25 + Math.random() * 0.5;
+    grd.addColorStop(0, `rgba(255,255,255,${a})`);
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd;
+    // an den Rändern spiegeln, damit die Kachel nahtlos bleibt
+    for(const dx of [-256, 0, 256]) for(const dy of [-256, 0, 256]){
+      g.beginPath(); g.arc(x + dx, y + dy, r, 0, 6.283); g.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+const foamTex = makeFoamTexture();
+
+const WAKE_N = 90;                  // Stützpunkte der Spur
+const wake = {pts: [], dist: 0};
+const wakeGeo = new THREE.BufferGeometry();
+{
+  const pos = new Float32Array(WAKE_N * 2 * 3), uv = new Float32Array(WAKE_N * 2 * 2),
+    col = new Float32Array(WAKE_N * 2 * 4), idx = [];
+  for(let i = 0; i < WAKE_N - 1; i++){
+    const a = i * 2;
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+  wakeGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  wakeGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  wakeGeo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+  wakeGeo.setIndex(idx);
+}
+const wakeMat = new THREE.MeshBasicMaterial({
+  map: foamTex, transparent: true, depthWrite: false, vertexColors: true,
+  side: THREE.DoubleSide});
+// zu den Längsrändern hin ausblenden, sonst wirken die Flächen wie Teppich
+function foamEdgeFade(sh){
+  sh.fragmentShader = sh.fragmentShader.replace('#include <color_fragment>',
+    `#include <color_fragment>
+     diffuseColor.a *= pow(sin(clamp(vMapUv.x, 0.0, 1.0) * 3.14159), 1.4);`);
+}
+wakeMat.onBeforeCompile = foamEdgeFade;
+const wakeMesh = new THREE.Mesh(wakeGeo, wakeMat);
+wakeMesh.frustumCulled = false;
+wakeMesh.renderOrder = 4;
+scene.add(wakeMesh);
+
+function updateWake(dt, t){
+  const sp = Math.abs(state.speed);
+  const dir = new THREE.Vector3(-Math.sin(state.heading), 0, -Math.cos(state.heading));
+  const stern = boat.position.clone().addScaledVector(dir, -1.5);
+  const right = new THREE.Vector3(dir.z, 0, -dir.x);
+  const str = THREE.MathUtils.clamp((sp - 0.25) / 2.2, 0, 1);
+  // Der letzte Punkt ist der mitlaufende Kopf am Heck. Erst wenn er weit genug
+  // vom vorletzten (festen) Punkt weg ist, wird er festgeschrieben und ein
+  // neuer Kopf angelegt. Sonst zieht man ewig denselben Punkt mit.
+  const mk = () => ({p: stern.clone(), r: right.clone(), born: t, str,
+    d: wake.dist, wob: 0.75 + rnd() * 0.5});
+  const head = wake.pts[wake.pts.length - 1];
+  if(!head){
+    wake.pts.push(mk());
+  } else {
+    head.p.copy(stern); head.r.copy(right); head.born = t; head.str = str;
+    const anchor = wake.pts[wake.pts.length - 2];
+    const gap = anchor ? anchor.p.distanceTo(stern) : 1e9;
+    if(gap > 0.45){
+      wake.dist += Math.min(gap, 2);
+      head.d = wake.dist;
+      wake.pts.push(mk());
+      if(wake.pts.length > WAKE_N) wake.pts.shift();
+    }
+  }
+  const pos = wakeGeo.attributes.position, uv = wakeGeo.attributes.uv, col = wakeGeo.attributes.color;
+  const n = wake.pts.length, life = 6;
+  for(let i = 0; i < WAKE_N; i++){
+    const k = Math.min(i, n - 1);
+    const e = wake.pts[k];
+    if(!e){ col.setXYZW(i * 2, 1, 1, 1, 0); col.setXYZW(i * 2 + 1, 1, 1, 1, 0); continue; }
+    const age = THREE.MathUtils.clamp((t - e.born) / life, 0, 1);
+    const w = (0.55 + age * 2.4) * (0.4 + e.str) * e.wob;     // nach hinten breiter
+    const fade = (1 - age) * (1 - age);
+    const near = Math.min(1, (n - 1 - k) / 2);                // direkt am Heck sanft einblenden
+    const alpha = (i < n ? 1 : 0) * e.str * fade * near * 0.85;
+    for(const side of [0, 1]){
+      const j = i * 2 + side, sgn = side ? 1 : -1;
+      const x = e.p.x + e.r.x * w * sgn, z = e.p.z + e.r.z * w * sgn;
+      pos.setXYZ(j, x, waveH(x, z, t) + 0.05, z);
+      uv.setXY(j, side ? 1 : 0, e.d * 0.5);
+      col.setXYZW(j, 1, 1, 1, alpha);        // Rand wird im Shader weich (siehe uv)
+    }
+  }
+  pos.needsUpdate = uv.needsUpdate = col.needsUpdate = true;
 }
 
 // ---------- Wal auf dem offenen Meer ----------
@@ -1770,12 +1895,14 @@ function updateBoat(dt, t){
     if(wet && !o.userData.wasWet) spawnRing(tipPos.x, tipPos.z, 0.14, 1.2, 0.3);   // Eintauchen
     o.userData.wasWet = wet;
   });
+  const foamStr = THREE.MathUtils.clamp((Math.abs(state.speed) - 0.35) / 2.2, 0, 1);
+  for(const f of bowFoam){
+    f.material.opacity += (foamStr * 0.55 - f.material.opacity) * Math.min(1, dt * 3);
+    f.visible = f.material.opacity > 0.02;
+  }
   if(rowing && Math.random() < dt * 3) sfxSoft();
   // Kielwasser
-  if(Math.abs(state.speed) > 1 && Math.random() < dt * 3){
-    tmpV2.copy(boat.position).addScaledVector(dir, -1.9 * Math.sign(state.speed));
-    spawnRing(tmpV2.x, tmpV2.z, 0.5, 1.4, 0.14);
-  }
+
 }
 function sfxSoft(){}
 
@@ -2113,9 +2240,10 @@ function updatePad(dt){
 const PAD_HINT_ROW = 'Linker Stick rudern · Ⓨ angeln · Rechter Stick dreht die Kamera';
 const PAD_HINT_FISH = 'Linker Stick zielen · Ⓐ auswerfen · Ⓨ zurück zum Rudern';
 
-let frame = 0;
+let frame = 0, simT = 0;
 function loop(){
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  simT += dt;                       // Spielzeit: wächst auch bei Framepausen gleichmäßig
   if(++frame % 3 === 0) sun.shadow.needsUpdate = true;
   waterUniforms.time.value = t;
   plantTime.value = t;
@@ -2125,6 +2253,7 @@ function loop(){
   try{ applyRowPose(); }catch(e){ rowPoseErr = e.message; }
   updateFishing(dt, t);
   updateSchools(dt, t);
+  updateWake(dt, simT);
   updateWhale(dt, t);
   updateBirds(dt, t);
   updateRings(dt);
@@ -2159,7 +2288,7 @@ addEventListener('resize', () => {
   setTimeout(() => document.getElementById('loading').remove(), 900);
   loop();
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {THREE, renderer, scene, sun, state, whale, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
