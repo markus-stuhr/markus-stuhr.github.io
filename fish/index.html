@@ -977,11 +977,11 @@ async function buildBoat(){
   holder.add(rod);
   rod.position.y = -0.35;
   slot.add(holder);
-  // Spitze der Angel: oberes Ende des Modells (Modellhöhe 4,95 in Modelleinheiten).
-  // Den höchsten Vertex zur Laufzeit zu suchen geht schief, weil in der Haltung
-  // der Figur zeitweise das Griffende oben liegt.
+  // Spitze der Angel: wird beim ersten Angeln einmalig eingemessen (siehe
+  // fixRodTip). Zur Bauzeit sind die Matrizen der Hand-Kette noch nicht gesetzt,
+  // eine Messung hier liefert Unsinn.
+  rod.add(rodTip);
   rodTip.position.set(0, 4.95, 0);
-  (rod.children[0] || rod).add(rodTip);
   rod.visible = false;
 
   // Eigene Ruder: schlichter Schaft ohne Griff, Blatt am Ende, Dolle auf dem Bootsrand.
@@ -1730,11 +1730,32 @@ function updateSeatMove(dt){
   if(k >= 1) seatSeq.shift();
 }
 
+// Spitze der Rute einmal im laufenden Spiel einmessen: oberster Vertex im
+// lokalen System der Rute. Dann setzt die Schnur exakt an der Spitze an.
+let rodTipFixed = false;
+function fixRodTip(){
+  if(rodTipFixed || !rod) return;
+  rod.updateMatrixWorld(true);
+  const v = new THREE.Vector3(), best = new THREE.Vector3();
+  let bestY = -1e9;
+  rod.traverse(o => {
+    if(!o.isMesh) return;
+    const pos = o.geometry.attributes.position;
+    for(let i = 0; i < pos.count; i++){
+      v.fromBufferAttribute(pos, i);
+      const l = rod.worldToLocal(o.localToWorld(v.clone()));
+      if(l.y > bestY){ bestY = l.y; best.copy(l); }
+    }
+  });
+  if(bestY > -1e8){ rodTip.position.copy(best); rodTipFixed = true; }
+}
+
 function enterFishing(){
   if(state.mode === 'fish') return;
   if(Math.abs(state.speed) > 0.6){ toast('Erst anhalten', 'Das Boot treibt noch zu schnell.', 1600); return; }
   state.mode = 'fish'; state.phase = 'idle';
   rod.visible = true;
+  fixRodTip();
   // von der Bank nach vorn hüpfen und einen Schritt in den freien Teil machen
   seatMoveTo([
     {to: new THREE.Vector3(0, 0.02, 0.52), dur: 0.42, arc: 0.16},
