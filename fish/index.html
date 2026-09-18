@@ -1146,6 +1146,80 @@ function spawnRing(x, z, size = 1, life = 2.2, alpha = 0.45){
   rings.push({m, t: 0, life, size, alpha});
 }
 
+// ---------- Wal auf dem offenen Meer ----------
+// Zieht weit draußen im tiefen Wasser seine Runden, meist knapp außer Sicht,
+// taucht gelegentlich auf und bläst.
+const whale = {obj: null, mixer: null, t: rnd() * 100, blowAt: 25, spouts: []};
+// Bahn geprüft: überall mindestens 14 m Wassertiefe, keine Insel im Weg
+const WHALE_PATH = {cx: 120, cz: 300, r: 120, sq: 0.6, speed: 0.016};
+
+async function buildWhale(){
+  const g = await load(M + 'Quaternius Animated Fish Pack/glTF/Whale.glb');
+  const w = g.scene;
+  fit(w, 39, 'z');            // dreimal so groß
+  w.traverse(m => { if(m.isMesh){ m.castShadow = false; m.frustumCulled = false; m.material = underwaterFade(m.material.clone()); } });
+  const wrap = new THREE.Group();
+  wrap.add(w);
+  scene.add(wrap);
+  whale.obj = wrap;
+  whale.model = w;
+  // höchster Punkt des Modells, damit der Rücken immer unter Wasser bleibt
+  whale.top = new THREE.Box3().setFromObject(w).max.y;
+  whale.mixer = new THREE.AnimationMixer(w);
+  const clip = g.animations.find(a => a.name === 'Swim') || g.animations[0];
+  if(clip){ const act = whale.mixer.clipAction(clip); act.timeScale = 0.55; act.play(); }
+}
+
+// Blas: ein paar aufsteigende, verblassende Tropfenwolken
+const spoutGeo = new THREE.SphereGeometry(0.5, 8, 6);
+function spout(x, z){
+  for(let i = 0; i < 7; i++){
+    const m = new THREE.Mesh(spoutGeo, new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false}));
+    m.position.set(x + (rnd() - 0.5) * 1.2, 0.4, z + (rnd() - 0.5) * 1.2);
+    m.renderOrder = 4;
+    scene.add(m);
+    whale.spouts.push({m, t: 0, v: 4 + rnd() * 2.5, sp: 0.7 + rnd() * 0.7});
+  }
+}
+
+function updateWhale(dt, t){
+  if(!whale.obj) return;
+  whale.t += dt;
+  const a = whale.t * WHALE_PATH.speed;
+  const x = WHALE_PATH.cx + Math.cos(a) * WHALE_PATH.r;
+  const z = WHALE_PATH.cz + Math.sin(a) * WHALE_PATH.r * WHALE_PATH.sq;
+  // Tauchzyklus: der Wal bleibt immer unter Wasser, kommt aber zeitweise so
+  // dicht unter die Oberfläche, dass man ihn als Schatten sieht.
+  const cycle = (whale.t % 95) / 95;
+  const up = Math.pow(Math.max(0, Math.sin(cycle * Math.PI * 2 - 1.2)), 3);
+  const shallow = -(whale.top + 1.0), deep = shallow - 5;   // Grund liegt bei -14
+  const y = THREE.MathUtils.lerp(deep, shallow, up);
+  const prev = whale.obj.position.clone();
+  whale.obj.position.set(x, y, z);
+  if(prev.lengthSq() > 0){
+    const yaw = Math.atan2(x - prev.x, z - prev.z);
+    let d = yaw - whale.obj.rotation.y;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    whale.obj.rotation.y += d * Math.min(1, dt * 2);
+    whale.obj.rotation.x = THREE.MathUtils.lerp(whale.obj.rotation.x, (y - prev.y) * -1.5, Math.min(1, dt * 2));
+  }
+  whale.mixer.update(dt);
+  // beim Auftauchen blasen und Wellen ziehen
+  // kein Blas mehr – er bleibt unten; dicht unter der Oberfläche kräuselt
+  // sich das Wasser über ihm
+  if(up > 0.55 && Math.random() < dt * 1.5) spawnRing(x, z, 1.4, 3.5, 0.12);
+  for(let i = whale.spouts.length - 1; i >= 0; i--){
+    const s = whale.spouts[i];
+    s.t += dt;
+    s.m.position.y += s.v * dt;
+    s.v -= dt * 2.2;
+    s.m.scale.setScalar(s.sp * (1 + s.t * 0.8));
+    s.m.material.opacity = 0.6 * Math.max(0, 1 - s.t / 2.5);
+    if(s.t > 2.5){ scene.remove(s.m); s.m.material.dispose(); whale.spouts.splice(i, 1); }
+  }
+}
+
 // ---------- Angelschnur und Pose ----------
 const bobber = new THREE.Group();
 {
@@ -1815,6 +1889,7 @@ function loop(){
   try{ applyRowPose(); }catch(e){ rowPoseErr = e.message; }
   updateFishing(dt, t);
   updateSchools(dt, t);
+  updateWhale(dt, t);
   updateRings(dt);
   updateCamera(dt);
   renderer.render(scene, camera);
@@ -1837,7 +1912,7 @@ addEventListener('resize', () => {
   window.__plants = [buildPlants(), buildCorals()];
   await buildBoat();
   loadMsg.textContent = 'Die Fische versammeln sich …';
-  await Promise.all([buildSchools(), buildNature(), buildIslandHouse().catch(e => console.warn(e))]);
+  await Promise.all([buildSchools(), buildNature(), buildIslandHouse().catch(e => console.warn(e)), buildWhale().catch(e => console.warn(e))]);
   renderBucket();
   state.mode = 'fish';
   leaveFishing();
@@ -1846,7 +1921,7 @@ addEventListener('resize', () => {
   setTimeout(() => document.getElementById('loading').remove(), 900);
   loop();
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {THREE, renderer, scene, sun, state, get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {THREE, renderer, scene, sun, state, whale, get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
