@@ -1252,32 +1252,100 @@ function spout(x, z){
   }
 }
 
+// Der Wal steuert selbst: er hält auf ein Ziel zu, tastet dabei die Tiefe
+// voraus ab und weicht flachen Stellen aus. Deshalb schwimmt er zwischen den
+// Inseln nur dort durch, wo er auch wirklich durchpasst.
+const WHALE_NEED = 8;            // Mindesttiefe unter ihm
+const WHALE_SPEED = 2.4;         // m/s
+const WHALE_TURN = 0.11;         // rad/s, ein 39-m-Wal wendet träge
+const WHALE_VISIT_FIRST = 300;   // erster Ausflug in die Bucht nach 5 min
+const WHALE_VISIT_EVERY = 900;   // danach alle 15 min
+
+function whaleCircuitTarget(){
+  // Punkt etwas voraus auf der Ellipse
+  const p = whale.pos;
+  const a = Math.atan2((p.z - WHALE_PATH.cz) / WHALE_PATH.sq, p.x - WHALE_PATH.cx) + 0.5;
+  return new THREE.Vector3(WHALE_PATH.cx + Math.cos(a) * WHALE_PATH.r, 0,
+    WHALE_PATH.cz + Math.sin(a) * WHALE_PATH.r * WHALE_PATH.sq);
+}
+// Ziel für den Ausflug: tiefe Stelle mitten in der Bucht
+function whaleBayTarget(){
+  for(let i = 0; i < 400; i++){
+    const x = (rnd() - 0.5) * 320, z = (rnd() - 0.5) * 280 + 40;
+    if(-meshH(x, z) < WHALE_NEED + 3) continue;
+    return new THREE.Vector3(x, 0, z);
+  }
+  return new THREE.Vector3(0, 0, 60);
+}
+function whaleSteer(dt){
+  const p = whale.pos;
+  const want = Math.atan2(whale.target.x - p.x, whale.target.z - p.z);
+  // fünf Richtungen 30 m voraus prüfen, die freie mit dem kleinsten Umweg nehmen
+  let best = null, bestScore = -1e9, deepest = null, deepestD = -1e9;
+  for(const off of [0, 0.4, -0.4, 0.9, -0.9, 1.5, -1.5]){
+    const yaw = whale.yaw + off;
+    const d = -meshH(p.x + Math.sin(yaw) * 32, p.z + Math.cos(yaw) * 32);
+    if(d > deepestD){ deepestD = d; deepest = yaw; }
+    if(d < WHALE_NEED) continue;
+    let diff = want - yaw;
+    diff = Math.abs(Math.atan2(Math.sin(diff), Math.cos(diff)));
+    const score = -diff - Math.abs(off) * 0.25;
+    if(score > bestScore){ bestScore = score; best = yaw; }
+  }
+  const goal = best !== null ? best : deepest;   // notfalls Richtung tiefstes Wasser
+  let d = goal - whale.yaw;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  whale.yaw += THREE.MathUtils.clamp(d, -WHALE_TURN * dt, WHALE_TURN * dt);
+  p.x += Math.sin(whale.yaw) * WHALE_SPEED * dt;
+  p.z += Math.cos(whale.yaw) * WHALE_SPEED * dt;
+}
+
 function updateWhale(dt, t){
   if(!whale.obj) return;
   whale.t += dt;
-  const a = whale.t * WHALE_PATH.speed;
-  const x = WHALE_PATH.cx + Math.cos(a) * WHALE_PATH.r;
-  const z = WHALE_PATH.cz + Math.sin(a) * WHALE_PATH.r * WHALE_PATH.sq;
-  // Tauchzyklus: der Wal bleibt immer unter Wasser, kommt aber zeitweise so
-  // dicht unter die Oberfläche, dass man ihn als Schatten sieht.
+  if(!whale.pos){
+    whale.pos = new THREE.Vector3(WHALE_PATH.cx + WHALE_PATH.r, 0, WHALE_PATH.cz);
+    whale.yaw = Math.PI / 2;
+    whale.mode = 'circuit';
+    whale.target = whaleCircuitTarget();
+    whale.nextVisit = WHALE_VISIT_FIRST;
+  }
+  // Ausflug in die Bucht planen bzw. beenden
+  if(whale.mode === 'circuit' && whale.t > whale.nextVisit){
+    whale.mode = 'visit';
+    whale.target = whaleBayTarget();
+    whale.visitUntil = whale.t + 420;          // notfalls nach 7 min abbrechen
+  }
+  if(whale.mode === 'visit'){
+    if(whale.pos.distanceTo(whale.target) < 25 || whale.t > whale.visitUntil){
+      whale.mode = 'return';
+      whale.target = new THREE.Vector3(WHALE_PATH.cx, 0, WHALE_PATH.cz + WHALE_PATH.r * WHALE_PATH.sq);
+    }
+  } else if(whale.mode === 'return'){
+    if(whale.pos.distanceTo(whale.target) < 40){
+      whale.mode = 'circuit';
+      whale.nextVisit = whale.t + WHALE_VISIT_EVERY;
+    }
+  } else {
+    whale.target = whaleCircuitTarget();
+  }
+  whaleSteer(dt);
+
+  // Tauchzyklus: er bleibt immer unter Wasser, kommt aber zeitweise so dicht
+  // unter die Oberfläche, dass man ihn als Schatten sieht.
   const cycle = (whale.t % 95) / 95;
   const up = Math.pow(Math.max(0, Math.sin(cycle * Math.PI * 2 - 1.2)), 3);
-  const shallow = -(whale.top + 1.0), deep = shallow - 5;   // Grund liegt bei -14
-  const y = THREE.MathUtils.lerp(deep, shallow, up);
-  const prev = whale.obj.position.clone();
-  whale.obj.position.set(x, y, z);
-  if(prev.lengthSq() > 0){
-    const yaw = Math.atan2(x - prev.x, z - prev.z);
-    let d = yaw - whale.obj.rotation.y;
-    d = Math.atan2(Math.sin(d), Math.cos(d));
-    whale.obj.rotation.y += d * Math.min(1, dt * 2);
-    whale.obj.rotation.x = THREE.MathUtils.lerp(whale.obj.rotation.x, (y - prev.y) * -1.5, Math.min(1, dt * 2));
-  }
+  const shallow = -(whale.top + 1.0), deep = shallow - 5;
+  let y = THREE.MathUtils.lerp(deep, shallow, up);
+  y = Math.max(y, meshH(whale.pos.x, whale.pos.z) + whale.top + 1.5);   // nicht aufsetzen
+  y = Math.min(y, shallow);
+  const prevY = whale.obj.position.y;
+  whale.obj.position.set(whale.pos.x, y, whale.pos.z);
+  whale.obj.rotation.y = whale.yaw;
+  whale.obj.rotation.x = THREE.MathUtils.lerp(whale.obj.rotation.x, (y - prevY) * -1.5, Math.min(1, dt * 2));
   whale.mixer.update(dt);
-  // beim Auftauchen blasen und Wellen ziehen
-  // kein Blas mehr – er bleibt unten; dicht unter der Oberfläche kräuselt
-  // sich das Wasser über ihm
-  if(up > 0.55 && Math.random() < dt * 1.5) spawnRing(x, z, 1.4, 3.5, 0.12);
+  // dicht unter der Oberfläche kräuselt sich das Wasser über ihm
+  if(y > shallow - 1.2 && Math.random() < dt * 1.5) spawnRing(whale.pos.x, whale.pos.z, 1.4, 3.5, 0.12);
   for(let i = whale.spouts.length - 1; i >= 0; i--){
     const s = whale.spouts[i];
     s.t += dt;
@@ -2091,7 +2159,7 @@ addEventListener('resize', () => {
   setTimeout(() => document.getElementById('loading').remove(), 900);
   loop();
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {THREE, renderer, scene, sun, state, whale, get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {THREE, renderer, scene, sun, state, whale, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
