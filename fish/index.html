@@ -1541,11 +1541,13 @@ function makeGull(){
 function buildBirds(){
   for(let i = 0; i < 7; i++){
     const {g, wings} = makeGull();
-    g.scale.setScalar(0.42 + rnd() * 0.28);   // kleiner
+    g.scale.setScalar(0.7 + rnd() * 0.4);     // aus 45 m Höhe sonst kaum zu sehen
     scene.add(g);
     birds.push({obj: g, wings, flap: 2.2 + rnd() * 1.4, phFlap: rnd() * 6.28,
       cx: (rnd() - 0.5) * 260, cz: (rnd() - 0.5) * 260 + 60,
-      r: 18 + rnd() * 45, y: 9 + rnd() * 16,
+      // Die Kamera kommt auf höchstens rund 38 m (40 m Abstand, Neigung 1,2 rad),
+      // die Möwen ziehen darüber ihre Kreise.
+      r: 18 + rnd() * 45, y: 44 + rnd() * 20,
       sp: 0.12 + rnd() * 0.12, ph: rnd() * 6.28, drift: rnd() * 6.28});
   }
 }
