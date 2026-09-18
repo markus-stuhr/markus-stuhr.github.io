@@ -338,9 +338,11 @@ const water = new THREE.Mesh(
         vec3 skyc = mix(vec3(1.0,0.66,0.45), vec3(0.72,0.42,0.55), smoothstep(0.0,0.18,h));
         skyc = mix(skyc, vec3(0.16,0.14,0.32), smoothstep(0.15,0.6,h));
         float s = max(dot(r, sunDir), 0.0);
-        // Die Scheibe wird an der glatten Fläche gespiegelt, sonst verschmieren
-        // die Wellen sie zu einem großen Fleck. Das Glitzern kommt von den Wellen.
-        vec3 rFlat = reflect(-v, vec3(0.0, 1.0, 0.0));
+        // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
+        // glatt wäre sie starr, mit voller Wellennormale verschmiert sie zu einem
+        // großen Fleck. So bleibt sie klein und wird von den Wellen verzerrt.
+        vec3 nSoft = normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.3));
+        vec3 rFlat = reflect(-v, nSoft);
         float sf = max(dot(rFlat, sunDir), 0.0);
         vec3 spec = vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, sf) * 2.2
                   + vec3(1.0,0.8,0.5) * pow(sf, 1600.0) * 0.45
