@@ -173,7 +173,7 @@ scene.add(sky);
 // Wasserfarbe über. Bei etwa 5 m ist nichts mehr zu erkennen.
 const WATER_VIS = 3.5;                 // Abklinglänge; bei etwa 8 m Tiefe sieht man nichts mehr
 const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles Tiefwasser
-const WATER_SIGHT_NEAR = 55, WATER_SIGHT_FAR = 105;          // Sichtweite in die Ferne
+const WATER_SIGHT_NEAR = 13, WATER_SIGHT_FAR = 26;            // Sichtweite in die Ferne
 function underwaterFade(mat){
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, renderer) => {
@@ -1341,6 +1341,21 @@ const whale = {obj: null, mixer: null, t: rnd() * 100, blowAt: 25, spouts: []};
 // Bahn geprüft: überall mindestens 14 m Wassertiefe, keine Insel im Weg
 const WHALE_PATH = {cx: 120, cz: 300, r: 120, sq: 0.6, speed: 0.016};
 
+// Die Schwanzflosse des Modells ist sehr klobig: zum Ende hin dünner und
+// etwas breiter ziehen. Der Übergang läuft weich über den Schwanzstiel.
+function slimFluke(geo){
+  const p = geo.attributes.position;
+  for(let i = 0; i < p.count; i++){
+    const z = p.getZ(i);
+    const t = THREE.MathUtils.smoothstep(z, -4.2, -6.0);   // 0 am Stiel, 1 an der Fluke
+    if(t <= 0) continue;
+    p.setY(i, p.getY(i) * THREE.MathUtils.lerp(1, 0.35, t));
+    p.setX(i, p.getX(i) * THREE.MathUtils.lerp(1, 1.2, t));
+  }
+  p.needsUpdate = true;
+  return geo;
+}
+
 async function buildWhale(){
   const g = await load(M + 'Quaternius Animated Fish Pack/glTF/Whale.glb');
   const w = g.scene;
@@ -1349,6 +1364,7 @@ async function buildWhale(){
     if(!m.isMesh) return;
     m.castShadow = false;
     m.frustumCulled = false;
+    slimFluke(m.geometry);                  // Schwanzflosse filigraner
     smoothNormals(m.geometry);              // weiche statt facettierter Schattierung
     const mat = m.material.clone();
     mat.flatShading = false;
