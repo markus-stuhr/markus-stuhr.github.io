@@ -1366,19 +1366,19 @@ const gullDark = new THREE.MeshLambertMaterial({color: 0x9aa2ab});
 function makeGull(){
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), gullBody);
-  body.scale.set(0.42, 0.42, 1.25);          // schlanker Rumpf
+  body.scale.set(0.3, 0.3, 1.0);             // schmaler Rumpf, klein gegen die Flügel
   g.add(body);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), gullBody);
-  head.scale.set(0.5, 0.5, 0.6);
-  head.position.set(0, 0.07, 0.62);
+  head.scale.set(0.38, 0.38, 0.48);
+  head.position.set(0, 0.05, 0.5);
   g.add(head);
-  const beak = new THREE.Mesh(smoothNormals(new THREE.ConeGeometry(0.05, 0.22, 8)), gullDark);
+  const beak = new THREE.Mesh(smoothNormals(new THREE.ConeGeometry(0.04, 0.18, 8)), gullDark);
   beak.rotation.x = Math.PI / 2;
-  beak.position.set(0, 0.05, 0.86);
+  beak.position.set(0, 0.04, 0.68);
   g.add(beak);
-  const tail = new THREE.Mesh(smoothNormals(new THREE.ConeGeometry(0.16, 0.5, 6)), gullBody);
+  const tail = new THREE.Mesh(smoothNormals(new THREE.ConeGeometry(0.13, 0.42, 6)), gullBody);
   tail.rotation.set(-Math.PI / 2, Math.PI / 4, 0);
-  tail.position.set(0, 0.02, -0.75);
+  tail.position.set(0, 0.02, -0.6);
   tail.scale.set(1, 1, 0.3);
   g.add(tail);
   // Flügel in zwei Teilen: der Außenflügel sitzt auf einem Gelenk und schlägt
