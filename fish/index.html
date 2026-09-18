@@ -1559,11 +1559,12 @@ function buildBirds(){
     g.scale.setScalar(0.7 + rnd() * 0.4);     // aus 45 m Höhe sonst kaum zu sehen
     scene.add(g);
     birds.push({obj: g, wings, flap: 2.2 + rnd() * 1.4, phFlap: rnd() * 6.28,
-      cx: (rnd() - 0.5) * 260, cz: (rnd() - 0.5) * 260 + 60,
+      // weite Bahnen über die ganze Bucht, teils über den Wald am Festland
+      cx: (rnd() - 0.5) * 460, cz: (rnd() - 0.5) * 460 - 20,
       // Die Kamera kommt auf höchstens rund 38 m (40 m Abstand, Neigung 1,2 rad),
       // die Möwen ziehen darüber ihre Kreise.
-      r: 18 + rnd() * 45, y: 44 + rnd() * 20,
-      sp: 0.12 + rnd() * 0.12, ph: rnd() * 6.28, drift: rnd() * 6.28});
+      r: 55 + rnd() * 130, y: 44 + rnd() * 20,
+      sp: 0.045 + rnd() * 0.05, ph: rnd() * 6.28, drift: rnd() * 6.28});
   }
 }
 function updateBirds(dt, t){
@@ -1572,7 +1573,7 @@ function updateBirds(dt, t){
     b.ph += dt * b.sp;
     b.drift += dt * 0.03;
     // der Kreismittelpunkt wandert langsam, damit es nicht nach Karussell aussieht
-    const cx = b.cx + Math.sin(b.drift) * 40, cz = b.cz + Math.cos(b.drift * 0.7) * 40;
+    const cx = b.cx + Math.sin(b.drift) * 90, cz = b.cz + Math.cos(b.drift * 0.7) * 90;
     const x = cx + Math.cos(b.ph) * b.r, z = cz + Math.sin(b.ph) * b.r;
     const y = b.y + Math.sin(b.ph * 1.7) * 1.2;
     tmp.set(x, y, z);
