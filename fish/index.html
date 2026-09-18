@@ -1273,18 +1273,18 @@ const gullBody = new THREE.MeshLambertMaterial({color: 0xf2efe8});
 const gullDark = new THREE.MeshLambertMaterial({color: 0x9aa2ab});
 function makeGull(){
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), gullBody);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), gullBody);
   body.scale.set(0.42, 0.42, 1.25);          // schlanker Rumpf
   g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), gullBody);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), gullBody);
   head.scale.set(0.5, 0.5, 0.6);
   head.position.set(0, 0.07, 0.62);
   g.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22, 5), gullDark);
+  const beak = new THREE.Mesh(smoothNormals(new THREE.ConeGeometry(0.05, 0.22, 8)), gullDark);
   beak.rotation.x = Math.PI / 2;
   beak.position.set(0, 0.05, 0.86);
   g.add(beak);
-  const tail = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.5, 4), gullBody);
+  const tail = new THREE.Mesh(smoothNormals(new THREE.ConeGeometry(0.16, 0.5, 6)), gullBody);
   tail.rotation.set(-Math.PI / 2, Math.PI / 4, 0);
   tail.position.set(0, 0.02, -0.75);
   tail.scale.set(1, 1, 0.3);
@@ -1296,7 +1296,8 @@ function makeGull(){
     sh.moveTo(pts[0][0], pts[0][1]);
     for(let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]);
     sh.closePath();
-    return new THREE.ExtrudeGeometry(sh, {depth, bevelEnabled: false}).rotateX(-Math.PI / 2);
+    // weiche Schattierung wie beim Wal
+    return smoothNormals(new THREE.ExtrudeGeometry(sh, {depth, bevelEnabled: false, curveSegments: 8}).rotateX(-Math.PI / 2));
   };
   const innerGeo = wingPart([[0, 0.24], [0.72, 0.12], [0.72, -0.2], [0.16, -0.3]], 0.03);
   const outerGeo = wingPart([[0, 0.12], [0.62, 0.0], [0.66, -0.05], [0, -0.2]], 0.025);
@@ -1309,7 +1310,7 @@ function makeGull(){
     elbow.position.x = side * 0.72;
     const outer = new THREE.Mesh(outerGeo, gullBody);
     outer.scale.x = side;
-    const tip = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.028, 0.12), gullDark);
+    const tip = new THREE.Mesh(smoothNormals(new THREE.BoxGeometry(0.26, 0.028, 0.12)), gullDark);
     tip.position.set(side * 0.52, 0.005, -0.03);
     elbow.add(outer, tip);
     shoulder.add(elbow);
@@ -1323,7 +1324,7 @@ function makeGull(){
 function buildBirds(){
   for(let i = 0; i < 7; i++){
     const {g, wings} = makeGull();
-    g.scale.setScalar(0.7 + rnd() * 0.5);
+    g.scale.setScalar(0.42 + rnd() * 0.28);   // kleiner
     scene.add(g);
     birds.push({obj: g, wings, flap: 2.2 + rnd() * 1.4, phFlap: rnd() * 6.28,
       cx: (rnd() - 0.5) * 260, cz: (rnd() - 0.5) * 260 + 60,
