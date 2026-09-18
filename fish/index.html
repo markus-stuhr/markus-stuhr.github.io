@@ -173,7 +173,11 @@ scene.add(sky);
 // Wasserfarbe über. Bei etwa 5 m ist nichts mehr zu erkennen.
 const WATER_VIS = 3.5;                 // Abklinglänge; bei etwa 8 m Tiefe sieht man nichts mehr
 const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles Tiefwasser
-const WATER_SIGHT_NEAR = 13, WATER_SIGHT_FAR = 26;            // Sichtweite in die Ferne
+// Zwei Regler: Objekte unter Wasser blenden mit der Entfernung aus, und die
+// Wasseroberfläche wird ab einer Entfernung undurchsichtig. Erst zusammen
+// verdecken sie auch Dinge, deren Material nicht angefasst ist (Stegpfähle).
+const WATER_SIGHT_NEAR = 30, WATER_SIGHT_FAR = 60;            // Objekte
+const SURFACE_OPAQUE_NEAR = 26, SURFACE_OPAQUE_FAR = 55;      // Oberfläche
 function underwaterFade(mat){
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, renderer) => {
@@ -295,10 +299,13 @@ function waveH(x, z, t){
 const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
   time: {value: 0}, sunDir: {value: null},
   fogColor: {value: null}, fogDensity: {value: 0},
+  sightNear: {value: 0}, sightFar: {value: 0},
 }]);
 waterUniforms.sunDir.value = SUN_DIR;
 waterUniforms.fogColor.value = FOG;
 waterUniforms.fogDensity.value = scene.fog.density;
+waterUniforms.sightNear.value = SURFACE_OPAQUE_NEAR;
+waterUniforms.sightFar.value = SURFACE_OPAQUE_FAR;
 const water = new THREE.Mesh(
   new THREE.PlaneGeometry(1800, 1800, 1, 1).rotateX(-Math.PI / 2),
   new THREE.ShaderMaterial({
@@ -322,6 +329,7 @@ const water = new THREE.Mesh(
       #include <shadowmap_pars_fragment>
       #include <shadowmask_pars_fragment>
       uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity;
+      uniform float sightNear; uniform float sightFar;
       varying vec3 vW; varying float vFogDepth;
       vec3 wn(vec2 p, float t){
         // Summe schräg laufender Wellen, damit kein Karomuster entsteht
@@ -360,6 +368,9 @@ const water = new THREE.Mesh(
         float a = mix(0.36, 0.92, fres);
         vec3 c = mix(body, skyc * mix(0.82, 1.0, shade), fres) + spec;
         a = min(1.0, a + length(spec) * 0.5);
+        // In die Ferne wird die Oberfläche undurchsichtig: man sieht nur in der
+        // Nähe ins Wasser hinein. Das verdeckt alles Untergetauchte zuverlässig.
+        a = mix(a, 1.0, smoothstep(sightNear, sightFar, vFogDepth));
         float fogF = 1.0 - exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
         c = mix(c, fogColor, fogF);
         a = mix(a, 1.0, fogF);
@@ -750,8 +761,8 @@ async function buildNature(){
 // damit er niedrig genug liegt, um mit dem Ruderboot anzulegen.
 async function buildIslandHouse(){
   const {x: sx, z: sz, dir} = HOUSE_SPOT;                  // Ufer der Insel
-  const wood = new THREE.MeshLambertMaterial({color: 0x8a5a33});
-  const woodDark = new THREE.MeshLambertMaterial({color: 0x5c3a22});
+  const wood = underwaterFade(new THREE.MeshLambertMaterial({color: 0x8a5a33}));
+  const woodDark = underwaterFade(new THREE.MeshLambertMaterial({color: 0x5c3a22}));
   const group = new THREE.Group();
 
   const DECK_Y = 0.42, LEN = 12, WIDTH = 1.7;
@@ -831,7 +842,7 @@ hull.add(seat);
 const BENCH_Y = 0.34;                // Oberkante der Querbank, passend zum hohen Bootsrand
 let seatRowY = 0;                    // Sitzhöhe auf der Bank, einmal eingemessen
 let benchParts = [];                 // Bank und Stützen, werden an die Hüfte gesetzt
-let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bowFoam = [], bucketEmpty, bucketFull;
+let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bucketEmpty, bucketFull;
 
 function retarget(clip){
   const keep = clip.tracks.filter(t => !t.name.endsWith('.scale') &&
@@ -1021,28 +1032,6 @@ async function buildBoat(){
     return pivot;
   };
   oars = [makeOar(-1), makeOar(1)];
-
-  // V-Bugwelle: zwei flache Bänder, die vom Bug nach hinten außen laufen
-  bowFoam = [-1, 1].map(side => {
-    const g = new THREE.PlaneGeometry(0.5, 2.6, 1, 8).rotateX(-Math.PI / 2).translate(0, 0, 1.3);
-    const uvA = g.attributes.uv;
-    const c = new Float32Array(uvA.count * 4);
-    for(let i = 0; i < uvA.count; i++){
-      const v = uvA.getY(i);                 // 0 am Bug, 1 hinten
-      c.set([1, 1, 1, Math.sin(v * Math.PI) * 0.9], i * 4);
-    }
-    g.setAttribute('color', new THREE.BufferAttribute(c, 4));
-    const mat = new THREE.MeshBasicMaterial({
-      map: foamTex, transparent: true, depthWrite: false, vertexColors: true,
-      side: THREE.DoubleSide, opacity: 0});
-    mat.onBeforeCompile = foamEdgeFade;
-    const mesh = new THREE.Mesh(g, mat);
-    mesh.position.set(side * 0.35, 0.06 - hull.position.y, -1.5);
-    mesh.rotation.y = -side * 0.22;
-    mesh.renderOrder = 4;
-    hull.add(mesh);
-    return mesh;
-  });
 
   bucketEmpty = fit(be.scene, 0.34); bucketFull = fit(bf.scene, 0.34);
   for(const bk of [bucketEmpty, bucketFull]){ shadows(bk); bk.position.set(0.35, 0.05, -0.75); hull.add(bk); }
@@ -1313,7 +1302,7 @@ function updateWake(dt, t){
     }
   }
   const pos = wakeGeo.attributes.position, uv = wakeGeo.attributes.uv, col = wakeGeo.attributes.color;
-  const n = wake.pts.length, life = 6;
+  const n = wake.pts.length, life = 4;   // kürzere Spur
   for(let i = 0; i < WAKE_N; i++){
     const k = Math.min(i, n - 1);
     const e = wake.pts[k];
@@ -1322,7 +1311,7 @@ function updateWake(dt, t){
     const w = (0.55 + age * 2.4) * (0.4 + e.str) * e.wob;     // nach hinten breiter
     const fade = (1 - age) * (1 - age);
     const near = Math.min(1, (n - 1 - k) / 2);                // direkt am Heck sanft einblenden
-    const alpha = (i < n ? 1 : 0) * e.str * fade * near * 0.85;
+    const alpha = (i < n ? 1 : 0) * e.str * fade * near * 0.42;   // deutlich zarter
     for(const side of [0, 1]){
       const j = i * 2 + side, sgn = side ? 1 : -1;
       const x = e.p.x + e.r.x * w * sgn, z = e.p.z + e.r.z * w * sgn;
@@ -1919,11 +1908,6 @@ function updateBoat(dt, t){
     if(wet && !o.userData.wasWet) spawnRing(tipPos.x, tipPos.z, 0.14, 1.2, 0.3);   // Eintauchen
     o.userData.wasWet = wet;
   });
-  const foamStr = THREE.MathUtils.clamp((Math.abs(state.speed) - 0.35) / 2.2, 0, 1);
-  for(const f of bowFoam){
-    f.material.opacity += (foamStr * 0.55 - f.material.opacity) * Math.min(1, dt * 3);
-    f.visible = f.material.opacity > 0.02;
-  }
   if(rowing && Math.random() < dt * 3) sfxSoft();
   // Kielwasser
 
