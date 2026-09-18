@@ -26,7 +26,10 @@
   #fight{bottom:70px;left:50%;transform:translateX(-50%);width:260px;display:none}
   .bar{height:10px;border-radius:5px;background:rgba(0,0,0,.35);overflow:hidden;margin-top:4px}
   .bar i{display:block;height:100%;width:0}
-  #tension i{background:linear-gradient(90deg,#9fd3a8,#f3d27a 60%,#e8665a)}
+  /* Der Verlauf ist auf die volle Balkenbreite verankert, damit er beim
+     Wachsen maskiert und nicht gestaucht wird */
+  #tension i{background:linear-gradient(90deg,#9fd3a8,#f3d27a 60%,#e8665a);
+    background-size:260px 100%;background-repeat:no-repeat}
   #progress i{background:#f6e7c8}
   #fight label{font-size:12px;opacity:.8}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
@@ -1605,6 +1608,62 @@ const bobber = new THREE.Group();
 }
 bobber.visible = false;
 scene.add(bobber);
+// Haken am Vorfach unter dem Schwimmer. Der Fisch beißt wirklich am Haken an,
+// und das Vorfach spannt sich geometrisch sauber zwischen Haken und Schwimmer.
+const LEADER = 1.1;                       // Vorfachlänge in Metern
+const hook = new THREE.Group();
+{
+  const steel = new THREE.MeshLambertMaterial({color: 0x9aa3ab, emissive: 0x15181c});
+  const shank = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.2, 6), steel);
+  shank.position.y = 0.1;
+  const bend = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.012, 6, 12, Math.PI * 1.25), steel);
+  bend.rotation.y = Math.PI / 2;
+  bend.rotation.z = -Math.PI / 2;
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.06, 5), steel);
+  tip.position.set(0, 0.075, 0.055);
+  tip.rotation.x = -0.35;
+  hook.add(shank, bend, tip);
+}
+hook.visible = false;
+scene.add(hook);
+// Vorfach: kurze Linie vom Schwimmer zum Haken
+const leaderGeo = new THREE.BufferGeometry().setAttribute('position',
+  new THREE.BufferAttribute(new Float32Array(2 * 3), 3));
+const leaderLine = new THREE.Line(leaderGeo, new THREE.LineBasicMaterial({
+  color: 0xfff2dd, transparent: true, opacity: 0.55}));
+leaderLine.frustumCulled = false; leaderLine.visible = false;
+scene.add(leaderLine);
+// Haken unter den Schwimmer hängen bzw. an den Fisch, Schwimmer folgt der Geometrie
+function placeHook(t, fish, pullTo){
+  const b = bobber.position;
+  if(fish){
+    // Der Haken sitzt im Maul: Position aus Blickrichtung des Fisches
+    const yaw = fish.obj.rotation.y;
+    hook.position.set(fish.obj.position.x + Math.sin(yaw) * 0.22, fish.obj.position.y + 0.02,
+      fish.obj.position.z + Math.cos(yaw) * 0.22);
+    // Der Schwimmer hängt am straffen Vorfach über dem Haken, Richtung Rute
+    const depth = Math.max(0, waveH(hook.position.x, hook.position.z, t) - hook.position.y);
+    const flat = Math.sqrt(Math.max(0, LEADER * LEADER - depth * depth));
+    const dx = pullTo.x - hook.position.x, dz = pullTo.z - hook.position.z;
+    const len = Math.hypot(dx, dz) || 1;
+    if(!pullTo){ /* Schwimmer wird anderswo gesetzt */ }
+    else if(depth < LEADER){
+      b.set(hook.position.x + dx / len * flat, waveH(b.x, b.z, t) + 0.02, hook.position.z + dz / len * flat);
+    } else if(pullTo){
+      // tiefer als das Vorfach: der Schwimmer wird mit untergezogen
+      const k = LEADER / depth;
+      b.set(hook.position.x + dx / len * 0.1, hook.position.y + depth * k, hook.position.z + dz / len * 0.1);
+    }
+  } else {
+    hook.position.set(b.x + Math.sin(t * 1.3) * 0.05, b.y - LEADER, b.z + Math.cos(t * 1.1) * 0.05);
+  }
+  hook.rotation.y = Math.atan2(b.x - hook.position.x, b.z - hook.position.z);
+  const lp = leaderGeo.attributes.position;
+  lp.setXYZ(0, b.x, b.y - 0.04, b.z);
+  lp.setXYZ(1, hook.position.x, hook.position.y + 0.2, hook.position.z);
+  lp.needsUpdate = true;
+}
+
 const LINE_N = 30;
 const lineGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(LINE_N * 3), 3));
 const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({color: 0xfff2dd, transparent: true, opacity: 0.75}));
@@ -1656,6 +1715,7 @@ function leaveFishing(){
   if(state.fish) releaseFish();
   state.mode = 'row'; state.phase = 'idle';
   rod.visible = false; bobber.visible = false; line.visible = false; aimRing.visible = false;
+  hook.visible = false; leaderLine.visible = false;
   oars.forEach(o => o.visible = true);
   seat.position.set(0, seatRowY, 0.1);
   seat.rotation.y = 0;
@@ -1705,6 +1765,7 @@ function missed(msg, sub){
   releaseFish();
   document.getElementById('fight').style.display = 'none';
   state.phase = 'idle'; bobber.visible = false; line.visible = false;
+  hook.visible = false; leaderLine.visible = false;
   play('Fishing_Idle', {fade: 0.4});
   setHint(pick('Tippe aufs Wasser, um erneut auszuwerfen', 'Klicke aufs Wasser, um erneut auszuwerfen', 'Linker Stick zielen · Ⓐ erneut auswerfen'));
 }
@@ -1932,7 +1993,7 @@ function updateFishing(dt, t){
       if(state.t > dur * 0.45){
         state.phase = 'flying'; state.t = 0;
         state.castFrom.copy(tip);
-        bobber.visible = true; line.visible = true;
+        bobber.visible = true; line.visible = true; hook.visible = true; leaderLine.visible = true;
       }
       break;
     }
@@ -1940,6 +2001,7 @@ function updateFishing(dt, t){
       const k = Math.min(1, state.t / 0.9);
       bobber.position.lerpVectors(state.castFrom, state.castTo, k);
       bobber.position.y = THREE.MathUtils.lerp(state.castFrom.y, 0, k) + Math.sin(k * Math.PI) * 3;
+      placeHook(t, null, null);          // Haken fliegt unter dem Schwimmer mit
       if(k >= 1){
         state.phase = 'waiting'; state.t = 0;
         spawnRing(state.castTo.x, state.castTo.z, 0.6, 1.5);
@@ -1953,10 +2015,11 @@ function updateFishing(dt, t){
     case 'waiting': {
       bobber.position.set(state.castTo.x, waveH(state.castTo.x, state.castTo.z, t) + 0.02, state.castTo.z);
       bobber.rotation.z = Math.sin(t * 1.3) * 0.08;
-      // Knabbern kurz vor dem Biss
+      placeHook(t, null, null);
+      // Knabbern kurz vor dem Biss: der Fisch kommt zum Haken, nicht zum Schwimmer
       if(state.fish){
         const f = state.fish;
-        const target = tmpV.set(state.castTo.x, -0.45, state.castTo.z);
+        const target = tmpV.copy(hook.position);
         f.obj.position.lerp(target, Math.min(1, dt * 0.8));
         faceTo(f, target, dt);
         if(state.t > state.biteAt - 1.5) bobber.position.y -= Math.abs(Math.sin(t * 14)) * 0.03;
@@ -1973,7 +2036,10 @@ function updateFishing(dt, t){
     }
     case 'bite': {
       bobber.position.y = -0.12 + Math.sin(t * 20) * 0.04;
-      if(state.fish) state.fish.obj.position.set(state.castTo.x, -0.35, state.castTo.z);
+      if(state.fish){
+        state.fish.obj.position.set(hook.position.x, hook.position.y - 0.05, hook.position.z);
+        placeHook(t, state.fish, null);
+      }
       if(state.t > 1.3) missed('Zu langsam …', 'Der Fisch hat den Köder geklaut.');
       break;
     }
@@ -2010,11 +2076,10 @@ function updateFishing(dt, t){
       const prevF = f.obj.position.clone();
       f.obj.position.lerp(tmpV.set(fx, fy, fz), Math.min(1, dt * 7));
       faceTo(f, tmpV2.copy(f.obj.position).multiplyScalar(2).sub(prevF), dt * 3);
-      // Schwimmer sitzt über dem Fisch und wird mit untergezogen
-      const bx = f.obj.position.x, bz = f.obj.position.z;
-      bobber.position.set(bx, Math.min(waveH(bx, bz, t) + 0.02, f.obj.position.y + 0.42), bz);
+      // Haken sitzt im Maul, der Schwimmer folgt der Vorfach-Geometrie
+      placeHook(t, f, boat.position);
       bobber.rotation.z = Math.sin(t * 11) * (pull ? 0.5 : 0.18);
-      if(pull && Math.random() < dt * 6) spawnRing(bx, bz, 0.18, 1.0, 0.25);
+      if(pull && Math.random() < dt * 6) spawnRing(bobber.position.x, bobber.position.z, 0.18, 1.0, 0.25);
       if(state.progress >= 1) landFish();
       break;
     }
@@ -2028,6 +2093,7 @@ function updateFishing(dt, t){
         else { f.obj.position.lerpVectors(tip.clone().add(tmpV.set(0, -0.4, 0)), bk.add(tmpV.set(0, 0.25, 0)), (k - 0.5) * 2); }
         f.obj.rotation.z += dt * 6;
         bobber.position.copy(f.obj.position).y += 0.3;
+        placeHook(t, f, null);
       }
       if(k >= 1){
         if(f){
@@ -2035,6 +2101,7 @@ function updateFishing(dt, t){
           else { removeFish(f); state.fish = null; }
         }
         bobber.visible = false; line.visible = false;
+        hook.visible = false; leaderLine.visible = false;
       }
       if(state.t > actions.Fishing_Catch.getClip().duration + 0.2){
         state.phase = 'idle';
@@ -2056,6 +2123,7 @@ function updateFishing(dt, t){
         b.z += toBoat.z * v * dt;
         b.y = waveH(b.x, b.z, t) + 0.02;
         bobber.rotation.z = Math.sin(t * 9) * 0.25;              // zappelt im Zug
+        placeHook(t, null, null);
         if(Math.random() < dt * 6) spawnRing(b.x, b.z, 0.09, 0.9, 0.2);
         state.liftT = 0;
       } else {
@@ -2063,9 +2131,11 @@ function updateFishing(dt, t){
         state.liftT = (state.liftT || 0) + dt;
         const k = Math.min(1, state.liftT / 0.4);
         b.lerp(tip, k * 0.5);
+        placeHook(t, null, null);
         if(k >= 1){
           releaseFish();
           state.phase = 'idle'; bobber.visible = false; line.visible = false;
+          hook.visible = false; leaderLine.visible = false;
           bobber.rotation.z = 0;
           play('Fishing_Idle', {fade: 0.3});
           setHint(pick('Tippe aufs Wasser, um auszuwerfen', 'Klicke aufs Wasser, um auszuwerfen', 'Linker Stick zielen · Ⓐ auswerfen'));
