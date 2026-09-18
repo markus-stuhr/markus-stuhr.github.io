@@ -1167,7 +1167,7 @@ async function buildWhale(){
   whale.top = new THREE.Box3().setFromObject(w).max.y;
   whale.mixer = new THREE.AnimationMixer(w);
   const clip = g.animations.find(a => a.name === 'Swim') || g.animations[0];
-  if(clip){ const act = whale.mixer.clipAction(clip); act.timeScale = 0.55; act.play(); }
+  if(clip){ const act = whale.mixer.clipAction(clip); act.timeScale = 0.28;   // ruhiger Schlag der Fluke act.play(); }
 }
 
 // Blas: ein paar aufsteigende, verblassende Tropfenwolken
