@@ -173,19 +173,25 @@ scene.add(sky);
 // Wasserfarbe über. Bei etwa 5 m ist nichts mehr zu erkennen.
 const WATER_VIS = 3.5;                 // Abklinglänge; bei etwa 8 m Tiefe sieht man nichts mehr
 const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles Tiefwasser
+const WATER_SIGHT_NEAR = 55, WATER_SIGHT_FAR = 105;          // Sichtweite in die Ferne
 function underwaterFade(mat){
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, renderer) => {
     if(prev) prev(sh, renderer);
-    sh.vertexShader = 'varying float vWY;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    sh.vertexShader = 'varying float vWY;\nvarying float vUwD;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
       vec4 _wp = vec4(transformed, 1.0);
       #ifdef USE_INSTANCING
         _wp = instanceMatrix * _wp;
       #endif
-      vWY = (modelMatrix * _wp).y;`);
-    sh.fragmentShader = 'varying float vWY;\n' + sh.fragmentShader.replace('#include <opaque_fragment>',
-      `outgoingLight = mix(outgoingLight, vec3(${WATER_BODY.x}, ${WATER_BODY.y}, ${WATER_BODY.z}),
-         1.0 - exp(-max(0.0, -vWY) / ${WATER_VIS.toFixed(2)}));
+      vWY = (modelMatrix * _wp).y;
+      vUwD = -mvPosition.z;`);
+    sh.fragmentShader = 'varying float vWY;\nvarying float vUwD;\n' + sh.fragmentShader.replace('#include <opaque_fragment>',
+      `float _depthFade = 1.0 - exp(-max(0.0, -vWY) / ${WATER_VIS.toFixed(2)});
+       // unter Wasser reicht der Blick auch in die Weite nur etwa 100 m
+       float _under = smoothstep(0.0, -0.6, vWY);
+       float _distFade = smoothstep(${WATER_SIGHT_NEAR.toFixed(1)}, ${WATER_SIGHT_FAR.toFixed(1)}, vUwD) * _under;
+       outgoingLight = mix(outgoingLight, vec3(${WATER_BODY.x}, ${WATER_BODY.y}, ${WATER_BODY.z}),
+         max(_depthFade, _distFade));
        #include <opaque_fragment>`);
   };
   const key = mat.customProgramCacheKey;
@@ -1992,17 +1998,23 @@ function updateFishing(dt, t){
       document.querySelector('#progress i').style.width = state.progress * 100 + '%';
       if(state.tension >= 1){ missed('Schnur gerissen!', 'Nicht so fest ziehen, wenn er kämpft.'); break; }
       if(state.progress <= 0 && state.t > 3){ missed('Entwischt …', 'Der Fisch hat sich losgerissen.'); break; }
-      // Pose wandert zum Boot, Fisch zappelt daneben
+      // Der Fisch führt: er wird zum Boot gezogen und zappelt dabei. Der
+      // Schwimmer hängt an ihm und macht seine Bewegung mit.
       const bp = boat.position;
       const k = state.progress;
-      const px = THREE.MathUtils.lerp(state.castTo.x, bp.x, k * 0.85) + Math.sin(t * 3.1) * (1 - k) * 0.9;
-      const pz = THREE.MathUtils.lerp(state.castTo.z, bp.z, k * 0.85) + Math.cos(t * 2.3) * (1 - k) * 0.9;
-      bobber.position.set(px, -0.05 + Math.sin(t * 9) * 0.04, pz);
-      const target = tmpV.set(px + Math.sin(t * 5) * 0.4, -0.3 - (pull ? 0.2 : 0), pz + Math.cos(t * 4) * 0.4);
+      const fx = THREE.MathUtils.lerp(state.castTo.x, bp.x, k * 0.85)
+        + Math.sin(t * 3.1) * (1 - k) * 0.9 + Math.sin(t * 5.3) * (pull ? 0.5 : 0.2);
+      const fz = THREE.MathUtils.lerp(state.castTo.z, bp.z, k * 0.85)
+        + Math.cos(t * 2.3) * (1 - k) * 0.9 + Math.cos(t * 4.7) * (pull ? 0.5 : 0.2);
+      const fy = -0.28 - (pull ? 0.45 : 0) + Math.sin(t * 6.5) * 0.12;
       const prevF = f.obj.position.clone();
-      f.obj.position.lerp(target, Math.min(1, dt * 6));
-      faceTo(f, tmpV2.copy(f.obj.position).add(f.obj.position).sub(prevF), dt * 3);
-      if(pull && Math.random() < dt * 4) spawnRing(px, pz, 0.7, 0.8);
+      f.obj.position.lerp(tmpV.set(fx, fy, fz), Math.min(1, dt * 7));
+      faceTo(f, tmpV2.copy(f.obj.position).multiplyScalar(2).sub(prevF), dt * 3);
+      // Schwimmer sitzt über dem Fisch und wird mit untergezogen
+      const bx = f.obj.position.x, bz = f.obj.position.z;
+      bobber.position.set(bx, Math.min(waveH(bx, bz, t) + 0.02, f.obj.position.y + 0.42), bz);
+      bobber.rotation.z = Math.sin(t * 11) * (pull ? 0.5 : 0.18);
+      if(pull && Math.random() < dt * 6) spawnRing(bx, bz, 0.18, 1.0, 0.25);
       if(state.progress >= 1) landFish();
       break;
     }
@@ -2033,14 +2045,31 @@ function updateFishing(dt, t){
       break;
     }
     case 'retrieve': {
-      const k = Math.min(1, state.t / 1.1);
-      bobber.position.lerpVectors(state.castFrom, tip, k);
-      bobber.position.y += Math.sin(k * Math.PI) * 0.4;
-      if(k >= 1){
-        releaseFish();
-        state.phase = 'idle'; bobber.visible = false; line.visible = false;
-        play('Fishing_Idle', {fade: 0.3});
-        setHint(pick('Tippe aufs Wasser, um auszuwerfen', 'Klicke aufs Wasser, um auszuwerfen', 'Linker Stick zielen · Ⓐ auswerfen'));
+      // Der Schwimmer wird über das Wasser herangezogen, nicht durch die Luft.
+      const b = bobber.position;
+      const toBoat = tmpV.set(boat.position.x - b.x, 0, boat.position.z - b.z);
+      const dist = toBoat.length();
+      if(dist > 1.6){
+        toBoat.multiplyScalar(1 / dist);
+        const v = 4.2;
+        b.x += toBoat.x * v * dt;
+        b.z += toBoat.z * v * dt;
+        b.y = waveH(b.x, b.z, t) + 0.02;
+        bobber.rotation.z = Math.sin(t * 9) * 0.25;              // zappelt im Zug
+        if(Math.random() < dt * 6) spawnRing(b.x, b.z, 0.09, 0.9, 0.2);
+        state.liftT = 0;
+      } else {
+        // letztes Stück: aus dem Wasser heben
+        state.liftT = (state.liftT || 0) + dt;
+        const k = Math.min(1, state.liftT / 0.4);
+        b.lerp(tip, k * 0.5);
+        if(k >= 1){
+          releaseFish();
+          state.phase = 'idle'; bobber.visible = false; line.visible = false;
+          bobber.rotation.z = 0;
+          play('Fishing_Idle', {fade: 0.3});
+          setHint(pick('Tippe aufs Wasser, um auszuwerfen', 'Klicke aufs Wasser, um auszuwerfen', 'Linker Stick zielen · Ⓐ auswerfen'));
+        }
       }
       break;
     }
@@ -2052,7 +2081,8 @@ function updateFishing(dt, t){
   // Schnur: durchhängend beim Warten, gespannt im Drill
   if(line.visible){
     const a = tip, b = bobber.position, p = lineGeo.attributes.position;
-    const sag = state.phase === 'fight' ? 0.05 : state.phase === 'flying' ? 0.2 : 0.9;
+    const sag = state.phase === 'fight' ? 0.05 : state.phase === 'flying' ? 0.2
+      : state.phase === 'retrieve' ? 0.3 : 0.9;   // beim Einholen leicht durchhängend
     for(let i = 0; i < LINE_N; i++){
       const u = i / (LINE_N - 1);
       p.setXYZ(i, a.x + (b.x - a.x) * u, a.y + (b.y + 0.05 - a.y) * u - Math.sin(u * Math.PI) * sag, a.z + (b.z - a.z) * u);
