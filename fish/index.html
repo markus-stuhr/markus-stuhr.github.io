@@ -977,10 +977,11 @@ async function buildBoat(){
   holder.add(rod);
   rod.position.y = -0.35;
   slot.add(holder);
-  // Spitze der Angel: oberes Ende der Modellbox
-  const rb = new THREE.Box3().setFromObject(rod); // noch ohne Elterntransform, siehe unten
+  // Spitze der Angel: oberes Ende des Modells (Modellhöhe 4,95 in Modelleinheiten).
+  // Den höchsten Vertex zur Laufzeit zu suchen geht schief, weil in der Haltung
+  // der Figur zeitweise das Griffende oben liegt.
   rodTip.position.set(0, 4.95, 0);
-  rod.children[0] ? rod.children[0].add(rodTip) : rod.add(rodTip);
+  (rod.children[0] || rod).add(rodTip);
   rod.visible = false;
 
   // Eigene Ruder: schlichter Schaft ohne Griff, Blatt am Ende, Dolle auf dem Bootsrand.
@@ -1624,6 +1625,7 @@ const hook = new THREE.Group();
   tip.rotation.x = -0.35;
   hook.add(shank, bend, tip);
 }
+hook.scale.setScalar(0.4);          // klein und unauffällig
 hook.visible = false;
 scene.add(hook);
 // Vorfach: kurze Linie vom Schwimmer zum Haken
@@ -1633,34 +1635,41 @@ const leaderLine = new THREE.Line(leaderGeo, new THREE.LineBasicMaterial({
   color: 0xfff2dd, transparent: true, opacity: 0.55}));
 leaderLine.frustumCulled = false; leaderLine.visible = false;
 scene.add(leaderLine);
-// Haken unter den Schwimmer hängen bzw. an den Fisch, Schwimmer folgt der Geometrie
+// Haken unter den Schwimmer hängen bzw. an den Fisch. Beim Wurf liegt er dicht
+// am Schwimmer und sinkt erst nach dem Aufsetzen ab; hat ein Fisch gebissen,
+// steckt er im Maul und ist nicht mehr zu sehen.
+const hookPos = new THREE.Vector3();
 function placeHook(t, fish, pullTo){
   const b = bobber.position;
+  const L = state.leaderLen;
   if(fish){
-    // Der Haken sitzt im Maul: Position aus Blickrichtung des Fisches
+    // Haken im Maul: Position aus der Blickrichtung des Fisches
     const yaw = fish.obj.rotation.y;
-    hook.position.set(fish.obj.position.x + Math.sin(yaw) * 0.22, fish.obj.position.y + 0.02,
+    hookPos.set(fish.obj.position.x + Math.sin(yaw) * 0.22, fish.obj.position.y + 0.02,
       fish.obj.position.z + Math.cos(yaw) * 0.22);
-    // Der Schwimmer hängt am straffen Vorfach über dem Haken, Richtung Rute
-    const depth = Math.max(0, waveH(hook.position.x, hook.position.z, t) - hook.position.y);
-    const flat = Math.sqrt(Math.max(0, LEADER * LEADER - depth * depth));
-    const dx = pullTo.x - hook.position.x, dz = pullTo.z - hook.position.z;
-    const len = Math.hypot(dx, dz) || 1;
-    if(!pullTo){ /* Schwimmer wird anderswo gesetzt */ }
-    else if(depth < LEADER){
-      b.set(hook.position.x + dx / len * flat, waveH(b.x, b.z, t) + 0.02, hook.position.z + dz / len * flat);
-    } else if(pullTo){
-      // tiefer als das Vorfach: der Schwimmer wird mit untergezogen
-      const k = LEADER / depth;
-      b.set(hook.position.x + dx / len * 0.1, hook.position.y + depth * k, hook.position.z + dz / len * 0.1);
+    hook.visible = false;                       // steckt im Maul
+    if(pullTo){
+      // Der Schwimmer hängt am straffen Vorfach über dem Haken, Richtung Rute
+      const depth = Math.max(0, waveH(hookPos.x, hookPos.z, t) - hookPos.y);
+      const dx = pullTo.x - hookPos.x, dz = pullTo.z - hookPos.z;
+      const len = Math.hypot(dx, dz) || 1;
+      if(depth < L){
+        const flat = Math.sqrt(Math.max(0, L * L - depth * depth));
+        b.set(hookPos.x + dx / len * flat, waveH(b.x, b.z, t) + 0.02, hookPos.z + dz / len * flat);
+      } else {
+        // tiefer als das Vorfach: der Schwimmer wird mit untergezogen
+        b.set(hookPos.x + dx / len * 0.1, hookPos.y + L * 0.95, hookPos.z + dz / len * 0.1);
+      }
     }
   } else {
-    hook.position.set(b.x + Math.sin(t * 1.3) * 0.05, b.y - LEADER, b.z + Math.cos(t * 1.1) * 0.05);
+    hookPos.set(b.x + Math.sin(t * 1.3) * 0.05 * L, b.y - L, b.z + Math.cos(t * 1.1) * 0.05 * L);
+    hook.visible = bobber.visible;
+    hook.position.copy(hookPos);
+    hook.rotation.y = Math.atan2(b.x - hookPos.x, b.z - hookPos.z);
   }
-  hook.rotation.y = Math.atan2(b.x - hook.position.x, b.z - hook.position.z);
   const lp = leaderGeo.attributes.position;
   lp.setXYZ(0, b.x, b.y - 0.04, b.z);
-  lp.setXYZ(1, hook.position.x, hook.position.y + 0.2, hook.position.z);
+  lp.setXYZ(1, hookPos.x, hookPos.y + (fish ? 0 : 0.08), hookPos.z);
   lp.needsUpdate = true;
 }
 
@@ -1678,7 +1687,7 @@ scene.add(aimRing);
 const state = {
   mode: 'row',            // row | fish
   phase: 'idle',          // idle | casting | flying | waiting | bite | fight | catch
-  speed: 0, heading: 0, turn: 0, rowPhase: 0, stroke: 0,
+  speed: 0, heading: 0, turn: 0, rowPhase: 0, stroke: 0, leaderLen: 0.08,
   castFrom: new THREE.Vector3(), castTo: new THREE.Vector3(), t: 0,
   biteAt: 0, school: null, fish: null, tension: 0, progress: 0, surge: 0,
   bucket: [],
@@ -1699,12 +1708,38 @@ function toast(big, small, ms = 2600){
   toast.h = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+// Kleine Bewegungsfolge für Auf- und Absitzen: Hüpfer von der Bank nach vorn,
+// dann ein Schritt in den freien Teil des Boots.
+const seatSeq = [];
+function seatMoveTo(steps){
+  seatSeq.length = 0;
+  let from = seat.position.clone();
+  for(const st of steps){
+    seatSeq.push({from: from.clone(), to: st.to.clone(), dur: st.dur, arc: st.arc || 0, t: 0});
+    from = st.to.clone();
+  }
+}
+function updateSeatMove(dt){
+  const st = seatSeq[0];
+  if(!st) return;
+  st.t += dt;
+  const k = Math.min(1, st.t / st.dur);
+  const e = k * k * (3 - 2 * k);
+  seat.position.lerpVectors(st.from, st.to, e);
+  seat.position.y += Math.sin(k * Math.PI) * st.arc;
+  if(k >= 1) seatSeq.shift();
+}
+
 function enterFishing(){
   if(state.mode === 'fish') return;
   if(Math.abs(state.speed) > 0.6){ toast('Erst anhalten', 'Das Boot treibt noch zu schnell.', 1600); return; }
   state.mode = 'fish'; state.phase = 'idle';
   rod.visible = true;
-  seat.position.set(0, 0.02, -0.35);   // zum Angeln steht die Figur vor der Bank
+  // von der Bank nach vorn hüpfen und einen Schritt in den freien Teil machen
+  seatMoveTo([
+    {to: new THREE.Vector3(0, 0.02, 0.52), dur: 0.42, arc: 0.16},
+    {to: new THREE.Vector3(0, 0.02, 0.85), dur: 0.5, arc: 0.03},
+  ]);
   oars.forEach(o => o.visible = false);
   play('Fishing_Idle', {fade: 0.6});
   document.getElementById('modeBtn').textContent = 'Rudern (F)';
@@ -1717,7 +1752,7 @@ function leaveFishing(){
   rod.visible = false; bobber.visible = false; line.visible = false; aimRing.visible = false;
   hook.visible = false; leaderLine.visible = false;
   oars.forEach(o => o.visible = true);
-  seat.position.set(0, seatRowY, 0.1);
+  seatMoveTo([{to: new THREE.Vector3(0, seatRowY, 0.1), dur: 0.6, arc: 0.12}]);   // zurück auf die Bank
   seat.rotation.y = 0;
   document.getElementById('fight').style.display = 'none';
   play('Sit_Chair_Idle', {fade: 0.6});
@@ -1735,6 +1770,7 @@ function cast(target){
   const local = boat.worldToLocal(state.castTo.clone());
   seat.userData.targetYaw = Math.atan2(local.x, local.z - seat.position.z);
   state.phase = 'casting'; state.t = 0;
+  state.leaderLen = 0.08;          // beim Wurf liegt der Haken am Schwimmer
   bobber.visible = false; line.visible = false;
   play('Fishing_Cast', {once: true, fade: 0.2});
   setHint('');
@@ -1986,6 +2022,10 @@ function updateFishing(dt, t){
   boat.updateMatrixWorld(true);
   const tip = rodTip.getWorldPosition(new THREE.Vector3());
   state.t += dt;
+  // Vorfach: beim Wurf und beim Einholen kurz, im Wasser sinkt der Haken ab
+  const wantLeader = (state.phase === 'casting' || state.phase === 'flying'
+    || state.phase === 'retrieve' || state.phase === 'catch') ? 0.08 : LEADER;
+  state.leaderLen += (wantLeader - state.leaderLen) * Math.min(1, dt * (wantLeader > state.leaderLen ? 1.6 : 6));
 
   switch(state.phase){
     case 'casting': {
@@ -2355,6 +2395,7 @@ function loop(){
   try{ applyRowPose(); }catch(e){ rowPoseErr = e.message; }
   updateFishing(dt, t);
   updateSchools(dt, t);
+  updateSeatMove(dt);
   updateWake(dt, simT);
   updateWhale(dt, t);
   updateBirds(dt, t);
