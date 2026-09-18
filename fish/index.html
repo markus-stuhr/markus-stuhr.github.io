@@ -647,10 +647,33 @@ const HOUSE_SPOT = (() => {
   return {x: cx + dir.x * t, z: cz + dir.y * t, dir};
 })();
 
+const LEAFY = ['Tree_1', 'Tree_4', 'Tree_7', 'Birch_2', 'Birch_5', 'Pine_2', 'Tree_9'];
+const LEAFY_DIR = M + 'Quaternius Stylized Tree Pack/glTF/';
+// Das Pack bringt keine Texturen mit, alle Materialien sind weiß
+const LEAFY_COLORS = {
+  Bark: 0x6a4a31, Birch_Bark: 0xd9d4c4,
+  Tree_Leaves: 0x4e7f3a, Birch_Leaves: 0x76a344, Pine_Leaves: 0x2f6242,
+};
+function colorLeafy(scene3){
+  scene3.traverse(o => {
+    if(!o.isMesh) return;
+    const c = LEAFY_COLORS[o.material.name];
+    if(c === undefined) return;
+    const mat = o.material.clone();
+    mat.color.setHex(c);
+    o.material = mat;
+  });
+  return scene3;
+}
+
 async function buildNature(){
   const trees = ['Tree_1_A', 'Tree_2_A', 'Tree_3_A', 'Tree_4_A', 'Tree_2_C'];
   const buckets = {};
   for(const n of trees) buckets[n] = [];
+  // Auf der Insel mit dem Haus stehen die Bäume mit echten Blättern
+  const leafy = {};
+  for(const n of LEAFY) leafy[n] = [];
+  const houseIsle = new THREE.Vector2(ISLANDS[0][0], ISLANDS[0][1]);
   // Felsmodelle vorab laden und ihre Größe messen, um auf Zielgrößen zu normieren
   const rocks = [];
   for(const f of ROCK_FILES){
@@ -698,22 +721,37 @@ async function buildNature(){
       continue;
     }
     if(fbm(x * 0.02 + 50, z * 0.02) > -0.08 || rnd() < 0.15){
-      const name = trees[(rnd() * trees.length) | 0];
-      p.set(x, h - 0.1, z);
+      const onHouseIsle = Math.hypot(x - houseIsle.x, z - houseIsle.y) < ISLANDS[0][2] + 12;
       q.setFromAxisAngle(up, rnd() * 6.28);
-      s.setScalar(1.4 + rnd() * 1.2);
-      buckets[name].push(m.compose(p, q, s).clone());
+      if(onHouseIsle){
+        const name = LEAFY[(rnd() * LEAFY.length) | 0];
+        p.set(x, h - 0.15, z);
+        s.setScalar(0.8 + rnd() * 0.5);          // Modelle sind schon 4-9 m hoch
+        leafy[name].push(m.compose(p, q, s).clone());
+      } else {
+        const name = trees[(rnd() * trees.length) | 0];
+        p.set(x, h - 0.1, z);
+        s.setScalar(1.4 + rnd() * 1.2);
+        buckets[name].push(m.compose(p, q, s).clone());
+      }
     }
   }
   for(const r of rocks){
     if(r.land.length) scatter(r.scene, r.land, false);
     if(r.uw.length) scatter(r.scene, r.uw, true);
   }
-  await Promise.all(Object.keys(buckets).map(async n => {
-    if(!buckets[n].length) return;
-    try{ scatter((await load(NATURE + n + '_Color1.gltf')).scene, buckets[n]); }
-    catch(e){ console.warn('Natur fehlt', n, e); }
-  }));
+  await Promise.all([
+    ...Object.keys(buckets).map(async n => {
+      if(!buckets[n].length) return;
+      try{ scatter((await load(NATURE + n + '_Color1.gltf')).scene, buckets[n]); }
+      catch(e){ console.warn('Natur fehlt', n, e); }
+    }),
+    ...Object.keys(leafy).map(async n => {
+      if(!leafy[n].length) return;
+      try{ scatter(colorLeafy((await load(LEAFY_DIR + n + '.glb')).scene), leafy[n]); }
+      catch(e){ console.warn('Laubbaum fehlt', n, e); }
+    }),
+  ]);
 }
 
 // Fischerhaus mit flachem Steg auf einer Insel. Der Steg ist selbst gebaut,
