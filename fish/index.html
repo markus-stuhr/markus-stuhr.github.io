@@ -763,10 +763,10 @@ async function buildIslandHouse(){
   // Haus etwas landeinwärts, zum Steg ausgerichtet
   try{
     const house = (await load(M + 'Quaternius Ultimate Buildings Pack/glTF/Models with Materials/1Story_GableRoof_Mat.glb')).scene;
-    fit(house, 10, 'x');
+    fit(house, 7, 'x');          // 70 % der vorigen Größe
     shadows(house);
     const hx = sx - dir.x * 8, hz = sz - dir.y * 8;
-    house.position.set(hx, meshH(hx, hz) - 0.4, hz);
+    house.position.set(hx, meshH(hx, hz) - 0.85, hz);   // tiefer, damit die Vorderseite aufliegt
     house.rotation.y = ang;   // Tür (+Z-Seite des Modells) zeigt zum Steg
     scene.add(house);
   } catch(e){ console.warn('Haus fehlt', e); }
