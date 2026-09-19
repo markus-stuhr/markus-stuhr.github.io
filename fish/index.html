@@ -1860,6 +1860,8 @@ function renderBucket(){
 // ---------- Eingabe ----------
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const cam = {yaw: 0.35, pitch: 0.36, dist: 11, lastDrag: -99};
+// Fester Kameraabstand: weiter beim Rudern, näher beim Angeln
+const CAM_DIST_ROW = 11, CAM_DIST_FISH = 7;
 let drag = null;
 function waterPoint(e){
   ndc.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1);
@@ -1907,7 +1909,6 @@ addEventListener('pointerup', e => {
   if(state.phase === 'idle'){ const p = waterPoint(e); if(p) cast(p); }
   else if(state.phase === 'waiting'){ reelIn(); }
 });
-cv.addEventListener('wheel', e => { cam.dist = THREE.MathUtils.clamp(cam.dist * (1 + e.deltaY * 0.001), 4, 40); }, {passive: true});
 // e.code fehlt bei manchen Tastaturen/Automationen – aus e.key ableiten
 const codeOf = (e) => e.code || (e.key === ' ' ? 'Space' : e.key.length === 1 ? 'Key' + e.key.toUpperCase() : e.key);
 addEventListener('keydown', e => {
@@ -2319,6 +2320,8 @@ function updateCamera(dt){
     let d = state.heading - cam.yaw; d = Math.atan2(Math.sin(d), Math.cos(d));
     cam.yaw += d * Math.min(1, dt * 0.8);
   }
+  const want = state.mode === 'fish' ? CAM_DIST_FISH : CAM_DIST_ROW;
+  cam.dist += (want - cam.dist) * Math.min(1, dt * 2.5);
   const target = tmpV.copy(boat.position).add(tmpV2.set(0, 1.0, 0));
   const off = new THREE.Vector3(Math.sin(cam.yaw) * Math.cos(cam.pitch), Math.sin(cam.pitch), Math.cos(cam.yaw) * Math.cos(cam.pitch)).multiplyScalar(cam.dist);
   camera.position.copy(target).add(off);
@@ -2333,7 +2336,7 @@ function updateCamera(dt){
 }
 
 // ---------- Controller (Gamepad API, Standard-Layout) ----------
-// Linker Stick / D-Pad: rudern bzw. zielen · Rechter Stick: Kamera · LB/RB: Zoom
+// Linker Stick / D-Pad: rudern bzw. zielen · Rechter Stick: Kamera
 // Ⓐ angeln, auswerfen, anschlagen, einholen (halten) · RT einholen
 // Ⓑ Schnur einholen / zurück zum Rudern · Ⓨ Modus wechseln
 const pad = {x: 0, y: 0, prev: [], aim: new THREE.Vector3(0, 0, 8), hold: false, bit: false};
@@ -2368,8 +2371,6 @@ function updatePad(dt){
     cam.pitch = THREE.MathUtils.clamp(cam.pitch + ry * dt * 1.2, 0.08, 1.2);
     cam.lastDrag = clock.elapsedTime;
   }
-  if(b(4)) cam.dist = Math.min(40, cam.dist * (1 + dt * 1.5));
-  if(b(5)) cam.dist = Math.max(4, cam.dist * (1 - dt * 1.5));
 
   if(down(3)) state.mode === 'fish' ? leaveFishing() : enterFishing();
 
