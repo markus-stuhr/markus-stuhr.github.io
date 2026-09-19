@@ -3018,7 +3018,7 @@ function setTime(n){
   } else {
     // Sonne weg: dasselbe Licht kommt jetzt vom Mond, mit Schatten
     KEY_DIR.copy(MOON_DIR);
-    sun.intensity = 0.85 * moonK;
+    sun.intensity = 1.25 * moonK;
     sun.color.copy(MOON_COL);
   }
   sun.position.copy(KEY_DIR).multiplyScalar(700);
@@ -3028,7 +3028,7 @@ function setTime(n){
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
   scene.fog.color.copy(FOG);
   // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
-  waterShadow.material.opacity = y > -0.02 ? 0.3 * vis : 0.45 * moonK;
+  waterShadow.material.opacity = y > -0.02 ? 0.3 * vis : 0.65 * moonK;
   // nachts ist das Wasser selbst schon fast so dunkel wie die Schattenfarbe
   waterShadow.material.color.setHex(0x102b34).lerp(SHADOW_NIGHT, n);
   waterUniforms.keyDir.value = KEY_DIR;
