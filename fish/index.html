@@ -167,6 +167,8 @@ const SUN_DIR = new THREE.Vector3(-0.8, 0.24, -0.55).normalize();
 const SUN_R = 0.037;
 // Bereich der Sonnenhöhe, in dem Sonnenlicht und -schatten ausblenden (Baumlinie)
 const SUN_FADE_LO = 0.03, SUN_FADE_HI = 0.07;
+// Die Schatten blenden schon früher aus als das Licht selbst
+const SHADOW_FADE_LO = 0.055, SHADOW_FADE_HI = 0.16;
 const sun = new THREE.DirectionalLight(0xffb98a, 2.6);
 sun.castShadow = true;
 const SHADOW_MAP = renderer.capabilities.maxTextureSize >= 8192 ? 6144 : 4096;
@@ -3642,13 +3644,15 @@ function setTime(n){
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
   scene.fog.color.copy(FOG);
   // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
-  // Stärke des Schatten werfenden Lichts 0..1: Sonne blendet aus, Mond blendet mit Aufgang ein
-  const keyVis = y > -SUN_R ? vis : moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
+  // Die Schatten der Sonne verschwinden früher als ihr Licht: sonst liegen bei fast
+  // waagerechtem Licht noch harte Baumschatten über der ganzen Bucht
+  const sunShadowFade = THREE.MathUtils.smoothstep(y, SHADOW_FADE_LO, SHADOW_FADE_HI);
+  const keyVis = y > -SUN_R ? vis * sunShadowFade : moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
   // Mondschatten deutlich durchsichtiger als Sonnenschatten
-  const shadowStr = y > -SUN_R ? 1 : MOON_SHADOW;
+  const shadowStr = y > -SUN_R ? sunShadowFade : MOON_SHADOW;
   for(const l of [sun, boatSun, reedSun]) l.shadow.intensity = shadowStr;
   waterUniforms.keyVis.value = keyVis * shadowStr;
-  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis : 0.65 * keyVis * shadowStr;
+  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis * sunShadowFade : 0.65 * keyVis * shadowStr;
   // nachts ist das Wasser selbst schon fast so dunkel wie die Schattenfarbe
   waterShadow.material.color.setHex(0x102b34).lerp(SHADOW_NIGHT, n);
   waterUniforms.keyDir.value = KEY_DIR;
