@@ -204,13 +204,23 @@ const SKY_SIGN = (() => {
 
 // ---------- Tageszeit: 0 = Abend (Start), 1 = Nacht ----------
 const nightU = {value: 0};
-// Himmelsfarbe nach Höhe h über dem Horizont, für Himmel und Wasserspiegelung gleich
+// Himmelsfarbe nach Richtung: Höhe über dem Horizont und Winkel zur Sonne. Das Abendrot
+// liegt auf der Sonnenseite, gegenüber ist der Himmel kühler (rosa-blau, Erdschatten).
+// Für Himmel und Wasserspiegelung gleich.
 const SKY_GLSL = `
-  vec3 skyCol(float h, float n){
-    vec3 e = mix(vec3(1.0,0.66,0.45), vec3(0.72,0.42,0.55), smoothstep(0.0, 0.18, h));
-    e = mix(e, vec3(0.16,0.14,0.32), smoothstep(0.15, 0.6, h));
-    vec3 d = mix(vec3(0.95,0.40,0.20), vec3(0.36,0.20,0.38), smoothstep(0.0, 0.2, h));
-    d = mix(d, vec3(0.05,0.05,0.14), smoothstep(0.12, 0.6, h));
+  vec3 skyCol(vec3 dir, vec3 sd, float n){
+    float h = max(dir.y, 0.0);
+    vec2 a = dir.xz, b = sd.xz;
+    float to = 0.5 + 0.5 * dot(a / max(length(a), 1e-4), b / max(length(b), 1e-4));
+    float w = to * to;                                  // 1 zur Sonne hin, 0 gegenüber
+    // Abend
+    vec3 eT = mix(vec3(1.0,0.66,0.45), vec3(0.72,0.42,0.55), smoothstep(0.0, 0.18, h));
+    vec3 eA = mix(vec3(0.62,0.50,0.64), vec3(0.42,0.36,0.58), smoothstep(0.0, 0.18, h));
+    vec3 e = mix(mix(eA, eT, w), vec3(0.16,0.14,0.32), smoothstep(0.15, 0.6, h));
+    // Dämmerung
+    vec3 dT = mix(vec3(0.95,0.40,0.20), vec3(0.36,0.20,0.38), smoothstep(0.0, 0.2, h));
+    vec3 dA = mix(vec3(0.20,0.17,0.32), vec3(0.14,0.12,0.28), smoothstep(0.0, 0.2, h));
+    vec3 d = mix(mix(dA, dT, w), vec3(0.05,0.05,0.14), smoothstep(0.12, 0.6, h));
     vec3 k = mix(vec3(0.045,0.06,0.12), vec3(0.012,0.016,0.045), smoothstep(0.0, 0.5, h));
     vec3 c = mix(e, d, smoothstep(0.0, 0.5, n));
     return mix(c, k, smoothstep(0.45, 1.0, n));
@@ -228,7 +238,7 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.Shad
       // Pro Fragment neu normieren, sonst wird die Sonnenscheibe eckig
       vec3 vd = normalize(vDir);
       float h = vd.y;
-      vec3 c = skyCol(max(h, 0.0), night);
+      vec3 c = skyCol(vd, sunDir, night);
       if(h < 0.0) c *= 0.9;
       float s = max(dot(vd, sunDir), 0.0);
       // Nachglühen am Horizont, solange die Sonne knapp darunter steht
@@ -460,7 +470,7 @@ const water = new THREE.Mesh(
         float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
         vec3 r = reflect(-v, n);
         float h = max(r.y, 0.0);
-        vec3 skyc = skyCol(h, night);
+        vec3 skyc = skyCol(r, sunDir, night);
         float s = max(dot(r, sunDir), 0.0);
         // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
         // glatt wäre sie starr, mit voller Wellennormale verschmiert sie zu einem
@@ -503,7 +513,10 @@ const water = new THREE.Mesh(
         a = mix(a, 1.0, smoothstep(sightNear, sightFar, vFogDepth));
         float fogF = 1.0 - exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
         // der Dunst über dem Wasser bleibt leicht bläulich
-        c = mix(c, fogColor * mix(vec3(0.78, 0.9, 1.05), vec3(1.0), night), fogF);
+        // Dunst in der Farbe des Horizonts in Blickrichtung, damit das Abendrot nur auf der
+        // Sonnenseite liegt und Wasser und Himmel nahtlos ineinander übergehen
+        vec3 hz = skyCol(vec3(-v.x, 0.0, -v.z), sunDir, night);
+        c = mix(c, mix(fogColor, hz, 0.8) * mix(vec3(0.78, 0.9, 1.05), vec3(1.0), night), fogF);
         a = mix(a, 1.0, fogF);
         gl_FragColor = vec4(c, a);
         #include <tonemapping_fragment>
