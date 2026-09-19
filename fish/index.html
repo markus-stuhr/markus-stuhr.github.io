@@ -1309,11 +1309,11 @@ async function buildSchools(){
   }));
   const spots = [];
   // Plätze mit genug Wassertiefe suchen
-  for(let tries = 0; spots.length < 16 && tries < 5000; tries++){
+  for(let tries = 0; spots.length < 48 && tries < 20000; tries++){
     const x = (rnd() - 0.5) * 560, z = (rnd() - 0.5) * 560 + 40;
     const d = -terrainH(x, z);
     if(d < 3 || Math.hypot(x, z - 0) < 25) continue;
-    if(spots.some(s => Math.hypot(s.x - x, s.z - z) < 45)) continue;
+    if(spots.some(s => Math.hypot(s.x - x, s.z - z) < 26)) continue;
     spots.push({x, z, d});
   }
   for(const sp of spots){
@@ -1330,7 +1330,8 @@ function makeFish(school, i){
   const f = SkeletonUtils.clone(src.scene);
   const big = ['Tuna', 'Sunfish', 'Swordfish'].includes(school.species);
   fit(f, big ? 0.6 : 0.38, 'z');   // bewusst klein: halbe Größe
-  f.traverse(m => { if(m.isMesh){ m.castShadow = false; m.frustumCulled = false; } });
+  f.traverse(m => { if(m.isMesh) m.castShadow = false; });
+  cullSkinned(f);
   const wrap = new THREE.Group();
   wrap.add(f);
   scene.add(wrap);
@@ -2744,7 +2745,8 @@ function updateSchools(dt, t){
     if(terrainH(nx, nz) < -s.depth - 0.8){ s.center.x = nx; s.center.z = nz; }
     // langsam nachwachsen
     if(s.fish.length < s.max){ s.regrow += dt; if(s.regrow > 60){ s.regrow = 0; s.fish.push(makeFish(s, 0)); } }
-    const near = Math.hypot(s.center.x - bp.x, s.center.z - bp.z) < 140;
+    // ab etwa 70 m Blickabstand ist die Wasseroberfläche undurchsichtig
+    const near = Math.hypot(s.center.x - bp.x, s.center.z - bp.z) < 100;
     for(const f of s.fish){
       f.obj.visible = near || f.mode !== 'school';
       if(!f.obj.visible) continue;
