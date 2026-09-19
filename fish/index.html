@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Abendangeln</title>
+<title>Lake Night</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&display=swap" rel="stylesheet">
 <script defer src="/analytics.js"></script>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#2a1f33;font-family:Georgia,'Times New Roman',serif;color:#fff4e6;
@@ -34,8 +36,14 @@
   #fight label{font-size:12px;opacity:.8}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
     background:linear-gradient(#3b2a4a,#c9786a);z-index:5;transition:opacity .8s}
-  #loading div{font-size:28px;letter-spacing:.05em}
-  #loading small{margin-top:8px;opacity:.7;font-style:italic}
+  /* Startbildschirm: Logo (Boot mit Angler als Silhouette, der Schriftzug ist die Wasserkante) */
+  #loading svg{width:min(560px,86vw);height:auto;overflow:visible}
+  #loading small{margin-top:14px;opacity:.75;font-style:italic;min-height:1.2em}
+  #loading.ready{background:linear-gradient(rgba(34,24,46,.72),rgba(120,70,80,.55))}
+  #playBtn{position:static;margin-top:26px;font-family:Anton,Impact,'Arial Black',sans-serif;font-size:22px;letter-spacing:.12em;
+    padding:12px 44px;border:2px solid #fff;background:rgba(255,255,255,.08);border-radius:40px;opacity:0;pointer-events:none;transition:opacity .6s}
+  #loading.ready #playBtn{opacity:1;pointer-events:auto}
+  #playBtn:hover{background:rgba(255,255,255,.2)}
   .btn{position:fixed;pointer-events:auto;border:1px solid rgba(255,240,220,.4);background:rgba(40,25,40,.45);color:#fff4e6;
     font:inherit;font-size:15px;padding:10px 18px;border-radius:24px;cursor:pointer;backdrop-filter:blur(4px)}
   #modeBtn{bottom:18px;right:18px}
@@ -47,7 +55,21 @@
 </style>
 </head>
 <body>
-<div id="loading"><div>Abendangeln</div><small id="loadMsg">Die Sonne sinkt …</small></div>
+<div id="loading">
+  <svg viewBox="0 0 420 250" role="img" aria-label="Lake Night">
+    <!-- Silhouette aus dem echten 3D-Modell (makeLogoSilhouette), Unterkante = Wasserlinie y 158 -->
+    <image id="logoBoat" x="0" y="0" width="0" height="0" style="transition:opacity .8s;opacity:0"/>
+    <path id="logoLine" fill="none" stroke="#fff" stroke-width="1.2" d="" style="transition:opacity .8s;opacity:0"/>
+    <g id="logoBobber" fill="#fff" stroke="#fff" style="transition:opacity .8s;opacity:0">
+      <ellipse stroke="none" cx="0" cy="-3" rx="5" ry="6"/>
+      <path fill="none" stroke-width="1.6" d="M0 -9 L0 -17"/>
+    </g>
+    <!-- Schriftzug: die Oberkante der Buchstaben ist die Wasserlinie -->
+    <text x="210" y="238" text-anchor="middle" fill="#fff" font-family="Anton, Impact, 'Arial Black', sans-serif" font-size="92" letter-spacing="3">LAKE NIGHT</text>
+  </svg>
+  <small id="loadMsg">Die Sonne sinkt …</small>
+  <button id="playBtn" class="btn" type="button">PLAY</button>
+</div>
 <div id="title" class="hud"><h1>Abendangeln</h1><p>Eine stille Bucht, ein Ruderboot, ein Eimer.</p></div>
 <div id="bucket" class="hud"><b>Eimer · <span id="count">0</span>/10</b><ul id="list"></ul></div>
 <div id="hint" class="hud"></div>
@@ -3322,7 +3344,7 @@ function setTime(n){
   if(inp && +inp.value !== n) inp.value = n;
   // die Weltschattenkarte kommt ohnehin jedes dritte Bild neu (loop)
 }
-const timePlay = {on: true, btn: null};
+const timePlay = {on: false, btn: null};
 {
   const box = document.createElement('div');
   box.id = 'timeDbg';
@@ -3342,7 +3364,6 @@ const timePlay = {on: true, btn: null};
     playBtn.textContent = timePlay.on ? '❚❚' : '▶';
   });
   timePlay.btn = playBtn;
-  playBtn.textContent = '❚❚';
   document.body.appendChild(box);
 }
 setTime(0);
@@ -3390,6 +3411,54 @@ addEventListener('resize', () => {
     Math.round(innerHeight * renderer.getPixelRatio() * REFL_SCALE));
 });
 
+// ---------- Logo: weiße Silhouette des echten Boots mit Angler ----------
+// Einmal nach dem Laden: Figur in Angelpose bringen, Boot von der Seite (Bug rechts) mit
+// einer Orthokamera in einen eigenen Renderer zeichnen (nur Boots-Layer, alles weiß),
+// als Bild ins Logo setzen. Schnur und Schwimmer werden zur echten Rutenspitze gezogen.
+function makeLogoSilhouette(){
+  try{
+    enterFishing();
+    for(let i = 0; i < 40; i++){ updateSeatMove(0.05); if(mixer) mixer.update(0.05); }
+    boat.updateMatrixWorld(true);
+    const W = 1024, H = 512, TOP = 2.6, BOT = -0.14, HALF = (TOP - BOT);
+    const cam = new THREE.OrthographicCamera(-HALF, HALF, TOP, BOT, 0.1, 100);
+    cam.layers.set(BOAT_LAYER);
+    const tipW = new THREE.Vector3(); rodTip.getWorldPosition(tipW);
+    // Seite so wählen, dass die Rute nach rechts zeigt (Schwimmer rechts über dem T)
+    const side = new THREE.Vector3(1, 0, 0).applyQuaternion(boat.quaternion);
+    const place = (sg) => {
+      cam.position.copy(boat.position).addScaledVector(side, 30 * sg).setY(0);
+      cam.lookAt(boat.position.x, 0, boat.position.z);
+      cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+    };
+    place(1);
+    if(tipW.clone().project(cam).x < 0) place(-1);
+    const r2 = new THREE.WebGLRenderer({alpha: true, antialias: true, preserveDrawingBuffer: true});
+    r2.setSize(W, H, false);
+    r2.setClearColor(0x000000, 0);
+    const white = new THREE.MeshBasicMaterial({color: 0xffffff, fog: false});
+    const prevOverride = scene.overrideMaterial, prevBg = scene.background;
+    scene.overrideMaterial = white;
+    r2.render(scene, cam);
+    scene.overrideMaterial = prevOverride; scene.background = prevBg;
+    const url = r2.domElement.toDataURL('image/png');
+    const tipN = tipW.clone().project(cam);
+    r2.dispose(); r2.forceContextLoss();
+    // ins SVG: Bildunterkante (Tiefgang BOT) auf die Wasserlinie 158 legen
+    const WL = 158, imgW = 300, imgH = imgW * H / W;
+    const x0 = 170 - imgW / 2, y0 = WL - imgH * (TOP / (TOP - BOT));
+    const img = document.getElementById('logoBoat');
+    img.setAttribute('href', url);
+    img.setAttribute('x', x0); img.setAttribute('y', y0);
+    img.setAttribute('width', imgW); img.setAttribute('height', imgH);
+    const tx = x0 + (tipN.x * 0.5 + 0.5) * imgW, ty = y0 + (1 - (tipN.y * 0.5 + 0.5)) * imgH;
+    const bx = Math.min(404, tx + 70), by = WL - 1;
+    document.getElementById('logoLine').setAttribute('d', `M${tx.toFixed(1)} ${ty.toFixed(1)} Q${(tx + (bx - tx) * 0.75).toFixed(1)} ${(ty + (by - ty) * 0.25).toFixed(1)} ${bx.toFixed(1)} ${(by - 6).toFixed(1)}`);
+    document.getElementById('logoBobber').setAttribute('transform', `translate(${bx.toFixed(1)} ${by})`);
+    for(const id of ['logoBoat', 'logoLine', 'logoBobber']) document.getElementById(id).style.opacity = 1;
+  } catch(e){ console.warn('Logo-Silhouette', e); }
+}
+
 // ---------- Start ----------
 (async () => {
   boat.position.set(0, 0, 10);
@@ -3404,11 +3473,33 @@ addEventListener('resize', () => {
   await Promise.all([buildSchools(), buildNature(), buildIslandHouse().catch(e => console.warn(e)), buildWhale().catch(e => console.warn(e)), buildAnimals().catch(e => console.warn(e)), buildFrogs().catch(e => console.warn(e))]);
   buildFlies();
   renderBucket();
+  makeLogoSilhouette();
   state.mode = 'fish';
   leaveFishing();
   sun.shadow.needsUpdate = true;      // Weltschatten einmal rechnen, wenn alles geladen ist
-  document.getElementById('loading').style.opacity = 0;
-  setTimeout(() => document.getElementById('loading').remove(), 900);
+  // Startbildschirm bleibt, bis PLAY gedrückt wird (Klick, Enter/Leertaste oder Ⓐ);
+  // die Szene läuft dahinter schon, die Zeit startet erst mit PLAY
+  const welcome = document.getElementById('loading');
+  welcome.classList.add('ready');
+  loadMsg.textContent = 'Ein stiller Abend auf dem See';
+  let started = false;
+  const startGame = () => {
+    if(started) return;
+    started = true;
+    startAudio();
+    timePlay.on = true; timePlay.btn.textContent = '❚❚';
+    welcome.style.opacity = 0;
+    setTimeout(() => welcome.remove(), 900);
+    removeEventListener('keydown', onStartKey, true);
+  };
+  const onStartKey = (e) => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); e.stopPropagation(); startGame(); } };
+  document.getElementById('playBtn').addEventListener('click', startGame);
+  addEventListener('keydown', onStartKey, true);
+  (function padStart(){
+    if(started) return;
+    const gp = [...(navigator.getGamepads?.() || [])].find(g => g && g.connected);
+    if(gp && gp.buttons[0]?.pressed) startGame(); else requestAnimationFrame(padStart);
+  })();
   loop();
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
 window.__fish = {setTime, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
