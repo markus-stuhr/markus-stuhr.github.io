@@ -3239,6 +3239,7 @@ const HEMI_SKY0 = new THREE.Color(0xffc4b0), HEMI_SKY_N = new THREE.Color(0x4a60
 const HEMI_GND0 = new THREE.Color(0x3b4a70), HEMI_GND_N = new THREE.Color(0x24345e);
 const SUN_AZ = new THREE.Vector2(-0.8, -0.55).normalize();
 const MOON_COL = new THREE.Color(0x9fb4ff);
+const MOON_SHADOW = 0.4;
 const SHADOW_NIGHT = new THREE.Color(0x000205);
 function setTime(n){
   nightU.value = n;
@@ -3285,8 +3286,11 @@ function setTime(n){
   // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
   // Stärke des Schatten werfenden Lichts 0..1: Sonne blendet aus, Mond blendet mit Aufgang ein
   const keyVis = y > -SUN_R ? vis : moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
-  waterUniforms.keyVis.value = keyVis;
-  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis : 0.65 * keyVis;
+  // Mondschatten deutlich durchsichtiger als Sonnenschatten
+  const shadowStr = y > -SUN_R ? 1 : MOON_SHADOW;
+  for(const l of [sun, boatSun, reedSun]) l.shadow.intensity = shadowStr;
+  waterUniforms.keyVis.value = keyVis * shadowStr;
+  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis : 0.65 * keyVis * shadowStr;
   // nachts ist das Wasser selbst schon fast so dunkel wie die Schattenfarbe
   waterShadow.material.color.setHex(0x102b34).lerp(SHADOW_NIGHT, n);
   waterUniforms.keyDir.value = KEY_DIR;
