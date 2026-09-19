@@ -487,7 +487,8 @@ const water = new THREE.Mesh(
         vec3 dR = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.3))) - reflect(-v, vec3(0.0, 1.0, 0.0));
         vec4 rp = reflMat * vec4(vW + vec3(dR.x, 0.0, dR.z) * 25.0, 1.0);
         vec4 rc = texture2D(reflTex, rp.xy / rp.w);
-        skyc = mix(skyc, rc.rgb, rc.a * 0.6);   // Spiegelbild der Welt auf 60 % Stärke
+        // Spiegelbild der Welt auf 60 % Stärke
+        skyc = mix(skyc, rc.rgb, rc.a * 0.6);
         float s = max(dot(r, sunDir), 0.0);
         // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
         // glatt wäre sie starr, mit voller Wellennormale verschmiert sie zu einem
