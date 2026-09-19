@@ -521,8 +521,12 @@ const water = new THREE.Mesh(
         vec3 dR = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.3))) - reflect(-v, vec3(0.0, 1.0, 0.0));
         vec4 rp = reflMat * vec4(vW + vec3(dR.x, 0.0, dR.z) * 25.0, 1.0);
         vec4 rc = texture2D(reflTex, rp.xy / rp.w);
-        // Spiegelbild der Welt auf 60 % Stärke
-        skyc = mix(skyc, rc.rgb, rc.a * 0.6);
+        // Spiegelbild der Welt auf 60 % Stärke. Mit der Entfernung verschwimmt es im
+        // gespiegelten Himmel (Dunst über dem Wasser); nachts ist es schwächer, weil dort der
+        // helle Dunst fehlt und die Spiegelung sonst zu präsent wirkt
+        float nightR = smoothstep(0.4, 1.0, night);
+        vec3 rcol = mix(rc.rgb, skyc, smoothstep(15.0, 140.0, vFogDepth) * mix(0.35, 0.6, nightR));
+        skyc = mix(skyc, rcol, rc.a * 0.6 * mix(1.0, 0.55, nightR));
         float s = max(dot(r, sunDir), 0.0);
         // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
         // glatt wäre sie starr, mit voller Wellennormale verschmiert sie zu einem
