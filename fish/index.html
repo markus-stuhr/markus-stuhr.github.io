@@ -428,7 +428,17 @@ function landness(x, z){
 function height(x, z){
   const v = landness(x, z);
   const detail = fbm(x * 0.05 + 7, z * 0.05) * 0.8;
-  if(v < 0) return Math.max(v * 11, -14) + detail * 0.6 - 0.15;
+  if(v < 0){
+    let hw = Math.max(v * 11, -14) + detail * 0.6 - 0.15;
+    // Sandbänke zwischen den Inseln: flache Stellen im tiefen Wasser, auf denen Seegras
+    // wächst und man von oben etwas sieht
+    const bank = fbm(x * 0.021 + 91, z * 0.021 - 45);
+    if(bank > 0.16 && hw < -3){
+      const k = THREE.MathUtils.smoothstep(bank, 0.16, 0.42);
+      hw = THREE.MathUtils.lerp(hw, Math.min(-1.6, -2.6 + detail * 0.8), k);
+    }
+    return hw;
+  }
   const hills = Math.max(0, fbm(x * 0.02 + 3, z * 0.02 - 5) + 0.25) * 26;
   let h = Math.min(v, 1.5) * 2.2 + hills * THREE.MathUtils.smoothstep(v, 0.1, 1.4) + detail;
   // Die Hausinsel bleibt flach, damit Haus und Steg nicht auf einem Hügel liegen
