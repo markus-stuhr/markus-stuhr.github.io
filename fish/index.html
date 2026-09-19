@@ -1189,8 +1189,19 @@ boatDepthMaterial.onBeforeCompile = (sh) => {
   sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
     if(projectionMatrix[0][0] < 0.05) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`);
 };
+// Punktlichter (Lagerfeuer) nutzen die Distanzkarte: das Boot wirft dort gar keinen
+// Schatten, sonst lag nachts ein großer Bootsschatten auf dem Wasser
+const boatNoDistance = new THREE.MeshDistanceMaterial();
+boatNoDistance.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`);
+};
 function boatDepthOnly(root){
-  root.traverse(o => { if(o.isMesh && o.castShadow && o.customDepthMaterial !== boatDepthMaterial) o.customDepthMaterial = boatDepthMaterial; });
+  root.traverse(o => {
+    if(!o.isMesh || !o.castShadow) return;
+    o.customDepthMaterial = boatDepthMaterial;
+    o.customDistanceMaterial = boatNoDistance;
+  });
 }
 function boatShadowMaterial(mat){
   if(patchedMats.has(mat)) return patchedMats.get(mat);
