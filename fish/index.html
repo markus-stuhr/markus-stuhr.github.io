@@ -915,6 +915,54 @@ async function buildNature(){
 
 // Fischerhaus mit flachem Steg auf einer Insel. Der Steg ist selbst gebaut,
 // damit er niedrig genug liegt, um mit dem Ruderboot anzulegen.
+// ---------- Nachtbeleuchtung am Haus ----------
+const nightLit = {glass: [], lights: [], flames: [], k: 0};
+const flameGeo = new THREE.ConeGeometry(0.09, 0.32, 7).translate(0, 0.16, 0);
+const flameMat = new THREE.MeshBasicMaterial({color: 0xffb040, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, fog: false});
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,190,110,1)'); gr.addColorStop(0.35, 'rgba(255,140,50,0.35)'); gr.addColorStop(1, 'rgba(255,120,40,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+// Fackel: Stab, Korb, Flamme, Lichthof. Nur jede zweite bekommt ein echtes Punktlicht
+// (withLight), das hält die Zahl der Lichter im Shader klein.
+function addTorch(x, z, withLight){
+  const g = new THREE.Group();
+  const y = meshH(x, z);
+  g.position.set(x, y, z);
+  const wood = new THREE.MeshLambertMaterial({color: 0x4a3020});
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.6, 6).translate(0, 0.8, 0), wood);
+  const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.06, 0.16, 7).translate(0, 1.66, 0), new THREE.MeshLambertMaterial({color: 0x2a2320}));
+  shadows(pole); shadows(cup);
+  const flame = new THREE.Mesh(flameGeo, flameMat);
+  flame.position.y = 1.72;
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false}));
+  glow.position.y = 1.85; glow.scale.setScalar(1.4);
+  g.add(pole, cup, flame, glow);
+  scene.add(g);
+  const f = {flame, glow, seed: rnd() * 100, light: null};
+  if(withLight){
+    f.light = new THREE.PointLight(0xff9a40, 0, 14, 1.6);
+    f.light.position.set(0, 1.9, 0);
+    g.add(f.light);
+  }
+  nightLit.flames.push(f);
+}
+// Flackern; die Helligkeit folgt nightLit.k aus setTime
+function updateNightLights(t){
+  const k = nightLit.k;
+  for(const f of nightLit.flames){
+    f.flame.visible = f.glow.visible = k > 0.02;
+    if(!f.flame.visible){ if(f.light) f.light.intensity = 0; continue; }
+    const fl = 0.8 + Math.sin(t * 11 + f.seed) * 0.08 + Math.sin(t * 23.7 + f.seed * 2) * 0.06 + Math.sin(t * 5.3 + f.seed) * 0.06;
+    f.flame.scale.set(1, fl * (0.6 + 0.4 * k), 1);
+    f.glow.material.opacity = k * fl;
+    if(f.light) f.light.intensity = 9 * k * fl;
+  }
+  for(const m of nightLit.glass) m.emissiveIntensity = 1.6 * k;
+}
 async function buildIslandHouse(){
   const {x: sx, z: sz, dir} = HOUSE_SPOT;                  // Ufer der Insel
   const wood = underwaterFade(new THREE.MeshLambertMaterial({color: 0x8a5a33}));
@@ -968,6 +1016,22 @@ async function buildIslandHouse(){
     house.position.set(hx, meshH(hx, hz) - 0.85, hz);   // tiefer, damit die Vorderseite aufliegt
     house.rotation.y = ang;   // Tür (+Z-Seite des Modells) zeigt zum Steg
     scene.add(house);
+    // Fenster leuchten nachts warm (setTime)
+    house.traverse(m => {
+      if(!m.isMesh || !/Glass/i.test(m.material.name)) return;
+      m.material = m.material.clone();
+      m.material.emissive = new THREE.Color(0xffa24a);
+      m.material.emissiveIntensity = 0;
+      nightLit.glass.push(m.material);
+    });
+    // Fackeln links und rechts der Tür und am Anfang des Stegs
+    // von der Mitte der Hüllbox aus 0,7 m vor die Vorderseite (die zum Steg zeigt)
+    const hb = new THREE.Box3().setFromObject(house), hs = new THREE.Vector3(), hc = new THREE.Vector3();
+    hb.getSize(hs); hb.getCenter(hc);
+    const front = Math.abs(dir.x) * hs.x / 2 + Math.abs(dir.y) * hs.z / 2 + 0.7;
+    const px = dir.y, pz = -dir.x;                          // quer zum Steg
+    for(const side of [-1, 1]) addTorch(hc.x + dir.x * front + px * side * 1.5, hc.z + dir.y * front + pz * side * 1.5, side < 0);
+    for(const side of [-1, 1]) addTorch(sx + dir.x * 0.3 + px * side * 1.1, sz + dir.y * 0.3 + pz * side * 1.1, side < 0);
   } catch(e){ console.warn('Haus fehlt', e); }
 
   // ein paar Fässer am Ufer
@@ -2911,6 +2975,7 @@ function setTime(n){
   scene.fog.color.copy(FOG);
   // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
   waterShadow.material.opacity = 0.3 * vis;
+  nightLit.k = THREE.MathUtils.smoothstep(n, 0.3, 0.75);
   uwBody.value.copy(WATER_BODY).multiplyScalar(THREE.MathUtils.lerp(1, 0.3, n));
   const inp = document.querySelector('#timeDbg input');
   if(inp && +inp.value !== n) inp.value = n;
@@ -2948,6 +3013,7 @@ function loop(){
   updateWake(dt, simT);
   updateWhale(dt, t);
   updateAnimals(dt, t);
+  updateNightLights(t);
   updateBirds(dt, t);
   updateRings(dt);
   updateCamera(dt);
