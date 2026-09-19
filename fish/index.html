@@ -213,15 +213,22 @@ function underwaterFade(mat){
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, renderer) => {
     if(prev) prev(sh, renderer);
-    sh.vertexShader = 'varying float vWY;\nvarying float vUwD;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    sh.vertexShader = 'varying float vWY;\nvarying float vUwD;\nvarying float vUwL;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
       vec4 _wp = vec4(transformed, 1.0);
       #ifdef USE_INSTANCING
         _wp = instanceMatrix * _wp;
       #endif
-      vWY = (modelMatrix * _wp).y;
-      vUwD = -mvPosition.z;`);
-    sh.fragmentShader = 'varying float vWY;\nvarying float vUwD;\n' + sh.fragmentShader.replace('#include <opaque_fragment>',
-      `float _depthFade = 1.0 - exp(-max(0.0, -vWY) / ${WATER_VIS.toFixed(2)});
+      vec4 _ww = modelMatrix * _wp;
+      vWY = _ww.y;
+      vUwD = -mvPosition.z;
+      vUwL = distance(_ww.xyz, cameraPosition);`);
+    sh.fragmentShader = 'varying float vWY;\nvarying float vUwD;\nvarying float vUwL;\n' + sh.fragmentShader.replace('#include <opaque_fragment>',
+      `// Weg des Blicks durchs Wasser: Tiefe mal Strecke durch Höhenunterschied.
+       // Steil von oben ist er so lang wie die Tiefe, flach über die Fläche viel länger –
+       // wie in echt sieht man steil nach unten am weitesten.
+       float _d = max(0.0, -vWY);
+       float _path = _d * vUwL / max(cameraPosition.y - vWY, 0.5);
+       float _depthFade = 1.0 - exp(-_path / ${WATER_VIS.toFixed(2)});
        // unter Wasser reicht der Blick auch in die Weite nur etwa 100 m
        float _under = smoothstep(0.0, -0.6, vWY);
        float _distFade = smoothstep(${WATER_SIGHT_NEAR.toFixed(1)}, ${WATER_SIGHT_FAR.toFixed(1)}, vUwD) * _under;
