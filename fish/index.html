@@ -2055,6 +2055,10 @@ function updateFishing(dt, t){
       if(state.t > dur * 0.45){
         state.phase = 'flying'; state.t = 0;
         state.castFrom.copy(tip);
+        // Schwimmer und Haken sofort an die Rutenspitze setzen: sonst zeichnet
+        // die Schnur einen Frame lang noch zur Stelle des vorigen Wurfs.
+        bobber.position.copy(tip);
+        placeHook(t, null, null);
         bobber.visible = true; line.visible = true; hook.visible = true; leaderLine.visible = true;
       }
       break;
