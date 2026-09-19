@@ -456,7 +456,7 @@ const water = new THREE.Mesh(
       uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity; uniform float night;
       uniform float sightNear; uniform float sightFar;
       uniform vec3 moonDir; uniform vec3 glowPos[5]; uniform float glowI[5];
-      uniform mat3 starRot; uniform sampler2D reflTex;
+      uniform mat3 starRot; uniform sampler2D reflTex; uniform mat4 reflMat;
       varying vec3 vW; varying float vFogDepth; varying vec4 vRefl;
       ${SKY_GLSL}
       vec3 wn(vec2 p, float t){
@@ -481,7 +481,12 @@ const water = new THREE.Mesh(
         // Sterne und Land spiegeln sich an einer fast glatten Fläche
         vec3 rStar = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
         skyc += starsCol(rStar, starRot, night);
-        vec4 rc = texture2D(reflTex, vRefl.xy / vRefl.w + n.xz * 0.025);
+        // Spiegelbild mit derselben Wellenverzerrung wie die Mondscheibe: die Abweichung der
+        // Spiegelrichtung (30 % Wellennormale gegen glatte Fläche) versetzt den Abtastpunkt, so als läge
+        // das gespiegelte Objekt etwa 25 m entfernt
+        vec3 dR = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.3))) - reflect(-v, vec3(0.0, 1.0, 0.0));
+        vec4 rp = reflMat * vec4(vW + vec3(dR.x, 0.0, dR.z) * 25.0, 1.0);
+        vec4 rc = texture2D(reflTex, rp.xy / rp.w);
         skyc = mix(skyc, rc.rgb, rc.a);
         float s = max(dot(r, sunDir), 0.0);
         // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
