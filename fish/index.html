@@ -450,6 +450,32 @@ function grassClumpGeo(base, tip){
   g.computeVertexNormals();
   return colorRamp(g, base, tip);
 }
+function reedClumpGeo(){
+  // Schilf: lange schmale Halme, dazu ein paar Stängel mit Rohrkolben
+  const parts = [], green = new THREE.Color(0x3c5a22), tip = new THREE.Color(0xa7b460), brown = new THREE.Color(0x4a2e18);
+  const n = 9 + Math.floor(Math.random() * 5);
+  for(let i = 0; i < n; i++){
+    const b = blade(0.035, 6, 0.9, 0.05 + Math.random() * 0.25);
+    b.scale(1, 0.7 + Math.random() * 0.35, 1);
+    b.rotateY(Math.random() * Math.PI);
+    b.translate((Math.random() - 0.5) * 0.35, 0, (Math.random() - 0.5) * 0.35);
+    parts.push(colorRamp(b, green, tip));
+  }
+  for(let i = 0; i < 3; i++){
+    const hgt = 0.85 + Math.random() * 0.2;
+    const ox = (Math.random() - 0.5) * 0.3, oz = (Math.random() - 0.5) * 0.3;
+    const stem = new THREE.CylinderGeometry(0.006, 0.009, hgt, 4, 4).translate(ox, hgt / 2, oz);
+    parts.push(colorRamp(stem, green, tip));
+    const head = new THREE.CylinderGeometry(0.022, 0.022, 0.13, 6, 1).translate(ox, hgt - 0.1, oz);
+    const col = new Float32Array(head.attributes.position.count * 3);
+    for(let k = 0; k < col.length; k += 3) col.set([brown.r, brown.g, brown.b], k);
+    head.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    parts.push(head);
+  }
+  const g = mergeGeometries(parts.map(x => x.index ? x.toNonIndexed() : x));
+  g.computeVertexNormals();
+  return g;
+}
 function kelpGeo(){
   // gewelltes Band, zwei Stränge über Kreuz
   const parts = [];
@@ -561,6 +587,7 @@ function buildPlants(){
   const grass = Array.from({length: CH * CH}, () => []);
   const kelp = Array.from({length: CH * CH}, () => []);
   const land = Array.from({length: CH * CH}, () => []);
+  const reed = Array.from({length: CH * CH}, () => []);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
   const put = (arr, x, z, y, s, h) => {
     const ci = Math.min(CH - 1, Math.floor((x + WORLD / 2) / cell)) + Math.min(CH - 1, Math.floor((z + WORLD / 2) / cell)) * CH;
@@ -578,6 +605,14 @@ function buildPlants(){
         put(land, x, z, h - 0.03, 1 + rnd() * 1.1, 0.3 + rnd() * 0.45);
       continue;
     }
+    if(h > -1.2 && h < 0.45){
+      // Schilf fleckenweise im flachen Wasser vor dem Ufer, nicht am Steg
+      const slope = Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h);
+      if(h < -0.15 && slope < 0.5 && fbm(x * 0.05 + 71, z * 0.05 - 29) > 0.1 && rnd() < 0.7
+         && Math.hypot(x - HOUSE_SPOT.x, z - HOUSE_SPOT.z) > 14)
+        put(reed, x, z, h - 0.05, 1.1 + rnd() * 0.6, 1.5 + rnd() * 1.0 + Math.max(0, -h));
+      continue;
+    }
     if(d < 2 || d > 12) continue;
     if(d < 5.5 && patch > -0.08){
       put(grass, x, z, h - 0.05, 1.2 + rnd() * 1.3, Math.min(d - 0.5, 0.5 + rnd() * 1.2));
@@ -588,6 +623,9 @@ function buildPlants(){
   const gGeo = grassClumpGeo(new THREE.Color(0x1f4a30), new THREE.Color(0x7fae55));
   const lGeo = grassClumpGeo(new THREE.Color(0x46601f), new THREE.Color(0x9cbc52));
   const kGeo = kelpGeo();
+  const rGeo = reedClumpGeo();
+  rGeo.name = 'reed';
+  const rMat = swayMaterial(0.07, 1.3, true), rDepth = swayDepthMaterial(0.07, 1.3);
   const gMat = swayMaterial(0.12, 1.1, true), kMat = swayMaterial(0.35, 0.6, true), lMat = swayMaterial(0.05, 1.7);
   const gDepth = swayDepthMaterial(0.12, 1.1), kDepth = swayDepthMaterial(0.35, 0.6), lDepth = swayDepthMaterial(0.05, 1.7);
   let count = 0;
@@ -599,12 +637,15 @@ function buildPlants(){
     im.receiveShadow = true;
     im.castShadow = true;
     im.customDepthMaterial = depth;
+    im.name = geo.name;
     scene.add(im);
     count += list.length;
   });
   add(grass, gGeo, gMat, gDepth);
   add(kelp, kGeo, kMat, kDepth);
   add(land, lGeo, lMat, lDepth);
+  add(reed, rGeo, rMat, rDepth);
+  window.__reedCount = reed.reduce((a, l) => a + l.length, 0);
   return count;
 }
 
