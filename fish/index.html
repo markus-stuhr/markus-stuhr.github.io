@@ -548,6 +548,9 @@ const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
 waterUniforms.sunDir.value = SUN_DIR;
 waterUniforms.night = nightU;
 waterUniforms.moonDir.value = MOON_DIR;
+// Wichtig: UniformsUtils.merge klont die Werte. Ohne diese Zuweisung hing die Sterndrehung
+// im Wasser an einer Kopie und stand still, während sich der Himmel drehte.
+waterUniforms.starRot.value = STAR_ROT;
 waterUniforms.depthTex.value = depthTex;
 waterUniforms.fogColor.value = FOG;
 waterUniforms.fogDensity.value = scene.fog.density;
@@ -636,9 +639,7 @@ const water = new THREE.Mesh(
         vec3 rcol = mix(rc.rgb, skyc, smoothstep(15.0, 140.0, vFogDepth) * mix(0.35, 0.6, nightR));
         skyc = mix(skyc, rcol, rc.a * 0.6 * mix(1.0, 0.55, nightR));
         // Sterne erst danach: wo die gespiegelte Welt ist, sind sie ganz verdeckt
-        // Sterne an der glatten Fläche spiegeln (nicht an der Wellennormale): so stehen sie
-        // exakt dort, wo der Himmel sie zeigt, und wandern mit ihm mit
-        skyc += starsCol(reflect(-v, vec3(0.0, 1.0, 0.0)), starRot, night) * (1.0 - rc.a);
+        skyc += starsCol(rStar, starRot, night) * (1.0 - rc.a);
         skyc = mix(skyc, vec3(0.78, 0.82, 0.85) * mix(1.0, 0.35, nightR), surf * 0.35);
         // Sonne und Mond spiegeln sich an der Brandungsnormale (rS), Land und Sterne nicht
         vec3 rS = reflect(-v, nSurf);
