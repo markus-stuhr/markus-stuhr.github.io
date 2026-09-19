@@ -514,7 +514,6 @@ const water = new THREE.Mesh(
         vec3 skyc = skyCol(r, sunDir, night);
         // Sterne und Land spiegeln sich an einer fast glatten Fläche
         vec3 rStar = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
-        skyc += starsCol(rStar, starRot, night);
         // Spiegelbild mit derselben Wellenverzerrung wie die Mondscheibe: die Abweichung der
         // Spiegelrichtung (30 % Wellennormale gegen glatte Fläche) versetzt den Abtastpunkt, so als läge
         // das gespiegelte Objekt etwa 25 m entfernt
@@ -527,6 +526,8 @@ const water = new THREE.Mesh(
         float nightR = smoothstep(0.4, 1.0, night);
         vec3 rcol = mix(rc.rgb, skyc, smoothstep(15.0, 140.0, vFogDepth) * mix(0.35, 0.6, nightR));
         skyc = mix(skyc, rcol, rc.a * 0.6 * mix(1.0, 0.55, nightR));
+        // Sterne erst danach: wo die gespiegelte Welt ist, sind sie ganz verdeckt
+        skyc += starsCol(rStar, starRot, night) * (1.0 - rc.a);
         float s = max(dot(r, sunDir), 0.0);
         // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
         // glatt wäre sie starr, mit voller Wellennormale verschmiert sie zu einem
