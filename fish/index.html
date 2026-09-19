@@ -966,6 +966,14 @@ function buildCorals(){
 
 // Schilfstandorte in einem 4-m-Raster, damit das Boot darin gebremst wird
 const reedGrid = new Map();
+// Grobes Raster (10 m) aller Unterwasserpflanzen: der Wal hält sich da raus
+const plantGrid = new Set();
+const plantKey = (x, z) => Math.floor(x / 10) + ',' + Math.floor(z / 10);
+function plantsNear(x, z){
+  for(let i = -1; i <= 1; i++) for(let j = -1; j <= 1; j++)
+    if(plantGrid.has((Math.floor(x / 10) + i) + ',' + (Math.floor(z / 10) + j))) return true;
+  return false;
+}
 function reedGridAdd(x, z){
   const k = Math.floor(x / 4) + ',' + Math.floor(z / 4);
   (reedGrid.get(k) || reedGrid.set(k, []).get(k)).push(x, z);
@@ -1011,8 +1019,10 @@ function buildPlants(){
     }
     if(d < 2 || d > 12) continue;
     if(d < 5.5 && patch > -0.08){
+      plantGrid.add(plantKey(x, z));
       put(grass, x, z, h - 0.05, 1.2 + rnd() * 1.3, Math.min(d - 0.5, 0.5 + rnd() * 1.2));
     } else if(d > 3.5 && patch > 0.08 && rnd() < 0.35){
+      plantGrid.add(plantKey(x, z));
       put(kelp, x, z, h - 0.1, 1 + rnd() * 0.8, Math.min(d - 0.8, d * (0.45 + rnd() * 0.4)));
     }
   }
@@ -2402,7 +2412,7 @@ function whaleCircuitTarget(){
 function whaleBayTarget(){
   for(let i = 0; i < 400; i++){
     const x = (rnd() - 0.5) * 320, z = (rnd() - 0.5) * 280 + 40;
-    if(-meshH(x, z) < WHALE_NEED + 3) continue;
+    if(-meshH(x, z) < WHALE_NEED + 3 || plantsNear(x, z)) continue;
     return new THREE.Vector3(x, 0, z);
   }
   return new THREE.Vector3(0, 0, 60);
@@ -2414,9 +2424,14 @@ function whaleSteer(dt){
   let best = null, bestScore = -1e9, deepest = null, deepestD = -1e9;
   for(const off of [0, 0.4, -0.4, 0.9, -0.9, 1.5, -1.5]){
     const yaw = whale.yaw + off;
-    const d = -meshH(p.x + Math.sin(yaw) * 32, p.z + Math.cos(yaw) * 32);
+    const sx = p.x + Math.sin(yaw) * 32, sz = p.z + Math.cos(yaw) * 32;
+    const d = -meshH(sx, sz);
     if(d > deepestD){ deepestD = d; deepest = yaw; }
     if(d < WHALE_NEED) continue;
+    // Seegras und Tang meiden: auch auf halbem Weg prüfen
+    let blocked = false;
+    for(const k of [8, 16, 24, 32]) if(plantsNear(p.x + Math.sin(yaw) * k, p.z + Math.cos(yaw) * k)){ blocked = true; break; }
+    if(blocked) continue;
     let diff = want - yaw;
     diff = Math.abs(Math.atan2(Math.sin(diff), Math.cos(diff)));
     const score = -diff - Math.abs(off) * 0.25;
@@ -3862,7 +3877,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // läuft auch in VR
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
