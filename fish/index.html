@@ -1123,6 +1123,7 @@ function addTorch(x, z, withLight){
   flame.position.y = 1.72;
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false}));
   glow.position.y = 1.85; glow.scale.setScalar(1.4);
+  glow.renderOrder = flame.renderOrder = 5;
   g.add(pole, cup, flame, glow);
   scene.add(g);
   const f = {flame, glow, seed: rnd() * 100, light: null};
@@ -1171,7 +1172,11 @@ async function addCampfire(x, z){
   big.scale.set(2.2, 2.8, 2.2);
   fire.add(big);
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false}));
-  glow.position.set(x, meshH(x, z) + 0.7, z); glow.scale.setScalar(3.2);
+  glow.position.set(x, meshH(x, z) + 0.8, z); glow.scale.setScalar(4.5);
+  // nach dem Wasser (renderOrder 2/3) zeichnen: Glow und Flammen schreiben keine Tiefe,
+  // sonst legt sich die Wasserfläche dahinter über den Schein
+  glow.renderOrder = 5;
+  fire.traverse(o => { o.renderOrder = 5; });
   const light = new THREE.PointLight(0xff8a35, 0, 22, 1.5);
   light.position.set(x, meshH(x, z) + 1.1, z);
   light.castShadow = false;
