@@ -379,9 +379,14 @@ const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
   time: {value: 0}, sunDir: {value: null},
   fogColor: {value: null}, fogDensity: {value: 0},
   sightNear: {value: 0}, sightFar: {value: 0},
+  moonDir: {value: null},
+  // Spiegelung der Fackeln und der Bootslaterne: Position und Helligkeit (0 = aus)
+  glowPos: {value: Array.from({length: 5}, () => new THREE.Vector3(0, -99, 0))},
+  glowI: {value: new Array(5).fill(0)},
 }]);
 waterUniforms.sunDir.value = SUN_DIR;
 waterUniforms.night = nightU;
+waterUniforms.moonDir.value = MOON_DIR;
 waterUniforms.fogColor.value = FOG;
 waterUniforms.fogDensity.value = scene.fog.density;
 waterUniforms.sightNear.value = SURFACE_OPAQUE_NEAR;
@@ -410,8 +415,15 @@ const water = new THREE.Mesh(
       #include <shadowmask_pars_fragment>
       uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity; uniform float night;
       uniform float sightNear; uniform float sightFar;
+      uniform vec3 moonDir; uniform vec3 glowPos[5]; uniform float glowI[5];
       varying vec3 vW; varying float vFogDepth;
       ${SKY_GLSL}
+      float streak(vec3 rr, vec3 l, vec3 side, float ss, float sv){
+        vec3 d = rr - l;
+        float ds = dot(d, side);
+        vec3 dv = d - side * ds;
+        return exp(-ds * ds / (ss * ss)) * exp(-dot(dv, dv) / (sv * sv));
+      }
       vec3 wn(vec2 p, float t){
         // Summe schräg laufender Wellen, damit kein Karomuster entsteht
         vec2 g = vec2(0.0);
@@ -446,6 +458,19 @@ const water = new THREE.Mesh(
         spec *= shade * smoothstep(-0.02, 0.06, sunDir.y);   // ohne Sonne kein Glitzern
         vec3 body = vec3(0.035,0.105,0.135) * mix(1.0, 0.3, night);   // dunkel wie das Tiefwasser darunter
         float a = mix(0.36, 0.92, fres);
+        // Nachts spiegeln sich Mond und Lichter als senkrechte Streifen: Abweichung quer
+        // zur Blickrichtung wird stark bestraft, in Blickrichtung kaum (streak()).
+        float mv = smoothstep(0.3, 0.8, night);
+        vec3 side = normalize(cross(vec3(0.0, 1.0, 0.0), v));
+        vec3 rGlass = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
+        spec += (vec3(0.95,0.95,0.88) * streak(rGlass, moonDir, side, 0.006, 0.02) * 1.3
+               + vec3(0.7,0.78,1.0) * streak(r, moonDir, side, 0.02, 0.25) * 0.5) * mv;
+        for(int i = 0; i < 5; i++){
+          if(glowI[i] <= 0.0) continue;
+          vec3 toL = normalize(glowPos[i] - vW);
+          spec += vec3(1.0,0.6,0.25) * glowI[i] * (streak(rGlass, toL, side, 0.005, 0.02) * 1.5
+                                                 + streak(r, toL, side, 0.012, 0.22) * 0.6);
+        }
         vec3 c = mix(body, skyc * mix(0.82, 1.0, shade), fres) + spec;
         a = min(1.0, a + length(spec) * 0.5);
         // In der Ferne spiegelt das Wasser fast nur noch den hellen Himmel.
@@ -946,22 +971,71 @@ function addTorch(x, z, withLight){
   if(withLight){
     f.light = new THREE.PointLight(0xff9a40, 0, 14, 1.6);
     f.light.position.set(0, 1.9, 0);
+    // Fackelschatten: Würfelkarte, nur neu gerechnet wenn nötig (updateNightLights)
+    f.light.castShadow = true;
+    f.light.shadow.mapSize.set(512, 512);
+    f.light.shadow.camera.near = 0.2;
+    f.light.shadow.camera.far = 14;
+    f.light.shadow.bias = -0.002;
+    f.light.shadow.autoUpdate = false;
     g.add(f.light);
   }
   nightLit.flames.push(f);
 }
 // Flackern; die Helligkeit folgt nightLit.k aus setTime
+const glowTmp = new THREE.Vector3();
 function updateNightLights(t){
   const k = nightLit.k;
-  for(const f of nightLit.flames){
+  const gp = waterUniforms.glowPos.value, gi = waterUniforms.glowI.value;
+  // Fackelschatten nur rechnen, wenn es dunkel ist und das Boot in der Nähe (bewegt sich);
+  // sonst reicht eine Karte beim Einschalten
+  const near = nightLit.flames.length && Math.hypot(boat.position.x - nightLit.flames[0].flame.parent.position.x, boat.position.z - nightLit.flames[0].flame.parent.position.z) < 40;
+  const turnedOn = k > 0.02 && !nightLit.wasOn;
+  nightLit.wasOn = k > 0.02;
+  nightLit.flames.forEach((f, i) => {
+    if(f.light) f.light.shadow.needsUpdate = k > 0.02 && (near || turnedOn);
+    gi[i] = 0;
+  });
+  for(const [i, f] of nightLit.flames.entries()){
     f.flame.visible = f.glow.visible = k > 0.02;
     if(!f.flame.visible){ if(f.light) f.light.intensity = 0; continue; }
+    f.glow.getWorldPosition(gp[i]); gi[i] = k;
     const fl = 0.8 + Math.sin(t * 11 + f.seed) * 0.08 + Math.sin(t * 23.7 + f.seed * 2) * 0.06 + Math.sin(t * 5.3 + f.seed) * 0.06;
     f.flame.scale.set(1, fl * (0.6 + 0.4 * k), 1);
     f.glow.material.opacity = k * fl;
     if(f.light) f.light.intensity = 9 * k * fl;
   }
   for(const m of nightLit.glass) m.emissiveIntensity = 1.6 * k;
+  // Bootslaterne
+  if(lantern){
+    const on = k > 0.02;
+    lantern.glow.visible = on;
+    lantern.glass.emissiveIntensity = 2.2 * k;
+    const fl = 0.92 + Math.sin(t * 9.1) * 0.05 + Math.sin(t * 17.3) * 0.03;
+    lantern.light.intensity = 3.2 * k * fl;
+    lantern.glow.material.opacity = 0.8 * k * fl;
+    lantern.glow.getWorldPosition(gp[4]); gi[4] = on ? 0.8 * k : 0;
+  }
+}
+// Laterne am Heck des Boots, an einem kurzen Mast
+let lantern = null;
+function buildLantern(){
+  const g = new THREE.Group();
+  g.position.set(0, 0.5, 1.45);
+  const metal = new THREE.MeshLambertMaterial({color: 0x2b2622});
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.75, 6).translate(0, 0.375, 0), metal);
+  const glass = new THREE.MeshLambertMaterial({color: 0xffd9a0, emissive: 0xffa040, emissiveIntensity: 0});
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.17, 0.13).translate(0, 0.84, 0), glass);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.08, 4).rotateY(Math.PI / 4).translate(0, 0.96, 0), metal);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.03, 0.15).translate(0, 0.75, 0), metal);
+  shadows(pole); shadows(cap); shadows(base);
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false}));
+  glow.position.y = 0.84; glow.scale.setScalar(0.9); glow.visible = false;
+  const light = new THREE.PointLight(0xffa850, 0, 12, 1.7);
+  light.position.y = 0.84;
+  g.add(pole, box, cap, base, glow, light);
+  hull.add(g);
+  lantern = {glass, glow, light};
 }
 async function buildIslandHouse(){
   const {x: sx, z: sz, dir} = HOUSE_SPOT;                  // Ufer der Insel
@@ -1278,6 +1352,7 @@ async function buildBoat(){
     if(o.isMesh) o.material = boatShadowMaterial(o.material);
   });
   hull.add(makeHullMask(bm));
+  buildLantern();
   play('Sit_Chair_Idle');
 }
 
