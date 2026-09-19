@@ -1432,7 +1432,13 @@ function slimFluke(geo){
 // Wasserkante und springen ins Wasser, Libellen schwirren über dem Schilf.
 const animals = [], frogs = [], flies = [];
 const ANIMAL = M + 'Quaternius Ultimate Animated Animal Pack/glTF/';
+// Festland ohne die Inseln (gleiche Terme wie in landness)
+function mainland(x, z){
+  const n = fbm(x * 0.009, z * 0.009);
+  return Math.max((-z - 70 + n * 90) / 45, (-x - 170 + n * 70) / 45) > 0.05;
+}
 function landOk(x, z, lo = 0.6){
+  if(!mainland(x, z)) return false;
   const h = meshH(x, z);
   if(h < lo || h > 14) return false;
   return Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h) < 1.3;
@@ -1540,37 +1546,49 @@ function updateAnimals(dt, t){
   updateFlies(dt, t);
 }
 
-// Frösche an der Wasserkante
+// Frösche an der Wasserkante. Es gibt nur einen kleinen Vorrat rund ums Boot:
+// wer weiter als FAUNA_R entfernt ist, wird an eine neue Uferstelle 30-50 m
+// vom Boot versetzt. So sind sie überall, tauchen aber nie direkt vor einem auf.
+const FAUNA_R = 55;
+function spotNearBoat(test, tries = 40){
+  for(let i = 0; i < tries; i++){
+    const an = rnd() * 6.28, d = 30 + rnd() * 20;
+    const x = boat.position.x + Math.cos(an) * d, z = boat.position.z + Math.sin(an) * d;
+    if(test(x, z)) return {x, z};
+  }
+  return null;
+}
+const frogSpot = (x, z) => { const h = meshH(x, z); return h > 0.06 && h < 0.3; };
+function placeFrog(f){
+  const sp = spotNearBoat(frogSpot);
+  if(!sp){ f.o.visible = false; f.mode = 'gone'; f.until = 0; return; }
+  const {x, z} = sp, h = meshH(x, z);
+  // mit dem Blick zum Wasser
+  let best = 0, bd = 9;
+  for(let a = 0; a < 12; a++){ const an = a / 12 * 6.28, hh = meshH(x + Math.sin(an) * 2, z + Math.cos(an) * 2); if(hh < bd){ bd = hh; best = an; } }
+  f.o.position.set(x, h, z); f.o.rotation.y = best;
+  f.o.visible = true; f.mode = 'sit'; crossTo(f, 'Frog_Idle', 0);
+}
 async function buildFrogs(){
   const g = await load(M + 'Quaternius Easy Enemy Pack/glTF/Frog.glb');
-  let n = 0;
-  for(let i = 0; i < 60000 && n < 16; i++){
-    const x = (rnd() - 0.5) * WORLD * 0.7, z = (rnd() - 0.5) * WORLD * 0.7;
-    const h = meshH(x, z);
-    if(h < 0.06 || h > 0.3 || !reedAround(x, z, 7)) continue;
+  for(let n = 0; n < 12; n++){
     const o = SkeletonUtils.clone(g.scene);
     fit(o, 0.42, 'z');
     shadows(o);
     o.traverse(m => { if(m.isMesh) m.frustumCulled = false; });
-    o.position.set(x, h, z);
-    // mit dem Blick zum Wasser
-    let best = 0, bd = 9;
-    for(let a = 0; a < 12; a++){ const an = a / 12 * 6.28, hh = meshH(x + Math.sin(an) * 2, z + Math.cos(an) * 2); if(hh < bd){ bd = hh; best = an; } }
-    o.rotation.y = best;
+    o.visible = false;
     scene.add(o);
     const mixer = new THREE.AnimationMixer(o), acts = {};
     for(const c of g.animations) acts[c.name] = mixer.clipAction(c);
-    const f = {o, mixer, acts, cur: null, home: {x, z, y: h, rot: best}, mode: 'sit', t: 0, until: 0};
-    crossTo(f, 'Frog_Idle', 0);
     mixer.update(rnd() * 2);
-    frogs.push(f);
-    n++;
+    frogs.push({o, mixer, acts, cur: null, mode: 'gone', t: 0, until: 0});
   }
 }
 function updateFrogs(dt, t){
   const bx = boat.position.x, bz = boat.position.z;
   for(const f of frogs){
     const p = f.o.position, db = Math.hypot(p.x - bx, p.z - bz);
+    if(f.mode === 'sit' && db > FAUNA_R){ placeFrog(f); continue; }
     if(f.mode === 'sit' && db < 8){
       // Sprung ins Wasser
       f.mode = 'jump'; f.t = 0; crossTo(f, 'Frog_Jump', 0.05);
@@ -1585,14 +1603,11 @@ function updateFrogs(dt, t){
       p.y = f.from.y + Math.sin(k * Math.PI) * 0.45 - k * 0.3;
       if(k >= 1){
         spawnRing(p.x, p.z, 0.8);
-        f.o.visible = false; f.mode = 'gone'; f.until = t + 25 + rnd() * 30;
+        f.o.visible = false; f.mode = 'gone'; f.until = t + 8 + rnd() * 15;
       }
     }
-    if(f.mode === 'gone' && t > f.until && db > 30){
-      p.set(f.home.x, f.home.y, f.home.z); f.o.rotation.y = f.home.rot;
-      f.o.visible = true; f.mode = 'sit'; crossTo(f, 'Frog_Idle', 0);
-    }
-    if(f.o.visible && Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < 60) f.mixer.update(dt);
+    if(f.mode === 'gone' && t > f.until) placeFrog(f);
+    if(f.o.visible) f.mixer.update(dt);
   }
 }
 
@@ -1605,10 +1620,8 @@ function buildFlies(){
     new THREE.SphereGeometry(0.012, 6, 5).translate(0, 0, 0.022),
   ].map(g => g.toNonIndexed()));
   const wing = new THREE.PlaneGeometry(0.075, 0.016).translate(0.04, 0, 0).rotateX(-Math.PI / 2);
-  const spots = [];
-  for(const a of reedGrid.values()) for(let k = 0; k < a.length; k += 2) spots.push([a[k], a[k + 1]]);
-  for(let i = 0; i < 18 && spots.length; i++){
-    const [x, z] = spots[(rnd() * spots.length) | 0];
+  for(let i = 0; i < 14; i++){
+    const x = 0, z = 0;
     const g = new THREE.Group();
     g.add(new THREE.Mesh(body, bodyMat));
     const wings = [];
@@ -1618,13 +1631,24 @@ function buildFlies(){
       g.add(w); wings.push(w);
     }
     g.scale.setScalar(2.4);
-    g.position.set(x, 1 + rnd(), z);
+    g.visible = false;
     scene.add(g);
-    flies.push({g, wings, home: {x, z}, from: g.position.clone(), to: g.position.clone(), t: 1, dur: 1, wait: 0});
+    flies.push({g, wings, home: {x, z}, from: g.position.clone(), to: g.position.clone(), t: 1, dur: 1, wait: 0, away: true});
   }
 }
+// Libellen am liebsten über Schilf, sonst über flachem Uferwasser
+const flySpot = (x, z) => reedAround(x, z, 2) > 0 || (meshH(x, z) > -0.8 && meshH(x, z) < 0);
 function updateFlies(dt, t){
   for(const f of flies){
+    if(f.away || Math.hypot(f.home.x - boat.position.x, f.home.z - boat.position.z) > FAUNA_R){
+      const sp = spotNearBoat(flySpot, 20);
+      f.away = !sp;
+      f.g.visible = !!sp;
+      if(!sp) continue;
+      f.home = sp;
+      f.g.position.set(sp.x, 1 + rnd(), sp.z);
+      f.from.copy(f.g.position); f.to.copy(f.g.position); f.t = 1;
+    }
     for(let i = 0; i < 4; i++) f.wings[i].rotation.z = Math.sin(t * 90 + i) * 0.5 * f.wings[i].scale.x;
     if(f.wait > 0){ f.wait -= dt; f.g.position.y += Math.sin(t * 7) * 0.002; continue; }
     f.t += dt / f.dur;
