@@ -143,14 +143,14 @@ Object.assign(boatSun.shadow.camera, {left:-7, right:7, top:7, bottom:-7, near:1
 boatSun.shadow.camera.layers.set(BOAT_LAYER);
 boatSun.shadow.bias = -0.0005;
 scene.add(boatSun, boatSun.target);
-// Dritte, ebenfalls dunkle Schattenkarte fürs Schilf: ±30 m ums Boot, 2048er Karte
-// (knapp 3 cm pro Texel), jedes Bild neu. Schilf in diesem Bereich fehlt in der
+// Dritte, ebenfalls dunkle Schattenkarte fürs Schilf: ±60 m, 35 m in Blickrichtung vor
+// das Boot geschoben, 3072er Karte (knapp 4 cm pro Texel), jedes Bild neu. Schilf in diesem Bereich fehlt in der
 // groben Weltkarte (siehe cutWorld), Gelände und Schilf lesen die scharfe Karte.
-const REED_R = 30;
+const REED_R = 60, REED_MAP = 3072;
 const reedSun = new THREE.DirectionalLight(0xffffff, 0.0001);
 reedSun.castShadow = true;
-reedSun.shadow.mapSize.set(2048, 2048);
-Object.assign(reedSun.shadow.camera, {left:-REED_R, right:REED_R, top:REED_R, bottom:-REED_R, near:1, far:120});
+reedSun.shadow.mapSize.set(REED_MAP, REED_MAP);
+Object.assign(reedSun.shadow.camera, {left:-REED_R, right:REED_R, top:REED_R, bottom:-REED_R, near:1, far:300});
 reedSun.shadow.bias = -0.0003;
 reedSun.shadow.normalBias = 0.002;
 scene.add(reedSun, reedSun.target);
@@ -2400,10 +2400,12 @@ function updateBoat(dt, t){
   if(inReed) state.speed *= Math.exp(-dt * Math.min(4, inReed * 0.9));
   reedPush.value.copy(boat.position);
   // Mitte der Schilf-Schattenkarte auf ganze Texel gerastert, sonst flimmern die Kanten
-  const tx = REED_R * 2 / 2048;
-  reedCenter.value.set(Math.round(boat.position.x / tx) * tx, 0, Math.round(boat.position.z / tx) * tx);
+  // und in Blickrichtung vorgeschoben, damit das sichtbare Schilf drinliegt
+  const tx = REED_R * 2 / REED_MAP;
+  const rcx = boat.position.x - Math.sin(cam.yaw) * 35, rcz = boat.position.z - Math.cos(cam.yaw) * 35;
+  reedCenter.value.set(Math.round(rcx / tx) * tx, 0, Math.round(rcz / tx) * tx);
   reedSun.target.position.copy(reedCenter.value);
-  reedSun.position.copy(reedCenter.value).addScaledVector(SUN_DIR, 60);
+  reedSun.position.copy(reedCenter.value).addScaledVector(SUN_DIR, 150);
   const next = boat.position.clone().addScaledVector(dir, state.speed * dt);
   const probe = next.clone().addScaledVector(dir, Math.sign(state.speed || 1) * 2);
   if(terrainH(probe.x, probe.z) > -0.45 || Math.abs(next.x) > WORLD / 2 - 20 || Math.abs(next.z) > WORLD / 2 - 20){
