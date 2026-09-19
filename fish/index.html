@@ -1353,6 +1353,15 @@ function updateNightLights(t){
   for(const m of nightLit.glass) m.emissiveIntensity = 1.6 * k;
 }
 let houseFront = null;
+// Der Steg ist eine Sperre fürs Boot: Strecke vom Ufer bis zum Kopf, plus Halbbreite
+let dockSeg = null;
+function dockBlocked(x, z){
+  if(!dockSeg) return false;
+  const {x1, z1, x2, z2, r} = dockSeg;
+  const dx = x2 - x1, dz = z2 - z1;
+  const t = THREE.MathUtils.clamp(((x - x1) * dx + (z - z1) * dz) / (dx * dx + dz * dz), 0, 1);
+  return Math.hypot(x - (x1 + dx * t), z - (z1 + dz * t)) < r;
+}
 async function buildIslandHouse(){
   const {x: sx, z: sz, dir} = HOUSE_SPOT;                  // Ufer der Insel
   const wood = underwaterFade(new THREE.MeshLambertMaterial({color: 0x8a5a33}));
@@ -1396,6 +1405,7 @@ async function buildIslandHouse(){
     group.add(bol);
   }
   scene.add(group);
+  dockSeg = {x1: sx, z1: sz, x2: sx + dir.x * (0.5 + LEN), z2: sz + dir.y * (0.5 + LEN), r: WIDTH / 2 + 1.1};
 
   // Haus etwas landeinwärts, zum Steg ausgerichtet
   try{
@@ -2962,7 +2972,8 @@ function updateBoat(dt, t){
   reedSun.position.copy(reedCenter.value).addScaledVector(KEY_DIR, 150);
   const next = boat.position.clone().addScaledVector(dir, state.speed * dt);
   const probe = next.clone().addScaledVector(dir, Math.sign(state.speed || 1) * 2);
-  if(terrainH(probe.x, probe.z) > -0.45 || Math.abs(next.x) > WORLD / 2 - 20 || Math.abs(next.z) > WORLD / 2 - 20){
+  if(terrainH(probe.x, probe.z) > -0.45 || dockBlocked(probe.x, probe.z) || dockBlocked(next.x, next.z)
+     || Math.abs(next.x) > WORLD / 2 - 20 || Math.abs(next.z) > WORLD / 2 - 20){
     state.speed *= -0.25;           // sanft abprallen
   } else boat.position.copy(next);
   boat.rotation.y = state.heading;
