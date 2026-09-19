@@ -507,16 +507,14 @@ const water = new THREE.Mesh(
         // Ein Blauton hält die Fläche bis zum Horizont als Wasser erkennbar.
         float farW = smoothstep(20.0, 160.0, vFogDepth);
         // nachts kein Blauton: dort soll das Wasser direkt dunkel in den Hintergrund laufen
-        c = mix(c, c * vec3(0.45, 0.72, 1.0) + vec3(0.02, 0.08, 0.15), farW * 0.85 * (1.0 - smoothstep(0.2, 0.6, night)));
+        float fogF = 1.0 - exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
+        // der Blauton weicht mit dem Nebel, damit das Wasser in der Ferne wie das Land im Dunst liegt
+        c = mix(c, c * vec3(0.45, 0.72, 1.0) + vec3(0.02, 0.08, 0.15), farW * 0.85 * (1.0 - fogF) * (1.0 - smoothstep(0.2, 0.6, night)));
         // In die Ferne wird die Oberfläche undurchsichtig: man sieht nur in der
         // Nähe ins Wasser hinein. Das verdeckt alles Untergetauchte zuverlässig.
         a = mix(a, 1.0, smoothstep(sightNear, sightFar, vFogDepth));
-        float fogF = 1.0 - exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
-        // der Dunst über dem Wasser bleibt leicht bläulich
-        // Dunst in der Farbe des Horizonts in Blickrichtung, damit das Abendrot nur auf der
-        // Sonnenseite liegt und Wasser und Himmel nahtlos ineinander übergehen
-        vec3 hz = skyCol(vec3(-v.x, 0.0, -v.z), sunDir, night);
-        c = mix(c, mix(fogColor, hz, 0.8) * mix(vec3(0.78, 0.9, 1.05), vec3(1.0), night), fogF);
+        // derselbe Entfernungsnebel wie an Land (Farbe und Dichte der Szene)
+        c = mix(c, fogColor, fogF);
         a = mix(a, 1.0, fogF);
         gl_FragColor = vec4(c, a);
         #include <tonemapping_fragment>
