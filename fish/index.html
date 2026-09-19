@@ -3060,7 +3060,9 @@ const PAD_HINT_FISH = 'Linker Stick zielen · Ⓐ auswerfen · Ⓨ zurück zum R
 let frame = 0, simT = 0;
 // Tageszeit setzen: Sonne sinkt (lange Schatten) und geht unter, Licht, Nebel und
 // Himmel dunkeln ab, nachts übernimmt der Mond. Zum Testen über den Regler oben.
-const FOG0 = FOG.clone(), FOG_NIGHT = new THREE.Color(0x0f1626);
+// Nachtnebel = Horizontfarbe des Nachthimmels (skyCol bei h 0, linear), sonst liegt
+// zwischen Wasser und Himmel ein dunkler Strich
+const FOG0 = FOG.clone(), FOG_NIGHT = new THREE.Color().setRGB(0.045, 0.06, 0.12);
 const SUN_COL0 = new THREE.Color(0xffb98a), SUN_COL_LOW = new THREE.Color(0xff5a2a);
 const HEMI_SKY0 = new THREE.Color(0xffc4b0), HEMI_SKY_N = new THREE.Color(0x38487a);
 const HEMI_GND0 = new THREE.Color(0x3b4a70), HEMI_GND_N = new THREE.Color(0x0a1020);
