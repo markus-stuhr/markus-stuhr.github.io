@@ -117,25 +117,6 @@ const FOG = new THREE.Color(0xd9957e);
 // nachts überall gleich. Eingebaut in die three-Nebel-Chunks, gilt also für alle Materialien.
 // Die Uniform-Werte sind einfache Objekte, damit cloneUniforms sie nicht kopiert (Referenz).
 const FOG_SUN = {x: -0.8, y: 0, z: -0.55}, FOG_NIGHT_U = {x: 0, y: 0, z: 0};
-const FOG_TINT_GLSL = `
-  vec3 fogTint(vec3 dir, vec3 sd, float n){
-    vec2 a = dir.xz, b = sd.xz;
-    float to = 0.5 + 0.5 * dot(a / max(length(a), 1e-4), b / max(length(b), 1e-4));
-    vec3 away = mix(vec3(0.72, 0.78, 1.2), vec3(0.5, 0.58, 1.1), smoothstep(0.2, 0.5, n));
-    return mix(mix(away, vec3(1.0), to * to), vec3(1.0), smoothstep(0.55, 0.9, n));
-  }`;
-THREE.ShaderChunk.fog_pars_vertex = THREE.ShaderChunk.fog_pars_vertex.replace('varying float vFogDepth;', 'varying float vFogDepth;\n\tvarying vec3 vFogDir;');
-THREE.ShaderChunk.fog_vertex = THREE.ShaderChunk.fog_vertex.replace('vFogDepth = - mvPosition.z;', 'vFogDepth = - mvPosition.z;\n\tvFogDir = (vec4(mvPosition.xyz, 0.0) * viewMatrix).xyz;');
-THREE.ShaderChunk.fog_pars_fragment = THREE.ShaderChunk.fog_pars_fragment.replace('varying float vFogDepth;',
-  'varying float vFogDepth;\n\tvarying vec3 vFogDir;\n\tuniform vec3 fogSun;\n\tuniform vec3 fogNight;\n' + FOG_TINT_GLSL);
-THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace('gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );',
-  'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor * fogTint(vFogDir, fogSun, fogNight.x), fogFactor );');
-for(const lib of [...Object.values(THREE.ShaderLib), {uniforms: THREE.UniformsLib.fog}]){
-  if(lib.uniforms && lib.uniforms.fogColor){
-    lib.uniforms.fogSun = {value: FOG_SUN};
-    lib.uniforms.fogNight = {value: FOG_NIGHT_U};
-  }
-}
 scene.fog = new THREE.FogExp2(FOG, 0.0032);
 // near 0.5 statt 0.1: fünfmal genauerer Tiefenpuffer, sonst flimmert das Haus aus der Ferne (z-fighting)
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 2000);
@@ -262,6 +243,29 @@ const SKY_GLSL = `
     float dd = length(sp - cell - jit);
     return vec3(0.85, 0.9, 1.0) * smoothstep(0.26, 0.0, dd) * starF * (0.35 + 0.9 * fract(rn * 97.0));
   }`;
+
+// Nebelfarbe nach Richtung: zur Sonne hin fogColor, gegenüber genau die Horizontfarbe des
+// Himmels (skyCol bei h 0). Vorher wurde fogColor nur eingefärbt, dabei blieb auf der
+// Gegenseite ein rosa Strich zwischen Wasser und Himmel.
+const FOG_TINT_GLSL = `
+  vec3 fogDirCol(vec3 dir, vec3 sd, float n, vec3 fc){
+    vec2 a = dir.xz, b = sd.xz;
+    float to = 0.5 + 0.5 * dot(a / max(length(a), 1e-4), b / max(length(b), 1e-4));
+    vec3 hz = skyCol(vec3(a.x, 0.0, a.y) / max(length(a), 1e-4), sd, n);
+    return mix(hz, fc, to * to);
+  }`;
+THREE.ShaderChunk.fog_pars_vertex = THREE.ShaderChunk.fog_pars_vertex.replace('varying float vFogDepth;', 'varying float vFogDepth;\n\tvarying vec3 vFogDir;');
+THREE.ShaderChunk.fog_vertex = THREE.ShaderChunk.fog_vertex.replace('vFogDepth = - mvPosition.z;', 'vFogDepth = - mvPosition.z;\n\tvFogDir = (vec4(mvPosition.xyz, 0.0) * viewMatrix).xyz;');
+THREE.ShaderChunk.fog_pars_fragment = THREE.ShaderChunk.fog_pars_fragment.replace('varying float vFogDepth;',
+  'varying float vFogDepth;\n\tvarying vec3 vFogDir;\n\tuniform vec3 fogSun;\n\tuniform vec3 fogNight;\n' + SKY_GLSL + FOG_TINT_GLSL);
+THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace('gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );',
+  'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogDirCol(vFogDir, fogSun, fogNight.x, fogColor), fogFactor );');
+for(const lib of [...Object.values(THREE.ShaderLib), {uniforms: THREE.UniformsLib.fog}]){
+  if(lib.uniforms && lib.uniforms.fogColor){
+    lib.uniforms.fogSun = {value: FOG_SUN};
+    lib.uniforms.fogNight = {value: FOG_NIGHT_U};
+  }
+}
 
 // Himmel
 const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.ShaderMaterial({
@@ -560,7 +564,7 @@ const water = new THREE.Mesh(
         // Nähe ins Wasser hinein. Das verdeckt alles Untergetauchte zuverlässig.
         a = mix(a, 1.0, smoothstep(sightNear, sightFar, vFogDepth));
         // derselbe Entfernungsnebel wie an Land (Farbe und Dichte der Szene)
-        c = mix(c, fogColor * fogTint(-v, sunDir, night), fogF);
+        c = mix(c, fogDirCol(-v, sunDir, night, fogColor), fogF);
         a = mix(a, 1.0, fogF);
         gl_FragColor = vec4(c, a);
         #include <tonemapping_fragment>
