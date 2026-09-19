@@ -1557,50 +1557,42 @@ function updateAnimals(dt, t){
   updateFlies(dt, t);
 }
 
-// Frösche an der Wasserkante. Es gibt nur einen kleinen Vorrat rund ums Boot:
-// wer weiter als FAUNA_R entfernt ist, wird an eine neue Uferstelle 30-50 m
-// vom Boot versetzt. So sind sie überall, tauchen aber nie direkt vor einem auf.
-const FAUNA_R = 55;
-function spotNearBoat(test, tries = 40){
-  for(let i = 0; i < tries; i++){
-    const an = rnd() * 6.28, d = 30 + rnd() * 20;
-    const x = boat.position.x + Math.cos(an) * d, z = boat.position.z + Math.sin(an) * d;
-    if(test(x, z)) return {x, z};
-  }
-  return null;
-}
-const frogSpot = (x, z) => { const h = meshH(x, z); return h > 0.06 && h < 0.3; };
-function placeFrog(f){
-  const sp = spotNearBoat(frogSpot);
-  if(!sp){ f.o.visible = false; f.mode = 'gone'; f.until = 0; return; }
-  const {x, z} = sp, h = meshH(x, z);
-  // mit dem Blick zum Wasser
+// Frösche an der Wasserkante: zehn feste Plätze in der ganzen Welt.
+// Springen sie ins Wasser, sitzen sie später wieder dort, sobald das Boot weg ist.
+function faceWater(x, z){
   let best = 0, bd = 9;
   for(let a = 0; a < 12; a++){ const an = a / 12 * 6.28, hh = meshH(x + Math.sin(an) * 2, z + Math.cos(an) * 2); if(hh < bd){ bd = hh; best = an; } }
-  f.o.position.set(x, h, z); f.o.rotation.y = best;
+  return best;
+}
+function sitFrog(f){
+  f.o.position.set(f.home.x, f.home.y, f.home.z); f.o.rotation.y = f.home.rot;
   f.o.visible = true; f.mode = 'sit'; crossTo(f, 'Frog_Idle', 0);
 }
 async function buildFrogs(){
   const g = await load(M + 'Quaternius Easy Enemy Pack/glTF/Frog.glb');
-  for(let n = 0; n < 12; n++){
+  for(let i = 0; i < 200000 && frogs.length < 10; i++){
+    const x = (rnd() - 0.5) * WORLD * 0.8, z = (rnd() - 0.5) * WORLD * 0.8;
+    const h = meshH(x, z);
+    if(h < 0.06 || h > 0.3) continue;
+    if(frogs.some(f => Math.hypot(f.home.x - x, f.home.z - z) < 40)) continue;
     const o = SkeletonUtils.clone(g.scene);
     fit(o, 0.42, 'z');
     // zu klein für einen sichtbaren Schatten, spart die Schattenpässe
     shadows(o, false);
     cullSkinned(o);
-    o.visible = false;
     scene.add(o);
     const mixer = new THREE.AnimationMixer(o), acts = {};
     for(const c of g.animations) acts[c.name] = mixer.clipAction(c);
     mixer.update(rnd() * 2);
-    frogs.push({o, mixer, acts, cur: null, mode: 'gone', t: 0, until: 0});
+    const f = {o, mixer, acts, cur: null, home: {x, z, y: h, rot: faceWater(x, z)}, mode: 'sit', t: 0, until: 0};
+    sitFrog(f);
+    frogs.push(f);
   }
 }
 function updateFrogs(dt, t){
   const bx = boat.position.x, bz = boat.position.z;
   for(const f of frogs){
     const p = f.o.position, db = Math.hypot(p.x - bx, p.z - bz);
-    if(f.mode === 'sit' && db > FAUNA_R){ placeFrog(f); continue; }
     if(f.mode === 'sit' && db < 8){
       // Sprung ins Wasser
       f.mode = 'jump'; f.t = 0; crossTo(f, 'Frog_Jump', 0.05);
@@ -1615,11 +1607,11 @@ function updateFrogs(dt, t){
       p.y = f.from.y + Math.sin(k * Math.PI) * 0.45 - k * 0.3;
       if(k >= 1){
         spawnRing(p.x, p.z, 0.8);
-        f.o.visible = false; f.mode = 'gone'; f.until = t + 8 + rnd() * 15;
+        f.o.visible = false; f.mode = 'gone'; f.until = t + 25 + rnd() * 30;
       }
     }
-    if(f.mode === 'gone' && t > f.until) placeFrog(f);
-    if(f.o.visible) f.mixer.update(dt);
+    if(f.mode === 'gone' && t > f.until && Math.hypot(f.home.x - bx, f.home.z - bz) > 40) sitFrog(f);
+    if(f.o.visible && Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < 80) f.mixer.update(dt);
   }
 }
 
@@ -1665,28 +1657,47 @@ function drawFlies(t){
   flyBodies.count = n; flyWings.count = n * 4;
   flyBodies.instanceMatrix.needsUpdate = flyWings.instanceMatrix.needsUpdate = true;
 }
-// Libellen am liebsten über Schilf, sonst über flachem Uferwasser
-const flySpot = (x, z) => reedAround(x, z, 2) > 0 || (meshH(x, z) > -0.8 && meshH(x, z) < 0);
+// Libellen erscheinen zufällig im Umkreis von FLY_R ums Boot, streifen umher
+// und verschwinden, sobald sie den Kreis verlassen; dann kommt woanders eine neue.
+// Uferwasser und Schilf werden bevorzugt, offenes Wasser ist seltener.
+const FLY_R = 50;
+function flyScore(x, z){
+  const h = meshH(x, z);
+  if(h > 2.5) return 0;
+  if(reedAround(x, z, 2)) return 1;
+  if(h > -1.2) return 0.8;
+  return 0.15;
+}
+function spawnFly(f){
+  for(let i = 0; i < 30; i++){
+    const an = rnd() * 6.28, d = Math.sqrt(rnd()) * FLY_R * 0.95;
+    const x = boat.position.x + Math.cos(an) * d, z = boat.position.z + Math.sin(an) * d;
+    if(rnd() > flyScore(x, z)) continue;
+    f.g.position.set(x, Math.max(0.5, meshH(x, z) + 0.6) + rnd() * 1.2, z);
+    f.from.copy(f.g.position); f.to.copy(f.g.position); f.t = 1; f.wait = rnd();
+    f.g.visible = true; f.away = false;
+    return;
+  }
+  f.g.visible = false; f.away = true;
+}
 function updateFlies(dt, t){
   for(const f of flies){
-    if(f.away || Math.hypot(f.home.x - boat.position.x, f.home.z - boat.position.z) > FAUNA_R){
-      const sp = spotNearBoat(flySpot, 20);
-      f.away = !sp;
-      f.g.visible = !!sp;
-      if(!sp) continue;
-      f.home = sp;
-      f.g.position.set(sp.x, 1 + rnd(), sp.z);
-      f.from.copy(f.g.position); f.to.copy(f.g.position); f.t = 1;
-    }
-    if(f.wait > 0){ f.wait -= dt; f.g.position.y += Math.sin(t * 7) * 0.002; continue; }
+    const p = f.g.position;
+    if(f.away || Math.hypot(p.x - boat.position.x, p.z - boat.position.z) > FLY_R){ spawnFly(f); if(f.away) continue; }
+    if(f.wait > 0){ f.wait -= dt; p.y += Math.sin(t * 7) * 0.002; continue; }
     f.t += dt / f.dur;
     const k = Math.min(1, f.t), e = k * k * (3 - 2 * k);
-    f.g.position.lerpVectors(f.from, f.to, e);
+    p.lerpVectors(f.from, f.to, e);
     if(k >= 1){
-      // neuer Punkt über dem Schilf, danach kurz schweben
-      f.from.copy(f.g.position);
-      const x = f.home.x + (rnd() - 0.5) * 7, z = f.home.z + (rnd() - 0.5) * 7;
-      f.to.set(x, Math.max(0.5, meshH(x, z) + 0.6) + rnd() * 1.4, z);
+      // nächster Punkt: von drei Kandidaten der mit dem meisten Ufer
+      f.from.copy(p);
+      let bx = 0, bz = 0, bs = -1;
+      for(let c = 0; c < 3; c++){
+        const an = rnd() * 6.28, d = 1.5 + rnd() * 6;
+        const x = p.x + Math.cos(an) * d, z = p.z + Math.sin(an) * d, sc = flyScore(x, z) + rnd() * 0.3;
+        if(sc > bs){ bs = sc; bx = x; bz = z; }
+      }
+      f.to.set(bx, Math.max(0.5, meshH(bx, bz) + 0.6) + rnd() * 1.4, bz);
       f.dur = 0.25 + f.from.distanceTo(f.to) * 0.12;
       f.t = 0; f.wait = rnd() < 0.7 ? 0.3 + rnd() * 1.6 : 0;
       f.g.rotation.y = Math.atan2(f.to.x - f.from.x, f.to.z - f.from.z);
