@@ -93,8 +93,9 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
-import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {mergeGeometries, mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 import {Reflector} from 'three/addons/objects/Reflector.js';
+import {SimplifyModifier} from 'three/addons/modifiers/SimplifyModifier.js';
 
 const M = '../assets/models/';
 const FISHPACK = M + 'Quaternius Animated Cute Fish Pack/glTF/';
@@ -993,6 +994,60 @@ function shadows(o, cast = true){ o.traverse(m => { if(m.isMesh){ m.castShadow =
 
 // Viele gleiche Modelle als InstancedMesh (pro Teilmesh eines)
 const uwTint = new THREE.Color(0x1d5560);
+// ---------- Bäume mit Detailstufen ----------
+// Jeder Baum-Teilmesh gibt es zweimal: voll (nah) und vereinfacht (fern, SimplifyModifier
+// auf etwa 30 % der Eckpunkte, flach schattiert). Alle 0,5 s bzw. nach 6 m Kamerafahrt
+// werden die Instanzen neu auf beide verteilt: näher als TREE_LOD_R -> volles Modell.
+const TREE_LOD_R = 70;
+const treeLods = [];
+const simplifier = new SimplifyModifier();
+function simplifiedGeo(geo, keep){
+  const g = geo.clone();
+  for(const k of Object.keys(g.attributes)) if(k !== 'position') g.deleteAttribute(k);
+  let lo;
+  try{ lo = simplifier.modify(g, Math.floor(mergedCount(g) * (1 - keep))); }
+  catch(e){ return geo; }
+  lo = lo.index ? lo.toNonIndexed() : lo;
+  lo.computeVertexNormals();
+  return lo;
+}
+function mergedCount(g){ return mergeVertices(g).attributes.position.count; }
+function scatterLod(gltfScene, mats){
+  gltfScene.updateMatrixWorld(true);
+  gltfScene.traverse(m => {
+    if(!m.isMesh) return;
+    const all = mats.map(mm => new THREE.Matrix4().multiplyMatrices(mm, m.matrixWorld));
+    const mk = (geo) => {
+      const im = new THREE.InstancedMesh(geo, m.material, all.length);
+      im.castShadow = true; im.receiveShadow = true;
+      im.frustumCulled = false;
+      im.count = 0;
+      scene.add(im);
+      return im;
+    };
+    treeLods.push({hi: mk(m.geometry), lo: mk(simplifiedGeo(m.geometry, 0.3)), all});
+  });
+  updateTreeLod(true);
+}
+const treeLodAt = new THREE.Vector3(1e9, 0, 0);
+let treeLodT = 0;
+function updateTreeLod(force, dt = 0){
+  treeLodT += dt;
+  const c = camera.position;
+  if(!force && treeLodT < 0.5 && Math.hypot(c.x - treeLodAt.x, c.z - treeLodAt.z) < 6) return;
+  if(!force && Math.hypot(c.x - treeLodAt.x, c.z - treeLodAt.z) < 1) { treeLodT = 0; return; }
+  treeLodT = 0; treeLodAt.copy(c);
+  const r2 = TREE_LOD_R * TREE_LOD_R;
+  for(const t of treeLods){
+    let nh = 0, nl = 0;
+    for(const mm of t.all){
+      const e = mm.elements, dx = e[12] - c.x, dz = e[14] - c.z;
+      if(dx * dx + dz * dz < r2) t.hi.setMatrixAt(nh++, mm); else t.lo.setMatrixAt(nl++, mm);
+    }
+    t.hi.count = nh; t.lo.count = nl;
+    t.hi.instanceMatrix.needsUpdate = t.lo.instanceMatrix.needsUpdate = true;
+  }
+}
 function scatter(gltfScene, mats, underwater){
   gltfScene.updateMatrixWorld(true);
   gltfScene.traverse(m => {
@@ -1122,7 +1177,7 @@ async function buildNature(){
   await Promise.all([
     ...Object.keys(leafy).map(async n => {
       if(!leafy[n].length) return;
-      try{ scatter(colorLeafy((await load(LEAFY_DIR + n + '.glb')).scene), leafy[n]); }
+      try{ scatterLod(colorLeafy((await load(LEAFY_DIR + n + '.glb')).scene), leafy[n]); }
       catch(e){ console.warn('Laubbaum fehlt', n, e); }
     }),
   ]);
@@ -1895,6 +1950,8 @@ function slimFluke(geo){
 // in Ufernähe umher, äsen und fliehen vor dem Boot. Frösche sitzen an der
 // Wasserkante und springen ins Wasser, Libellen schwirren über dem Schilf.
 const animals = [], frogs = [], flies = [];
+// Tiere nur bis zu dieser Entfernung zur Kamera zeichnen und animieren
+const ANIMAL_VIS_R = 90;
 const ANIMAL = M + 'Quaternius Ultimate Animated Animal Pack/glTF/';
 // Festland ohne die Inseln (gleiche Terme wie in landness)
 function mainland(x, z){
@@ -1960,8 +2017,10 @@ async function buildAnimals(){
   const spawn = (g, size, kind, home, walk, run, fear) => {
     const o = SkeletonUtils.clone(g.scene);
     fit(o, size, 'z');
-    shadows(o);
+    // nur in der Nähe zeichnen, nicht spiegeln und ohne Schatten (spart die Zusatzpässe)
+    shadows(o, false);
     cullSkinned(o);
+    noRefl(o);
     const x = home.x + (rnd() - 0.5) * 6, z = home.z + (rnd() - 0.5) * 6;
     o.position.set(x, meshH(x, z), z);
     o.rotation.y = rnd() * 6.28;
@@ -2026,7 +2085,9 @@ function updateAnimals(dt, t){
     }
     p.y += (meshH(p.x, p.z) - p.y) * Math.min(1, dt * 10);
     // weit weg von der Kamera nicht animieren
-    if(Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < 160) a.mixer.update(dt);
+    const near = Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < ANIMAL_VIS_R;
+    a.o.visible = near;
+    if(near) a.mixer.update(dt);
   }
   updateFrogs(dt, t);
   updateFlies(dt, t);
@@ -2055,6 +2116,7 @@ async function buildFrogs(){
     // zu klein für einen sichtbaren Schatten, spart die Schattenpässe
     shadows(o, false);
     cullSkinned(o);
+    noRefl(o);
     scene.add(o);
     const mixer = new THREE.AnimationMixer(o), acts = {};
     for(const c of g.animations) acts[c.name] = mixer.clipAction(c);
@@ -2086,7 +2148,8 @@ function updateFrogs(dt, t){
       }
     }
     if(f.mode === 'gone' && t > f.until && Math.hypot(f.home.x - bx, f.home.z - bz) > 40) sitFrog(f);
-    if(f.o.visible && Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < 80) f.mixer.update(dt);
+    if(f.mode !== 'gone') f.o.visible = Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < ANIMAL_VIS_R;
+    if(f.o.visible) f.mixer.update(dt);
   }
 }
 
@@ -3395,6 +3458,7 @@ function loop(){
   updateWhale(dt, t);
   updateAnimals(dt, t);
   updateNightLights(t);
+  updateTreeLod(false, dt);
   updateTimePlay(dt);
   updateBirds(dt, t);
   updateRings(dt);
