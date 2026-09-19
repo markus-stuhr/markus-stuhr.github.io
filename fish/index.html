@@ -143,6 +143,34 @@ Object.assign(boatSun.shadow.camera, {left:-7, right:7, top:7, bottom:-7, near:1
 boatSun.shadow.camera.layers.set(BOAT_LAYER);
 boatSun.shadow.bias = -0.0005;
 scene.add(boatSun, boatSun.target);
+// Dritte, ebenfalls dunkle Schattenkarte fürs Schilf: ±30 m ums Boot, 2048er Karte
+// (knapp 3 cm pro Texel), jedes Bild neu. Schilf in diesem Bereich fehlt in der
+// groben Weltkarte (siehe cutWorld), Gelände und Schilf lesen die scharfe Karte.
+const REED_R = 30;
+const reedSun = new THREE.DirectionalLight(0xffffff, 0.0001);
+reedSun.castShadow = true;
+reedSun.shadow.mapSize.set(2048, 2048);
+Object.assign(reedSun.shadow.camera, {left:-REED_R, right:REED_R, top:REED_R, bottom:-REED_R, near:1, far:120});
+reedSun.shadow.bias = -0.0003;
+reedSun.shadow.normalBias = 0.002;
+scene.add(reedSun, reedSun.target);
+// Material bekommt zusätzlich den Schatten aus Karte idx auf das Sonnenlicht (Licht 0)
+function sharpShadow(mat, idx){
+  const prev = mat.onBeforeCompile, prevKey = mat.customProgramCacheKey;
+  mat.onBeforeCompile = (sh, r) => {
+    prev && prev.call(mat, sh, r);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <lights_fragment_begin>',
+      THREE.ShaderChunk.lights_fragment_begin.replace('vDirectionalShadowCoord[ i ] ) : 1.0;',
+      `vDirectionalShadowCoord[ i ] ) : 1.0;
+        #if NUM_DIR_LIGHT_SHADOWS > ${idx}
+        if(UNROLLED_LOOP_INDEX == 0) directLight.color *= receiveShadow ? getShadow( directionalShadowMap[ ${idx} ],
+          directionalLightShadows[ ${idx} ].shadowMapSize, directionalLightShadows[ ${idx} ].shadowIntensity,
+          directionalLightShadows[ ${idx} ].shadowBias, directionalLightShadows[ ${idx} ].shadowRadius, vDirectionalShadowCoord[ ${idx} ] ) : 1.0;
+        #endif`));
+  };
+  mat.customProgramCacheKey = () => (prevKey ? prevKey.call(mat) : '') + 'sharp' + idx;
+  return mat;
+}
 scene.add(new THREE.HemisphereLight(0xffc4b0, 0x3b4a70, 0.9));
 
 // Himmel
@@ -286,7 +314,7 @@ const abyss = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000).rotateX(-Math.P
   underwaterFade(new THREE.MeshLambertMaterial({color: 0x0c2735})));
 abyss.position.y = -14.05;
 scene.add(abyss);
-const terrain = new THREE.Mesh(tgeo, underwaterFade(new THREE.MeshLambertMaterial({vertexColors:true})));
+const terrain = new THREE.Mesh(tgeo, sharpShadow(underwaterFade(new THREE.MeshLambertMaterial({vertexColors:true})), 2));
 terrain.receiveShadow = true;
 terrain.castShadow = true;           // Hügel und Inseln werfen selbst Schatten
 scene.add(terrain);
@@ -403,9 +431,16 @@ scene.add(waterShadow);
 // Wiegen sich per Vertex-Shader; Stärke wächst mit der Höhe am Halm.
 const plantTime = {value: 0};
 const reedPush = {value: new THREE.Vector3(0, 0, 1e5)};   // Bootsposition, Schilf biegt sich weg
-function swayInject(sh, amp, speed, push){
+const reedCenter = {value: new THREE.Vector3(0, 0, 1e5)};
+function swayInject(sh, amp, speed, push, cutWorld){
   sh.uniforms.time = plantTime;
   if(push) sh.uniforms.pushPos = reedPush;
+  if(cutWorld){
+    // Weltschattenkarte (±400 m): Schilf nahe am Boot steckt in der scharfen Karte
+    sh.uniforms.reedCenter = reedCenter;
+    sh.vertexShader = 'uniform vec3 reedCenter;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    if(projectionMatrix[0][0] < 0.01 && distance(instanceMatrix[3].xz, reedCenter.xz) < ${(REED_R - 4).toFixed(1)}) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`);
+  }
   sh.vertexShader = 'uniform float time;\n' + (push ? 'uniform vec3 pushPos;\n' : '') + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
     float ph = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23;
     float hh = position.y * position.y;${push ? `
@@ -425,10 +460,10 @@ function swayMaterial(amp, speed, underwater, push){
   return underwater ? underwaterFade(m) : m;
 }
 // Der Schattenwurf braucht dieselbe Bewegung, sonst steht der Schatten still
-function swayDepthMaterial(amp, speed, push){
+function swayDepthMaterial(amp, speed, push, cutWorld){
   const m = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide});
-  m.onBeforeCompile = (sh) => swayInject(sh, amp, speed, push);
-  m.customProgramCacheKey = () => 'swayDepth' + amp + (push ? 'p' : '');
+  m.onBeforeCompile = (sh) => swayInject(sh, amp, speed, push, cutWorld);
+  m.customProgramCacheKey = () => 'swayDepth' + amp + (push ? 'p' : '') + (cutWorld ? 'c' : '');
   return m;
 }
 function colorRamp(geo, base, tip){
@@ -652,8 +687,8 @@ function buildPlants(){
   const kGeo = kelpGeo();
   const rGeo = reedClumpGeo();
   rGeo.name = 'reed';
-  // Schatten ohne Wegbiegen: die Weltschattenkarte kommt nur jedes dritte Bild, sonst zappelt er am Boot
-  const rMat = swayMaterial(0.07, 1.3, true, true), rDepth = swayDepthMaterial(0.07, 1.3);
+  // Der Schatten biegt mit: das Schilf am Boot steckt in der scharfen Karte, die jedes Bild neu kommt
+  const rMat = sharpShadow(swayMaterial(0.07, 1.3, true, true), 2), rDepth = swayDepthMaterial(0.07, 1.3, true, true);
   const gMat = swayMaterial(0.12, 1.1, true), kMat = swayMaterial(0.35, 0.6, true), lMat = swayMaterial(0.05, 1.7);
   const gDepth = swayDepthMaterial(0.12, 1.1), kDepth = swayDepthMaterial(0.35, 0.6), lDepth = swayDepthMaterial(0.05, 1.7);
   let count = 0;
@@ -2357,6 +2392,11 @@ function updateBoat(dt, t){
   const inReed = reedAround(boat.position.x, boat.position.z, 1.8);
   if(inReed) state.speed *= Math.exp(-dt * Math.min(4, inReed * 0.9));
   reedPush.value.copy(boat.position);
+  // Mitte der Schilf-Schattenkarte auf ganze Texel gerastert, sonst flimmern die Kanten
+  const tx = REED_R * 2 / 2048;
+  reedCenter.value.set(Math.round(boat.position.x / tx) * tx, 0, Math.round(boat.position.z / tx) * tx);
+  reedSun.target.position.copy(reedCenter.value);
+  reedSun.position.copy(reedCenter.value).addScaledVector(SUN_DIR, 60);
   const next = boat.position.clone().addScaledVector(dir, state.speed * dt);
   const probe = next.clone().addScaledVector(dir, Math.sign(state.speed || 1) * 2);
   if(terrainH(probe.x, probe.z) > -0.45 || Math.abs(next.x) > WORLD / 2 - 20 || Math.abs(next.z) > WORLD / 2 - 20){
