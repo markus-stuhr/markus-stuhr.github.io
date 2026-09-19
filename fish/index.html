@@ -1111,7 +1111,6 @@ async function buildIslandHouse(){
       m.material.emissiveIntensity = 0;
       nightLit.glass.push(m.material);
     });
-    // Fackeln links und rechts der Tür und am Anfang des Stegs
     // von der Mitte der Hüllbox aus 0,7 m vor die Vorderseite (die zum Steg zeigt)
     const hb = new THREE.Box3().setFromObject(house), hs = new THREE.Vector3(), hc = new THREE.Vector3();
     hb.getSize(hs); hb.getCenter(hc);
@@ -1120,7 +1119,6 @@ async function buildIslandHouse(){
     // Lagerfeuer vor dem Haus, links vom Weg zwischen Tür und Steg
     await addCampfire(hc.x + dir.x * (front + 2.2) - px * 2.6, hc.z + dir.y * (front + 2.2) - pz * 2.6);
     houseFront = {x: hc.x + dir.x * (front - 0.3), z: hc.z + dir.y * (front - 0.3), px, pz};
-    for(const side of [-1, 1]) addTorch(sx + dir.x * 0.3 + px * side * 1.1, sz + dir.y * 0.3 + pz * side * 1.1, side < 0);
   } catch(e){ console.warn('Haus fehlt', e); }
 
   // ein paar Fässer am Ufer
