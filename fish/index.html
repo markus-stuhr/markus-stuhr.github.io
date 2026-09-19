@@ -3264,8 +3264,11 @@ function setTime(n){
     sun.intensity = 2.6 * vis;
     sun.color.copy(SUN_COL0).lerp(SUN_COL_LOW, THREE.MathUtils.smoothstep(0.24 - y, 0, 0.24));
   } else {
-    // Sonne weg: dasselbe Licht kommt jetzt vom Mond, mit Schatten
-    KEY_DIR.copy(MOON_DIR);
+    // Sonne weg: dasselbe Licht kommt jetzt vom Mond, mit Schatten. Solange der Mond
+    // noch unter dem Horizont steht, bleibt die Richtung knapp darüber stehen (Licht 0),
+    // sonst fahren die Schatten von unten übers Land
+    const my = Math.max(MOON_DIR.y, 0.06), mh = Math.hypot(MOON_DIR.x, MOON_DIR.z), mr = Math.sqrt(1 - my * my);
+    KEY_DIR.set(MOON_DIR.x / mh * mr, my, MOON_DIR.z / mh * mr);
     // Mondlicht erst, wenn der Mond über dem Horizont steht
     sun.intensity = 1.25 * moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
     sun.color.copy(MOON_COL);
@@ -3278,7 +3281,7 @@ function setTime(n){
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
   scene.fog.color.copy(FOG);
   // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
-  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis : 0.65 * moonK;
+  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis : 0.65 * moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
   // nachts ist das Wasser selbst schon fast so dunkel wie die Schattenfarbe
   waterShadow.material.color.setHex(0x102b34).lerp(SHADOW_NIGHT, n);
   waterUniforms.keyDir.value = KEY_DIR;
