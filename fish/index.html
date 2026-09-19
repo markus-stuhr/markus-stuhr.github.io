@@ -34,6 +34,15 @@
     background-size:260px 100%;background-repeat:no-repeat}
   #progress i{background:#f6e7c8}
   #fight label{font-size:12px;opacity:.8}
+  #report{position:fixed;inset:0;z-index:6;display:none;align-items:center;justify-content:center;
+    background:rgba(20,16,30,.55);backdrop-filter:blur(3px)}
+  #report .card{background:rgba(30,22,38,.92);border:1px solid rgba(255,240,220,.25);border-radius:18px;
+    padding:26px 34px;min-width:280px;max-width:86vw;text-align:center}
+  #report h2{margin:0 0 14px;font-size:22px;font-weight:normal;letter-spacing:.04em}
+  #report ul{list-style:none;margin:0 0 10px;padding:0;font-size:15px}
+  #report li{display:flex;justify-content:space-between;gap:24px;padding:3px 0;opacity:.9}
+  #report p{margin:6px 0 18px;opacity:.75;font-style:italic}
+  #report .btn{position:static}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
     background:linear-gradient(#3b2a4a,#c9786a);z-index:5;transition:opacity .8s}
   /* Startbildschirm: Logo (Boot mit Angler als Silhouette, der Schriftzug ist die Wasserkante) */
@@ -47,6 +56,7 @@
   .btn{position:fixed;pointer-events:auto;border:1px solid rgba(255,240,220,.4);background:rgba(40,25,40,.45);color:#fff4e6;
     font:inherit;font-size:15px;padding:10px 18px;border-radius:24px;cursor:pointer;backdrop-filter:blur(4px)}
   #modeBtn{bottom:18px;right:18px}
+  #dockBtn{bottom:70px;right:18px}
   #soundBtn{bottom:18px;left:18px;padding:10px 13px}
   #stick{position:fixed;left:30px;bottom:80px;width:120px;height:120px;border-radius:50%;border:1px solid rgba(255,240,220,.35);
     background:rgba(40,25,40,.2);display:none;touch-action:none}
@@ -55,6 +65,14 @@
 </style>
 </head>
 <body>
+<div id="report">
+  <div class="card">
+    <h2>Feierabend am Steg</h2>
+    <ul id="reportList"></ul>
+    <p id="reportSum"></p>
+    <button id="againBtn" class="btn" type="button">Neuer Abend</button>
+  </div>
+</div>
 <div id="loading">
   <svg viewBox="0 150 420 100" role="img" aria-label="Lake Night">
     <text x="210" y="238" text-anchor="middle" fill="#fff" font-family="Anton, Impact, 'Arial Black', sans-serif" font-size="92" letter-spacing="3">LAKE NIGHT</text>
@@ -71,6 +89,7 @@
   <label>Einholen</label><div class="bar" id="progress"><i></i></div>
 </div>
 <button id="modeBtn" class="btn">Angeln (F)</button>
+<button id="dockBtn" class="btn" type="button" style="display:none">Anlegen (E)</button>
 <button id="soundBtn" class="btn" title="Ton">🔈</button>
 <div id="stick"><i></i></div>
 
@@ -2884,6 +2903,7 @@ addEventListener('keydown', e => {
   keys[code] = true;
   startAudio();
   if(code === 'KeyF'){ state.mode === 'fish' ? leaveFishing() : enterFishing(); }
+  if(code === 'KeyE') dockAtPier();
   if(code === 'Space'){
     e.preventDefault();
     if(state.phase === 'bite') hookFish();
@@ -2893,6 +2913,8 @@ addEventListener('keydown', e => {
 });
 addEventListener('keyup', e => { const code = codeOf(e); keys[code] = false; if(code === 'Space' && !pointerDown) holdReel = false; });
 document.getElementById('modeBtn').addEventListener('click', () => { startAudio(); state.mode === 'fish' ? leaveFishing() : enterFishing(); });
+document.getElementById('dockBtn').addEventListener('click', () => { startAudio(); dockAtPier(); });
+document.getElementById('againBtn').addEventListener('click', newEvening);
 
 // Touch-Joystick
 const stick = document.getElementById('stick'), knob = stick.querySelector('i');
@@ -3014,6 +3036,75 @@ function updateBoat(dt, t){
 }
 function sfxSoft(){}
 
+// ---------- Anlegen am Steg ----------
+// In der Nähe des Stegkopfs und fast im Stillstand lässt sich mit E (Taste), dem Knopf
+// oder Ⓑ am Controller anlegen. Danach kommt die Auswertung des Eimers.
+let canDock = false, docked = false;
+function dockSpot(){
+  if(!dockSeg) return null;
+  const dx = dockSeg.x2 - dockSeg.x1, dz = dockSeg.z2 - dockSeg.z1;
+  const len = Math.hypot(dx, dz);
+  const ux = dx / len, uz = dz / len;
+  return {x: dockSeg.x2 - ux * 2.2, z: dockSeg.z2 - uz * 2.2, ux, uz};
+}
+function updateDocking(){
+  const sp = dockSpot();
+  if(!sp || docked){ canDock = false; return; }
+  const d = Math.hypot(boat.position.x - sp.x, boat.position.z - sp.z);
+  const was = canDock;
+  canDock = d < 7 && Math.abs(state.speed) < 1.2 && state.phase === 'idle';
+  if(canDock && !was) setHint(pick('Tippe „Anlegen“, um Feierabend zu machen',
+    'E: am Steg anlegen und Fang zählen', 'Ⓑ: am Steg anlegen und Fang zählen'));
+  document.getElementById('dockBtn').style.display = canDock ? 'block' : 'none';
+}
+function dockAtPier(){
+  if(!canDock || docked) return;
+  docked = true;
+  canDock = false;
+  document.getElementById('dockBtn').style.display = 'none';
+  if(state.mode === 'fish') leaveFishing();
+  state.speed = 0;
+  const sp = dockSpot();
+  boat.position.set(sp.x, boat.position.y, sp.z);
+  state.heading = Math.atan2(-sp.ux, -sp.uz);
+  showReport();
+}
+function showReport(){
+  const byName = {};
+  for(const b of state.bucket){
+    byName[b.name] = byName[b.name] || {n: 0, kg: 0};
+    byName[b.name].n++; byName[b.name].kg += b.kg;
+  }
+  const rows = Object.entries(byName).sort((a, b) => b[1].kg - a[1].kg);
+  const kg = state.bucket.reduce((s, b) => s + b.kg, 0);
+  const best = state.bucket.reduce((m, b) => b.kg > (m ? m.kg : 0) ? b : m, null);
+  document.getElementById('reportList').innerHTML = rows.length
+    ? rows.map(([n, v]) => `<li><span>${v.n}× ${n}</span><span>${v.kg.toFixed(1).replace('.', ',')} kg</span></li>`).join('')
+    : '<li><span>Kein Fisch heute</span><span>0,0 kg</span></li>';
+  document.getElementById('reportSum').textContent = state.bucket.length
+    ? `${state.bucket.length} Fische, zusammen ${kg.toFixed(1).replace('.', ',')} kg · größter: ${best.name} mit ${best.kg.toFixed(1).replace('.', ',')} kg`
+    : 'Ein stiller Abend auf dem Wasser.';
+  document.getElementById('report').style.display = 'flex';
+}
+function newEvening(){
+  document.getElementById('report').style.display = 'none';
+  docked = false;
+  state.bucket.length = 0;
+  renderBucket();
+  setTime(0);
+  timePlay.on = true;
+  if(timePlay.btn) timePlay.btn.textContent = '❚❚';
+  // zurück auf offenes Wasser vor dem Steg
+  const sp = dockSpot();
+  if(sp){
+    boat.position.set(sp.x + sp.ux * 14, boat.position.y, sp.z + sp.uz * 14);
+    state.heading = Math.atan2(-sp.ux, -sp.uz) + Math.PI;
+  }
+  state.speed = 0;
+  setHint(pick('Joystick zum Rudern · Angeln, wenn du Fische siehst',
+    'W A S D rudern · F angeln · Ziehen dreht die Kamera',
+    'Linker Stick rudern · Ⓨ angeln · Rechter Stick dreht die Kamera'));
+}
 function updateFishing(dt, t){
   // Figur sanft zum Wurfziel drehen
   if(state.mode === 'fish' && seat.userData.targetYaw !== undefined){
@@ -3392,7 +3483,8 @@ function updatePad(dt){
       else if(state.phase === 'bite') hookFish();
     }
     if(down(1)){
-      if(state.phase === 'waiting') reelIn();
+      if(canDock) dockAtPier();
+      else if(state.phase === 'waiting') reelIn();
       else if(state.phase === 'idle') leaveFishing();
     }
     pad.hold = state.phase === 'fight' && (b(0) || (gp.buttons[7]?.value || 0) > 0.3);
@@ -3656,6 +3748,7 @@ function loop(){
   updateTimePlay(dt);
   updateBirds(dt, t);
   updateRings(dt);
+  updateDocking();
   if(vr.on) updateVR(dt); else updateCamera(dt);
   renderer.render(scene, camera);
 }
