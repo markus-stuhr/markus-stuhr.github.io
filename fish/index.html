@@ -380,7 +380,7 @@ const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
   fogColor: {value: null}, fogDensity: {value: 0},
   sightNear: {value: 0}, sightFar: {value: 0},
   moonDir: {value: null},
-  // Spiegelung der Fackeln und der Bootslaterne: Position und Helligkeit (0 = aus)
+  // Spiegelung der Fackeln: Position und Helligkeit (0 = aus)
   glowPos: {value: Array.from({length: 5}, () => new THREE.Vector3(0, -99, 0))},
   glowI: {value: new Array(5).fill(0)},
 }]);
@@ -966,7 +966,9 @@ function addTorch(x, z, withLight){
     f.light = new THREE.PointLight(0xff9a40, 0, 14, 1.6);
     f.light.position.set(0, 1.9, 0);
     // Fackelschatten: Würfelkarte, nur neu gerechnet wenn nötig (updateNightLights)
-    f.light.castShadow = true;
+    // castShadow erst nachts (updateNightLights): eine nie gerechnete Karte gilt überall
+    // als Schatten, die ShadowMaterial-Fläche zeigte dann einen Kreis von 14 m Radius
+    f.light.castShadow = false;
     f.light.shadow.mapSize.set(512, 512);
     f.light.shadow.camera.near = 0.2;
     f.light.shadow.camera.far = 14;
@@ -987,7 +989,10 @@ function updateNightLights(t){
   const turnedOn = k > 0.02 && !nightLit.wasOn;
   nightLit.wasOn = k > 0.02;
   nightLit.flames.forEach((f, i) => {
-    if(f.light) f.light.shadow.needsUpdate = k > 0.02 && (near || turnedOn);
+    if(f.light){
+      f.light.castShadow = k > 0.02;
+      f.light.shadow.needsUpdate = k > 0.02 && (near || turnedOn);
+    }
     gi[i] = 0;
   });
   for(const [i, f] of nightLit.flames.entries()){
@@ -1000,36 +1005,6 @@ function updateNightLights(t){
     if(f.light) f.light.intensity = 9 * k * fl;
   }
   for(const m of nightLit.glass) m.emissiveIntensity = 1.6 * k;
-  // Bootslaterne
-  if(lantern){
-    const on = k > 0.02;
-    lantern.glow.visible = on;
-    lantern.glass.emissiveIntensity = 2.2 * k;
-    const fl = 0.92 + Math.sin(t * 9.1) * 0.05 + Math.sin(t * 17.3) * 0.03;
-    lantern.light.intensity = 3.2 * k * fl;
-    lantern.glow.material.opacity = 0.8 * k * fl;
-    lantern.glow.getWorldPosition(gp[4]); gi[4] = on ? 0.8 * k : 0;
-  }
-}
-// Laterne am Heck des Boots, an einem kurzen Mast
-let lantern = null;
-function buildLantern(){
-  const g = new THREE.Group();
-  g.position.set(0, 0.5, 1.45);
-  const metal = new THREE.MeshLambertMaterial({color: 0x2b2622});
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.75, 6).translate(0, 0.375, 0), metal);
-  const glass = new THREE.MeshLambertMaterial({color: 0xffd9a0, emissive: 0xffa040, emissiveIntensity: 0});
-  const box = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.17, 0.13).translate(0, 0.84, 0), glass);
-  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.08, 4).rotateY(Math.PI / 4).translate(0, 0.96, 0), metal);
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.03, 0.15).translate(0, 0.75, 0), metal);
-  shadows(pole); shadows(cap); shadows(base);
-  const glow = new THREE.Sprite(new THREE.SpriteMaterial({map: glowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false}));
-  glow.position.y = 0.84; glow.scale.setScalar(0.9); glow.visible = false;
-  const light = new THREE.PointLight(0xffa850, 0, 12, 1.7);
-  light.position.y = 0.84;
-  g.add(pole, box, cap, base, glow, light);
-  hull.add(g);
-  lantern = {glass, glow, light};
 }
 async function buildIslandHouse(){
   const {x: sx, z: sz, dir} = HOUSE_SPOT;                  // Ufer der Insel
@@ -1346,7 +1321,6 @@ async function buildBoat(){
     if(o.isMesh) o.material = boatShadowMaterial(o.material);
   });
   hull.add(makeHullMask(bm));
-  buildLantern();
   play('Sit_Chair_Idle');
 }
 
