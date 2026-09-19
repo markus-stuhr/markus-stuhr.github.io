@@ -3433,6 +3433,7 @@ const timePlay = {on: false, btn: null};
     playBtn.textContent = timePlay.on ? '❚❚' : '▶';
   });
   timePlay.btn = playBtn;
+  box.style.display = 'none';   // erst nach dem Startbildschirm sichtbar
   document.body.appendChild(box);
 }
 setTime(0);
@@ -3509,6 +3510,7 @@ addEventListener('resize', () => {
     started = true;
     startAudio();
     timePlay.on = true; timePlay.btn.textContent = '❚❚';
+    document.getElementById('timeDbg').style.display = 'flex';
     welcome.style.opacity = 0;
     setTimeout(() => welcome.remove(), 900);
     removeEventListener('keydown', onStartKey, true);
