@@ -408,7 +408,11 @@ function height(x, z){
   const detail = fbm(x * 0.05 + 7, z * 0.05) * 0.8;
   if(v < 0) return Math.max(v * 11, -14) + detail * 0.6 - 0.15;
   const hills = Math.max(0, fbm(x * 0.02 + 3, z * 0.02 - 5) + 0.25) * 26;
-  return Math.min(v, 1.5) * 2.2 + hills * THREE.MathUtils.smoothstep(v, 0.1, 1.4) + detail;
+  let h = Math.min(v, 1.5) * 2.2 + hills * THREE.MathUtils.smoothstep(v, 0.1, 1.4) + detail;
+  // Die Hausinsel bleibt flach, damit Haus und Steg nicht auf einem Hügel liegen
+  const di = Math.hypot(x - ISLANDS[0][0], z - ISLANDS[0][1]);
+  h *= THREE.MathUtils.lerp(0.45, 1, THREE.MathUtils.smoothstep(di, ISLANDS[0][2] * 0.5, ISLANDS[0][2] * 1.5));
+  return h;
 }
 
 const WORLD = 760, SEG = 300;
@@ -1418,6 +1422,19 @@ async function buildIslandHouse(){
     // Lagerfeuer vor dem Haus, links vom Weg zwischen Tür und Steg
     await addCampfire(hc.x + dir.x * (front + 2.2) - px * 2.6, hc.z + dir.y * (front + 2.2) - pz * 2.6);
     houseFront = {x: hc.x + dir.x * (front - 0.3), z: hc.z + dir.y * (front - 0.3), px, pz};
+    // zwei Bäume neben dem Haus: einer links vorn, einer weiter hinten rechts
+    try{
+      const tree = (await load(LEAFY_DIR + 'Tree_2.glb')).scene;
+      for(const [side, back, sc] of [[-1, -1.5, 1.15], [1, 4.5, 0.9]]){
+        const t = colorLeafy(tree.clone(true));
+        const tx = hc.x - dir.x * back + px * side * 6.2, tz = hc.z - dir.y * back + pz * side * 6.2;
+        t.position.set(tx, meshH(tx, tz) - 0.15, tz);
+        t.rotation.y = rnd() * 6.28;
+        t.scale.setScalar(sc);
+        shadows(t);
+        scene.add(t);
+      }
+    } catch(e){ console.warn('Hausbäume fehlen', e); }
   } catch(e){ console.warn('Haus fehlt', e); }
 
   // ein paar Fässer am Ufer
