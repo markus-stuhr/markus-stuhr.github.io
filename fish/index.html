@@ -131,7 +131,10 @@ sun.shadow.normalBias = 0.004;   // klein, damit dünne Halme noch Schatten werf
 // Die Weltschattenkarte wird nur jedes dritte Bild neu gerechnet – das reicht für
 // die sich wiegenden Pflanzen und spart Leistung auf schwächeren Geräten.
 sun.shadow.autoUpdate = false;
-sun.position.copy(SUN_DIR).multiplyScalar(700);
+// Richtung des Schatten werfenden Lichts: abends die Sonne, nachts der Mond (setTime).
+// Sonne und Mond teilen sich das Licht und alle drei Schattenkarten.
+const KEY_DIR = SUN_DIR.clone();
+sun.position.copy(KEY_DIR).multiplyScalar(700);
 scene.add(sun, sun.target);
 // Eigene scharfe Schattenkarte nur fürs Boot (Layer 1). Das Licht ist praktisch dunkel –
 // die ShadowMaterial-Fläche auf dem Wasser zeigt seinen Schatten trotzdem.
@@ -174,11 +177,8 @@ function sharpShadow(mat, idx){
 }
 const hemi = new THREE.HemisphereLight(0xffc4b0, 0x3b4a70, 0.9);
 scene.add(hemi);
-// Mond: im Osten, ohne Schatten, wird erst nachts hell
+// Mond im Osten; nachts übernimmt das Sonnenlicht seine Richtung (KEY_DIR)
 const MOON_DIR = new THREE.Vector3(0.62, 0.42, 0.66).normalize();
-const moon = new THREE.DirectionalLight(0x9fb4ff, 0);
-moon.position.copy(MOON_DIR).multiplyScalar(500);
-scene.add(moon);
 
 // ---------- Tageszeit: 0 = Abend (Start), 1 = Nacht ----------
 const nightU = {value: 0};
@@ -379,7 +379,7 @@ const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
   time: {value: 0}, sunDir: {value: null},
   fogColor: {value: null}, fogDensity: {value: 0},
   sightNear: {value: 0}, sightFar: {value: 0},
-  moonDir: {value: null},
+  moonDir: {value: null}, keyDir: {value: null},
   // Spiegelung der Fackeln: Position und Helligkeit (0 = aus)
   glowPos: {value: Array.from({length: 5}, () => new THREE.Vector3(0, -99, 0))},
   glowI: {value: new Array(5).fill(0)},
@@ -456,7 +456,8 @@ const water = new THREE.Mesh(
         float mv = smoothstep(0.3, 0.8, night);
         float msf = max(dot(rFlat, moonDir), 0.0);
         spec += (vec3(0.95,0.95,0.88) * smoothstep(0.99955, 0.99970, msf) * 1.4
-               + vec3(0.7,0.78,1.0) * pow(max(dot(r, moonDir), 0.0), 700.0) * 0.6) * mv;
+               + vec3(0.7,0.78,1.0) * pow(max(dot(r, moonDir), 0.0), 700.0) * 0.6) * mv
+                * (sunDir.y < -0.02 ? shade : 1.0);   // Mond im Schatten (z. B. hinter dem Boot) verdeckt
         // Spiegelbild an fast glatter Fläche (scharfer Punkt) plus Glitzern an der vollen Wellennormale
         vec3 rGlass = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
         for(int i = 0; i < 5; i++){
@@ -2573,7 +2574,7 @@ function updateBoat(dt, t){
   const rcx = boat.position.x - Math.sin(cam.yaw) * 35, rcz = boat.position.z - Math.cos(cam.yaw) * 35;
   reedCenter.value.set(Math.round(rcx / tx) * tx, 0, Math.round(rcz / tx) * tx);
   reedSun.target.position.copy(reedCenter.value);
-  reedSun.position.copy(reedCenter.value).addScaledVector(SUN_DIR, 150);
+  reedSun.position.copy(reedCenter.value).addScaledVector(KEY_DIR, 150);
   const next = boat.position.clone().addScaledVector(dir, state.speed * dt);
   const probe = next.clone().addScaledVector(dir, Math.sign(state.speed || 1) * 2);
   if(terrainH(probe.x, probe.z) > -0.45 || Math.abs(next.x) > WORLD / 2 - 20 || Math.abs(next.z) > WORLD / 2 - 20){
@@ -2913,7 +2914,7 @@ function updateCamera(dt){
   if(camera.position.y < gh) camera.position.y = gh;
   camera.lookAt(target);
   boatSun.target.position.copy(boat.position);
-  boatSun.position.copy(boat.position).addScaledVector(SUN_DIR, 30);
+  boatSun.position.copy(boat.position).addScaledVector(KEY_DIR, 30);
   sky.position.copy(camera.position);
   water.position.x = Math.round(camera.position.x / 50) * 50;
   water.position.z = Math.round(camera.position.z / 50) * 50;
@@ -3001,23 +3002,36 @@ const SUN_COL0 = new THREE.Color(0xffb98a), SUN_COL_LOW = new THREE.Color(0xff5a
 const HEMI_SKY0 = new THREE.Color(0xffc4b0), HEMI_SKY_N = new THREE.Color(0x38487a);
 const HEMI_GND0 = new THREE.Color(0x3b4a70), HEMI_GND_N = new THREE.Color(0x0a1020);
 const SUN_AZ = new THREE.Vector2(-0.8, -0.55).normalize();
+const MOON_COL = new THREE.Color(0x9fb4ff);
+const SHADOW_NIGHT = new THREE.Color(0x000205);
 function setTime(n){
   nightU.value = n;
   const y = THREE.MathUtils.lerp(0.24, -0.22, n);
   const r = Math.sqrt(1 - y * y);
   SUN_DIR.set(SUN_AZ.x * r, y, SUN_AZ.y * r);
-  sun.position.copy(SUN_DIR).multiplyScalar(700);
   const vis = THREE.MathUtils.smoothstep(y, -0.02, 0.07);
-  sun.intensity = 2.6 * vis;
-  sun.color.copy(SUN_COL0).lerp(SUN_COL_LOW, THREE.MathUtils.smoothstep(0.24 - y, 0, 0.24));
+  const moonK = THREE.MathUtils.smoothstep(n, 0.4, 1);
+  if(y > -0.02){
+    KEY_DIR.copy(SUN_DIR);
+    sun.intensity = 2.6 * vis;
+    sun.color.copy(SUN_COL0).lerp(SUN_COL_LOW, THREE.MathUtils.smoothstep(0.24 - y, 0, 0.24));
+  } else {
+    // Sonne weg: dasselbe Licht kommt jetzt vom Mond, mit Schatten
+    KEY_DIR.copy(MOON_DIR);
+    sun.intensity = 0.85 * moonK;
+    sun.color.copy(MOON_COL);
+  }
+  sun.position.copy(KEY_DIR).multiplyScalar(700);
   hemi.intensity = THREE.MathUtils.lerp(0.9, 0.3, n);
   hemi.color.copy(HEMI_SKY0).lerp(HEMI_SKY_N, n);
   hemi.groundColor.copy(HEMI_GND0).lerp(HEMI_GND_N, n);
-  moon.intensity = 0.5 * THREE.MathUtils.smoothstep(n, 0.4, 1);
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
   scene.fog.color.copy(FOG);
   // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
-  waterShadow.material.opacity = 0.3 * vis;
+  waterShadow.material.opacity = y > -0.02 ? 0.3 * vis : 0.45 * moonK;
+  // nachts ist das Wasser selbst schon fast so dunkel wie die Schattenfarbe
+  waterShadow.material.color.setHex(0x102b34).lerp(SHADOW_NIGHT, n);
+  waterUniforms.keyDir.value = KEY_DIR;
   nightLit.k = THREE.MathUtils.smoothstep(n, 0.3, 0.75);
   uwBody.value.copy(WATER_BODY).multiplyScalar(THREE.MathUtils.lerp(1, 0.3, n));
   const inp = document.querySelector('#timeDbg input');
