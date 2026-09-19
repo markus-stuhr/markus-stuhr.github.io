@@ -56,15 +56,7 @@
 </head>
 <body>
 <div id="loading">
-  <svg viewBox="0 0 420 250" role="img" aria-label="Lake Night">
-    <!-- Silhouette aus dem echten 3D-Modell (makeLogoSilhouette), Unterkante = Wasserlinie y 158 -->
-    <image id="logoBoat" x="0" y="0" width="0" height="0" style="transition:opacity .8s;opacity:0"/>
-    <path id="logoLine" fill="none" stroke="#fff" stroke-width="1.2" d="" style="transition:opacity .8s;opacity:0"/>
-    <g id="logoBobber" fill="#fff" stroke="#fff" style="transition:opacity .8s;opacity:0">
-      <ellipse stroke="none" cx="0" cy="-3" rx="5" ry="6"/>
-      <path fill="none" stroke-width="1.6" d="M0 -9 L0 -17"/>
-    </g>
-    <!-- Schriftzug: die Oberkante der Buchstaben ist die Wasserlinie -->
+  <svg viewBox="0 150 420 100" role="img" aria-label="Lake Night">
     <text x="210" y="238" text-anchor="middle" fill="#fff" font-family="Anton, Impact, 'Arial Black', sans-serif" font-size="92" letter-spacing="3">LAKE NIGHT</text>
   </svg>
   <small id="loadMsg">Die Sonne sinkt …</small>
@@ -3475,54 +3467,6 @@ addEventListener('resize', () => {
     Math.round(innerHeight * renderer.getPixelRatio() * REFL_SCALE));
 });
 
-// ---------- Logo: weiße Silhouette des echten Boots mit Angler ----------
-// Einmal nach dem Laden: Figur in Angelpose bringen, Boot von der Seite (Bug rechts) mit
-// einer Orthokamera in einen eigenen Renderer zeichnen (nur Boots-Layer, alles weiß),
-// als Bild ins Logo setzen. Schnur und Schwimmer werden zur echten Rutenspitze gezogen.
-function makeLogoSilhouette(){
-  try{
-    enterFishing();
-    for(let i = 0; i < 40; i++){ updateSeatMove(0.05); if(mixer) mixer.update(0.05); }
-    boat.updateMatrixWorld(true);
-    const W = 1024, H = 512, TOP = 2.6, BOT = -0.14, HALF = (TOP - BOT);
-    const cam = new THREE.OrthographicCamera(-HALF, HALF, TOP, BOT, 0.1, 100);
-    cam.layers.set(BOAT_LAYER);
-    const tipW = new THREE.Vector3(); rodTip.getWorldPosition(tipW);
-    // Seite so wählen, dass die Rute nach rechts zeigt (Schwimmer rechts über dem T)
-    const side = new THREE.Vector3(1, 0, 0).applyQuaternion(boat.quaternion);
-    const place = (sg) => {
-      cam.position.copy(boat.position).addScaledVector(side, 30 * sg).setY(0);
-      cam.lookAt(boat.position.x, 0, boat.position.z);
-      cam.updateMatrixWorld(); cam.updateProjectionMatrix();
-    };
-    place(1);
-    if(tipW.clone().project(cam).x < 0) place(-1);
-    const r2 = new THREE.WebGLRenderer({alpha: true, antialias: true, preserveDrawingBuffer: true});
-    r2.setSize(W, H, false);
-    r2.setClearColor(0x000000, 0);
-    const white = new THREE.MeshBasicMaterial({color: 0xffffff, fog: false});
-    const prevOverride = scene.overrideMaterial, prevBg = scene.background;
-    scene.overrideMaterial = white;
-    r2.render(scene, cam);
-    scene.overrideMaterial = prevOverride; scene.background = prevBg;
-    const url = r2.domElement.toDataURL('image/png');
-    const tipN = tipW.clone().project(cam);
-    r2.dispose(); r2.forceContextLoss();
-    // ins SVG: Bildunterkante (Tiefgang BOT) auf die Wasserlinie 158 legen
-    const WL = 158, imgW = 300, imgH = imgW * H / W;
-    const x0 = 170 - imgW / 2, y0 = WL - imgH * (TOP / (TOP - BOT));
-    const img = document.getElementById('logoBoat');
-    img.setAttribute('href', url);
-    img.setAttribute('x', x0); img.setAttribute('y', y0);
-    img.setAttribute('width', imgW); img.setAttribute('height', imgH);
-    const tx = x0 + (tipN.x * 0.5 + 0.5) * imgW, ty = y0 + (1 - (tipN.y * 0.5 + 0.5)) * imgH;
-    const bx = Math.min(404, tx + 70), by = WL - 1;
-    document.getElementById('logoLine').setAttribute('d', `M${tx.toFixed(1)} ${ty.toFixed(1)} Q${(tx + (bx - tx) * 0.75).toFixed(1)} ${(ty + (by - ty) * 0.25).toFixed(1)} ${bx.toFixed(1)} ${(by - 6).toFixed(1)}`);
-    document.getElementById('logoBobber').setAttribute('transform', `translate(${bx.toFixed(1)} ${by})`);
-    for(const id of ['logoBoat', 'logoLine', 'logoBobber']) document.getElementById(id).style.opacity = 1;
-  } catch(e){ console.warn('Logo-Silhouette', e); }
-}
-
 // ---------- Start ----------
 (async () => {
   boat.position.set(0, 0, 10);
@@ -3537,7 +3481,6 @@ function makeLogoSilhouette(){
   await Promise.all([buildSchools(), buildNature(), buildIslandHouse().catch(e => console.warn(e)), buildWhale().catch(e => console.warn(e)), buildAnimals().catch(e => console.warn(e)), buildFrogs().catch(e => console.warn(e))]);
   buildFlies();
   renderBucket();
-  makeLogoSilhouette();
   state.mode = 'fish';
   leaveFishing();
   sun.shadow.needsUpdate = true;      // Weltschatten einmal rechnen, wenn alles geladen ist
