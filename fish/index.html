@@ -1484,7 +1484,20 @@ function mainland(x, z){
   const n = fbm(x * 0.009, z * 0.009);
   return Math.max((-z - 70 + n * 90) / 45, (-x - 170 + n * 70) / 45) > 0.05;
 }
-function landOk(x, z, lo = 0.6){
+// Wald: dieselbe Bedingung wie beim Setzen der Bäume
+function inForest(x, z){
+  return meshH(x, z) >= 1.6 && fbm(x * 0.02 + 50, z * 0.02) > -0.08;
+}
+// Abstand zum nächsten Wasser, grob in 16 Richtungen abgetastet
+function waterDist(x, z, maxR){
+  for(let r = 2; r <= maxR; r += 2)
+    for(let a = 0; a < 16; a++){
+      const an = a / 16 * 6.28;
+      if(meshH(x + Math.cos(an) * r, z + Math.sin(an) * r) < 0) return r;
+    }
+  return Infinity;
+}
+function landOk(x, z, lo = 1.4){
   if(!mainland(x, z)) return false;
   const h = meshH(x, z);
   if(h < lo || h > 14) return false;
@@ -1493,19 +1506,17 @@ function landOk(x, z, lo = 0.6){
 function pathOk(ax, az, bx, bz){
   for(let i = 1; i <= 6; i++){
     const k = i / 6;
-    if(!landOk(ax + (bx - ax) * k, az + (bz - az) * k, 0.45)) return false;
+    if(!landOk(ax + (bx - ax) * k, az + (bz - az) * k, 1.2)) return false;
   }
   return true;
 }
-// Uferpunkt: Land, aber höchstens 18 m vom Wasser entfernt
+// Platz im Wald nahe am Ufer: 12-35 m vom Wasser, also vom Boot aus zwischen den Bäumen zu sehen
 function shoreSpot(tries = 4000){
   for(let i = 0; i < tries; i++){
     const x = (rnd() - 0.5) * WORLD * 0.7, z = (rnd() - 0.5) * WORLD * 0.7;
-    if(!landOk(x, z, 0.9) || Math.hypot(x - HOUSE_SPOT.x, z - HOUSE_SPOT.z) < 20) continue;
-    for(let a = 0; a < 8; a++){
-      const an = a / 8 * Math.PI * 2;
-      if(meshH(x + Math.cos(an) * 18, z + Math.sin(an) * 18) < 0) return {x, z};
-    }
+    if(!landOk(x, z) || !inForest(x, z) || Math.hypot(x - HOUSE_SPOT.x, z - HOUSE_SPOT.z) < 20) continue;
+    const wd = waterDist(x, z, 36);
+    if(wd >= 12 && wd <= 35) return {x, z};
   }
   return null;
 }
@@ -1557,7 +1568,7 @@ function pickTarget(a, fromX, fromZ, minD, maxD, awayX, awayZ){
     if(awayX !== undefined) an = Math.atan2(awayZ, awayX) + (rnd() - 0.5) * 1.6;
     const d = minD + rnd() * (maxD - minD);
     const x = fromX + Math.cos(an) * d, z = fromZ + Math.sin(an) * d;
-    if(landOk(x, z) && pathOk(fromX, fromZ, x, z) && (awayX !== undefined || Math.hypot(x - a.home.x, z - a.home.z) < 28)){
+    if(landOk(x, z) && waterDist(x, z, 8) === Infinity && pathOk(fromX, fromZ, x, z) && (awayX !== undefined || Math.hypot(x - a.home.x, z - a.home.z) < 28)){
       a.tx = x; a.tz = z; return true;
     }
   }
@@ -1592,7 +1603,7 @@ function updateAnimals(dt, t){
         a.o.rotation.y += dr * Math.min(1, dt * (a.mode === 'flee' ? 6 : 2.5));
         const step = Math.min(d, sp * dt * Math.max(0.2, Math.cos(dr)));
         const nx = p.x + Math.sin(a.o.rotation.y) * step, nz = p.z + Math.cos(a.o.rotation.y) * step;
-        if(landOk(nx, nz, 0.45)){ p.x = nx; p.z = nz; }
+        if(landOk(nx, nz, 1.2)){ p.x = nx; p.z = nz; }
         else { a.mode = 'idle'; a.until = t + 1; crossTo(a, 'Idle'); }
       }
     }
@@ -1664,7 +1675,7 @@ function updateFrogs(dt, t){
 
 // Libellen: selbst gebaut, schwirren ruckartig über dem Schilf.
 // Körper und Flügel sind je ein InstancedMesh (2 Draw Calls statt 70).
-const FLY_N = 14;
+const FLY_N = 5;
 let flyBodies, flyWings;
 const WING_OFS = [[1, 0.012], [-1, 0.012], [1, -0.004], [-1, -0.004]];
 function buildFlies(){
