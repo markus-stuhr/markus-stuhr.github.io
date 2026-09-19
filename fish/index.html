@@ -569,8 +569,11 @@ const water = new THREE.Mesh(
         vec2 grad = vec2(
           texture2D(depthTex, duv + vec2(0.0025, 0.0)).r - texture2D(depthTex, duv - vec2(0.0025, 0.0)).r,
           texture2D(depthTex, duv + vec2(0.0, 0.0025)).r - texture2D(depthTex, duv - vec2(0.0, 0.0025)).r);
-        n = normalize(n + vec3(grad.x, 0.0, grad.y) * cos(ph) * shore * 2.0);
-        float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
+        // Nur die Fresnel-Kante und das Glitzern sehen die Brandungsnormale. Die Spiegelung
+        // rechnet mit der ruhigen Normale, sonst rutscht das Spiegelbild (z. B. das Schilf)
+        // am Ufer seitlich weg.
+        vec3 nSurf = normalize(n + vec3(grad.x, 0.0, grad.y) * cos(ph) * shore * 2.0);
+        float fres = pow(1.0 - max(dot(nSurf, v), 0.0), 4.0);
         vec3 r = reflect(-v, n);
         float h = max(r.y, 0.0);
         vec3 skyc = skyCol(r, sunDir, night);
