@@ -554,9 +554,14 @@ const water = new THREE.Mesh(
         spec *= 1.0 - rc.a;
         for(int i = 0; i < 5; i++){
           if(glowI[i] <= 0.0) continue;
-          vec3 toL = normalize(glowPos[i] - vW);
+          vec3 dL = glowPos[i] - vW;
+          float dl = length(dL);
+          vec3 toL = dL / dl;
           float gm = max(dot(rGlass, toL), 0.0), gw = max(dot(r, toL), 0.0);
-          spec += vec3(1.0,0.6,0.25) * glowI[i] * (pow(gm, 6000.0) * 1.6 + pow(gw, 700.0) * 0.7);
+          // Fleck schrumpft mit der Entfernung wie das Feuer selbst (Winkelgröße ~ 1/d)
+          // und wird schwächer, sonst leuchtet er von weitem riesig
+          float fs = max(1.0, dl / 10.0); fs *= fs;
+          spec += vec3(1.0,0.6,0.25) * glowI[i] * (pow(gm, 6000.0 * fs) * 1.2 + pow(gw, 700.0 * fs) * 0.45) / (1.0 + dl * 0.03);
         }
         vec3 c = mix(body, skyc * mix(0.82, 1.0, shade), fres) + spec;
         a = min(1.0, a + length(spec) * 0.5);
