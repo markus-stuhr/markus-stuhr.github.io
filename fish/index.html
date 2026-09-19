@@ -934,6 +934,19 @@ function play(name, {fade = 0.3, once = false, speed = 1} = {}){
 // Boots-Schattenkarte (Licht 1, gleiche Richtung) abgedunkelt – so wirft die Figur
 // scharfe Schatten ins Boot, Bäume und Inseln kommen weiter aus der Weltkarte.
 const patchedMats = new Map();
+// three.js prüft beim Schattenrendern die Layer der Hauptkamera, nicht die der
+// Schattenkamera. Das Boot landete deshalb auch in der groben Weltschattenkarte
+// (unscharf, nur jedes dritte Bild neu). Dieses Tiefenmaterial wirft die
+// Geometrie aus dem Bild, wenn die Projektion so breit ist wie die Weltkarte
+// (±400 m statt ±7 m) – so wirft das Boot nur den scharfen Schatten von boatSun.
+const boatDepthMaterial = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacking});
+boatDepthMaterial.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
+    if(projectionMatrix[0][0] < 0.05) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`);
+};
+function boatDepthOnly(root){
+  root.traverse(o => { if(o.isMesh && o.castShadow && o.customDepthMaterial !== boatDepthMaterial) o.customDepthMaterial = boatDepthMaterial; });
+}
 function boatShadowMaterial(mat){
   if(patchedMats.has(mat)) return patchedMats.get(mat);
   const m = mat.clone();
@@ -2481,7 +2494,10 @@ let frame = 0, simT = 0;
 function loop(){
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   simT += dt;                       // Spielzeit: wächst auch bei Framepausen gleichmäßig
-  if(++frame % 3 === 0) sun.shadow.needsUpdate = true;
+  if(++frame % 3 === 0){
+    boatDepthOnly(boat);
+    sun.shadow.needsUpdate = true;
+  }
   waterUniforms.time.value = t;
   plantTime.value = t;
   updatePad(dt);
