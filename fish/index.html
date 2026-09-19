@@ -299,7 +299,8 @@ scene.add(sky);
 
 // Sichttiefe im Wasser: alles unter der Oberfläche geht mit der Tiefe in die
 // Wasserfarbe über. Bei etwa 5 m ist nichts mehr zu erkennen.
-const WATER_VIS = 3.5;                 // Abklinglänge; bei etwa 8 m Tiefe sieht man nichts mehr
+// Abklinglänge: bei etwa 11 m Tiefe sieht man nichts mehr
+const WATER_VIS = 5.0;
 const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles Tiefwasser
 // Zwei Regler: Objekte unter Wasser blenden mit der Entfernung aus, und die
 // Wasseroberfläche wird ab einer Entfernung undurchsichtig. Erst zusammen
@@ -2905,10 +2906,14 @@ function updateFishing(dt, t){
         + Math.cos(t * 2.3) * (1 - k) * 0.9 + Math.cos(t * 4.7) * (pull ? 0.5 : 0.2);
       const fy = -0.28 - (pull ? 0.45 : 0) + Math.sin(t * 6.5) * 0.12;
       const prevF = f.obj.position.clone();
-      f.obj.position.lerp(tmpV.set(fx, fy, fz), Math.min(1, dt * 7));
+      // Abstand halten, damit Schwimmer und Schnur nicht ins Boot geraten
+      tmpV.set(fx, fy, fz);
+      keepOffBoat(tmpV, FISH_MIN_R);
+      f.obj.position.lerp(tmpV, Math.min(1, dt * 7));
       faceTo(f, tmpV2.copy(f.obj.position).multiplyScalar(2).sub(prevF), dt * 3);
       // Haken sitzt im Maul, der Schwimmer folgt der Vorfach-Geometrie
       placeHook(t, f, boat.position);
+      keepOffBoat(bobber.position, BOBBER_MIN_R);
       bobber.rotation.z = Math.sin(t * 11) * (pull ? 0.5 : 0.18);
       if(pull && Math.random() < dt * 6) spawnRing(bobber.position.x, bobber.position.z, 0.18, 1.0, 0.25);
       if(state.progress >= 1) landFish();
@@ -3017,6 +3022,17 @@ function planBite(retry){
   }
 }
 
+// Mindestabstand zur Bootsmitte (waagerecht): der Rumpf ist 3,5 m lang, die Rutenspitze
+// steht über der Bordwand, ab etwa 2,6 m läuft die Schnur frei übers Wasser
+const BOBBER_MIN_R = 2.8, FISH_MIN_R = 3.8;
+function keepOffBoat(p, r){
+  const dx = p.x - boat.position.x, dz = p.z - boat.position.z, d = Math.hypot(dx, dz);
+  if(d >= r) return p;
+  const k = d > 1e-3 ? r / d : 0;
+  if(k){ p.x = boat.position.x + dx * k; p.z = boat.position.z + dz * k; }
+  else p.x = boat.position.x + r;
+  return p;
+}
 function faceTo(f, target, dt){
   const dx = target.x - f.obj.position.x, dz = target.z - f.obj.position.z;
   if(dx * dx + dz * dz < 1e-6) return;
