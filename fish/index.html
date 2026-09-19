@@ -273,6 +273,12 @@ const SKY_GLSL = `
     vec3 c = mix(e, d, smoothstep(0.0, 0.5, n));
     return mix(c, k, smoothstep(0.45, 1.0, n));
   }
+  // Je tiefer die Sonne steht, desto röter werden Scheibe, Hof und Glitzern
+  vec3 sunTint(float y, vec3 high, vec3 low){
+    return mix(high, low, 1.0 - smoothstep(0.02, 0.36, y));
+  }
+  // tief stehende Sonne wird auch dunkler, sonst brennt die Scheibe weiß aus
+  float sunDim(float y){ return mix(1.0, 0.24, 1.0 - smoothstep(0.02, 0.36, y)); }
   // Sichelmond: Scheibe minus einer versetzten zweiten Scheibe. Der Versatz zeigt von der
   // Sonne weg, die beleuchtete Sichel also zur Sonne hin. Gleiche Funktion für Himmel und
   // Spiegelung, damit die Sichel im Wasser genauso aussieht.
@@ -339,11 +345,11 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.Shad
       float s = max(dot(vd, sunDir), 0.0);
       // Nachglühen am Horizont, solange die Sonne knapp darunter steht
       float glow = smoothstep(-0.25, 0.02, sunDir.y);
-      c += vec3(1.0,0.45,0.2) * pow(s, 8.0) * 0.55 * glow;
+      c += sunTint(sunDir.y, vec3(1.0,0.45,0.2), vec3(1.0,0.22,0.06)) * pow(s, 8.0) * mix(0.55, 1.1, 1.0 - smoothstep(0.02, 0.24, sunDir.y)) * glow;
       // Scheibe wird am Horizont abgeschnitten, nicht als Ganzes ausgeblendet
       float up = step(0.0, h) * smoothstep(-0.045, -0.03, sunDir.y);
-      c += vec3(1.0,0.8,0.5) * pow(s, 1600.0) * 0.45 * up;                   // Hof
-      c += vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, s) * 2.2 * up;  // Scheibe,
+      c += sunTint(sunDir.y, vec3(1.0,0.8,0.5), vec3(1.0,0.4,0.14)) * pow(s, 1600.0) * 0.45 * up * sunDim(sunDir.y);   // Hof
+      c += sunTint(sunDir.y, vec3(1.0,0.9,0.72), vec3(1.0,0.3,0.08)) * smoothstep(0.99930, 0.99955, s) * 2.2 * up * sunDim(sunDir.y);  // Scheibe,
       // gleiche Größe wie das Spiegelbild im Wasser
       // Sterne: je Zelle auf der Himmelskugel höchstens ein Stern
       c += starsCol(vd, starRot, night);
@@ -639,9 +645,9 @@ const water = new THREE.Mesh(
         vec3 nSoft = normalize(mix(vec3(0.0, 1.0, 0.0), nSurf, 0.3));
         vec3 rFlat = reflect(-v, nSoft);
         float sf = max(dot(rFlat, sunDir), 0.0);
-        vec3 spec = vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, sf) * 2.2
-                  + vec3(1.0,0.8,0.5) * pow(sf, 1600.0) * 0.45
-                  + vec3(1.0,0.78,0.48) * pow(s, 45.0) * 0.5;
+        vec3 spec = sunTint(sunDir.y, vec3(1.0,0.9,0.72), vec3(1.0,0.3,0.08)) * smoothstep(0.99930, 0.99955, sf) * 2.2 * sunDim(sunDir.y)
+                  + sunTint(sunDir.y, vec3(1.0,0.8,0.5), vec3(1.0,0.4,0.14)) * pow(sf, 1600.0) * 0.45 * sunDim(sunDir.y)
+                  + sunTint(sunDir.y, vec3(1.0,0.78,0.48), vec3(1.0,0.34,0.12)) * pow(s, 45.0) * 0.5;
         // Im Schatten liegt keine Sonne auf dem Wasser: Reflexion ausknipsen
         // Schatten nur so stark wie das Licht, das ihn wirft (keyVis), sonst springt er beim
         // Wechsel Sonne -> Mond plötzlich auf
