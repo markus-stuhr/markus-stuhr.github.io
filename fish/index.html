@@ -1859,9 +1859,9 @@ function renderBucket(){
 
 // ---------- Eingabe ----------
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-const cam = {yaw: 0.35, pitch: 0.36, dist: 11, lastDrag: -99};
+const cam = {yaw: 0.35, pitch: 0.36, dist: 14, lastDrag: -99};
 // Fester Kameraabstand: weiter beim Rudern, näher beim Angeln
-const CAM_DIST_ROW = 11, CAM_DIST_FISH = 7;
+const CAM_DIST_ROW = 14, CAM_DIST_FISH = 9.5;
 let drag = null;
 function waterPoint(e){
   ndc.set(e.clientX / innerWidth * 2 - 1, -e.clientY / innerHeight * 2 + 1);
