@@ -547,6 +547,9 @@ const water = new THREE.Mesh(
                 * (sunDir.y < -${SUN_R.toFixed(3)} ? shade : 1.0);   // Mond im Schatten (z. B. hinter dem Boot) verdeckt
         // Spiegelbild an fast glatter Fläche (scharfer Punkt) plus Glitzern an der vollen Wellennormale
         vec3 rGlass = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
+        // Sonne und Mond liegen hinter der gespiegelten Welt: wo Land, Bäume oder Boot im
+        // Spiegelbild sind, ist ihre Reflexion verdeckt (die Lichter danach gehören zur Welt)
+        spec *= 1.0 - rc.a;
         for(int i = 0; i < 5; i++){
           if(glowI[i] <= 0.0) continue;
           vec3 toL = normalize(glowPos[i] - vW);
