@@ -195,6 +195,7 @@ const SKY_U = new THREE.Vector3().crossVectors(A_SET, POLE).normalize();
 if(SKY_U.y < 0) SKY_U.negate();                                   // zeigt über den Horizont
 const ALPHA0 = Math.asin(0.24 / SKY_U.y);                        // Startstand: Sonnenhöhe 0,24
 const ALPHA_RATE = ALPHA0 / 0.45;                                 // untergegangen bei n ≈ 0,45
+const MOON_LAG = 0.15 * ALPHA_RATE;
 // Drehsinn einmal bestimmen: Drehung um POLE, die die Sonne absinken lässt
 const SKY_SIGN = (() => {
   const s0 = A_SET.clone().multiplyScalar(Math.cos(ALPHA0)).addScaledVector(SKY_U, Math.sin(ALPHA0));
@@ -252,8 +253,8 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.Shad
       }
       // Mond mit Hof
       float ms = max(dot(vd, moonDir), 0.0), mv = smoothstep(0.3, 0.8, night) * step(0.0, h);
-      c += vec3(0.5, 0.6, 0.9) * pow(ms, 300.0) * 0.25 * mv;
-      c += vec3(0.95, 0.95, 0.88) * smoothstep(0.99955, 0.99970, ms) * 1.4 * mv;
+      c += vec3(0.5, 0.6, 0.9) * pow(ms, 500.0) * 0.25 * mv;
+      c += vec3(0.95, 0.95, 0.88) * smoothstep(0.99972, 0.99982, ms) * 1.4 * mv;
       gl_FragColor = vec4(c, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -479,7 +480,7 @@ const water = new THREE.Mesh(
         // Nachts: Mond und Lichter spiegeln sich
         float mv = smoothstep(0.3, 0.8, night);
         float msf = max(dot(rFlat, moonDir), 0.0);
-        spec += (vec3(0.95,0.95,0.88) * smoothstep(0.99955, 0.99970, msf) * 1.4
+        spec += (vec3(0.95,0.95,0.88) * smoothstep(0.99972, 0.99982, msf) * 1.4
                + vec3(0.7,0.78,1.0) * pow(max(dot(r, moonDir), 0.0), 700.0) * 0.6) * mv
                 * (sunDir.y < -${SUN_R.toFixed(3)} ? shade : 1.0);   // Mond im Schatten (z. B. hinter dem Boot) verdeckt
         // Spiegelbild an fast glatter Fläche (scharfer Punkt) plus Glitzern an der vollen Wellennormale
@@ -3094,7 +3095,8 @@ function setTime(n){
   nightU.value = n;
   const alpha = ALPHA0 - n * ALPHA_RATE;
   SUN_DIR.copy(A_SET).multiplyScalar(Math.cos(alpha)).addScaledVector(SKY_U, Math.sin(alpha));
-  MOON_DIR.copy(SUN_DIR).negate();
+  // Mond gegenüber, aber etwas zurück auf seiner Bahn: geht erst bei n ≈ 0,6 auf
+  MOON_DIR.copy(SUN_DIR).negate().applyAxisAngle(POLE, -MOON_LAG * SKY_SIGN);
   const rot = new THREE.Matrix4().makeRotationAxis(POLE, -(ALPHA0 - alpha) * SKY_SIGN);
   STAR_ROT.setFromMatrix4(rot);
   const y = SUN_DIR.y;
