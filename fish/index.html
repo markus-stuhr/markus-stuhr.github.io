@@ -446,7 +446,7 @@ function swayInject(sh, amp, speed, push, cutWorld){
     // Weltschattenkarte (±400 m): Schilf nahe am Boot steckt in der scharfen Karte
     sh.uniforms.reedCenter = reedCenter;
     sh.vertexShader = 'uniform vec3 reedCenter;\n' + sh.vertexShader.replace('#include <project_vertex>', `#include <project_vertex>
-    if(projectionMatrix[0][0] < 0.01 && distance(instanceMatrix[3].xz, reedCenter.xz) < ${(REED_R - 4).toFixed(1)}) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`);
+    if(projectionMatrix[0][0] < 0.01) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`);
   }
   sh.vertexShader = 'uniform float time;\n' + (push ? 'uniform vec3 pushPos;\n' : '') + sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>
     float ph = instanceMatrix[3].x * 0.37 + instanceMatrix[3].z * 0.23;
