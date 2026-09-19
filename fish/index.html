@@ -113,7 +113,8 @@ document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 const FOG = new THREE.Color(0xd9957e);
 scene.fog = new THREE.FogExp2(FOG, 0.0032);
-const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 2000);
+// near 0.5 statt 0.1: fünfmal genauerer Tiefenpuffer, sonst flimmert das Haus aus der Ferne (z-fighting)
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 2000);
 camera.layers.enable(1);   // Boot-Layer
 
 // Sonne tief im Westen
