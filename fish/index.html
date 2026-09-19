@@ -113,6 +113,29 @@ document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
 const FOG = new THREE.Color(0xd9957e);
+// Richtungsabhängiger Dunst: zur Sonne hin warm (fogColor), gegenüber kühler und bläulicher,
+// nachts überall gleich. Eingebaut in die three-Nebel-Chunks, gilt also für alle Materialien.
+// Die Uniform-Werte sind einfache Objekte, damit cloneUniforms sie nicht kopiert (Referenz).
+const FOG_SUN = {x: -0.8, y: 0, z: -0.55}, FOG_NIGHT_U = {x: 0, y: 0, z: 0};
+const FOG_TINT_GLSL = `
+  vec3 fogTint(vec3 dir, vec3 sd, float n){
+    vec2 a = dir.xz, b = sd.xz;
+    float to = 0.5 + 0.5 * dot(a / max(length(a), 1e-4), b / max(length(b), 1e-4));
+    vec3 away = mix(vec3(0.72, 0.78, 1.2), vec3(0.5, 0.58, 1.1), smoothstep(0.2, 0.5, n));
+    return mix(mix(away, vec3(1.0), to * to), vec3(1.0), smoothstep(0.55, 0.9, n));
+  }`;
+THREE.ShaderChunk.fog_pars_vertex = THREE.ShaderChunk.fog_pars_vertex.replace('varying float vFogDepth;', 'varying float vFogDepth;\n\tvarying vec3 vFogDir;');
+THREE.ShaderChunk.fog_vertex = THREE.ShaderChunk.fog_vertex.replace('vFogDepth = - mvPosition.z;', 'vFogDepth = - mvPosition.z;\n\tvFogDir = (vec4(mvPosition.xyz, 0.0) * viewMatrix).xyz;');
+THREE.ShaderChunk.fog_pars_fragment = THREE.ShaderChunk.fog_pars_fragment.replace('varying float vFogDepth;',
+  'varying float vFogDepth;\n\tvarying vec3 vFogDir;\n\tuniform vec3 fogSun;\n\tuniform vec3 fogNight;\n' + FOG_TINT_GLSL);
+THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace('gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );',
+  'gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor * fogTint(vFogDir, fogSun, fogNight.x), fogFactor );');
+for(const lib of [...Object.values(THREE.ShaderLib), {uniforms: THREE.UniformsLib.fog}]){
+  if(lib.uniforms && lib.uniforms.fogColor){
+    lib.uniforms.fogSun = {value: FOG_SUN};
+    lib.uniforms.fogNight = {value: FOG_NIGHT_U};
+  }
+}
 scene.fog = new THREE.FogExp2(FOG, 0.0032);
 // near 0.5 statt 0.1: fünfmal genauerer Tiefenpuffer, sonst flimmert das Haus aus der Ferne (z-fighting)
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 2000);
@@ -459,6 +482,7 @@ const water = new THREE.Mesh(
       uniform mat3 starRot; uniform sampler2D reflTex; uniform mat4 reflMat;
       varying vec3 vW; varying float vFogDepth; varying vec4 vRefl;
       ${SKY_GLSL}
+      ${FOG_TINT_GLSL}
       vec3 wn(vec2 p, float t){
         // Summe schräg laufender Wellen, damit kein Karomuster entsteht
         vec2 g = vec2(0.0);
@@ -532,7 +556,7 @@ const water = new THREE.Mesh(
         // Nähe ins Wasser hinein. Das verdeckt alles Untergetauchte zuverlässig.
         a = mix(a, 1.0, smoothstep(sightNear, sightFar, vFogDepth));
         // derselbe Entfernungsnebel wie an Land (Farbe und Dichte der Szene)
-        c = mix(c, fogColor, fogF);
+        c = mix(c, fogColor * fogTint(-v, sunDir, night), fogF);
         a = mix(a, 1.0, fogF);
         gl_FragColor = vec4(c, a);
         #include <tonemapping_fragment>
@@ -3165,9 +3189,11 @@ const MOON_COL = new THREE.Color(0x9fb4ff);
 const SHADOW_NIGHT = new THREE.Color(0x000205);
 function setTime(n){
   nightU.value = n;
+  FOG_NIGHT_U.x = n;
   const alpha = ALPHA0 - n * ALPHA_RATE;
   SUN_DIR.copy(A_SET).multiplyScalar(Math.cos(alpha)).addScaledVector(SKY_U, Math.sin(alpha));
   // Mond gegenüber, aber etwas zurück auf seiner Bahn: geht erst bei n ≈ 0,6 auf
+  FOG_SUN.x = SUN_DIR.x; FOG_SUN.y = SUN_DIR.y; FOG_SUN.z = SUN_DIR.z;
   MOON_DIR.copy(SUN_DIR).negate().applyAxisAngle(POLE, -MOON_LAG * SKY_SIGN);
   const rot = new THREE.Matrix4().makeRotationAxis(POLE, -(ALPHA0 - alpha) * SKY_SIGN);
   STAR_ROT.setFromMatrix4(rot);
