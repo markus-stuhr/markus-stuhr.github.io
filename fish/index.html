@@ -179,6 +179,9 @@ function sharpShadow(mat, idx){
 }
 const hemi = new THREE.HemisphereLight(0xffc4b0, 0x3b4a70, 0.9);
 scene.add(hemi);
+// nachts ein blaues Grundlicht, damit Schattenseiten dunkelblau statt schwarz sind
+const nightFill = new THREE.AmbientLight(0x7890d0, 0);
+scene.add(nightFill);
 // Mond im Osten; nachts übernimmt das Sonnenlicht seine Richtung (KEY_DIR)
 const MOON_DIR = new THREE.Vector3(0.62, 0.42, 0.66).normalize();
 
@@ -3064,8 +3067,9 @@ let frame = 0, simT = 0;
 // zwischen Wasser und Himmel ein dunkler Strich
 const FOG0 = FOG.clone(), FOG_NIGHT = new THREE.Color().setRGB(0.045, 0.06, 0.12);
 const SUN_COL0 = new THREE.Color(0xffb98a), SUN_COL_LOW = new THREE.Color(0xff5a2a);
-const HEMI_SKY0 = new THREE.Color(0xffc4b0), HEMI_SKY_N = new THREE.Color(0x38487a);
-const HEMI_GND0 = new THREE.Color(0x3b4a70), HEMI_GND_N = new THREE.Color(0x0a1020);
+const HEMI_SKY0 = new THREE.Color(0xffc4b0), HEMI_SKY_N = new THREE.Color(0x4a60a0);
+// Bodenfarbe nachts nicht zu dunkel: die Schattenseite von Boot und Figur soll dunkelblau sein, nicht schwarz
+const HEMI_GND0 = new THREE.Color(0x3b4a70), HEMI_GND_N = new THREE.Color(0x24345e);
 const SUN_AZ = new THREE.Vector2(-0.8, -0.55).normalize();
 const MOON_COL = new THREE.Color(0x9fb4ff);
 const SHADOW_NIGHT = new THREE.Color(0x000205);
@@ -3092,7 +3096,8 @@ function setTime(n){
     sun.color.copy(MOON_COL);
   }
   sun.position.copy(KEY_DIR).multiplyScalar(700);
-  hemi.intensity = THREE.MathUtils.lerp(0.9, 0.3, n);
+  hemi.intensity = THREE.MathUtils.lerp(0.9, 0.55, n);
+  nightFill.intensity = 1.6 * THREE.MathUtils.smoothstep(n, 0.35, 1);
   hemi.color.copy(HEMI_SKY0).lerp(HEMI_SKY_N, n);
   hemi.groundColor.copy(HEMI_GND0).lerp(HEMI_GND_N, n);
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
