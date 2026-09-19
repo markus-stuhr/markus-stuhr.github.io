@@ -126,6 +126,8 @@ camera.layers.enable(1);   // Boot-Layer
 const SUN_DIR = new THREE.Vector3(-0.8, 0.24, -0.55).normalize();
 // Winkelradius der Sonnenscheibe (acos 0,9993 aus dem Himmels-Shader)
 const SUN_R = 0.037;
+// Bereich der Sonnenhöhe, in dem Sonnenlicht und -schatten ausblenden (Baumlinie)
+const SUN_FADE_LO = 0.05, SUN_FADE_HI = 0.15;
 const sun = new THREE.DirectionalLight(0xffb98a, 2.6);
 sun.castShadow = true;
 const SHADOW_MAP = renderer.capabilities.maxTextureSize >= 8192 ? 6144 : 4096;
@@ -3257,14 +3259,16 @@ function setTime(n){
   const y = SUN_DIR.y;
   // Sonnenlicht hängt am sichtbaren Teil der Scheibe: voll bis der untere Rand den
   // Horizont berührt, aus erst wenn auch der obere Rand weg ist
-  const vis = THREE.MathUtils.smoothstep(y, -SUN_R, SUN_R);
+  // Die Sonne verschwindet schon hinter der Baumlinie am Ufer (etwa y 0,05), nicht erst
+  // am Horizont: bis dahin sind Sonnenlicht und -schatten ganz ausgeblendet
+  const vis = THREE.MathUtils.smoothstep(y, SUN_FADE_LO, SUN_FADE_HI);
   const moonK = THREE.MathUtils.smoothstep(n, 0.4, 1);
   if(y > -SUN_R){
     // Schatten vom oberen Rand der Scheibe aus: das letzte Licht kommt von dort, sonst
     // liegt das Boot schon im Schatten der Bäume, während die Sonne noch hervorschaut
-    // Ab dem Moment, wo die Sonnenmitte den Horizont erreicht, bleibt die Richtung stehen und
+    // Ab dem Moment, wo die Sonne hinter der Baumlinie verschwindet (SUN_FADE_LO), bleibt die Richtung stehen und
     // nur die Stärke blendet aus; sonst wandert eine Schattenkante übers ganze Land
-    const yTop = Math.sin(Math.max(Math.asin(y), 0) + SUN_R), rTop = Math.sqrt(1 - yTop * yTop);
+    const yTop = Math.sin(Math.max(Math.asin(y), SUN_FADE_LO) + SUN_R), rTop = Math.sqrt(1 - yTop * yTop);
     const hx = SUN_DIR.x, hz = SUN_DIR.z, hl = Math.hypot(hx, hz);
     KEY_DIR.set(hx / hl * rTop, yTop, hz / hl * rTop);
     sun.intensity = 2.6 * vis;
