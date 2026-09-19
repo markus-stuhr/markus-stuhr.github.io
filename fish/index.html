@@ -72,6 +72,7 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
+import {Reflector} from 'three/addons/objects/Reflector.js';
 
 const M = '../assets/models/';
 const FISHPACK = M + 'Quaternius Animated Cute Fish Pack/glTF/';
@@ -224,6 +225,17 @@ const SKY_GLSL = `
     vec3 k = mix(vec3(0.045,0.06,0.12), vec3(0.012,0.016,0.045), smoothstep(0.0, 0.5, h));
     vec3 c = mix(e, d, smoothstep(0.0, 0.5, n));
     return mix(c, k, smoothstep(0.45, 1.0, n));
+  }
+  // Sterne: je Zelle auf der Himmelskugel höchstens einer, drehen mit dem Himmel (rot)
+  vec3 starsCol(vec3 vd, mat3 rot, float n){
+    float starF = smoothstep(0.4, 0.9, n) * smoothstep(0.0, 0.1, vd.y);
+    if(starF <= 0.0) return vec3(0.0);
+    vec3 sp = (rot * vd) * 260.0, cell = floor(sp);
+    float rn = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    if(rn <= 0.982) return vec3(0.0);
+    vec3 jit = vec3(fract(rn * 13.1), fract(rn * 71.7), fract(rn * 29.3)) * 0.6 + 0.2;
+    float dd = length(sp - cell - jit);
+    return vec3(0.85, 0.9, 1.0) * smoothstep(0.26, 0.0, dd) * starF * (0.35 + 0.9 * fract(rn * 97.0));
   }`;
 
 // Himmel
@@ -250,17 +262,7 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.Shad
       c += vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, s) * 2.2 * up;  // Scheibe,
       // gleiche Größe wie das Spiegelbild im Wasser
       // Sterne: je Zelle auf der Himmelskugel höchstens ein Stern
-      float starF = smoothstep(0.4, 0.9, night) * smoothstep(0.0, 0.1, h);
-      if(starF > 0.0){
-        // Sterne drehen sich mit dem Himmel um den Polarstern (starRot aus setTime)
-        vec3 sp = (starRot * vd) * 260.0, cell = floor(sp);
-        float rn = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-        if(rn > 0.982){
-          vec3 jit = vec3(fract(rn * 13.1), fract(rn * 71.7), fract(rn * 29.3)) * 0.6 + 0.2;
-          float dd = length(sp - cell - jit);
-          c += vec3(0.85, 0.9, 1.0) * smoothstep(0.26, 0.0, dd) * starF * (0.35 + 0.9 * fract(rn * 97.0));
-        }
-      }
+      c += starsCol(vd, starRot, night);
       // Mond mit Hof
       float ms = max(dot(vd, moonDir), 0.0), mv = smoothstep(0.3, 0.8, night) * step(0.0, h);
       c += vec3(0.5, 0.6, 0.9) * pow(ms, 500.0) * 0.25 * mv;
@@ -413,7 +415,9 @@ const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
   time: {value: 0}, sunDir: {value: null},
   fogColor: {value: null}, fogDensity: {value: 0},
   sightNear: {value: 0}, sightFar: {value: 0},
-  moonDir: {value: null}, keyDir: {value: null},
+  moonDir: {value: null}, keyDir: {value: null}, starRot: {value: STAR_ROT},
+  // Spiegelung von Land, Bäumen und Boot (Reflector-Renderziel) und seine Projektion
+  reflTex: {value: null}, reflMat: {value: new THREE.Matrix4()},
   // Spiegelung der Fackeln: Position und Helligkeit (0 = aus)
   glowPos: {value: Array.from({length: 5}, () => new THREE.Vector3(0, -99, 0))},
   glowI: {value: new Array(5).fill(0)},
@@ -432,9 +436,11 @@ const water = new THREE.Mesh(
     vertexShader: `
       #include <common>
       #include <shadowmap_pars_vertex>
-      varying vec3 vW; varying float vFogDepth;
+      uniform mat4 reflMat;
+      varying vec3 vW; varying float vFogDepth; varying vec4 vRefl;
       void main(){
         vec4 w = modelMatrix * vec4(position,1.0); vW = w.xyz;
+        vRefl = reflMat * w;
         vec4 mv = viewMatrix * w; vFogDepth = -mv.z;
         gl_Position = projectionMatrix * mv;
         vec4 worldPosition = w;                      // von shadowmap_vertex erwartet
@@ -450,7 +456,8 @@ const water = new THREE.Mesh(
       uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity; uniform float night;
       uniform float sightNear; uniform float sightFar;
       uniform vec3 moonDir; uniform vec3 glowPos[5]; uniform float glowI[5];
-      varying vec3 vW; varying float vFogDepth;
+      uniform mat3 starRot; uniform sampler2D reflTex;
+      varying vec3 vW; varying float vFogDepth; varying vec4 vRefl;
       ${SKY_GLSL}
       vec3 wn(vec2 p, float t){
         // Summe schräg laufender Wellen, damit kein Karomuster entsteht
@@ -471,6 +478,11 @@ const water = new THREE.Mesh(
         vec3 r = reflect(-v, n);
         float h = max(r.y, 0.0);
         vec3 skyc = skyCol(r, sunDir, night);
+        // Sterne und Land spiegeln sich an einer fast glatten Fläche
+        vec3 rStar = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
+        skyc += starsCol(rStar, starRot, night);
+        vec4 rc = texture2D(reflTex, vRefl.xy / vRefl.w + n.xz * 0.025);
+        skyc = mix(skyc, rc.rgb, rc.a);
         float s = max(dot(r, sunDir), 0.0);
         // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
         // glatt wäre sie starr, mit voller Wellennormale verschmiert sie zu einem
@@ -531,6 +543,44 @@ waterShadow.position.y = 0.04;
 waterShadow.receiveShadow = true;
 waterShadow.renderOrder = 3;
 scene.add(waterShadow);
+
+// ---------- Spiegelung von Land, Bäumen, Boot ----------
+// Ein (unsichtbarer) Reflector rendert die Szene gespiegelt an y = 0 in halber Auflösung.
+// Der Wasser-Shader liest das Bild und legt es über die Himmelsspiegelung (Alpha = da ist
+// etwas). Was nicht gespiegelt werden muss (Wasser, Himmel, alles unter Wasser), liegt
+// auf Layer NO_REFL, den nur die Hauptkamera sieht.
+const NO_REFL = 3;
+camera.layers.enable(NO_REFL);
+function noRefl(o){ o.traverse(m => m.layers.set(NO_REFL)); }
+const REFL_SCALE = 0.5;
+const reflector = new Reflector(new THREE.PlaneGeometry(1, 1), {
+  textureWidth: Math.round(innerWidth * renderer.getPixelRatio() * REFL_SCALE),
+  textureHeight: Math.round(innerHeight * renderer.getPixelRatio() * REFL_SCALE),
+  clipBias: 0.02, multisample: 0,
+});
+// Projektionsmatrix des Spiegelbilds behalten, das eigene Material wird nicht gebraucht
+const reflTexMat = reflector.material.uniforms.textureMatrix.value;
+reflector.material = new THREE.MeshBasicMaterial({colorWrite: false, depthWrite: false});
+reflector.rotation.x = -Math.PI / 2;
+reflector.frustumCulled = false;
+reflector.renderOrder = -10;
+reflector.camera.layers.enable(BOAT_LAYER);
+scene.add(reflector);
+waterUniforms.reflTex.value = reflector.getRenderTarget().texture;
+{
+  const inner = reflector.onBeforeRender.bind(reflector);
+  const inv = new THREE.Matrix4(), cc = new THREE.Color();
+  reflector.onBeforeRender = (r, sc, cam) => {
+    if(cam !== camera) return;          // nur für die Hauptkamera, nicht für Schattenpässe
+    r.getClearColor(cc); const ca = r.getClearAlpha();
+    r.setClearColor(0x000000, 0);       // leer = durchsichtig, dort bleibt die Himmelsspiegelung
+    inner(r, sc, cam);
+    r.setClearColor(cc, ca);
+    // textureMatrix bezieht sich auf die Reflector-Ebene; der Wasser-Shader rechnet in Welt
+    waterUniforms.reflMat.value.multiplyMatrices(reflTexMat, inv.copy(reflector.matrixWorld).invert());
+  };
+}
+noRefl(water); noRefl(waterShadow); noRefl(sky); noRefl(abyss);
 
 // ---------- Unterwasserpflanzen ----------
 // Prozedural: Seegras-Büschel im Flachen, lange Tangbänder im Tieferen.
@@ -730,6 +780,7 @@ function buildCorals(){
     im.computeBoundingSphere();
     im.receiveShadow = true;
     im.castShadow = true;
+    noRefl(im);
     scene.add(im);
     count += k.list.length;
   }
@@ -813,6 +864,8 @@ function buildPlants(){
   add(grass, gGeo, gMat, gDepth);
   add(kelp, kGeo, kMat, kDepth);
   add(land, lGeo, lMat, lDepth);
+  // Seegras, Tang und Landgras nicht spiegeln (unter Wasser bzw. zu klein, spart Zeit)
+  scene.children.forEach(o => { if(o.isInstancedMesh && (o.geometry === gGeo || o.geometry === kGeo || o.geometry === lGeo)) noRefl(o); });
   add(reed, rGeo, rMat, rDepth);
   window.__reedCount = reed.reduce((a, l) => a + l.length, 0);
   return count;
@@ -1544,6 +1597,7 @@ function makeFish(school, i){
   cullSkinned(f);
   const wrap = new THREE.Group();
   wrap.add(f);
+  noRefl(wrap);
   scene.add(wrap);
   const mx = new THREE.AnimationMixer(f);
   const clip = src.animations.find(a => a.name === 'Swimming_Normal') || src.animations[0];
@@ -2033,6 +2087,7 @@ async function buildWhale(){
   });
   const wrap = new THREE.Group();
   wrap.add(w);
+  noRefl(wrap);
   scene.add(wrap);
   whale.obj = wrap;
   whale.model = w;
@@ -3192,6 +3247,8 @@ addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setPixelRatio(pixelRatioFor(innerWidth, innerHeight));
   renderer.setSize(innerWidth, innerHeight);
+  reflector.getRenderTarget().setSize(Math.round(innerWidth * renderer.getPixelRatio() * REFL_SCALE),
+    Math.round(innerHeight * renderer.getPixelRatio() * REFL_SCALE));
 });
 
 // ---------- Start ----------
