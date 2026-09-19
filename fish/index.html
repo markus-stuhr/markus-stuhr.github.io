@@ -119,6 +119,8 @@ camera.layers.enable(1);   // Boot-Layer
 
 // Sonne tief im Westen
 const SUN_DIR = new THREE.Vector3(-0.8, 0.24, -0.55).normalize();
+// Winkelradius der Sonnenscheibe (acos 0,9993 aus dem Himmels-Shader)
+const SUN_R = 0.037;
 const sun = new THREE.DirectionalLight(0xffb98a, 2.6);
 sun.castShadow = true;
 const SHADOW_MAP = renderer.capabilities.maxTextureSize >= 8192 ? 6144 : 4096;
@@ -212,7 +214,8 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.Shad
       // Nachglühen am Horizont, solange die Sonne knapp darunter steht
       float glow = smoothstep(-0.25, 0.02, sunDir.y);
       c += vec3(1.0,0.45,0.2) * pow(s, 8.0) * 0.55 * glow;
-      float up = smoothstep(-0.02, 0.01, sunDir.y);
+      // Scheibe wird am Horizont abgeschnitten, nicht als Ganzes ausgeblendet
+      float up = step(0.0, h) * smoothstep(-0.045, -0.03, sunDir.y);
       c += vec3(1.0,0.8,0.5) * pow(s, 1600.0) * 0.45 * up;                   // Hof
       c += vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, s) * 2.2 * up;  // Scheibe,
       // gleiche Größe wie das Spiegelbild im Wasser
@@ -449,7 +452,8 @@ const water = new THREE.Mesh(
                   + vec3(1.0,0.78,0.48) * pow(s, 45.0) * 0.5;
         // Im Schatten liegt keine Sonne auf dem Wasser: Reflexion ausknipsen
         float shade = getShadowMask();
-        spec *= shade * smoothstep(-0.02, 0.06, sunDir.y);   // ohne Sonne kein Glitzern
+        // Glitzern bis der obere Sonnenrand (Radius SUN_R) weg ist
+        spec *= shade * smoothstep(-${SUN_R.toFixed(3)}, ${SUN_R.toFixed(3)}, sunDir.y);
         vec3 body = vec3(0.035,0.105,0.135) * mix(1.0, 0.3, night);   // dunkel wie das Tiefwasser darunter
         float a = mix(0.36, 0.92, fres);
         // Nachts: Mond und Lichter spiegeln sich
@@ -457,7 +461,7 @@ const water = new THREE.Mesh(
         float msf = max(dot(rFlat, moonDir), 0.0);
         spec += (vec3(0.95,0.95,0.88) * smoothstep(0.99955, 0.99970, msf) * 1.4
                + vec3(0.7,0.78,1.0) * pow(max(dot(r, moonDir), 0.0), 700.0) * 0.6) * mv
-                * (sunDir.y < -0.02 ? shade : 1.0);   // Mond im Schatten (z. B. hinter dem Boot) verdeckt
+                * (sunDir.y < -${SUN_R.toFixed(3)} ? shade : 1.0);   // Mond im Schatten (z. B. hinter dem Boot) verdeckt
         // Spiegelbild an fast glatter Fläche (scharfer Punkt) plus Glitzern an der vollen Wellennormale
         vec3 rGlass = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
         for(int i = 0; i < 5; i++){
@@ -3068,10 +3072,15 @@ function setTime(n){
   const y = THREE.MathUtils.lerp(0.24, -0.22, n);
   const r = Math.sqrt(1 - y * y);
   SUN_DIR.set(SUN_AZ.x * r, y, SUN_AZ.y * r);
-  const vis = THREE.MathUtils.smoothstep(y, -0.02, 0.07);
+  // Sonnenlicht hängt am sichtbaren Teil der Scheibe: voll bis der untere Rand den
+  // Horizont berührt, aus erst wenn auch der obere Rand weg ist
+  const vis = THREE.MathUtils.smoothstep(y, -SUN_R, SUN_R);
   const moonK = THREE.MathUtils.smoothstep(n, 0.4, 1);
-  if(y > -0.02){
-    KEY_DIR.copy(SUN_DIR);
+  if(y > -SUN_R){
+    // Schatten vom oberen Rand der Scheibe aus: das letzte Licht kommt von dort, sonst
+    // liegt das Boot schon im Schatten der Bäume, während die Sonne noch hervorschaut
+    const yTop = Math.sin(Math.asin(y) + SUN_R), rTop = Math.sqrt(1 - yTop * yTop);
+    KEY_DIR.set(SUN_AZ.x * rTop, yTop, SUN_AZ.y * rTop);
     sun.intensity = 2.6 * vis;
     sun.color.copy(SUN_COL0).lerp(SUN_COL_LOW, THREE.MathUtils.smoothstep(0.24 - y, 0, 0.24));
   } else {
@@ -3087,7 +3096,7 @@ function setTime(n){
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
   scene.fog.color.copy(FOG);
   // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
-  waterShadow.material.opacity = y > -0.02 ? 0.3 * vis : 0.65 * moonK;
+  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis : 0.65 * moonK;
   // nachts ist das Wasser selbst schon fast so dunkel wie die Schattenfarbe
   waterShadow.material.color.setHex(0x102b34).lerp(SHADOW_NIGHT, n);
   waterUniforms.keyDir.value = KEY_DIR;
