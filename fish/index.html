@@ -1426,6 +1426,222 @@ function slimFluke(geo){
   return geo;
 }
 
+// ---------- Tiere am Ufer ----------
+// Fuchs, Rehe und ein Hirsch (Quaternius Ultimate Animated Animal Pack) streifen
+// in Ufernähe umher, äsen und fliehen vor dem Boot. Frösche sitzen an der
+// Wasserkante und springen ins Wasser, Libellen schwirren über dem Schilf.
+const animals = [], frogs = [], flies = [];
+const ANIMAL = M + 'Quaternius Ultimate Animated Animal Pack/glTF/';
+function landOk(x, z, lo = 0.6){
+  const h = meshH(x, z);
+  if(h < lo || h > 14) return false;
+  return Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h) < 1.3;
+}
+function pathOk(ax, az, bx, bz){
+  for(let i = 1; i <= 6; i++){
+    const k = i / 6;
+    if(!landOk(ax + (bx - ax) * k, az + (bz - az) * k, 0.45)) return false;
+  }
+  return true;
+}
+// Uferpunkt: Land, aber höchstens 18 m vom Wasser entfernt
+function shoreSpot(tries = 4000){
+  for(let i = 0; i < tries; i++){
+    const x = (rnd() - 0.5) * WORLD * 0.7, z = (rnd() - 0.5) * WORLD * 0.7;
+    if(!landOk(x, z, 0.9) || Math.hypot(x - HOUSE_SPOT.x, z - HOUSE_SPOT.z) < 20) continue;
+    for(let a = 0; a < 8; a++){
+      const an = a / 8 * Math.PI * 2;
+      if(meshH(x + Math.cos(an) * 18, z + Math.sin(an) * 18) < 0) return {x, z};
+    }
+  }
+  return null;
+}
+function crossTo(a, name, fade = 0.35){
+  const next = a.acts[name];
+  if(!next || a.cur === next) return;
+  next.reset().setEffectiveWeight(1).fadeIn(fade).play();
+  if(a.cur) a.cur.fadeOut(fade);
+  a.cur = next;
+}
+async function buildAnimals(){
+  const [fox, deer, stag] = await Promise.all(['Fox', 'Deer', 'Stag'].map(n => load(ANIMAL + n + '.glb')));
+  const spawn = (g, size, kind, home, walk, run, fear) => {
+    const o = SkeletonUtils.clone(g.scene);
+    fit(o, size, 'z');
+    shadows(o);
+    o.traverse(m => { if(m.isMesh) m.frustumCulled = false; });
+    const x = home.x + (rnd() - 0.5) * 6, z = home.z + (rnd() - 0.5) * 6;
+    o.position.set(x, meshH(x, z), z);
+    o.rotation.y = rnd() * 6.28;
+    scene.add(o);
+    const mixer = new THREE.AnimationMixer(o), acts = {};
+    for(const c of g.animations) acts[c.name] = mixer.clipAction(c);
+    acts.Gallop && (acts.Gallop.timeScale = 1.1);
+    const a = {o, mixer, acts, cur: null, kind, home, walk, run, fear, mode: 'idle', until: rnd() * 4, tx: x, tz: z};
+    mixer.update(rnd() * 3);
+    crossTo(a, 'Idle', 0);
+    animals.push(a);
+  };
+  const h1 = shoreSpot(), h2 = shoreSpot(), h3 = shoreSpot();
+  if(h1) spawn(fox, 0.95, 'fox', h1, 1.1, 6.5, 11);
+  if(h2){ spawn(stag, 1.9, 'deer', h2, 1.0, 7, 16); for(let i = 0; i < 2; i++) spawn(deer, 1.6, 'deer', h2, 1.0, 7, 16); }
+  if(h3) for(let i = 0; i < 2; i++) spawn(deer, 1.6, 'deer', h3, 1.0, 7, 16);
+}
+function pickTarget(a, fromX, fromZ, minD, maxD, awayX, awayZ){
+  for(let i = 0; i < 30; i++){
+    let an = rnd() * 6.28;
+    if(awayX !== undefined) an = Math.atan2(awayZ, awayX) + (rnd() - 0.5) * 1.6;
+    const d = minD + rnd() * (maxD - minD);
+    const x = fromX + Math.cos(an) * d, z = fromZ + Math.sin(an) * d;
+    if(landOk(x, z) && pathOk(fromX, fromZ, x, z) && (awayX !== undefined || Math.hypot(x - a.home.x, z - a.home.z) < 28)){
+      a.tx = x; a.tz = z; return true;
+    }
+  }
+  return false;
+}
+function updateAnimals(dt, t){
+  const bx = boat.position.x, bz = boat.position.z;
+  for(const a of animals){
+    const p = a.o.position;
+    const db = Math.hypot(p.x - bx, p.z - bz);
+    if(db < a.fear && a.mode !== 'flee' && pickTarget(a, p.x, p.z, 18, 30, p.x - bx, p.z - bz)){
+      a.mode = 'flee'; crossTo(a, 'Gallop', 0.2);
+    }
+    if(a.mode === 'idle' && t > a.until){
+      if(rnd() < 0.6 && pickTarget(a, p.x, p.z, 4, 14)){ a.mode = 'walk'; crossTo(a, 'Walk'); }
+      else {
+        const pose = rnd() < 0.5 ? 'Eating' : (a.acts.Idle_Headlow ? 'Idle_Headlow' : a.acts.Idle_2_HeadLow ? 'Idle_2_HeadLow' : 'Idle');
+        crossTo(a, rnd() < 0.3 ? 'Idle' : pose);
+        a.until = t + 3 + rnd() * 6;
+      }
+    }
+    if(a.mode === 'walk' || a.mode === 'flee'){
+      const dx = a.tx - p.x, dz = a.tz - p.z, d = Math.hypot(dx, dz);
+      const sp = a.mode === 'flee' ? a.run : a.walk;
+      if(d < 0.5){
+        // Flucht vorbei: in der neuen Gegend bleiben
+        if(a.mode === 'flee') a.home = {x: p.x, z: p.z};
+        a.mode = 'idle'; a.until = t + 2 + rnd() * 5; crossTo(a, 'Idle');
+      } else {
+        const want = Math.atan2(dx, dz);
+        let dr = want - a.o.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+        a.o.rotation.y += dr * Math.min(1, dt * (a.mode === 'flee' ? 6 : 2.5));
+        const step = Math.min(d, sp * dt * Math.max(0.2, Math.cos(dr)));
+        const nx = p.x + Math.sin(a.o.rotation.y) * step, nz = p.z + Math.cos(a.o.rotation.y) * step;
+        if(landOk(nx, nz, 0.45)){ p.x = nx; p.z = nz; }
+        else { a.mode = 'idle'; a.until = t + 1; crossTo(a, 'Idle'); }
+      }
+    }
+    p.y += (meshH(p.x, p.z) - p.y) * Math.min(1, dt * 10);
+    // weit weg von der Kamera nicht animieren
+    if(Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < 160) a.mixer.update(dt);
+  }
+  updateFrogs(dt, t);
+  updateFlies(dt, t);
+}
+
+// Frösche an der Wasserkante
+async function buildFrogs(){
+  const g = await load(M + 'Quaternius Easy Enemy Pack/glTF/Frog.glb');
+  let n = 0;
+  for(let i = 0; i < 60000 && n < 16; i++){
+    const x = (rnd() - 0.5) * WORLD * 0.7, z = (rnd() - 0.5) * WORLD * 0.7;
+    const h = meshH(x, z);
+    if(h < 0.06 || h > 0.3 || !reedAround(x, z, 7)) continue;
+    const o = SkeletonUtils.clone(g.scene);
+    fit(o, 0.42, 'z');
+    shadows(o);
+    o.traverse(m => { if(m.isMesh) m.frustumCulled = false; });
+    o.position.set(x, h, z);
+    // mit dem Blick zum Wasser
+    let best = 0, bd = 9;
+    for(let a = 0; a < 12; a++){ const an = a / 12 * 6.28, hh = meshH(x + Math.sin(an) * 2, z + Math.cos(an) * 2); if(hh < bd){ bd = hh; best = an; } }
+    o.rotation.y = best;
+    scene.add(o);
+    const mixer = new THREE.AnimationMixer(o), acts = {};
+    for(const c of g.animations) acts[c.name] = mixer.clipAction(c);
+    const f = {o, mixer, acts, cur: null, home: {x, z, y: h, rot: best}, mode: 'sit', t: 0, until: 0};
+    crossTo(f, 'Frog_Idle', 0);
+    mixer.update(rnd() * 2);
+    frogs.push(f);
+    n++;
+  }
+}
+function updateFrogs(dt, t){
+  const bx = boat.position.x, bz = boat.position.z;
+  for(const f of frogs){
+    const p = f.o.position, db = Math.hypot(p.x - bx, p.z - bz);
+    if(f.mode === 'sit' && db < 8){
+      // Sprung ins Wasser
+      f.mode = 'jump'; f.t = 0; crossTo(f, 'Frog_Jump', 0.05);
+      f.acts.Frog_Jump.setLoop(THREE.LoopOnce); f.acts.Frog_Jump.clampWhenFinished = true;
+      f.from = p.clone();
+      f.to = p.clone().add(new THREE.Vector3(Math.sin(f.o.rotation.y), 0, Math.cos(f.o.rotation.y)).multiplyScalar(1.4));
+    }
+    if(f.mode === 'jump'){
+      f.t += dt / 0.55;
+      const k = Math.min(1, f.t);
+      p.lerpVectors(f.from, f.to, k);
+      p.y = f.from.y + Math.sin(k * Math.PI) * 0.45 - k * 0.3;
+      if(k >= 1){
+        spawnRing(p.x, p.z, 0.8);
+        f.o.visible = false; f.mode = 'gone'; f.until = t + 25 + rnd() * 30;
+      }
+    }
+    if(f.mode === 'gone' && t > f.until && db > 30){
+      p.set(f.home.x, f.home.y, f.home.z); f.o.rotation.y = f.home.rot;
+      f.o.visible = true; f.mode = 'sit'; crossTo(f, 'Frog_Idle', 0);
+    }
+    if(f.o.visible && Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < 60) f.mixer.update(dt);
+  }
+}
+
+// Libellen: selbst gebaut, schwirren ruckartig über dem Schilf
+function buildFlies(){
+  const bodyMat = new THREE.MeshLambertMaterial({color: 0x1f8a9a, emissive: 0x0a3036});
+  const wingMat = new THREE.MeshBasicMaterial({color: 0xdfeef0, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false});
+  const body = mergeGeometries([
+    new THREE.CylinderGeometry(0.006, 0.004, 0.09, 5).rotateX(Math.PI / 2).translate(0, 0, -0.03),
+    new THREE.SphereGeometry(0.012, 6, 5).translate(0, 0, 0.022),
+  ].map(g => g.toNonIndexed()));
+  const wing = new THREE.PlaneGeometry(0.075, 0.016).translate(0.04, 0, 0).rotateX(-Math.PI / 2);
+  const spots = [];
+  for(const a of reedGrid.values()) for(let k = 0; k < a.length; k += 2) spots.push([a[k], a[k + 1]]);
+  for(let i = 0; i < 18 && spots.length; i++){
+    const [x, z] = spots[(rnd() * spots.length) | 0];
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(body, bodyMat));
+    const wings = [];
+    for(const [side, dz] of [[1, 0.012], [-1, 0.012], [1, -0.004], [-1, -0.004]]){
+      const w = new THREE.Mesh(wing, wingMat);
+      w.scale.x = side; w.position.z = dz;
+      g.add(w); wings.push(w);
+    }
+    g.scale.setScalar(2.4);
+    g.position.set(x, 1 + rnd(), z);
+    scene.add(g);
+    flies.push({g, wings, home: {x, z}, from: g.position.clone(), to: g.position.clone(), t: 1, dur: 1, wait: 0});
+  }
+}
+function updateFlies(dt, t){
+  for(const f of flies){
+    for(let i = 0; i < 4; i++) f.wings[i].rotation.z = Math.sin(t * 90 + i) * 0.5 * f.wings[i].scale.x;
+    if(f.wait > 0){ f.wait -= dt; f.g.position.y += Math.sin(t * 7) * 0.002; continue; }
+    f.t += dt / f.dur;
+    const k = Math.min(1, f.t), e = k * k * (3 - 2 * k);
+    f.g.position.lerpVectors(f.from, f.to, e);
+    if(k >= 1){
+      // neuer Punkt über dem Schilf, danach kurz schweben
+      f.from.copy(f.g.position);
+      const x = f.home.x + (rnd() - 0.5) * 7, z = f.home.z + (rnd() - 0.5) * 7;
+      f.to.set(x, Math.max(0.5, meshH(x, z) + 0.6) + rnd() * 1.4, z);
+      f.dur = 0.25 + f.from.distanceTo(f.to) * 0.12;
+      f.t = 0; f.wait = rnd() < 0.7 ? 0.3 + rnd() * 1.6 : 0;
+      f.g.rotation.y = Math.atan2(f.to.x - f.from.x, f.to.z - f.from.z);
+    }
+  }
+}
+
 async function buildWhale(){
   const g = await load(M + 'Quaternius Animated Fish Pack/glTF/Whale.glb');
   const w = g.scene;
@@ -2509,6 +2725,7 @@ function loop(){
   updateSeatMove(dt);
   updateWake(dt, simT);
   updateWhale(dt, t);
+  updateAnimals(dt, t);
   updateBirds(dt, t);
   updateRings(dt);
   updateCamera(dt);
@@ -2533,7 +2750,8 @@ addEventListener('resize', () => {
   buildBirds();
   await buildBoat();
   loadMsg.textContent = 'Die Fische versammeln sich …';
-  await Promise.all([buildSchools(), buildNature(), buildIslandHouse().catch(e => console.warn(e)), buildWhale().catch(e => console.warn(e))]);
+  await Promise.all([buildSchools(), buildNature(), buildIslandHouse().catch(e => console.warn(e)), buildWhale().catch(e => console.warn(e)), buildAnimals().catch(e => console.warn(e)), buildFrogs().catch(e => console.warn(e))]);
+  buildFlies();
   renderBucket();
   state.mode = 'fish';
   leaveFishing();
@@ -2542,7 +2760,7 @@ addEventListener('resize', () => {
   setTimeout(() => document.getElementById('loading').remove(), 900);
   loop();
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
