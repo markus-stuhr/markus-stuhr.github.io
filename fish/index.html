@@ -3442,12 +3442,12 @@ function setTime(n){
     const my = Math.max(MOON_DIR.y, 0.06), mh = Math.hypot(MOON_DIR.x, MOON_DIR.z), mr = Math.sqrt(1 - my * my);
     KEY_DIR.set(MOON_DIR.x / mh * mr, my, MOON_DIR.z / mh * mr);
     // Mondlicht erst, wenn der Mond über dem Horizont steht
-    sun.intensity = 1.25 * moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
+    sun.intensity = 0.95 * moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
     sun.color.copy(MOON_COL);
   }
   sun.position.copy(KEY_DIR).multiplyScalar(700);
-  hemi.intensity = THREE.MathUtils.lerp(0.9, 0.55, n);
-  nightFill.intensity = 1.6 * THREE.MathUtils.smoothstep(n, 0.35, 1);
+  hemi.intensity = THREE.MathUtils.lerp(0.9, 0.36, n);
+  nightFill.intensity = 1.0 * THREE.MathUtils.smoothstep(n, 0.35, 1);
   hemi.color.copy(HEMI_SKY0).lerp(HEMI_SKY_N, n);
   hemi.groundColor.copy(HEMI_GND0).lerp(HEMI_GND_N, n);
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
