@@ -1291,6 +1291,13 @@ const fishProto = {};
 const schools = [];
 const HIDDEN_Y = -40;
 
+// Schwarmgröße: ein Drittel einzelne Fische oder Paare, ein Drittel kleine Gruppen, der Rest groß
+function schoolSize(){
+  const r = rnd();
+  if(r < 0.33) return 1 + ((rnd() * 2) | 0);
+  if(r < 0.66) return 3 + ((rnd() * 3) | 0);
+  return 6 + ((rnd() * 4) | 0);
+}
 async function buildSchools(){
   const names = [...new Set([...SHALLOW, ...DEEP])];
   const teal = new THREE.Color(0x1d5560);
@@ -1320,7 +1327,7 @@ async function buildSchools(){
     const pool = sp.d > 10 ? DEEP : SHALLOW;
     const species = pool[(rnd() * pool.length) | 0];
     const school = {species, home: new THREE.Vector2(sp.x, sp.z), center: new THREE.Vector3(sp.x, 0, sp.z),
-      depth: Math.min(sp.d - 1, 1.3 + rnd() * 1.2), fish: [], wander: rnd() * 10, max: 5 + ((rnd() * 5) | 0), regrow: 0};
+      depth: Math.min(sp.d - 1, 1.3 + rnd() * 1.2), fish: [], wander: rnd() * 10, max: schoolSize(), regrow: 0};
     for(let i = 0; i < school.max; i++) school.fish.push(makeFish(school, i));
     schools.push(school);
   }
