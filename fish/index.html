@@ -127,7 +127,7 @@ const SUN_DIR = new THREE.Vector3(-0.8, 0.24, -0.55).normalize();
 // Winkelradius der Sonnenscheibe (acos 0,9993 aus dem Himmels-Shader)
 const SUN_R = 0.037;
 // Bereich der Sonnenhöhe, in dem Sonnenlicht und -schatten ausblenden (Baumlinie)
-const SUN_FADE_LO = 0.05, SUN_FADE_HI = 0.15;
+const SUN_FADE_LO = 0.03, SUN_FADE_HI = 0.07;
 const sun = new THREE.DirectionalLight(0xffb98a, 2.6);
 sun.castShadow = true;
 const SHADOW_MAP = renderer.capabilities.maxTextureSize >= 8192 ? 6144 : 4096;
