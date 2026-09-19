@@ -1462,6 +1462,17 @@ function shoreSpot(tries = 4000){
   }
   return null;
 }
+// Frustum-Culling für animierte Tiere: großzügige Hüllkugel, damit Beine und
+// Geweih in keiner Pose aus der Kugel ragen
+function cullSkinned(o){
+  o.traverse(m => {
+    if(!m.isSkinnedMesh) return;
+    m.geometry.computeBoundingSphere();
+    m.boundingSphere = m.geometry.boundingSphere.clone();
+    m.boundingSphere.radius *= 2;
+    m.computeBoundingSphere = () => {};
+  });
+}
 function crossTo(a, name, fade = 0.35){
   const next = a.acts[name];
   if(!next || a.cur === next) return;
@@ -1475,7 +1486,7 @@ async function buildAnimals(){
     const o = SkeletonUtils.clone(g.scene);
     fit(o, size, 'z');
     shadows(o);
-    o.traverse(m => { if(m.isMesh) m.frustumCulled = false; });
+    cullSkinned(o);
     const x = home.x + (rnd() - 0.5) * 6, z = home.z + (rnd() - 0.5) * 6;
     o.position.set(x, meshH(x, z), z);
     o.rotation.y = rnd() * 6.28;
@@ -1574,8 +1585,9 @@ async function buildFrogs(){
   for(let n = 0; n < 12; n++){
     const o = SkeletonUtils.clone(g.scene);
     fit(o, 0.42, 'z');
-    shadows(o);
-    o.traverse(m => { if(m.isMesh) m.frustumCulled = false; });
+    // zu klein für einen sichtbaren Schatten, spart die Schattenpässe
+    shadows(o, false);
+    cullSkinned(o);
     o.visible = false;
     scene.add(o);
     const mixer = new THREE.AnimationMixer(o), acts = {};
@@ -1611,7 +1623,11 @@ function updateFrogs(dt, t){
   }
 }
 
-// Libellen: selbst gebaut, schwirren ruckartig über dem Schilf
+// Libellen: selbst gebaut, schwirren ruckartig über dem Schilf.
+// Körper und Flügel sind je ein InstancedMesh (2 Draw Calls statt 70).
+const FLY_N = 14;
+let flyBodies, flyWings;
+const WING_OFS = [[1, 0.012], [-1, 0.012], [1, -0.004], [-1, -0.004]];
 function buildFlies(){
   const bodyMat = new THREE.MeshLambertMaterial({color: 0x1f8a9a, emissive: 0x0a3036});
   const wingMat = new THREE.MeshBasicMaterial({color: 0xdfeef0, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false});
@@ -1620,21 +1636,34 @@ function buildFlies(){
     new THREE.SphereGeometry(0.012, 6, 5).translate(0, 0, 0.022),
   ].map(g => g.toNonIndexed()));
   const wing = new THREE.PlaneGeometry(0.075, 0.016).translate(0.04, 0, 0).rotateX(-Math.PI / 2);
-  for(let i = 0; i < 14; i++){
-    const x = 0, z = 0;
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(body, bodyMat));
-    const wings = [];
-    for(const [side, dz] of [[1, 0.012], [-1, 0.012], [1, -0.004], [-1, -0.004]]){
-      const w = new THREE.Mesh(wing, wingMat);
-      w.scale.x = side; w.position.z = dz;
-      g.add(w); wings.push(w);
-    }
+  flyBodies = new THREE.InstancedMesh(body, bodyMat, FLY_N);
+  flyWings = new THREE.InstancedMesh(wing, wingMat, FLY_N * 4);
+  for(const im of [flyBodies, flyWings]){ im.frustumCulled = false; im.count = 0; scene.add(im); }
+  for(let i = 0; i < FLY_N; i++){
+    const g = new THREE.Object3D();
     g.scale.setScalar(2.4);
     g.visible = false;
-    scene.add(g);
-    flies.push({g, wings, home: {x, z}, from: g.position.clone(), to: g.position.clone(), t: 1, dur: 1, wait: 0, away: true});
+    flies.push({g, home: {x: 0, z: 0}, from: new THREE.Vector3(), to: new THREE.Vector3(), t: 1, dur: 1, wait: 0, away: true});
   }
+}
+const flyM = new THREE.Matrix4(), flyW = new THREE.Matrix4(), flyQ = new THREE.Quaternion(), flyE = new THREE.Euler();
+const flyP = new THREE.Vector3(), flyS = new THREE.Vector3();
+function drawFlies(t){
+  let n = 0;
+  for(const f of flies){
+    if(!f.g.visible) continue;
+    f.g.updateMatrix();
+    flyBodies.setMatrixAt(n, f.g.matrix);
+    for(let k = 0; k < 4; k++){
+      const [side, dz] = WING_OFS[k];
+      flyE.set(0, 0, Math.sin(t * 90 + k) * 0.5 * side);
+      flyW.compose(flyP.set(0, 0, dz), flyQ.setFromEuler(flyE), flyS.set(side, 1, 1));
+      flyWings.setMatrixAt(n * 4 + k, flyM.multiplyMatrices(f.g.matrix, flyW));
+    }
+    n++;
+  }
+  flyBodies.count = n; flyWings.count = n * 4;
+  flyBodies.instanceMatrix.needsUpdate = flyWings.instanceMatrix.needsUpdate = true;
 }
 // Libellen am liebsten über Schilf, sonst über flachem Uferwasser
 const flySpot = (x, z) => reedAround(x, z, 2) > 0 || (meshH(x, z) > -0.8 && meshH(x, z) < 0);
@@ -1649,7 +1678,6 @@ function updateFlies(dt, t){
       f.g.position.set(sp.x, 1 + rnd(), sp.z);
       f.from.copy(f.g.position); f.to.copy(f.g.position); f.t = 1;
     }
-    for(let i = 0; i < 4; i++) f.wings[i].rotation.z = Math.sin(t * 90 + i) * 0.5 * f.wings[i].scale.x;
     if(f.wait > 0){ f.wait -= dt; f.g.position.y += Math.sin(t * 7) * 0.002; continue; }
     f.t += dt / f.dur;
     const k = Math.min(1, f.t), e = k * k * (3 - 2 * k);
@@ -1664,6 +1692,7 @@ function updateFlies(dt, t){
       f.g.rotation.y = Math.atan2(f.to.x - f.from.x, f.to.z - f.from.z);
     }
   }
+  drawFlies(t);
 }
 
 async function buildWhale(){
