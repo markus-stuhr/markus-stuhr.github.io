@@ -3173,7 +3173,9 @@ function setTime(n){
   if(y > -SUN_R){
     // Schatten vom oberen Rand der Scheibe aus: das letzte Licht kommt von dort, sonst
     // liegt das Boot schon im Schatten der Bäume, während die Sonne noch hervorschaut
-    const yTop = Math.sin(Math.asin(y) + SUN_R), rTop = Math.sqrt(1 - yTop * yTop);
+    // Ab dem Moment, wo die Sonnenmitte den Horizont erreicht, bleibt die Richtung stehen und
+    // nur die Stärke blendet aus; sonst wandert eine Schattenkante übers ganze Land
+    const yTop = Math.sin(Math.max(Math.asin(y), 0) + SUN_R), rTop = Math.sqrt(1 - yTop * yTop);
     const hx = SUN_DIR.x, hz = SUN_DIR.z, hl = Math.hypot(hx, hz);
     KEY_DIR.set(hx / hl * rTop, yTop, hz / hl * rTop);
     sun.intensity = 2.6 * vis;
