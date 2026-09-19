@@ -172,28 +172,65 @@ function sharpShadow(mat, idx){
   mat.customProgramCacheKey = () => (prevKey ? prevKey.call(mat) : '') + 'sharp' + idx;
   return mat;
 }
-scene.add(new THREE.HemisphereLight(0xffc4b0, 0x3b4a70, 0.9));
+const hemi = new THREE.HemisphereLight(0xffc4b0, 0x3b4a70, 0.9);
+scene.add(hemi);
+// Mond: im Osten, ohne Schatten, wird erst nachts hell
+const MOON_DIR = new THREE.Vector3(0.62, 0.42, 0.66).normalize();
+const moon = new THREE.DirectionalLight(0x9fb4ff, 0);
+moon.position.copy(MOON_DIR).multiplyScalar(500);
+scene.add(moon);
+
+// ---------- Tageszeit: 0 = Abend (Start), 1 = Nacht ----------
+const nightU = {value: 0};
+// Himmelsfarbe nach Höhe h über dem Horizont, für Himmel und Wasserspiegelung gleich
+const SKY_GLSL = `
+  vec3 skyCol(float h, float n){
+    vec3 e = mix(vec3(1.0,0.66,0.45), vec3(0.72,0.42,0.55), smoothstep(0.0, 0.18, h));
+    e = mix(e, vec3(0.16,0.14,0.32), smoothstep(0.15, 0.6, h));
+    vec3 d = mix(vec3(0.95,0.40,0.20), vec3(0.36,0.20,0.38), smoothstep(0.0, 0.2, h));
+    d = mix(d, vec3(0.05,0.05,0.14), smoothstep(0.12, 0.6, h));
+    vec3 k = mix(vec3(0.045,0.06,0.12), vec3(0.012,0.016,0.045), smoothstep(0.0, 0.5, h));
+    vec3 c = mix(e, d, smoothstep(0.0, 0.5, n));
+    return mix(c, k, smoothstep(0.45, 1.0, n));
+  }`;
 
 // Himmel
 const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.ShaderMaterial({
   side: THREE.BackSide, depthWrite: false, fog: false,
-  uniforms: {sunDir: {value: SUN_DIR}},
+  uniforms: {sunDir: {value: SUN_DIR}, night: nightU, moonDir: {value: MOON_DIR}},
   vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
-  fragmentShader: `uniform vec3 sunDir; varying vec3 vDir;
+  fragmentShader: `uniform vec3 sunDir; uniform vec3 moonDir; uniform float night; varying vec3 vDir;
+    ${SKY_GLSL}
     void main(){
       // Pro Fragment neu normieren, sonst wird die Sonnenscheibe eckig
       vec3 vd = normalize(vDir);
       float h = vd.y;
-      vec3 top = vec3(0.16,0.14,0.32), mid = vec3(0.72,0.42,0.55), hor = vec3(1.0,0.66,0.45);
-      vec3 c = mix(hor, mid, smoothstep(0.0, 0.18, h));
-      c = mix(c, top, smoothstep(0.15, 0.6, h));
-      if(h < 0.0) c = mix(hor, vec3(0.85,0.55,0.48), smoothstep(0.0,-0.2,h));
+      vec3 c = skyCol(max(h, 0.0), night);
+      if(h < 0.0) c *= 0.9;
       float s = max(dot(vd, sunDir), 0.0);
-      c += vec3(1.0,0.55,0.25) * pow(s, 8.0) * 0.55;
-      c += vec3(1.0,0.8,0.5) * pow(s, 1600.0) * 0.45;                        // Hof
-      c += vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, s) * 2.2;       // Scheibe,
+      // Nachglühen am Horizont, solange die Sonne knapp darunter steht
+      float glow = smoothstep(-0.25, 0.02, sunDir.y);
+      c += vec3(1.0,0.45,0.2) * pow(s, 8.0) * 0.55 * glow;
+      float up = smoothstep(-0.02, 0.01, sunDir.y);
+      c += vec3(1.0,0.8,0.5) * pow(s, 1600.0) * 0.45 * up;                   // Hof
+      c += vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, s) * 2.2 * up;  // Scheibe,
       // gleiche Größe wie das Spiegelbild im Wasser
+      // Sterne: je Zelle auf der Himmelskugel höchstens ein Stern
+      float starF = smoothstep(0.4, 0.9, night) * smoothstep(0.0, 0.1, h);
+      if(starF > 0.0){
+        vec3 sp = vd * 260.0, cell = floor(sp);
+        float rn = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        if(rn > 0.982){
+          vec3 jit = vec3(fract(rn * 13.1), fract(rn * 71.7), fract(rn * 29.3)) * 0.6 + 0.2;
+          float dd = length(sp - cell - jit);
+          c += vec3(0.85, 0.9, 1.0) * smoothstep(0.26, 0.0, dd) * starF * (0.35 + 0.9 * fract(rn * 97.0));
+        }
+      }
+      // Mond mit Hof
+      float ms = max(dot(vd, moonDir), 0.0), mv = smoothstep(0.3, 0.8, night);
+      c += vec3(0.5, 0.6, 0.9) * pow(ms, 300.0) * 0.25 * mv;
+      c += vec3(0.95, 0.95, 0.88) * smoothstep(0.99955, 0.99970, ms) * 1.4 * mv;
       gl_FragColor = vec4(c, 1.0);
       #include <tonemapping_fragment>
       #include <colorspace_fragment>
@@ -210,6 +247,8 @@ const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles 
 // verdecken sie auch Dinge, deren Material nicht angefasst ist (Stegpfähle).
 const WATER_SIGHT_NEAR = 40, WATER_SIGHT_FAR = 70;            // Objekte
 const SURFACE_OPAQUE_NEAR = 40, SURFACE_OPAQUE_FAR = 70;      // Oberfläche
+// Wasserfarbe für Untergetauchtes, nachts dunkler (setTime)
+const uwBody = {value: new THREE.Vector3()};
 function underwaterFade(mat){
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, renderer) => {
@@ -223,7 +262,8 @@ function underwaterFade(mat){
       vWY = _ww.y;
       vUwD = -mvPosition.z;
       vUwL = distance(_ww.xyz, cameraPosition);`);
-    sh.fragmentShader = 'varying float vWY;\nvarying float vUwD;\nvarying float vUwL;\n' + sh.fragmentShader.replace('#include <opaque_fragment>',
+    sh.uniforms.uwBody = uwBody;
+    sh.fragmentShader = 'uniform vec3 uwBody;\nvarying float vWY;\nvarying float vUwD;\nvarying float vUwL;\n' + sh.fragmentShader.replace('#include <opaque_fragment>',
       `// Weg des Blicks durchs Wasser: Tiefe mal Strecke durch Höhenunterschied.
        // Steil von oben ist er so lang wie die Tiefe, flach über die Fläche viel länger –
        // wie in echt sieht man steil nach unten am weitesten.
@@ -233,7 +273,7 @@ function underwaterFade(mat){
        // unter Wasser reicht der Blick auch in die Weite nur etwa 100 m
        float _under = smoothstep(0.0, -0.6, vWY);
        float _distFade = smoothstep(${WATER_SIGHT_NEAR.toFixed(1)}, ${WATER_SIGHT_FAR.toFixed(1)}, vUwD) * _under;
-       outgoingLight = mix(outgoingLight, vec3(${WATER_BODY.x}, ${WATER_BODY.y}, ${WATER_BODY.z}),
+       outgoingLight = mix(outgoingLight, uwBody,
          max(_depthFade, _distFade));
        #include <opaque_fragment>`);
   };
@@ -341,6 +381,7 @@ const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
   sightNear: {value: 0}, sightFar: {value: 0},
 }]);
 waterUniforms.sunDir.value = SUN_DIR;
+waterUniforms.night = nightU;
 waterUniforms.fogColor.value = FOG;
 waterUniforms.fogDensity.value = scene.fog.density;
 waterUniforms.sightNear.value = SURFACE_OPAQUE_NEAR;
@@ -367,9 +408,10 @@ const water = new THREE.Mesh(
       uniform bool receiveShadow;                    // setzt der Renderer je Objekt
       #include <shadowmap_pars_fragment>
       #include <shadowmask_pars_fragment>
-      uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity;
+      uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity; uniform float night;
       uniform float sightNear; uniform float sightFar;
       varying vec3 vW; varying float vFogDepth;
+      ${SKY_GLSL}
       vec3 wn(vec2 p, float t){
         // Summe schräg laufender Wellen, damit kein Karomuster entsteht
         vec2 g = vec2(0.0);
@@ -388,8 +430,7 @@ const water = new THREE.Mesh(
         float fres = pow(1.0 - max(dot(n, v), 0.0), 4.0);
         vec3 r = reflect(-v, n);
         float h = max(r.y, 0.0);
-        vec3 skyc = mix(vec3(1.0,0.66,0.45), vec3(0.72,0.42,0.55), smoothstep(0.0,0.18,h));
-        skyc = mix(skyc, vec3(0.16,0.14,0.32), smoothstep(0.15,0.6,h));
+        vec3 skyc = skyCol(h, night);
         float s = max(dot(r, sunDir), 0.0);
         // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
         // glatt wäre sie starr, mit voller Wellennormale verschmiert sie zu einem
@@ -402,8 +443,8 @@ const water = new THREE.Mesh(
                   + vec3(1.0,0.78,0.48) * pow(s, 45.0) * 0.5;
         // Im Schatten liegt keine Sonne auf dem Wasser: Reflexion ausknipsen
         float shade = getShadowMask();
-        spec *= shade;
-        vec3 body = vec3(0.035,0.105,0.135);   // dunkel wie das Tiefwasser darunter
+        spec *= shade * smoothstep(-0.02, 0.06, sunDir.y);   // ohne Sonne kein Glitzern
+        vec3 body = vec3(0.035,0.105,0.135) * mix(1.0, 0.3, night);   // dunkel wie das Tiefwasser darunter
         float a = mix(0.36, 0.92, fres);
         vec3 c = mix(body, skyc * mix(0.82, 1.0, shade), fres) + spec;
         a = min(1.0, a + length(spec) * 0.5);
@@ -2837,6 +2878,48 @@ const PAD_HINT_ROW = 'Linker Stick rudern · Ⓨ angeln · Rechter Stick dreht d
 const PAD_HINT_FISH = 'Linker Stick zielen · Ⓐ auswerfen · Ⓨ zurück zum Rudern';
 
 let frame = 0, simT = 0;
+// Tageszeit setzen: Sonne sinkt (lange Schatten) und geht unter, Licht, Nebel und
+// Himmel dunkeln ab, nachts übernimmt der Mond. Zum Testen über den Regler oben.
+const FOG0 = FOG.clone(), FOG_NIGHT = new THREE.Color(0x0f1626);
+const SUN_COL0 = new THREE.Color(0xffb98a), SUN_COL_LOW = new THREE.Color(0xff5a2a);
+const HEMI_SKY0 = new THREE.Color(0xffc4b0), HEMI_SKY_N = new THREE.Color(0x38487a);
+const HEMI_GND0 = new THREE.Color(0x3b4a70), HEMI_GND_N = new THREE.Color(0x0a1020);
+const SUN_AZ = new THREE.Vector2(-0.8, -0.55).normalize();
+function setTime(n){
+  nightU.value = n;
+  const y = THREE.MathUtils.lerp(0.24, -0.22, n);
+  const r = Math.sqrt(1 - y * y);
+  SUN_DIR.set(SUN_AZ.x * r, y, SUN_AZ.y * r);
+  sun.position.copy(SUN_DIR).multiplyScalar(700);
+  const vis = THREE.MathUtils.smoothstep(y, -0.02, 0.07);
+  sun.intensity = 2.6 * vis;
+  sun.color.copy(SUN_COL0).lerp(SUN_COL_LOW, THREE.MathUtils.smoothstep(0.24 - y, 0, 0.24));
+  hemi.intensity = THREE.MathUtils.lerp(0.9, 0.3, n);
+  hemi.color.copy(HEMI_SKY0).lerp(HEMI_SKY_N, n);
+  hemi.groundColor.copy(HEMI_GND0).lerp(HEMI_GND_N, n);
+  moon.intensity = 0.5 * THREE.MathUtils.smoothstep(n, 0.4, 1);
+  FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
+  scene.fog.color.copy(FOG);
+  // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
+  waterShadow.material.opacity = 0.3 * vis;
+  uwBody.value.copy(WATER_BODY).multiplyScalar(THREE.MathUtils.lerp(1, 0.3, n));
+  const inp = document.querySelector('#timeDbg input');
+  if(inp && +inp.value !== n) inp.value = n;
+  sun.shadow.needsUpdate = true;
+}
+{
+  const box = document.createElement('div');
+  box.id = 'timeDbg';
+  box.innerHTML = '<span>Abend</span><input type="range" min="0" max="1" step="0.001" value="0"><span>Nacht</span>';
+  box.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:20;display:flex;gap:8px;align-items:center;' +
+    'padding:6px 12px;border-radius:10px;background:rgba(20,16,30,.55);color:#f3e6dc;font:12px system-ui,sans-serif;';
+  const inp = box.querySelector('input');
+  inp.style.width = 'min(260px, 50vw)';
+  for(const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) box.addEventListener(ev, e => e.stopPropagation());
+  inp.addEventListener('input', () => setTime(+inp.value));
+  document.body.appendChild(box);
+}
+setTime(0);
 function loop(){
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   simT += dt;                       // Spielzeit: wächst auch bei Framepausen gleichmäßig
@@ -2890,7 +2973,7 @@ addEventListener('resize', () => {
   setTimeout(() => document.getElementById('loading').remove(), 900);
   loop();
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
