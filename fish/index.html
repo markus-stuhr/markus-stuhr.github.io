@@ -594,11 +594,13 @@ const water = new THREE.Mesh(
         // Sterne erst danach: wo die gespiegelte Welt ist, sind sie ganz verdeckt
         skyc += starsCol(rStar, starRot, night) * (1.0 - rc.a);
         skyc = mix(skyc, vec3(0.78, 0.82, 0.85) * mix(1.0, 0.35, nightR), surf * 0.35);
-        float s = max(dot(r, sunDir), 0.0);
+        // Sonne und Mond spiegeln sich an der Brandungsnormale (rS), Land und Sterne nicht
+        vec3 rS = reflect(-v, nSurf);
+        float s = max(dot(rS, sunDir), 0.0);
         // Die Scheibe wird an einer nur leicht gewellten Fläche gespiegelt: ganz
         // glatt wäre sie starr, mit voller Wellennormale verschmiert sie zu einem
         // großen Fleck. So bleibt sie klein und wird von den Wellen verzerrt.
-        vec3 nSoft = normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.3));
+        vec3 nSoft = normalize(mix(vec3(0.0, 1.0, 0.0), nSurf, 0.3));
         vec3 rFlat = reflect(-v, nSoft);
         float sf = max(dot(rFlat, sunDir), 0.0);
         vec3 spec = vec3(1.0,0.9,0.72) * smoothstep(0.99930, 0.99955, sf) * 2.2
@@ -616,7 +618,7 @@ const water = new THREE.Mesh(
         float mv = smoothstep(0.3, 0.8, night);
         float msf = max(dot(rFlat, moonDir), 0.0);
         spec += (vec3(0.95,0.95,0.88) * moonShape(rFlat, moonDir, sunDir) * 1.4
-               + vec3(0.7,0.78,1.0) * pow(max(dot(r, moonDir), 0.0), 700.0) * 0.6) * mv
+               + vec3(0.7,0.78,1.0) * pow(max(dot(rS, moonDir), 0.0), 700.0) * 0.6) * mv
                 * (sunDir.y < -${SUN_R.toFixed(3)} ? shade : 1.0);   // Mond im Schatten (z. B. hinter dem Boot) verdeckt
         // Spiegelbild an fast glatter Fläche (scharfer Punkt) plus Glitzern an der vollen Wellennormale
         vec3 rGlass = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
