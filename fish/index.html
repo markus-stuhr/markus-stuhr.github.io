@@ -3235,21 +3235,38 @@ function setTime(n){
   uwBody.value.copy(WATER_BODY).multiplyScalar(THREE.MathUtils.lerp(1, 0.3, n));
   const inp = document.querySelector('#timeDbg input');
   if(inp && +inp.value !== n) inp.value = n;
-  sun.shadow.needsUpdate = true;
+  // die Weltschattenkarte kommt ohnehin jedes dritte Bild neu (loop)
 }
+const timePlay = {on: false, btn: null};
 {
   const box = document.createElement('div');
   box.id = 'timeDbg';
-  box.innerHTML = '<span>Abend</span><input type="range" min="0" max="1" step="0.001" value="0"><span>Nacht</span>';
+  box.innerHTML = '<button type="button" title="Sonnenuntergang in 30 s abspielen">▶</button><span>Abend</span><input type="range" min="0" max="1" step="0.001" value="0"><span>Nacht</span>';
   box.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:20;display:flex;gap:8px;align-items:center;' +
     'padding:6px 12px;border-radius:10px;background:rgba(20,16,30,.55);color:#f3e6dc;font:12px system-ui,sans-serif;';
   const inp = box.querySelector('input');
   inp.style.width = 'min(260px, 50vw)';
   for(const ev of ['pointerdown', 'pointermove', 'pointerup', 'wheel', 'keydown']) box.addEventListener(ev, e => e.stopPropagation());
-  inp.addEventListener('input', () => setTime(+inp.value));
+  inp.addEventListener('input', () => { timePlay.on = false; playBtn.textContent = '▶'; setTime(+inp.value); });
+  // Abspielen: vom aktuellen Stand (oder von vorn, wenn schon Nacht ist) in 30 s bis zur Nacht
+  const playBtn = box.querySelector('button');
+  playBtn.style.cssText = 'border:0;border-radius:6px;background:rgba(255,255,255,.15);color:inherit;font:14px system-ui;width:28px;height:24px;cursor:pointer;';
+  playBtn.addEventListener('click', () => {
+    timePlay.on = !timePlay.on;
+    if(timePlay.on && nightU.value >= 0.999) setTime(0);
+    playBtn.textContent = timePlay.on ? '❚❚' : '▶';
+  });
+  timePlay.btn = playBtn;
   document.body.appendChild(box);
 }
 setTime(0);
+const TIME_PLAY_S = 30;
+function updateTimePlay(dt){
+  if(!timePlay.on) return;
+  const n = Math.min(1, nightU.value + dt / TIME_PLAY_S);
+  setTime(n);
+  if(n >= 1){ timePlay.on = false; timePlay.btn.textContent = '▶'; }
+}
 function loop(){
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   simT += dt;                       // Spielzeit: wächst auch bei Framepausen gleichmäßig
@@ -3270,6 +3287,7 @@ function loop(){
   updateWhale(dt, t);
   updateAnimals(dt, t);
   updateNightLights(t);
+  updateTimePlay(dt);
   updateBirds(dt, t);
   updateRings(dt);
   updateCamera(dt);
