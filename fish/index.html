@@ -88,6 +88,7 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import {mergeGeometries, mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 import {Reflector} from 'three/addons/objects/Reflector.js';
 import {SimplifyModifier} from 'three/addons/modifiers/SimplifyModifier.js';
+import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
 
 const M = '../assets/models/';
 const FISHPACK = M + 'Quaternius Animated Cute Fish Pack/glTF/';
@@ -122,6 +123,7 @@ renderer.setPixelRatio(pixelRatioFor(innerWidth, innerHeight));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
+renderer.xr.enabled = true;          // VR (Quest 3): siehe setupVR
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
@@ -1004,7 +1006,7 @@ const uwTint = new THREE.Color(0x1d5560);
 // Jeder Baum-Teilmesh gibt es zweimal: voll (nah) und vereinfacht (fern, SimplifyModifier
 // auf etwa 30 % der Eckpunkte, flach schattiert). Alle 0,5 s bzw. nach 6 m Kamerafahrt
 // werden die Instanzen neu auf beide verteilt: näher als TREE_LOD_R -> volles Modell.
-const TREE_LOD_R = 70;
+const TREE_LOD = {r: 70};
 const treeLods = [];
 const simplifier = new SimplifyModifier();
 function simplifiedGeo(geo, keep){
@@ -1043,7 +1045,7 @@ function updateTreeLod(force, dt = 0){
   if(!force && treeLodT < 0.5 && Math.hypot(c.x - treeLodAt.x, c.z - treeLodAt.z) < 6) return;
   if(!force && Math.hypot(c.x - treeLodAt.x, c.z - treeLodAt.z) < 1) { treeLodT = 0; return; }
   treeLodT = 0; treeLodAt.copy(c);
-  const r2 = TREE_LOD_R * TREE_LOD_R;
+  const r2 = TREE_LOD.r * TREE_LOD.r;
   for(const t of treeLods){
     let nh = 0, nl = 0;
     for(const mm of t.all){
@@ -3445,6 +3447,126 @@ function updateTimePlay(dt){
   setTime(n);
   if(n >= 1){ timePlay.on = false; timePlay.btn.textContent = '▶'; }
 }
+// ---------- VR (WebXR, Quest 3) ----------
+// Die Kamera hängt in einem Rig. Außerhalb von VR steuert updateCamera die Kamera wie
+// bisher; in VR steht das Rig im Boot und der Kopf bewegt sich frei. Gerudert und geangelt
+// wird mit den Controllern.
+const xrRig = new THREE.Group();
+scene.add(xrRig);
+const VR_SEAT = new THREE.Vector3(0, 0.30, 0.55);   // Sitzplatz im Boot (bootlokal)
+const vr = {on: false, turn: 0, snap: 0, trigger: [false, false], aim: new THREE.Vector3(), hasAim: false};
+function setupVR(){
+  if(!navigator.xr) return;
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.id = 'vrBtn';
+  btn.textContent = 'VR';
+  btn.style.cssText = 'bottom:18px;right:120px;display:none';
+  document.body.appendChild(btn);
+  navigator.xr.isSessionSupported('immersive-vr').then(ok => { if(ok) btn.style.display = 'block'; });
+  btn.addEventListener('click', async () => {
+    if(renderer.xr.getSession()){ renderer.xr.getSession().end(); return; }
+    const session = await navigator.xr.requestSession('immersive-vr',
+      {optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']});
+    renderer.xr.setReferenceSpaceType('local-floor');
+    await renderer.xr.setSession(session);
+    btn.textContent = 'VR beenden';
+    vrQuality(true);
+    vr.on = true;
+    xrRig.add(camera);            // in VR setzt die Brille die Kamera im Rig
+    startAudio();
+    session.addEventListener('end', () => { vr.on = false; btn.textContent = 'VR'; vrQuality(false); xrRig.remove(camera); });
+  });
+  // Controller: Strahl zum Zielen, dazu die Modelle der Quest-Controller
+  const factory = new XRControllerModelFactory();
+  const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]);
+  for(let i = 0; i < 2; i++){
+    const c = renderer.xr.getController(i);
+    const l = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({color: 0xffd9a0, transparent: true, opacity: 0.5}));
+    l.scale.z = 12;
+    c.add(l);
+    xrRig.add(c);
+    const grip = renderer.xr.getControllerGrip(i);
+    grip.add(factory.createControllerModel(grip));
+    xrRig.add(grip);
+  }
+}
+// In VR sparsamer: keine Spiegelung, kleinere Schattenkarten, näher liegende Baumstufe
+function vrQuality(on){
+  reflector.visible = !on;
+  const setMap = (light, size) => {
+    if(light.shadow.map){ light.shadow.map.dispose(); light.shadow.map = null; }
+    light.shadow.mapSize.set(size, size);
+    light.shadow.needsUpdate = true;
+  };
+  setMap(sun, on ? 2048 : SHADOW_MAP);
+  setMap(reedSun, on ? 1024 : REED_MAP);
+  setMap(boatSun, on ? 1024 : 2048);
+  TREE_LOD.r = on ? 45 : 70;
+  updateTreeLod(true);
+}
+const vrTmp = new THREE.Vector3(), vrTmp2 = new THREE.Vector3(), vrQ = new THREE.Quaternion();
+function updateVR(dt){
+  const session = renderer.xr.getSession();
+  if(!session) return;
+  // Rig sitzt im Boot und dreht sich mit ihm, dazu die Blickdrehung per rechtem Stick
+  xrRig.position.copy(boat.position.clone().add(VR_SEAT.clone().applyQuaternion(boat.quaternion)));
+  xrRig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), state.heading + Math.PI + vr.turn);
+  let aimSet = false;
+  for(const src of session.inputSources){
+    const gp = src.gamepad;
+    if(!gp) continue;
+    const ax = gp.axes, hand = src.handedness;
+    const x = Math.abs(ax[2] || 0) > 0.15 ? ax[2] : 0, y = Math.abs(ax[3] || 0) > 0.15 ? ax[3] : 0;
+    if(hand === 'left'){
+      pad.x = x; pad.y = y;                       // rudern
+    } else {
+      if(Math.abs(x) > 0.6){ if(!vr.snap){ vr.turn -= Math.sign(x) * Math.PI / 6; vr.snap = 1; } }
+      else vr.snap = 0;
+    }
+    // Zielen mit dem Strahl des rechten Controllers
+    const idx = hand === 'left' ? 0 : 1;
+    const c = renderer.xr.getController(idx);
+    if(hand !== 'left' && state.mode === 'fish' && (state.phase === 'idle' || state.phase === 'waiting')){
+      c.getWorldPosition(vrTmp);
+      c.getWorldQuaternion(vrQ);
+      vrTmp2.set(0, 0, -1).applyQuaternion(vrQ);
+      ray.set(vrTmp, vrTmp2);
+      const p = new THREE.Vector3();
+      if(ray.ray.intersectPlane(waterPlane, p)){
+        const d = p.sub(boat.position).setY(0);
+        d.setLength(THREE.MathUtils.clamp(d.length(), 3, 22));
+        vr.aim.copy(boat.position).add(d); vr.aim.y = 0;
+        aimRing.position.set(vr.aim.x, 0.07, vr.aim.z);
+        aimRing.visible = true;
+        aimSet = true;
+      }
+    }
+    const trig = !!gp.buttons[0]?.pressed, ab = !!gp.buttons[4]?.pressed, bb = !!gp.buttons[5]?.pressed;
+    const was = vr.trigger[idx];
+    vr.trigger[idx] = trig;
+    if(hand !== 'left'){
+      pad.hold = trig && state.phase === 'fight';
+      if(trig && !was){
+        if(state.mode !== 'fish') enterFishing();
+        else if(state.phase === 'bite') hookFish();
+        else if(state.phase === 'idle' && aimSet) cast(vr.aim.clone());
+        else if(state.phase === 'waiting') reelIn();
+      }
+      if(ab && !vr.abWas) state.mode === 'fish' ? leaveFishing() : enterFishing();
+      vr.abWas = ab;
+      if(bb && !vr.bbWas && state.phase === 'waiting') reelIn();
+      vr.bbWas = bb;
+    }
+  }
+  if(!aimSet) aimRing.visible = false;
+  // dieselben Mitläufer wie in updateCamera
+  boatSun.target.position.copy(boat.position);
+  boatSun.position.copy(boat.position).addScaledVector(KEY_DIR, 30);
+  sky.position.copy(xrRig.position);
+  water.position.x = Math.round(xrRig.position.x / 50) * 50;
+  water.position.z = Math.round(xrRig.position.z / 50) * 50;
+}
 function loop(){
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   simT += dt;                       // Spielzeit: wächst auch bei Framepausen gleichmäßig
@@ -3469,9 +3591,8 @@ function loop(){
   updateTimePlay(dt);
   updateBirds(dt, t);
   updateRings(dt);
-  updateCamera(dt);
+  if(vr.on) updateVR(dt); else updateCamera(dt);
   renderer.render(scene, camera);
-  requestAnimationFrame(loop);
 }
 
 addEventListener('resize', () => {
@@ -3523,7 +3644,8 @@ addEventListener('resize', () => {
     const gp = [...(navigator.getGamepads?.() || [])].find(g => g && g.connected);
     if(gp && gp.buttons[0]?.pressed) startGame(); else requestAnimationFrame(padStart);
   })();
-  loop();
+  setupVR();
+  renderer.setAnimationLoop(loop);   // läuft auch in VR
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
 window.__fish = {setTime, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
