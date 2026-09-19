@@ -801,6 +801,34 @@ function buildCorals(){
     p.set(x, h - 0.04, z); q.setFromAxisAngle(up, rnd() * 6.28); sc.setScalar(s);
     k.list.push({m: m.compose(p, q, sc).clone(), c: CORAL_COLORS[(rnd() * CORAL_COLORS.length) | 0]});
   }
+  // Kleine Korallenriffe: ein paar dichte Flecken auf flachem Grund in 2-6 m Tiefe,
+  // in der Mitte große Stöcke, zum Rand hin kleiner und lichter, je Riff 2-3 Farben
+  const reefs = [];
+  for(let tries = 0; reefs.length < 9 && tries < 20000; tries++){
+    const x = (rnd() - 0.5) * WORLD * 0.8, z = (rnd() - 0.5) * WORLD * 0.8;
+    const d = -meshH(x, z);
+    if(d < 2 || d > 6) continue;
+    if(Math.abs(meshH(x + 4, z) - meshH(x - 4, z)) + Math.abs(meshH(x, z + 4) - meshH(x, z - 4)) > 1.6) continue;
+    if(reefs.some(r => Math.hypot(r.x - x, r.z - z) < 70)) continue;
+    if(Math.hypot(x - HOUSE_SPOT.x, z - HOUSE_SPOT.z) < 25) continue;
+    reefs.push({x, z, r: 4 + rnd() * 4});
+  }
+  for(const rf of reefs){
+    const pal = [0, 1, 2].map(() => CORAL_COLORS[(rnd() * CORAL_COLORS.length) | 0]);
+    const n = 60 + ((rnd() * 60) | 0);
+    for(let i = 0; i < n; i++){
+      const a = rnd() * 6.28, rr = Math.pow(rnd(), 0.8) * rf.r;
+      const x = rf.x + Math.cos(a) * rr * (1 + 0.3 * Math.sin(a * 3)), z = rf.z + Math.sin(a) * rr;
+      const h = meshH(x, z);
+      if(-h < 0.9) continue;
+      const k = kinds[(rnd() * kinds.length) | 0];
+      const core = 1 - rr / rf.r;
+      const s = (k.scale[0] + rnd() * (k.scale[1] - k.scale[0])) * (0.6 + core * 0.9);
+      p.set(x, h - 0.04 + core * rnd() * 0.3, z); q.setFromAxisAngle(up, rnd() * 6.28); sc.setScalar(s);
+      k.list.push({m: m.compose(p, q, sc).clone(), c: pal[(rnd() * pal.length) | 0]});
+    }
+  }
+  window.__reefs = reefs;
   const teal = new THREE.Color(0x1d5560), col = new THREE.Color();
   let count = 0;
   for(const k of kinds){
