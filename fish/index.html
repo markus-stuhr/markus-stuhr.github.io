@@ -371,11 +371,16 @@ const water = new THREE.Mesh(
         float a = mix(0.36, 0.92, fres);
         vec3 c = mix(body, skyc * mix(0.82, 1.0, shade), fres) + spec;
         a = min(1.0, a + length(spec) * 0.5);
+        // In der Ferne spiegelt das Wasser fast nur noch den hellen Himmel.
+        // Ein Blauton hält die Fläche bis zum Horizont als Wasser erkennbar.
+        float farW = smoothstep(20.0, 160.0, vFogDepth);
+        c = mix(c, c * vec3(0.45, 0.72, 1.0) + vec3(0.02, 0.08, 0.15), farW * 0.85);
         // In die Ferne wird die Oberfläche undurchsichtig: man sieht nur in der
         // Nähe ins Wasser hinein. Das verdeckt alles Untergetauchte zuverlässig.
         a = mix(a, 1.0, smoothstep(sightNear, sightFar, vFogDepth));
         float fogF = 1.0 - exp(-fogDensity*fogDensity*vFogDepth*vFogDepth);
-        c = mix(c, fogColor, fogF);
+        // der Dunst über dem Wasser bleibt leicht bläulich
+        c = mix(c, fogColor * vec3(0.78, 0.9, 1.05), fogF);
         a = mix(a, 1.0, fogF);
         gl_FragColor = vec4(c, a);
         #include <tonemapping_fragment>
