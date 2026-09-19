@@ -38,7 +38,7 @@
     background:rgba(20,16,30,.55);backdrop-filter:blur(3px)}
   #report .card{background:rgba(30,22,38,.92);border:1px solid rgba(255,240,220,.25);border-radius:18px;
     padding:26px 34px;min-width:280px;max-width:86vw;text-align:center}
-  #reportFire{width:200px;height:140px;margin:0 auto 4px}
+  #reportFire{width:200px;height:150px;margin:14px auto 18px}
   #reportFire canvas{width:100%;height:100%;display:block}
   #report h2{margin:0 0 14px;font-size:22px;font-weight:normal;letter-spacing:.04em}
   #report ul{list-style:none;margin:0 0 10px;padding:0;font-size:15px}
@@ -3153,7 +3153,7 @@ function newEvening(){
   const sp = dockSpot();
   if(sp){
     boat.position.set(sp.x + sp.ux * 14, boat.position.y, sp.z + sp.uz * 14);
-    state.heading = Math.atan2(-sp.ux, -sp.uz) + Math.PI;
+    state.heading = Math.atan2(-sp.ux, -sp.uz);   // Blick vom Steg weg aufs offene Wasser
   }
   state.speed = 0;
   setHint(pick('Joystick zum Rudern · Angeln, wenn du Fische siehst',
