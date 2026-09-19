@@ -446,7 +446,7 @@ const waterUniforms = THREE.UniformsUtils.merge([THREE.UniformsLib.lights, {
   time: {value: 0}, sunDir: {value: null},
   fogColor: {value: null}, fogDensity: {value: 0},
   sightNear: {value: 0}, sightFar: {value: 0},
-  moonDir: {value: null}, keyDir: {value: null}, starRot: {value: STAR_ROT},
+  moonDir: {value: null}, keyDir: {value: null}, keyVis: {value: 1}, starRot: {value: STAR_ROT},
   // Spiegelung von Land, Bäumen und Boot (Reflector-Renderziel) und seine Projektion
   reflTex: {value: null}, reflMat: {value: new THREE.Matrix4()},
   // Spiegelung der Fackeln: Position und Helligkeit (0 = aus)
@@ -487,7 +487,7 @@ const water = new THREE.Mesh(
       uniform float time; uniform vec3 sunDir; uniform vec3 fogColor; uniform float fogDensity; uniform float night;
       uniform float sightNear; uniform float sightFar;
       uniform vec3 moonDir; uniform vec3 glowPos[5]; uniform float glowI[5];
-      uniform mat3 starRot; uniform sampler2D reflTex; uniform mat4 reflMat;
+      uniform mat3 starRot; uniform sampler2D reflTex; uniform mat4 reflMat; uniform float keyVis;
       varying vec3 vW; varying float vFogDepth; varying vec4 vRefl;
       ${SKY_GLSL}
       ${FOG_TINT_GLSL}
@@ -532,7 +532,9 @@ const water = new THREE.Mesh(
                   + vec3(1.0,0.8,0.5) * pow(sf, 1600.0) * 0.45
                   + vec3(1.0,0.78,0.48) * pow(s, 45.0) * 0.5;
         // Im Schatten liegt keine Sonne auf dem Wasser: Reflexion ausknipsen
-        float shade = getShadowMask();
+        // Schatten nur so stark wie das Licht, das ihn wirft (keyVis), sonst springt er beim
+        // Wechsel Sonne -> Mond plötzlich auf
+        float shade = mix(1.0, getShadowMask(), keyVis);
         // Glitzern bis der obere Sonnenrand (Radius SUN_R) weg ist
         spec *= shade * smoothstep(-${SUN_R.toFixed(3)}, ${SUN_R.toFixed(3)}, sunDir.y);
         vec3 body = vec3(0.035,0.105,0.135) * mix(1.0, 0.3, night);   // dunkel wie das Tiefwasser darunter
@@ -3281,7 +3283,10 @@ function setTime(n){
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
   scene.fog.color.copy(FOG);
   // Die Schattenfläche zeigt die dunklen Hilfslichter an – ohne Sonne auch keine Schatten
-  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis : 0.65 * moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
+  // Stärke des Schatten werfenden Lichts 0..1: Sonne blendet aus, Mond blendet mit Aufgang ein
+  const keyVis = y > -SUN_R ? vis : moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
+  waterUniforms.keyVis.value = keyVis;
+  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis : 0.65 * keyVis;
   // nachts ist das Wasser selbst schon fast so dunkel wie die Schattenfarbe
   waterShadow.material.color.setHex(0x102b34).lerp(SHADOW_NIGHT, n);
   waterUniforms.keyDir.value = KEY_DIR;
