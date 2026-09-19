@@ -418,12 +418,6 @@ const water = new THREE.Mesh(
       uniform vec3 moonDir; uniform vec3 glowPos[5]; uniform float glowI[5];
       varying vec3 vW; varying float vFogDepth;
       ${SKY_GLSL}
-      float streak(vec3 rr, vec3 l, vec3 side, float ss, float sv){
-        vec3 d = rr - l;
-        float ds = dot(d, side);
-        vec3 dv = d - side * ds;
-        return exp(-ds * ds / (ss * ss)) * exp(-dot(dv, dv) / (sv * sv));
-      }
       vec3 wn(vec2 p, float t){
         // Summe schräg laufender Wellen, damit kein Karomuster entsteht
         vec2 g = vec2(0.0);
@@ -458,18 +452,18 @@ const water = new THREE.Mesh(
         spec *= shade * smoothstep(-0.02, 0.06, sunDir.y);   // ohne Sonne kein Glitzern
         vec3 body = vec3(0.035,0.105,0.135) * mix(1.0, 0.3, night);   // dunkel wie das Tiefwasser darunter
         float a = mix(0.36, 0.92, fres);
-        // Nachts spiegeln sich Mond und Lichter als senkrechte Streifen: Abweichung quer
-        // zur Blickrichtung wird stark bestraft, in Blickrichtung kaum (streak()).
+        // Nachts: Mond und Lichter spiegeln sich
         float mv = smoothstep(0.3, 0.8, night);
-        vec3 side = normalize(cross(vec3(0.0, 1.0, 0.0), v));
+        float msf = max(dot(rFlat, moonDir), 0.0);
+        spec += (vec3(0.95,0.95,0.88) * smoothstep(0.99955, 0.99970, msf) * 1.4
+               + vec3(0.7,0.78,1.0) * pow(max(dot(r, moonDir), 0.0), 700.0) * 0.6) * mv;
+        // Spiegelbild an fast glatter Fläche (scharfer Punkt) plus Glitzern an der vollen Wellennormale
         vec3 rGlass = reflect(-v, normalize(mix(vec3(0.0, 1.0, 0.0), n, 0.12)));
-        spec += (vec3(0.95,0.95,0.88) * streak(rGlass, moonDir, side, 0.006, 0.02) * 1.3
-               + vec3(0.7,0.78,1.0) * streak(r, moonDir, side, 0.02, 0.25) * 0.5) * mv;
         for(int i = 0; i < 5; i++){
           if(glowI[i] <= 0.0) continue;
           vec3 toL = normalize(glowPos[i] - vW);
-          spec += vec3(1.0,0.6,0.25) * glowI[i] * (streak(rGlass, toL, side, 0.005, 0.02) * 1.5
-                                                 + streak(r, toL, side, 0.012, 0.22) * 0.6);
+          float gm = max(dot(rGlass, toL), 0.0), gw = max(dot(r, toL), 0.0);
+          spec += vec3(1.0,0.6,0.25) * glowI[i] * (pow(gm, 6000.0) * 1.6 + pow(gw, 700.0) * 0.7);
         }
         vec3 c = mix(body, skyc * mix(0.82, 1.0, shade), fres) + spec;
         a = min(1.0, a + length(spec) * 0.5);
