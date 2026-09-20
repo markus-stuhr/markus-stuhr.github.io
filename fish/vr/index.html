@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lake Night VR-Test</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d1420; color: #e8eef7;
+    font: 15px/1.5 system-ui, -apple-system, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  #ui { position: fixed; inset: auto 0 0 0; padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    background: linear-gradient(transparent, #0d1420cc 40%); }
+  button { font: inherit; padding: 10px 18px; border-radius: 999px; cursor: pointer;
+    border: 1px solid #ffffff33; background: #ffffff14; color: inherit; }
+  button:hover { background: #ffffff24; }
+  button[disabled] { opacity: .4; cursor: default; }
+  #vr { background: #2f6df6; border-color: #2f6df6; font-weight: 600; }
+  #log { position: fixed; top: 0; left: 0; right: 0; max-height: 45vh; overflow: auto;
+    padding: 12px 16px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap; background: #0d1420cc; }
+  .err { color: #ff9b9b; }
+  .ok { color: #9bf0b4; }
+  h1 { font-size: 17px; margin: 0 12px 0 0; }
+</style>
+</head>
+<body>
+<div id="log">Lake Night · VR-Stufentest</div>
+<div id="ui">
+  <h1>VR-Test</h1>
+  <button id="vr" disabled>VR prüfen …</button>
+  <button id="minus">− Stufe</button>
+  <span id="lvl">Stufe 0</span>
+  <button id="plus">+ Stufe</button>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ===========================================================================
+// Lake Night · VR-Stufentest
+//
+// Zweck: herausfinden, WORAN die Quest scheitert. Auf der Hauptseite war nur ein
+// eckiges, kopffestes Fenster zu sehen, danach Absturz. Das ist kein Lastproblem,
+// sondern sieht nach einem falsch dimensionierten Render-Ausschnitt aus.
+//
+// Diese Seite faengt beim kleinstmoeglichen WebXR-Aufbau an (Stufe 0: ein Boden-
+// raster, sonst nichts) und schaltet Stufe fuer Stufe die Dinge zu, die auf der
+// Hauptseite drin sind. Umgeschaltet wird MIT DEN CONTROLLERN, also in der Brille:
+// so laesst sich in EINEM Durchgang eingrenzen, ab wann es kippt, statt pro Runde
+// einen kompletten Test zu verbrennen.
+//
+//   Rechter Trigger / A  = eine Stufe hoch
+//   Linker Trigger  / X  = eine Stufe runter
+//
+// Die aktuelle Stufe steht als 3D-Text vor einem (kein DOM - HUD ist in VR unsichtbar).
+// ===========================================================================
+
+const logEl = document.getElementById('log');
+const line = (s, cls = '') => {
+  const d = document.createElement('div');
+  if(cls) d.className = cls;
+  d.textContent = s;
+  logEl.appendChild(d);
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log(s);
+};
+addEventListener('error', e => line('FEHLER: ' + e.message + ' @' + e.lineno, 'err'));
+addEventListener('unhandledrejection', e => line('PROMISE: ' + (e.reason?.message || e.reason), 'err'));
+
+// ---------- Renderer: bewusst so schlicht wie moeglich ----------
+// Genau ein WebGL-Kontext. Die Hauptseite legt einen zweiten an (Lagerfeuer im
+// Auswertungsfenster) - ein Verdacht fuer den Absturz, hier gibt es ihn nicht.
+const renderer = new THREE.WebGLRenderer({antialias: true});
+renderer.setPixelRatio(1);                 // in XR ohnehin ohne Wirkung, hier explizit
+renderer.setSize(innerWidth, innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+line('Renderer: ' + renderer.capabilities.getMaxAnisotropy() + 'x aniso, maxTexture ' +
+  renderer.capabilities.maxTextureSize);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x101a2c);
+// near klein: in VR ist alles in Griffweite. far klein: haelt den Tiefenpuffer genau.
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400);
+camera.position.set(0, 1.6, 3);
+
+// Das Rig traegt die Kamera in VR. Ausserhalb steht die Kamera frei.
+const rig = new THREE.Group();
+scene.add(rig);
+
+// ---------- Stufen ----------
+// Jede Stufe legt ihre Objekte in eine eigene Gruppe. Hochschalten baut nur die neue
+// Stufe, Runterschalten raeumt sie wieder ab - so laesst sich das Kippen einkreisen.
+const LEVELS = [
+  {name: '0 · nur Boden', build: buildFloor},
+  {name: '1 · Licht + Schatten', build: buildLights},
+  {name: '2 · Boot (Kisten)', build: buildBoat},
+  {name: '3 · Wasserflaeche', build: buildWater},
+  {name: '4 · Gelaende', build: buildTerrain},
+  {name: '5 · Himmelskugel', build: buildSky},
+  {name: '6 · viele Objekte', build: buildCrowd},
+];
+const levelGroups = [];
+let level = -1;
+
+function setLevel(n){
+  n = Math.max(0, Math.min(LEVELS.length - 1, n));
+  while(level < n){                       // hochbauen
+    level++;
+    const g = new THREE.Group();
+    scene.add(g);
+    levelGroups[level] = g;
+    try{
+      LEVELS[level].build(g);
+      line('Stufe ' + level + ' gebaut: ' + LEVELS[level].name, 'ok');
+    }catch(e){ line('Stufe ' + level + ' FEHLER: ' + e.message, 'err'); }
+  }
+  while(level > n){                       // abraeumen
+    const g = levelGroups[level];
+    if(g){ scene.remove(g); disposeTree(g); }
+    levelGroups[level] = null;
+    line('Stufe ' + level + ' entfernt');
+    level--;
+  }
+  document.getElementById('lvl').textContent = 'Stufe ' + level;
+  updateLabel();
+}
+function disposeTree(o){
+  o.traverse(m => {
+    if(m.geometry) m.geometry.dispose();
+    if(m.material) [].concat(m.material).forEach(mm => mm.dispose());
+  });
+}
+
+// ---------- Die einzelnen Stufen ----------
+function buildFloor(g){
+  const grid = new THREE.GridHelper(60, 60, 0x4f7bd6, 0x2b3a56);
+  g.add(grid);
+  // ein fester Wuerfel als Anker: bleibt er beim Kopfdrehen an seinem Platz,
+  // stimmt die Weltverankerung. Dreht er sich mit, ist die Pose kaputt.
+  const anchor = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3),
+    new THREE.MeshBasicMaterial({color: 0xffc24a}));
+  anchor.position.set(0, 0.15, -2);
+  g.add(anchor);
+}
+function buildLights(g){
+  g.add(new THREE.HemisphereLight(0x9fb8e8, 0x2a3348, 1.1));
+  const sun = new THREE.DirectionalLight(0xffd9a8, 2.0);
+  sun.position.set(-6, 9, -4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);      // klein anfangen, die Hauptseite hatte 6144
+  Object.assign(sun.shadow.camera, {left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 40});
+  g.add(sun, sun.target);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60),
+    new THREE.MeshLambertMaterial({color: 0x2f4a3a}));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.y = -0.01;
+  ground.receiveShadow = true;
+  g.add(ground);
+}
+function buildBoat(g){
+  // Stellvertreter fuer das Ruderboot: eine Wanne aus Kisten, damit man etwas um sich
+  // herum hat. Es geht hier nicht ums Aussehen, sondern um die Sitzposition.
+  const mat = new THREE.MeshLambertMaterial({color: 0x7a3f2a});
+  const add = (w, h, d, x, y, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; g.add(m); return m;
+  };
+  add(1.9, 0.12, 3.8, 0, 0.0, 0);          // Boden
+  add(0.12, 0.5, 3.8, -0.95, 0.25, 0);     // Bordwand links
+  add(0.12, 0.5, 3.8, 0.95, 0.25, 0);      // Bordwand rechts
+  add(1.9, 0.5, 0.12, 0, 0.25, -1.9);
+  add(1.9, 0.5, 0.12, 0, 0.25, 1.9);
+  add(1.5, 0.08, 0.3, 0, 0.5, 0.2);        // Bank
+}
+function buildWater(g){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 1, 1),
+    new THREE.MeshLambertMaterial({color: 0x1d4a5e, transparent: true, opacity: 0.9}));
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = -0.05;
+  g.add(m);
+}
+function buildTerrain(g){
+  // grobes Huegelgelaende, aehnlich viele Dreiecke wie das echte (180k)
+  const geo = new THREE.PlaneGeometry(400, 400, 300, 300);
+  const p = geo.attributes.position;
+  for(let i = 0; i < p.count; i++){
+    const x = p.getX(i), y = p.getY(i), d = Math.hypot(x, y);
+    p.setZ(i, Math.max(0, (d - 60) * 0.06) * (1 + Math.sin(x * 0.05) * Math.cos(y * 0.05)) - 1.2);
+  }
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({color: 0x3f5a35}));
+  m.rotation.x = -Math.PI / 2;
+  m.receiveShadow = true;
+  g.add(m);
+  line('Gelaende: ' + (geo.index.count / 3) + ' Dreiecke');
+}
+function buildSky(g){
+  // Kugel von innen, wie auf der Hauptseite - aber mit einfachem Material
+  const m = new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16),
+    new THREE.MeshBasicMaterial({color: 0x24406e, side: THREE.BackSide, fog: false}));
+  g.add(m);
+}
+function buildCrowd(g){
+  // Lasttest: viele instanzierte Boxen, entspricht grob den Baeumen
+  const geo = new THREE.ConeGeometry(0.8, 3, 6);
+  const im = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({color: 0x2f6b3a}), 3000);
+  const m = new THREE.Matrix4();
+  for(let i = 0; i < 3000; i++){
+    const a = Math.random() * 6.28, r = 20 + Math.random() * 160;
+    m.makeTranslation(Math.cos(a) * r, 1.5, Math.sin(a) * r);
+    im.setMatrixAt(i, m);
+  }
+  im.instanceMatrix.needsUpdate = true;
+  im.computeBoundingSphere();
+  im.castShadow = true;
+  g.add(im);
+  line('Crowd: 3000 Kegel = ' + (3000 * geo.index.count / 3) + ' Dreiecke');
+}
+
+// ---------- Stufenschild in 3D ----------
+// DOM ist in VR unsichtbar, also haengt die Anzeige als Tafel im Raum.
+const labelCv = document.createElement('canvas');
+labelCv.width = 512; labelCv.height = 128;
+const labelTex = new THREE.CanvasTexture(labelCv);
+const label = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.3),
+  new THREE.MeshBasicMaterial({map: labelTex, transparent: true, fog: false}));
+label.position.set(0, 1.3, -1.6);
+scene.add(label);
+let labelExtra = '';
+function updateLabel(){
+  const c = labelCv.getContext('2d');
+  c.clearRect(0, 0, 512, 128);
+  c.fillStyle = '#0d1420dd'; c.fillRect(0, 0, 512, 128);
+  c.fillStyle = '#e8eef7'; c.font = 'bold 40px system-ui, sans-serif'; c.textAlign = 'center';
+  c.fillText(LEVELS[Math.max(0, level)].name, 256, 52);
+  c.font = '24px system-ui, sans-serif'; c.fillStyle = '#9fb4d8';
+  c.fillText(labelExtra || 'Trigger rechts = hoch · links = runter', 256, 96);
+  labelTex.needsUpdate = true;
+}
+
+// ---------- VR-Start ----------
+const vrBtn = document.getElementById('vr');
+if(!navigator.xr){
+  vrBtn.textContent = 'Kein WebXR';
+  line('navigator.xr fehlt - kein WebXR in diesem Browser', 'err');
+} else {
+  navigator.xr.isSessionSupported('immersive-vr').then(ok => {
+    vrBtn.disabled = !ok;
+    vrBtn.textContent = ok ? 'VR starten' : 'immersive-vr nicht unterstuetzt';
+    line('immersive-vr unterstuetzt: ' + ok, ok ? 'ok' : 'err');
+  }).catch(e => line('isSessionSupported: ' + e.message, 'err'));
+}
+vrBtn.addEventListener('click', async () => {
+  const s = renderer.xr.getSession();
+  if(s){ s.end(); return; }
+  try{
+    // Bewusst minimal: nur local-floor. Jedes optionalFeature ist eine Fehlerquelle
+    // mehr, und hand-tracking/bounded-floor brauchen wir fuer den Test nicht.
+    const session = await navigator.xr.requestSession('immersive-vr',
+      {optionalFeatures: ['local-floor']});
+    renderer.xr.setReferenceSpaceType('local-floor');
+    await renderer.xr.setSession(session);
+    vrBtn.textContent = 'VR beenden';
+    line('Session gestartet', 'ok');
+    session.addEventListener('end', () => {
+      vrBtn.textContent = 'VR starten';
+      line('Session beendet. Stufe war ' + level);
+      report();
+    });
+  }catch(e){ line('requestSession: ' + e.message, 'err'); }
+});
+
+// ---------- Controller ----------
+// Nur die Tasten, keine Modelle: XRControllerModelFactory laedt Dateien nach und ist
+// eine weitere Fehlerquelle. Die Strahlen sind zwei schlichte Linien.
+const rayGeo = new THREE.BufferGeometry().setFromPoints(
+  [new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]);
+for(let i = 0; i < 2; i++){
+  const c = renderer.xr.getController(i);
+  const l = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({color: 0x8fc2ff}));
+  l.scale.z = 5;
+  c.add(l);
+  rig.add(c);
+}
+const pressed = [false, false];
+
+document.getElementById('plus').addEventListener('click', () => setLevel(level + 1));
+document.getElementById('minus').addEventListener('click', () => setLevel(level - 1));
+
+// ---------- Messung ----------
+const frames = [];
+function report(){
+  if(!frames.length){ line('keine Bildzeiten aufgezeichnet'); return; }
+  const s = [...frames].sort((a, b) => a - b);
+  const q = p => s[Math.floor(s.length * p)].toFixed(1);
+  line(`Bildzeiten: Median ${q(0.5)} ms · p95 ${q(0.95)} ms · max ${s[s.length - 1].toFixed(1)} ms ` +
+    `(${frames.length} Bilder)`, 'ok');
+}
+
+// ---------- Schleife ----------
+// setAnimationLoop ist in WebXR Pflicht (requestAnimationFrame liefert keine XR-Frames).
+const clock = new THREE.Clock();
+let sinceLog = 0;
+function loop(){
+  const dt = clock.getDelta();
+  if(renderer.xr.isPresenting && frames.length < 8000) frames.push(dt * 1000);
+
+  // Rig im Raum lassen: NICHT die Kamera anfassen. In VR setzt die Brille die Pose,
+  // jedes eigene Schreiben an camera.position/quaternion kaempft dagegen.
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+
+  // Das Schild bleibt vor dem Gesicht, aber auf fester Hoehe
+  if(renderer.xr.isPresenting){
+    cam.getWorldPosition(label.position);
+    const d = new THREE.Vector3();
+    cam.getWorldDirection(d);
+    label.position.addScaledVector(d, 1.8);
+    label.lookAt(cam.getWorldPosition(new THREE.Vector3()));
+  }
+
+  // Controller-Tasten abfragen
+  const session = renderer.xr.getSession();
+  if(session){
+    for(const src of session.inputSources){
+      if(!src.gamepad) continue;
+      const i = src.handedness === 'left' ? 0 : 1;
+      const now = !!src.gamepad.buttons[0]?.pressed || !!src.gamepad.buttons[4]?.pressed;
+      if(now && !pressed[i]) setLevel(level + (i === 1 ? 1 : -1));
+      pressed[i] = now;
+    }
+  }
+
+  // alle 2 s die laufende Bildzeit aufs Schild
+  sinceLog += dt;
+  if(sinceLog > 2 && frames.length > 10){
+    sinceLog = 0;
+    const last = frames.slice(-120);
+    const avg = last.reduce((a, b) => a + b, 0) / last.length;
+    labelExtra = avg.toFixed(1) + ' ms / Bild';
+    updateLabel();
+  }
+  renderer.render(scene, camera);
+}
+renderer.setAnimationLoop(loop);
+
+addEventListener('resize', () => {
+  if(renderer.xr.isPresenting) return;     // in der Session nicht anfassen
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+setLevel(0);
+line('Bereit. Stufe 0 steht. Auf der Quest: VR starten, dann mit dem rechten Trigger hochschalten.');
+window.__vr = {renderer, scene, camera, rig, setLevel, get level(){ return level; }, frames, report};
+</script>
+</body>
+</html>
