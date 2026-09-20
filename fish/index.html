@@ -165,10 +165,14 @@ camera.layers.enable(1);   // Boot-Layer
 const SUN_DIR = new THREE.Vector3(-0.8, 0.24, -0.55).normalize();
 // Winkelradius der Sonnenscheibe (acos 0,9993 aus dem Himmels-Shader)
 const SUN_R = 0.037;
-// Bereich der Sonnenhöhe, in dem Sonnenlicht und -schatten ausblenden (Baumlinie)
-const SUN_FADE_LO = 0.03, SUN_FADE_HI = 0.07;
+// Bereich der Sonnenhöhe, in dem das Sonnenlicht ausblendet. Es reicht bis knapp unter
+// den Horizont: solange das Abendrot deutlich am Himmel steht, soll die Sonne auch leuchten
+const SUN_FADE_LO = -0.02, SUN_FADE_HI = 0.035;
+// Tiefster Stand, den die Lichtrichtung annimmt. Darunter bleibt sie stehen und nur die
+// Stärke blendet aus, sonst wandert eine Schattenkante übers ganze Land
+const SUN_DIR_MIN = 0.03;
 // Die Schatten blenden schon früher aus als das Licht selbst
-const SHADOW_FADE_LO = 0.055, SHADOW_FADE_HI = 0.16;
+const SHADOW_FADE_LO = 0.03, SHADOW_FADE_HI = 0.10;
 const sun = new THREE.DirectionalLight(0xffb98a, 2.6);
 sun.castShadow = true;
 const SHADOW_MAP = renderer.capabilities.maxTextureSize >= 8192 ? 6144 : 4096;
@@ -608,7 +612,9 @@ const water = new THREE.Mesh(
         float wdep = texture2D(depthTex, duv).r * ${DEPTH_MAX.toFixed(1)};
         if(duv.x < 0.0 || duv.x > 1.0 || duv.y < 0.0 || duv.y > 1.0) wdep = ${DEPTH_MAX.toFixed(1)};
         float shore = 1.0 - smoothstep(0.08, 0.9, wdep);
-        float ph = wdep * 3.4 - time * 1.15;
+        // + statt -: ein Band sitzt bei festem ph, mit wachsender Zeit sinkt die zugehörige
+        // Tiefe, das Band läuft also ins Flache zum Strand hin (vorher andersherum)
+        float ph = wdep * 3.4 + time * 1.15;
         float band = smoothstep(0.82, 0.995, sin(ph)) * smoothstep(0.05, 0.25, wdep);
         float edge = 1.0 - smoothstep(0.02, 0.18, wdep);           // ganz schmaler Saum am Sand
         float surf = clamp(shore * (band * 0.28 + edge * 0.18), 0.0, 1.0);
@@ -3615,16 +3621,16 @@ function setTime(n){
   const y = SUN_DIR.y;
   // Sonnenlicht hängt am sichtbaren Teil der Scheibe: voll bis der untere Rand den
   // Horizont berührt, aus erst wenn auch der obere Rand weg ist
-  // Die Sonne verschwindet schon hinter der Baumlinie am Ufer (etwa y 0,05), nicht erst
-  // am Horizont: bis dahin sind Sonnenlicht und -schatten ganz ausgeblendet
+  // Das Licht bleibt bis knapp unter den Horizont an, solange das Abendrot deutlich
+  // am Himmel steht; die Schatten sind da über sunShadowFade längst ausgeblendet
   const vis = THREE.MathUtils.smoothstep(y, SUN_FADE_LO, SUN_FADE_HI);
   const moonK = THREE.MathUtils.smoothstep(n, 0.4, 1);
   if(y > -SUN_R){
     // Schatten vom oberen Rand der Scheibe aus: das letzte Licht kommt von dort, sonst
     // liegt das Boot schon im Schatten der Bäume, während die Sonne noch hervorschaut
-    // Ab dem Moment, wo die Sonne hinter der Baumlinie verschwindet (SUN_FADE_LO), bleibt die Richtung stehen und
-    // nur die Stärke blendet aus; sonst wandert eine Schattenkante übers ganze Land
-    const yTop = Math.sin(Math.max(Math.asin(y), SUN_FADE_LO) + SUN_R), rTop = Math.sqrt(1 - yTop * yTop);
+    // Ab SUN_DIR_MIN bleibt die Richtung stehen und nur die Stärke blendet aus;
+    // sonst wandert eine Schattenkante übers ganze Land
+    const yTop = Math.sin(Math.max(Math.asin(y), SUN_DIR_MIN) + SUN_R), rTop = Math.sqrt(1 - yTop * yTop);
     const hx = SUN_DIR.x, hz = SUN_DIR.z, hl = Math.hypot(hx, hz);
     KEY_DIR.set(hx / hl * rTop, yTop, hz / hl * rTop);
     sun.intensity = 2.6 * vis;
