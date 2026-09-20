@@ -102,7 +102,7 @@ const LEVELS = [
   {name: '0 · nur Boden', build: buildFloor},
   {name: '1 · Licht + Schatten', build: buildLights},
   {name: '2 · Boot (Kisten)', build: buildBoat},
-  {name: '3 · Wasserflaeche', build: buildWater},
+  {name: '3 · Wasserflaeche', build: buildWater, undo: undoWater},
   {name: '4 · Gelaende', build: buildTerrain},
   {name: '5 · Himmelskugel', build: buildSky},
   {name: '6 · viele Objekte', build: buildCrowd},
@@ -171,13 +171,17 @@ function buildLights(g){
   g.add(sun, sun.target);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(60, 60),
+  // Schattenfaenger fuer Stufe 1. Liegt bei y -0,01 und damit UEBER der Wasserflaeche
+  // (y -0,05) - deshalb wird er ausgeblendet, sobald Stufe 3 das Wasser bringt.
+  // Sonst reicht das Wasser nicht bis ans Boot, es liegt nur darunter.
+  lightGround = new THREE.Mesh(new THREE.PlaneGeometry(60, 60),
     new THREE.MeshLambertMaterial({color: 0x2f4a3a}));
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.01;
-  ground.receiveShadow = true;
-  g.add(ground);
+  lightGround.rotation.x = -Math.PI / 2;
+  lightGround.position.y = -0.01;
+  lightGround.receiveShadow = true;
+  g.add(lightGround);
 }
+let lightGround = null;
 function buildBoat(g){
   // Stellvertreter fuer das Ruderboot: eine Wanne aus Kisten, damit man etwas um sich
   // herum hat. Es geht hier nicht ums Aussehen, sondern um die Sitzposition.
@@ -194,12 +198,15 @@ function buildBoat(g){
   add(1.5, 0.08, 0.3, 0, 0.5, 0.2);        // Bank
 }
 function buildWater(g){
+  if(lightGround) lightGround.visible = false;   // sonst deckt er das Wasser am Boot zu
   const m = new THREE.Mesh(new THREE.PlaneGeometry(400, 400, 1, 1),
-    new THREE.MeshLambertMaterial({color: 0x1d4a5e, transparent: true, opacity: 0.9}));
+    new THREE.MeshLambertMaterial({color: 0x2f7d9e, transparent: true, opacity: 0.92}));
   m.rotation.x = -Math.PI / 2;
   m.position.y = -0.05;
+  m.receiveShadow = true;
   g.add(m);
 }
+function undoWater(){ if(lightGround) lightGround.visible = true; }
 function buildTerrain(g){
   // grobes Huegelgelaende, aehnlich viele Dreiecke wie das echte (180k)
   const geo = new THREE.PlaneGeometry(400, 400, 300, 300);
@@ -261,6 +268,12 @@ function undoCamInRig(){
 }
 
 // --- 8: Spiegelung ---
+// BEFUND auf der Quest (2026-09-20): Stufe 8 blitzt beim Zuschalten kurz auf, und ab da
+// liegt die Bildzeit hoeher (einmal doppelt = ein ausgelassenes Bild). Kein Absturz, aber
+// der einzige Posten, der sich in VR sichtbar schlecht benimmt. Grund: Sein
+// onBeforeRender laeuft pro Kamera, in XR also zweimal - die Szene wird ein drittes und
+// viertes Mal gerendert. Ausserdem bekommt er dort die ArrayCamera mit den vereinigten
+// Matrizen, nicht die eines Auges. Fazit fuer den Einbau: in VR aus lassen.
 // Der Reflector rendert die Szene ein zweites Mal in ein RenderTarget und setzt dabei
 // Render-Ziel und Viewport um. In WebXR ist das Ziel NICHT null, sondern der Framebuffer
 // des XR-Layers. Setzt ein Addon danach auf null zurueck, landet das Bild im falschen
