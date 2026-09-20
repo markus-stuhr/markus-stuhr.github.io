@@ -1113,7 +1113,17 @@ const uwTint = new THREE.Color(0x1d5560);
 // Jeder Baum-Teilmesh gibt es zweimal: voll (nah) und vereinfacht (fern, SimplifyModifier
 // auf etwa 30 % der Eckpunkte, flach schattiert). Alle 0,5 s bzw. nach 6 m Kamerafahrt
 // werden die Instanzen neu auf beide verteilt: näher als TREE_LOD_R -> volles Modell.
-const TREE_LOD = {r: 70};
+const _camW = new THREE.Vector3();
+function camWorld(){
+  if(renderer.xr.isPresenting){
+    const x = renderer.xr.getCamera();
+    if(x) return x.getWorldPosition(_camW);
+  }
+  return camera.position;
+}
+// r = Grenze zwischen vollem und vereinfachtem Modell, cut = ab hier gar nicht mehr.
+// In VR traegt der dichtere Dunst ohnehin nicht weit, dort lohnt ein harter Schnitt.
+const TREE_LOD = {r: 70, cut: Infinity};
 const treeLods = [];
 // ---------- Gruppen abschalten (Lastmessung) ----------
 // Jede Gruppe laesst sich per URL abschalten, um ihren Anteil an der Last zu messen:
@@ -1150,9 +1160,20 @@ function vrGroupMeshes(name){
 function setGroupVisible(name, on){
   for(const o of vrGroupMeshes(name)){
     if(!o || !o.isObject3D) continue;
-    if(on){ if(o.userData.vrWasVisible !== undefined){ o.visible = o.userData.vrWasVisible; delete o.userData.vrWasVisible; } }
-    else { if(o.userData.vrWasVisible === undefined) o.userData.vrWasVisible = o.visible; o.visible = false; }
+    if(on){
+      if(o.userData.vrWasVisible !== undefined){ o.visible = o.userData.vrWasVisible; delete o.userData.vrWasVisible; }
+      if(o.userData.vrWasCast !== undefined){ o.castShadow = o.userData.vrWasCast; delete o.userData.vrWasCast; }
+    } else {
+      if(o.userData.vrWasVisible === undefined) o.userData.vrWasVisible = o.visible;
+      if(o.userData.vrWasCast === undefined) o.userData.vrWasCast = o.castShadow;
+      o.visible = false;
+      o.castShadow = false;     // sonst bleiben die Schatten der ausgeblendeten Gruppe stehen
+    }
   }
+  // Die Weltschattenkarte wird nur jedes dritte Bild gerechnet und haelt sonst das alte
+  // Bild fest - nach dem Umschalten einmal ausdruecklich neu.
+  sun.shadow.needsUpdate = true;
+  reedSun.shadow.needsUpdate = true;
 }
 const simplifier = new SimplifyModifier();
 function simplifiedGeo(geo, keep){
@@ -1187,16 +1208,18 @@ const treeLodAt = new THREE.Vector3(1e9, 0, 0);
 let treeLodT = 0;
 function updateTreeLod(force, dt = 0){
   treeLodT += dt;
-  const c = camera.position;
+  const c = camWorld();
   if(!force && treeLodT < 0.5 && Math.hypot(c.x - treeLodAt.x, c.z - treeLodAt.z) < 6) return;
   if(!force && Math.hypot(c.x - treeLodAt.x, c.z - treeLodAt.z) < 1) { treeLodT = 0; return; }
   treeLodT = 0; treeLodAt.copy(c);
-  const r2 = TREE_LOD.r * TREE_LOD.r;
+  const r2 = TREE_LOD.r * TREE_LOD.r, cut2 = TREE_LOD.cut * TREE_LOD.cut;
   for(const t of treeLods){
     let nh = 0, nl = 0;
     for(const mm of t.all){
       const e = mm.elements, dx = e[12] - c.x, dz = e[14] - c.z;
-      if(dx * dx + dz * dz < r2) t.hi.setMatrixAt(nh++, mm); else t.lo.setMatrixAt(nl++, mm);
+      const d2 = dx * dx + dz * dz;
+      if(d2 > cut2) continue;                       // zu weit weg: gar nicht zeichnen
+      if(d2 < r2) t.hi.setMatrixAt(nh++, mm); else t.lo.setMatrixAt(nl++, mm);
     }
     t.hi.count = nh; t.lo.count = nl;
     t.hi.instanceMatrix.needsUpdate = t.lo.instanceMatrix.needsUpdate = true;
@@ -2281,7 +2304,8 @@ function updateAnimals(dt, t){
     }
     p.y += (meshH(p.x, p.z) - p.y) * Math.min(1, dt * 10);
     // weit weg von der Kamera nicht animieren
-    const near = Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < ANIMAL_VIS_R;
+    const cw = camWorld();
+    const near = Math.hypot(p.x - cw.x, p.z - cw.z) < ANIMAL_VIS_R;
     a.o.visible = near;
     if(near) a.mixer.update(dt);
   }
@@ -2344,7 +2368,8 @@ function updateFrogs(dt, t){
       }
     }
     if(f.mode === 'gone' && t > f.until && Math.hypot(f.home.x - bx, f.home.z - bz) > 40) sitFrog(f);
-    if(f.mode !== 'gone') f.o.visible = Math.hypot(p.x - camera.position.x, p.z - camera.position.z) < ANIMAL_VIS_R;
+    if(f.mode !== 'gone'){ const cw = camWorld();
+      f.o.visible = Math.hypot(p.x - cw.x, p.z - cw.z) < ANIMAL_VIS_R; }
     if(f.o.visible) f.mixer.update(dt);
   }
 }
@@ -3791,6 +3816,18 @@ function updateTimePlay(dt){
 //   5. Nur local-floor, keine nachladende XRControllerModelFactory.
 //   6. Die Kamera wird nie selbst gesetzt - nur das Rig. Die Pose kommt von der Brille.
 // ===========================================================================
+// Schnittweite der Baeume in VR. Gemessen an einem bewaldeten Ufer (Worst Case),
+// Referenz ohne Baeume sind 584 000 Dreiecke:
+//   130 m =  489 Baeume,  592 000    180 m = 1203,  678 000
+//   220 m = 1979 Baeume,  773 000    280 m = 3016,  900 000    alle = 5746, 1 237 000
+// 220 passt zum dichteren VR-Dunst (fog 0,0075): dort ist bei 200 m fast alles Dunst,
+// der Schnitt faellt also nicht auf. Wer mehr will: ?vrtrees=280 in der Adresse.
+// Achtung: Schnittweite und Nebeldichte gehoeren zusammen - wird der Dunst duenner,
+// muss der Schnitt weiter nach hinten, sonst sieht man die Baumlinie enden.
+const VR_TREE_CUT = (() => {
+  const v = parseInt(new URLSearchParams(location.search).get('vrtrees'), 10);
+  return Number.isFinite(v) && v > 20 ? v : 220;
+})();
 const xrRig = new THREE.Group();
 scene.add(xrRig);
 const VR_SEAT = new THREE.Vector3(0, 0.30, 0.55);   // Sitzplatz im Boot (bootlokal)
@@ -3876,10 +3913,14 @@ function vrQuality(on){
   setMap(reedSun, on ? 1024 : REED_MAP);
   setMap(boatSun, on ? 1024 : 2048);
   reedSun.shadow.autoUpdate = !on;    // in VR nur jedes zweite Bild, getaktet in updateVR
-  TREE_LOD.r = on ? 45 : 70;
+  // Baeume sind in VR wieder da, aber mit hartem Schnitt: naeher als TREE_LOD.r das volle
+  // Modell, dahinter das vereinfachte, ab TREE_LOD.cut gar nicht mehr. Bei fog 0,0075
+  // traegt die Sicht ohnehin nicht viel weiter.
+  TREE_LOD.r = on ? 40 : 70;
+  TREE_LOD.cut = on ? VR_TREE_CUT : Infinity;
   scene.fog.density = on ? 0.0075 : 0.0032;
   waterUniforms.fogDensity.value = scene.fog.density;   // sonst liegt das Wasser im alten Dunst
-  for(const g of ['trees', 'grass']) setGroupVisible(g, !on);
+  setGroupVisible('grass', !on);      // Gras bleibt in VR aus (1,15 Mio Dreiecke)
   updateTreeLod(true);
 }
 
@@ -4050,7 +4091,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // Pflicht fuer WebXR, liefert auch die XR-Frames
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, vrQuality, syncXRLayers, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, vrQuality, syncXRLayers, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
