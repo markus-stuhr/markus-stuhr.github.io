@@ -106,6 +106,14 @@ const LEVELS = [
   {name: '4 · Gelaende', build: buildTerrain},
   {name: '5 · Himmelskugel', build: buildSky},
   {name: '6 · viele Objekte', build: buildCrowd},
+  // ---- Ab hier: die Unterschiede zur Hauptseite, verdaechtigste zuerst ----
+  // Stufen 0-6 liefen auf der Quest sauber durch (12,6 ms = 80 Hz, also volles Tempo).
+  // Die Ursache muss also in etwas stecken, das die Hauptseite tut und diese Seite nicht.
+  {name: '7 · Kamera ins Rig', build: buildCamInRig, undo: undoCamInRig},
+  {name: '8 · Spiegelung (Reflector)', build: buildReflector},
+  {name: '9 · zweiter WebGL-Kontext', build: buildSecondCtx, undo: undoSecondCtx},
+  {name: '10 · grosse Schattenkarten', build: buildBigShadows, undo: undoBigShadows},
+  {name: '11 · eigene Shader + Layer', build: buildShaders, undo: undoShaders},
 ];
 const levelGroups = [];
 let level = -1;
@@ -123,6 +131,9 @@ function setLevel(n){
     }catch(e){ line('Stufe ' + level + ' FEHLER: ' + e.message, 'err'); }
   }
   while(level > n){                       // abraeumen
+    // Stufen ab 7 aendern globalen Zustand (Kamera, Renderer), nicht nur Objekte -
+    // die raeumen mit einem eigenen undo auf.
+    try{ LEVELS[level].undo?.(); }catch(e){ line('undo ' + level + ': ' + e.message, 'err'); }
     const g = levelGroups[level];
     if(g){ scene.remove(g); disposeTree(g); }
     levelGroups[level] = null;
@@ -227,6 +238,148 @@ function buildCrowd(g){
   line('Crowd: 3000 Kegel = ' + (3000 * geo.index.count / 3) + ' Dreiecke');
 }
 
+// ===========================================================================
+// Stufen 7-11: die Unterschiede zur Hauptseite einzeln zuschalten.
+// Kippt eine davon, ist der Schuldige gefunden.
+// ===========================================================================
+
+// --- 7: Kamera ins Rig haengen und das Rig bewegen ---
+// Die Hauptseite macht genau das (xrRig.add(camera)) und schiebt das Rig jedes Bild auf
+// den Sitzplatz im Boot. Diese Seite fasst die Kamera bisher NICHT an. Das ist der
+// groesste strukturelle Unterschied - und ein kopffestes Bild passt genau dazu.
+let camInRig = false;
+function buildCamInRig(){
+  rig.add(camera);
+  camInRig = true;
+  line('Kamera haengt jetzt im Rig, Rig schwankt wie ein Boot');
+}
+function undoCamInRig(){
+  camInRig = false;
+  scene.add(camera);
+  rig.position.set(0, 0, 0);
+  rig.quaternion.identity();
+}
+
+// --- 8: Spiegelung ---
+// Der Reflector rendert die Szene ein zweites Mal in ein RenderTarget und setzt dabei
+// Render-Ziel und Viewport um. In WebXR ist das Ziel NICHT null, sondern der Framebuffer
+// des XR-Layers. Setzt ein Addon danach auf null zurueck, landet das Bild im falschen
+// Puffer - das wuerde ein falsch dimensioniertes Fenster gut erklaeren.
+function buildReflector(g){
+  import('three/addons/objects/Reflector.js').then(({Reflector}) => {
+    const r = new Reflector(new THREE.PlaneGeometry(200, 200), {
+      textureWidth: 512, textureHeight: 512, color: 0x557799});
+    r.rotation.x = -Math.PI / 2;
+    r.position.y = -0.04;
+    g.add(r);
+    line('Reflector zugeschaltet (512er Ziel)');
+  }).catch(e => line('Reflector laedt nicht: ' + e.message, 'err'));
+}
+
+// --- 9: zweiter WebGL-Kontext ---
+// Die Hauptseite legt fuer das Lagerfeuer im Auswertungsfenster einen zweiten Renderer
+// an (buildCardFire). Zwei Kontexte sind auf der Quest ein bekanntes Absturzrisiko:
+// der Browser kann den aelteren verlieren lassen.
+let ctx2 = null;
+function buildSecondCtx(){
+  ctx2 = new THREE.WebGLRenderer({alpha: true, antialias: true});
+  ctx2.setSize(200, 140, false);
+  ctx2.domElement.style.cssText = 'position:fixed;right:8px;top:8px;width:100px;height:70px';
+  document.body.appendChild(ctx2.domElement);
+  const s = new THREE.Scene(), c = new THREE.PerspectiveCamera(40, 200 / 140, 0.1, 10);
+  c.position.z = 3;
+  s.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1),
+    new THREE.MeshBasicMaterial({color: 0xff8844})));
+  ctx2.render(s, c);
+  line('zweiter WebGL-Kontext steht');
+}
+function undoSecondCtx(){
+  if(!ctx2) return;
+  ctx2.domElement.remove();
+  ctx2.dispose();
+  ctx2.forceContextLoss?.();
+  ctx2 = null;
+}
+
+// --- 10: grosse Schattenkarten ---
+// Die Hauptseite legt beim Laden 6144er, 3072er und 2048er Karten an, zusammen rund
+// 200 MB. Auf der Quest ist das viel Speicher auf einmal.
+let bigLights = [];
+function buildBigShadows(g){
+  const sizes = [[4096, 'Welt'], [3072, 'Schilf'], [2048, 'Boot']];
+  for(const [size, name] of sizes){
+    const l = new THREE.DirectionalLight(0xffffff, 0.0001);
+    l.castShadow = true;
+    l.shadow.mapSize.set(size, size);
+    l.position.set(-5, 20, -5);
+    g.add(l, l.target);
+    bigLights.push(l);
+    line(name + '-Karte ' + size + '² angelegt (' + ((size * size * 4) / 1048576).toFixed(0) + ' MB)');
+  }
+}
+function undoBigShadows(){
+  for(const l of bigLights){ l.shadow.map?.dispose(); l.shadow.map = null; }
+  bigLights = [];
+}
+
+// --- 11: eigene Shader und eigene Layer ---
+// Die Hauptseite patcht die three-Nebel-Chunks global, baut einen eigenen Wasser-Shader
+// mit lights:true und legt Objekte auf eigene Layer. Beides kann in XR schiefgehen:
+// Shader werden pro Auge kompiliert, und Layer 1/2 gehoeren dort den Augen.
+function buildShaders(g){
+  const BOAT_LAYER = 4, NO_REFL = 5;
+  camera.layers.enable(BOAT_LAYER);
+  camera.layers.enable(NO_REFL);
+  const mat = new THREE.ShaderMaterial({
+    lights: true,
+    fog: true,
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.lights, THREE.UniformsLib.fog, {tTime: {value: 0}}]),
+    vertexShader: `
+      #include <common>
+      #include <fog_pars_vertex>
+      #include <shadowmap_pars_vertex>
+      varying vec3 vN;
+      void main(){
+        vN = normalMatrix * normal;
+        #include <beginnormal_vertex>
+        #include <defaultnormal_vertex>
+        #include <begin_vertex>
+        #include <project_vertex>
+        #include <worldpos_vertex>
+        #include <shadowmap_vertex>
+        #include <fog_vertex>
+      }`,
+    fragmentShader: `
+      #include <common>
+      #include <packing>
+      #include <fog_pars_fragment>
+      #include <bsdfs>
+      #include <lights_pars_begin>
+      #include <shadowmap_pars_fragment>
+      #include <shadowmask_pars_fragment>
+      uniform float tTime;
+      varying vec3 vN;
+      void main(){
+        float s = getShadowMask();
+        gl_FragColor = vec4(vec3(0.2, 0.45, 0.6) * (0.4 + 0.6 * s), 1.0);
+        #include <fog_fragment>
+      }`,
+  });
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), mat);
+  m.rotation.x = -Math.PI / 2;
+  m.position.y = 0.02;
+  m.layers.set(NO_REFL);
+  g.add(m);
+  scene.fog = new THREE.FogExp2(0x101a2c, 0.004);
+  line('eigener Shader (lights+fog+shadowmask) auf Layer ' + NO_REFL);
+}
+function undoShaders(){
+  scene.fog = null;
+  camera.layers.disable(4);
+  camera.layers.disable(5);
+}
+
 // ---------- Stufenschild in 3D ----------
 // DOM ist in VR unsichtbar, also haengt die Anzeige als Tafel im Raum.
 const labelCv = document.createElement('canvas');
@@ -315,8 +468,15 @@ function loop(){
   const dt = clock.getDelta();
   if(renderer.xr.isPresenting && frames.length < 8000) frames.push(dt * 1000);
 
-  // Rig im Raum lassen: NICHT die Kamera anfassen. In VR setzt die Brille die Pose,
-  // jedes eigene Schreiben an camera.position/quaternion kaempft dagegen.
+  // Bis Stufe 6: Rig bleibt stehen und die Kamera wird NICHT angefasst. In VR setzt die
+  // Brille die Pose, jedes eigene Schreiben an camera.position/quaternion kaempft dagegen.
+  // Ab Stufe 7 haengt die Kamera im Rig und das Rig schwankt wie das Boot - genau so
+  // macht es die Hauptseite.
+  if(camInRig){
+    const t = clock.elapsedTime;
+    rig.position.set(Math.sin(t * 0.3) * 0.5, 0, Math.cos(t * 0.2) * 0.5);
+    rig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.sin(t * 0.15) * 0.6);
+  }
   const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
 
   // Das Schild bleibt vor dem Gesicht, aber auf fester Hoehe
