@@ -1070,7 +1070,7 @@ function buildPlants(){
   const gMat = sharpShadow(swayMaterial(0.12, 1.1, true), 1), kMat = sharpShadow(swayMaterial(0.35, 0.6, true), 1), lMat = swayMaterial(0.05, 1.7);
   const gDepth = swayDepthMaterial(0.12, 1.1), kDepth = swayDepthMaterial(0.35, 0.6), lDepth = swayDepthMaterial(0.05, 1.7);
   let count = 0;
-  const add = (lists, geo, mat, depth) => lists.forEach(list => {
+  const add = (lists, geo, mat, depth, grp) => lists.forEach(list => {
     if(!list.length) return;
     const im = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach((mm, i) => im.setMatrixAt(i, mm));
@@ -1080,14 +1080,15 @@ function buildPlants(){
     im.customDepthMaterial = depth;
     im.name = geo.name;
     scene.add(im);
+    if(grp) plantGroups[grp].push(im);
     count += list.length;
   });
-  add(grass, gGeo, gMat, gDepth);
-  add(kelp, kGeo, kMat, kDepth);
-  add(land, lGeo, lMat, lDepth);
+  add(grass, gGeo, gMat, gDepth, 'seagrass');
+  add(kelp, kGeo, kMat, kDepth, 'kelp');
+  add(land, lGeo, lMat, lDepth, 'landgrass');
   // Seegras, Tang und Landgras nicht spiegeln (unter Wasser bzw. zu klein, spart Zeit)
   scene.children.forEach(o => { if(o.isInstancedMesh && (o.geometry === gGeo || o.geometry === kGeo || o.geometry === lGeo)) noRefl(o); });
-  add(reed, rGeo, rMat, rDepth);
+  add(reed, rGeo, rMat, rDepth, 'reed');
   window.__reedCount = reed.reduce((a, l) => a + l.length, 0);
   return count;
 }
@@ -1117,16 +1118,27 @@ const TREE_LOD = {r: 70};
 const treeLods = [];
 // ---------- VR-Sparschalter ----------
 // Auf der Quest blieb das Bild haengen oder die Seite stuerzte ab. Zum Eingrenzen laesst
-// sich jede Gruppe einzeln abschalten: ?vroff=trees,scatter,animals,birds,fish
-// (leer lassen fuer nichts: ?vroff=). Default ist trees, das ist der groesste Posten.
-const scatterMeshes = [];          // Pflanzen, Schilf, Felsen, Korallen (alles aus scatter())
-const VR_OFF_DEFAULT = 'trees';
+// sich jede Gruppe einzeln abschalten:
+//   ?vroff=trees,grass,landgrass,seagrass,kelp,reed,scatter,animals,birds,fish
+// (leer lassen fuer nichts: ?vroff=). Default sind trees und grass, die groessten Posten.
+// grass fasst Landgras, Seegras und Tang zusammen; Schilf (reed) bleibt an, es steht ums
+// Boot und haengt an der scharfen Schattenkarte.
+const scatterMeshes = [];          // Felsen und Modelle aus scatter() (NICHT die Pflanzen)
+// Die Pflanzen entstehen nicht in scatter(), sondern direkt in buildPlants()
+const plantGroups = {seagrass: [], kelp: [], landgrass: [], reed: []};
+const VR_OFF_DEFAULT = 'trees,grass';
 const vrOffParam = new URLSearchParams(location.search).get('vroff');
 const VR_OFF = new Set((vrOffParam === null ? VR_OFF_DEFAULT : vrOffParam).split(',').map(x => x.trim()).filter(Boolean));
 function vrGroupMeshes(name){
   switch(name){
     case 'trees': return treeLods.flatMap(t => [t.hi, t.lo]);
     case 'scatter': return scatterMeshes;
+    // alle Halme und Blaetter: Landgras, Seegras, Tang
+    case 'grass': return [...plantGroups.landgrass, ...plantGroups.seagrass, ...plantGroups.kelp];
+    case 'landgrass': return plantGroups.landgrass;
+    case 'seagrass': return plantGroups.seagrass;
+    case 'kelp': return plantGroups.kelp;
+    case 'reed': return plantGroups.reed;
     case 'animals': return [...animals.map(a => a.o), ...frogs.map(f => f.o),
       ...(flyBodies ? [flyBodies, flyWings] : [])];
     case 'birds': return birds.map(b => b.obj);
@@ -3847,7 +3859,7 @@ function vrQuality(on){
   waterUniforms.fogDensity.value = scene.fog.density;   // sonst liegt das Wasser im alten Dunst
   // Gruppen abschalten (Default: die Baeume). Damit laesst sich eingrenzen, was die
   // Quest ueberlastet, ohne den Code anzufassen: ?vroff=trees,scatter,animals
-  for(const g of ['trees', 'scatter', 'animals', 'birds', 'fish']){
+  for(const g of ['trees', 'grass', 'landgrass', 'seagrass', 'kelp', 'reed', 'scatter', 'animals', 'birds', 'fish']){
     if(VR_OFF.has(g)) setGroupVisible(g, !on);
   }
   reedSun.shadow.autoUpdate = !on;   // Schilfkarte nicht mehr jedes Bild (wird in updateVR getaktet)
