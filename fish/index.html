@@ -750,12 +750,17 @@ reflector.camera.layers.enable(BOAT_LAYER);
 scene.add(reflector);
 waterUniforms.reflTex.value = reflector.getRenderTarget().texture;
 // Spiegelung in VR: 0 = aus, 1 = einmal pro Bild (linkes Auge, beide sehen dasselbe),
-// 2 = pro Auge gerechnet (richtig, aber doppelt so teuer). Per ?vrrefl=1 bzw. 2.
-// Auf der Testseite blitzte die Spiegelung in XR und kostete Bildzeit - daher der
-// vorsichtige Default. Zum Ausprobieren ist sie jetzt zuschaltbar.
+// 2 = pro Auge gerechnet, also stereoskopisch richtig. Auf der Quest laeuft 2 gut,
+// deshalb ist das der Default. Abschalten mit ?vrrefl=0, sparsamer mit ?vrrefl=1.
 const VR_REFL = (() => {
   const v = parseInt(new URLSearchParams(location.search).get('vrrefl'), 10);
-  return v === 1 || v === 2 ? v : 0;
+  return v === 0 || v === 1 || v === 2 ? v : 2;
+})();
+// Schaerfe der Spiegelung in VR, Anteil der Augenaufloesung. Per ?vrreflscale=1 aufs
+// volle Mass. 0,35 war sichtbar pixelig, 0,7 ist der neue Default.
+const VR_REFL_SCALE = (() => {
+  const v = parseFloat(new URLSearchParams(location.search).get('vrreflscale'));
+  return Number.isFinite(v) && v >= 0.2 && v <= 1 ? v : 0.7;
 })();
 {
   const inner = reflector.onBeforeRender.bind(reflector);
@@ -3962,15 +3967,13 @@ function syncXRLayers(){
 // In VR sparsamer. Die Zahlen stammen aus der Messung am Desktop: Baeume 1,41 Mio und
 // Gras 1,15 Mio der 3,51 Mio Dreiecke, zusammen 73 %.
 function vrQuality(on){
-  // Regel 2: in VR normalerweise aus. Mit ?vrrefl=1/2 zum Ausprobieren an, dann aber
-  // mit kleinerem Ziel - in XR ist der Augen-Framebuffer deutlich groesser als das Fenster.
+  // Spiegelung in VR standardmaessig an (Modus 2), abschaltbar mit ?vrrefl=0. Das Ziel
+  // bekommt dabei die Groesse eines Auges mal VR_REFL_SCALE, nicht die des Fensters.
   reflector.visible = !on || !!VR_REFL;
   if(on && VR_REFL){
-    const sz = new THREE.Vector2();
-    renderer.getDrawingBufferSize(sz);
-    reflector.getRenderTarget().setSize(
-      Math.max(256, Math.round(sz.x * 0.35)), Math.max(256, Math.round(sz.y * 0.35)));
+    fitReflVR();
   } else if(!on){
+    reflVRw = reflVRh = 0;
     reflector.getRenderTarget().setSize(               // zurueck auf Fenstergroesse
       Math.round(innerWidth * renderer.getPixelRatio() * REFL_SCALE),
       Math.round(innerHeight * renderer.getPixelRatio() * REFL_SCALE));
@@ -3998,11 +4001,33 @@ function vrQuality(on){
   updateTreeLod(true);
 }
 
+// Die Spiegelung soll so scharf sein wie ein Auge. getDrawingBufferSize liefert den
+// GESAMTEN XR-Framebuffer (beide Augen nebeneinander) - damit war das Ziel viel zu
+// flach und die Spiegelung sichtbar pixelig. Der Viewport einer Augen-Kamera gibt das
+// richtige Mass, steht aber erst zur Verfuegung, wenn die Session Bilder liefert.
+// Deshalb wird die Groesse in updateVR nachgezogen, sobald sie sich aendert.
+let reflVRw = 0, reflVRh = 0;
+function fitReflVR(){
+  let w = 0, h = 0;
+  const xc = renderer.xr.getCamera();
+  const vp = xc && xc.cameras && xc.cameras[0] && xc.cameras[0].viewport;
+  if(vp && vp.z > 0){ w = vp.z; h = vp.w; }
+  else {                                  // vor dem ersten Bild: halber Framebuffer
+    const sz = renderer.getDrawingBufferSize(new THREE.Vector2());
+    w = sz.x / 2; h = sz.y;
+  }
+  const tw = Math.max(256, Math.round(w * VR_REFL_SCALE));
+  const th = Math.max(256, Math.round(h * VR_REFL_SCALE));
+  if(tw === reflVRw && th === reflVRh) return;
+  reflVRw = tw; reflVRh = th;
+  reflector.getRenderTarget().setSize(tw, th);
+}
 const vrA = new THREE.Vector3(), vrB = new THREE.Vector3(), vrQ = new THREE.Quaternion();
 function updateVR(dt){
   const session = renderer.xr.getSession();
   if(!session) return;
   syncXRLayers();
+  if(VR_REFL) fitReflVR();            // Augen-Viewport steht erst waehrend der Session fest
   if(frame % 2 === 0) reedSun.shadow.needsUpdate = true;
 
   // Rig auf den Sitzplatz, mit dem Bootskurs gedreht. Die Wellenbewegung wird bewusst
@@ -4165,7 +4190,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // Pflicht fuer WebXR, liefert auch die XR-Frames
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, VR_REFL, reflector, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, VR_REFL, VR_REFL_SCALE, reflector, fitReflVR, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
