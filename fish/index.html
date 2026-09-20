@@ -3757,7 +3757,8 @@ function setupVR(){
     xrRig.add(camera);            // in VR setzt die Brille die Kamera im Rig
     syncXRLayers();
     startAudio();
-    session.addEventListener('end', () => { vr.on = false; btn.textContent = 'VR'; vrQuality(false); showAngler(true); xrRig.remove(camera); });
+    vrStats.fwd.length = vrStats.back.length = 0;
+    session.addEventListener('end', () => { vr.on = false; btn.textContent = 'VR'; vrQuality(false); showAngler(true); xrRig.remove(camera); vrReport(); });
   });
   // Controller: Strahl zum Zielen, dazu die Modelle der Quest-Controller
   const factory = new XRControllerModelFactory();
@@ -3789,6 +3790,12 @@ function syncXRLayers(){
 }
 function vrQuality(on){
   reflector.visible = !on;
+  // near 0.5 ist fuer den Desktop gedacht (Tiefenpuffer fuers Haus in der Ferne). In VR
+  // sitzt man im Boot, Ruder, Bordwand und Rute sind in Griffweite und wurden abgeschnitten
+  // - erst recht, wenn man sich vorbeugt. far dafuer kuerzer, das haelt den Puffer genau.
+  camera.near = on ? 0.1 : 0.5;
+  camera.far = on ? 900 : 2000;
+  camera.updateProjectionMatrix();
   const setMap = (light, size) => {
     if(light.shadow.map){ light.shadow.map.dispose(); light.shadow.map = null; }
     light.shadow.mapSize.set(size, size);
@@ -3798,15 +3805,57 @@ function vrQuality(on){
   setMap(reedSun, on ? 1024 : REED_MAP);
   setMap(boatSun, on ? 1024 : 2048);
   TREE_LOD.r = on ? 45 : 70;
+  // Die Last haengt stark an der Blickrichtung: nach achtern liegt offenes Wasser, nach
+  // vorn die ganze Bucht mit Wald, Inseln und Schilf. Bricht die Bildrate ein, greift die
+  // Quest zu Reprojection und das Bild wirkt zerhackt. Deshalb in VR die Sichtweite
+  // deutlich kuerzen - der Dunst verdeckt den kuerzeren Horizont.
+  scene.fog.density = on ? 0.0075 : 0.0032;
+  waterUniforms.fogDensity.value = scene.fog.density;   // sonst liegt das Wasser im alten Dunst
+  reedSun.shadow.autoUpdate = !on;   // Schilfkarte nicht mehr jedes Bild (wird in updateVR getaktet)
   updateTreeLod(true);
 }
 const vrTmp = new THREE.Vector3(), vrTmp2 = new THREE.Vector3(), vrQ = new THREE.Quaternion();
+// Bildzeiten in VR, getrennt nach Blickrichtung. Die Quest greift bei Einbruechen zu
+// Reprojection (ASW): das Bild wirkt zerhackt und nahe Dinge scheinen sich mitzudrehen.
+// Genau das sieht aus wie ein Renderfehler, ist aber Last. Nach dem Ende der Session
+// steht das Ergebnis als Toast und in window.__fish.vrStats.
+const vrStats = {fwd: [], back: []};
+function noteVRFrame(dt){
+  // Blick relativ zum Bootskurs: vorn = Richtung Bug
+  const xrCam = renderer.xr.getCamera();
+  if(!xrCam) return;
+  xrCam.getWorldDirection(vrTmp2);
+  const fwd = vrTmp2.x * -Math.sin(state.heading) + vrTmp2.z * -Math.cos(state.heading);
+  const bin = fwd > 0 ? vrStats.fwd : vrStats.back;
+  if(bin.length < 4000) bin.push(dt * 1000);
+}
+function vrReport(){
+  const q = (a, p) => { if(!a.length) return null; const b = [...a].sort((x, y) => x - y); return +b[Math.floor(b.length * p)].toFixed(1); };
+  const r = {
+    vorn: {n: vrStats.fwd.length, median: q(vrStats.fwd, 0.5), p95: q(vrStats.fwd, 0.95)},
+    hinten: {n: vrStats.back.length, median: q(vrStats.back, 0.5), p95: q(vrStats.back, 0.95)}};
+  const f = (o) => o.median === null ? '-' : `${o.median} ms (p95 ${o.p95})`;
+  toast('VR-Bildzeiten', `vorn ${f(r.vorn)} · hinten ${f(r.hinten)}`, 12000);
+  console.log('VR-Bildzeiten', r);
+  return r;
+}
 function updateVR(dt){
   const session = renderer.xr.getSession();
   if(!session) return;
   // Jedes Bild: beim Session-Start ist die Kameraliste noch leer, und three baut sie neu,
   // sobald sich die Zahl der Views aendert. Layer setzen kostet nichts.
   syncXRLayers();
+  noteVRFrame(dt);
+  if(frame % 2 === 0) reedSun.shadow.needsUpdate = true;   // statt jedes Bild
+  // cam.yaw wird sonst nur in updateCamera gesetzt, und die laeuft in VR nicht. Der Wert
+  // blieb also stehen, und updateBoat schiebt damit die Mitte der Schilf-Schattenkarte
+  // (+-60 m) in eine feste Weltrichtung statt in die Blickrichtung. Deshalb hier aus der
+  // echten Kopfrichtung nachziehen.
+  const xrCam = renderer.xr.getCamera();
+  if(xrCam){
+    xrCam.getWorldDirection(vrTmp);
+    if(vrTmp.x || vrTmp.z) cam.yaw = Math.atan2(-vrTmp.x, -vrTmp.z);
+  }
   // Rig sitzt im Boot und dreht sich mit ihm, dazu die Blickdrehung per rechtem Stick
   xrRig.position.copy(boat.position.clone().add(VR_SEAT.clone().applyQuaternion(boat.quaternion)));
   xrRig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), state.heading + Math.PI + vr.turn);
@@ -3948,7 +3997,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // läuft auch in VR
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, syncXRLayers, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, syncXRLayers, vrStats, vrReport, vrQuality, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
