@@ -1338,7 +1338,10 @@ async function buildNature(){
       putRock(r, r.land, x, z, h, 0.5 + rnd() * 1.3, 0.25);
       continue;
     }
-    if(fbm(x * 0.02 + 50, z * 0.02) > -0.08 || rnd() < 0.15){
+    // Im Waldgebiet dicht, auf der Wiese nur ein vereinzelter Solitaer - so bleibt die
+    // Wiese offen, ohne dass sie leer wirkt.
+    const wald = forestMask(x, z) > FOREST_T;
+    if(wald ? rnd() < 0.92 : rnd() < 0.015){
       // seltene kahle Bäume nur vereinzelt
       let name = LEAFY[(rnd() * (LEAFY.length - 1)) | 0];
       if(rnd() < 0.04) name = 'DeadTree_3';
@@ -2177,8 +2180,21 @@ function mainland(x, z){
   return Math.max((-z - 70 + n * 90) / 45, (-x - 170 + n * 70) / 45) > 0.05;
 }
 // Wald: dieselbe Bedingung wie beim Setzen der Bäume
+// ---------- Wald und Wiese ----------
+// Vorher stand ueberall Wald (fbm mit Frequenz 0,02 und Schwelle -0,08, dazu 15 %
+// Zufallsbaeume auf dem Rest). Das war nicht nur teuer, es sah auch eintoenig aus.
+// Jetzt gibt es grossraeumige Waldgebiete: der erste Term hat eine niedrige Frequenz
+// (Strukturen von ein paar hundert Metern, also "hier Wald, dort Wiese"), der zweite
+// franst die Raender aus, damit keine runden Flecken entstehen.
+function forestMask(x, z){
+  return fbm(x * 0.0045 + 130, z * 0.0045 - 80) + fbm(x * 0.021 + 50, z * 0.021) * 0.3;
+}
+// Schwelle empirisch gemessen (40 000 Landpunkte ab 1,6 m Hoehe): -0,02 = 77 % Wald,
+// 0,02 = 65 %, 0,05 = 55 %, 0,10 = rund 36 %. Gewaehlt: etwa ein Drittel bewaldet,
+// der Rest offene Wiese mit vereinzelten Solitaerbaeumen.
+const FOREST_T = 0.10;
 function inForest(x, z){
-  return meshH(x, z) >= 1.6 && fbm(x * 0.02 + 50, z * 0.02) > -0.08;
+  return meshH(x, z) >= 1.6 && forestMask(x, z) > FOREST_T;
 }
 // Abstand zum nächsten Wasser, grob in 16 Richtungen abgetastet
 function waterDist(x, z, maxR){
@@ -3816,17 +3832,16 @@ function updateTimePlay(dt){
 //   5. Nur local-floor, keine nachladende XRControllerModelFactory.
 //   6. Die Kamera wird nie selbst gesetzt - nur das Rig. Die Pose kommt von der Brille.
 // ===========================================================================
-// Schnittweite der Baeume in VR. Gemessen an einem bewaldeten Ufer (Worst Case),
-// Referenz ohne Baeume sind 584 000 Dreiecke:
-//   130 m =  489 Baeume,  592 000    180 m = 1203,  678 000
-//   220 m = 1979 Baeume,  773 000    280 m = 3016,  900 000    alle = 5746, 1 237 000
-// 220 passt zum dichteren VR-Dunst (fog 0,0075): dort ist bei 200 m fast alles Dunst,
-// der Schnitt faellt also nicht auf. Wer mehr will: ?vrtrees=280 in der Adresse.
-// Achtung: Schnittweite und Nebeldichte gehoeren zusammen - wird der Dunst duenner,
-// muss der Schnitt weiter nach hinten, sonst sieht man die Baumlinie enden.
+// Schnittweite der Baeume in VR. Seit die Welt nur noch zu einem Drittel bewaldet ist,
+// braucht es normalerweise KEINEN Schnitt mehr - ein Schnitt nimmt den fernen Baeumen
+// auch ihre Schatten und Effekte, und das faellt auf. Gemessen am dichtesten Waldufer
+// (Worst Case), sahnig liefen zuvor 702 000 Dreiecke:
+//   220 m = 822 Instanzen, 627 000    300 m = 1028, 653 000
+//   400 m = 1417,          699 000    ohne Schnitt = 2351, 815 000
+// Default also kein Schnitt. Sollte es doch klemmen: ?vrtrees=300 in der Adresse.
 const VR_TREE_CUT = (() => {
   const v = parseInt(new URLSearchParams(location.search).get('vrtrees'), 10);
-  return Number.isFinite(v) && v > 20 ? v : 220;
+  return Number.isFinite(v) && v > 20 ? v : Infinity;
 })();
 const xrRig = new THREE.Group();
 scene.add(xrRig);
@@ -4091,7 +4106,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // Pflicht fuer WebXR, liefert auch die XR-Frames
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, vrQuality, syncXRLayers, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
