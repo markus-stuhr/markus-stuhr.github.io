@@ -749,11 +749,28 @@ reflector.renderOrder = -10;
 reflector.camera.layers.enable(BOAT_LAYER);
 scene.add(reflector);
 waterUniforms.reflTex.value = reflector.getRenderTarget().texture;
+// Spiegelung in VR: 0 = aus, 1 = einmal pro Bild (linkes Auge, beide sehen dasselbe),
+// 2 = pro Auge gerechnet (richtig, aber doppelt so teuer). Per ?vrrefl=1 bzw. 2.
+// Auf der Testseite blitzte die Spiegelung in XR und kostete Bildzeit - daher der
+// vorsichtige Default. Zum Ausprobieren ist sie jetzt zuschaltbar.
+const VR_REFL = (() => {
+  const v = parseInt(new URLSearchParams(location.search).get('vrrefl'), 10);
+  return v === 1 || v === 2 ? v : 0;
+})();
 {
   const inner = reflector.onBeforeRender.bind(reflector);
   const inv = new THREE.Matrix4(), cc = new THREE.Color();
   reflector.onBeforeRender = (r, sc, cam) => {
-    if(cam !== camera) return;          // nur für die Hauptkamera, nicht für Schattenpässe
+    // Am Desktop nur für die Hauptkamera, nicht für die Schattenpässe. In XR ist cam
+    // NIE unsere camera, sondern die ArrayCamera oder eine der beiden Augen-Kameras -
+    // mit der alten Abfrage hätte der Reflector dort gar nicht gerechnet und ein
+    // eingefrorenes Spiegelbild vom letzten Desktop-Bild gezeigt.
+    if(r.xr.isPresenting){
+      if(!VR_REFL) return;
+      const xc = r.xr.getCamera();
+      // Modus 1: nur für das erste Auge, sonst rendert die Spiegelung zweimal pro Bild
+      if(VR_REFL === 1 && cam !== (xc.cameras?.[0] || xc)) return;
+    } else if(cam !== camera) return;
     r.getClearColor(cc); const ca = r.getClearAlpha();
     r.setClearColor(0x000000, 0);       // leer = durchsichtig, dort bleibt die Himmelsspiegelung
     inner(r, sc, cam);
@@ -3945,7 +3962,19 @@ function syncXRLayers(){
 // In VR sparsamer. Die Zahlen stammen aus der Messung am Desktop: Baeume 1,41 Mio und
 // Gras 1,15 Mio der 3,51 Mio Dreiecke, zusammen 73 %.
 function vrQuality(on){
-  reflector.visible = !on;            // Regel 2
+  // Regel 2: in VR normalerweise aus. Mit ?vrrefl=1/2 zum Ausprobieren an, dann aber
+  // mit kleinerem Ziel - in XR ist der Augen-Framebuffer deutlich groesser als das Fenster.
+  reflector.visible = !on || !!VR_REFL;
+  if(on && VR_REFL){
+    const sz = new THREE.Vector2();
+    renderer.getDrawingBufferSize(sz);
+    reflector.getRenderTarget().setSize(
+      Math.max(256, Math.round(sz.x * 0.35)), Math.max(256, Math.round(sz.y * 0.35)));
+  } else if(!on){
+    reflector.getRenderTarget().setSize(               // zurueck auf Fenstergroesse
+      Math.round(innerWidth * renderer.getPixelRatio() * REFL_SCALE),
+      Math.round(innerHeight * renderer.getPixelRatio() * REFL_SCALE));
+  }
   camera.near = on ? 0.1 : 0.5;       // Regel 3
   camera.far = on ? 900 : 2000;
   camera.updateProjectionMatrix();
@@ -4136,7 +4165,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // Pflicht fuer WebXR, liefert auch die XR-Frames
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, VR_REFL, reflector, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
