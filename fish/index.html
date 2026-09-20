@@ -110,7 +110,6 @@ import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import {mergeGeometries, mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 import {Reflector} from 'three/addons/objects/Reflector.js';
 import {SimplifyModifier} from 'three/addons/modifiers/SimplifyModifier.js';
-import {XRControllerModelFactory} from 'three/addons/webxr/XRControllerModelFactory.js';
 
 const M = '../assets/models/';
 const FISHPACK = M + 'Quaternius Animated Cute Fish Pack/glTF/';
@@ -145,7 +144,6 @@ renderer.setPixelRatio(pixelRatioFor(innerWidth, innerHeight));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
-renderer.xr.enabled = true;          // VR (Quest 3): siehe setupVR
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.prepend(renderer.domElement);
@@ -1116,17 +1114,16 @@ const uwTint = new THREE.Color(0x1d5560);
 // werden die Instanzen neu auf beide verteilt: näher als TREE_LOD_R -> volles Modell.
 const TREE_LOD = {r: 70};
 const treeLods = [];
-// ---------- VR-Sparschalter ----------
-// Auf der Quest blieb das Bild haengen oder die Seite stuerzte ab. Zum Eingrenzen laesst
-// sich jede Gruppe einzeln abschalten:
+// ---------- Gruppen abschalten (Lastmessung) ----------
+// Jede Gruppe laesst sich per URL abschalten, um ihren Anteil an der Last zu messen:
 //   ?vroff=trees,grass,landgrass,seagrass,kelp,reed,scatter,animals,birds,fish
-// (leer lassen fuer nichts: ?vroff=). Default sind trees und grass, die groessten Posten.
-// grass fasst Landgras, Seegras und Tang zusammen; Schilf (reed) bleibt an, es steht ums
-// Boot und haengt an der scharfen Schattenkarte.
+// grass fasst Landgras, Seegras und Tang zusammen. Default ist nichts.
+// Gemessen (von 3,51 Mio Dreiecken): trees 1412878, grass 1154800 (landgrass 810240,
+// seagrass 270192, kelp 74368), reed 166608, scatter 166200, fish 17738.
 const scatterMeshes = [];          // Felsen und Modelle aus scatter() (NICHT die Pflanzen)
 // Die Pflanzen entstehen nicht in scatter(), sondern direkt in buildPlants()
 const plantGroups = {seagrass: [], kelp: [], landgrass: [], reed: []};
-const VR_OFF_DEFAULT = 'trees,grass';
+const VR_OFF_DEFAULT = '';
 const vrOffParam = new URLSearchParams(location.search).get('vroff');
 const VR_OFF = new Set((vrOffParam === null ? VR_OFF_DEFAULT : vrOffParam).split(',').map(x => x.trim()).filter(Boolean));
 function vrGroupMeshes(name){
@@ -2248,7 +2245,7 @@ function pickTarget(a, fromX, fromZ, minD, maxD, awayX, awayZ){
   return false;
 }
 function updateAnimals(dt, t){
-  if(vr.on && VR_OFF.has('animals')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
+  if(VR_OFF.has('animals')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
   const bx = boat.position.x, bz = boat.position.z;
   for(const a of animals){
     const p = a.o.position;
@@ -2540,7 +2537,7 @@ function whaleSteer(dt){
 }
 
 function updateWhale(dt, t){
-  if(vr.on && VR_OFF.has('fish')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
+  if(VR_OFF.has('fish')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
   if(!whale.obj) return;
   whale.t += dt;
   if(!whale.pos){
@@ -2668,7 +2665,7 @@ function buildBirds(){
   }
 }
 function updateBirds(dt, t){
-  if(vr.on && VR_OFF.has('birds')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
+  if(VR_OFF.has('birds')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
   const tmp = new THREE.Vector3();
   for(const b of birds){
     b.ph += dt * b.sp;
@@ -3520,7 +3517,7 @@ function removeFish(f){
 }
 
 function updateSchools(dt, t){
-  if(vr.on && VR_OFF.has('fish')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
+  if(VR_OFF.has('fish')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
   const bp = boat.position;
   for(const s of schools){
     // Schwarm wandert langsam um seinen Heimatplatz
@@ -3773,198 +3770,6 @@ function updateTimePlay(dt){
   setTime(n);
   if(n >= 1){ timePlay.on = false; timePlay.btn.textContent = '▶'; }
 }
-// ---------- VR (WebXR, Quest 3) ----------
-// Die Kamera hängt in einem Rig. Außerhalb von VR steuert updateCamera die Kamera wie
-// bisher; in VR steht das Rig im Boot und der Kopf bewegt sich frei. Gerudert und geangelt
-// wird mit den Controllern.
-const xrRig = new THREE.Group();
-scene.add(xrRig);
-const VR_SEAT = new THREE.Vector3(0, 0.30, 0.55);   // Sitzplatz im Boot (bootlokal)
-const vr = {on: false, turn: 0, snap: 0, trigger: [false, false], aim: new THREE.Vector3(), hasAim: false};
-function setupVR(){
-  if(!navigator.xr) return;
-  const btn = document.createElement('button');
-  btn.className = 'btn';
-  btn.id = 'vrBtn';
-  btn.textContent = 'VR';
-  btn.style.cssText = 'bottom:18px;right:120px;display:none';
-  document.body.appendChild(btn);
-  navigator.xr.isSessionSupported('immersive-vr').then(ok => { if(ok) btn.style.display = 'block'; });
-  btn.addEventListener('click', async () => {
-    if(renderer.xr.getSession()){ renderer.xr.getSession().end(); return; }
-    const session = await navigator.xr.requestSession('immersive-vr',
-      {optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking']});
-    renderer.xr.setReferenceSpaceType('local-floor');
-    await renderer.xr.setSession(session);
-    btn.textContent = 'VR beenden';
-    vrQuality(true);
-    vr.on = true;
-    showAngler(false);            // man sitzt selbst im Boot
-    xrRig.add(camera);            // in VR setzt die Brille die Kamera im Rig
-    syncXRLayers();
-    startAudio();
-    vrStats.fwd.length = vrStats.back.length = 0;
-    session.addEventListener('end', () => { vr.on = false; btn.textContent = 'VR'; vrQuality(false); showAngler(true); xrRig.remove(camera); vrReport(); });
-  });
-  // Controller: Strahl zum Zielen, dazu die Modelle der Quest-Controller
-  const factory = new XRControllerModelFactory();
-  const rayGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(0, 0, -1)]);
-  for(let i = 0; i < 2; i++){
-    const c = renderer.xr.getController(i);
-    const l = new THREE.Line(rayGeo, new THREE.LineBasicMaterial({color: 0xffd9a0, transparent: true, opacity: 0.5}));
-    l.scale.z = 12;
-    c.add(l);
-    xrRig.add(c);
-    const grip = renderer.xr.getControllerGrip(i);
-    grip.add(factory.createControllerModel(grip));
-    xrRig.add(grip);
-  }
-}
-// In VR sparsamer: keine Spiegelung, kleinere Schattenkarten, näher liegende Baumstufe
-// three baut fuer VR eigene Kameras (cameraXR mit cameraL/cameraR) und setzt deren Layer
-// fest auf 0|1|2. Die Maske unserer Kamera wird NIE uebernommen. Ohne diesen Abgleich
-// fehlen in VR alle Objekte auf eigenen Layern: das Wasser, der Himmel, die
-// Schattenflaeche, Seegras, Tang, Fische und der Wal (alle NO_REFL) waren unsichtbar,
-// und das Boot (BOAT_LAYER) sah nur das linke Auge, weil Layer 1 dort das linke Auge ist.
-function syncXRLayers(){
-  const xrCam = renderer.xr.getCamera();
-  if(!xrCam) return;
-  for(const cam of [xrCam, ...(xrCam.cameras || [])]){
-    cam.layers.enable(BOAT_LAYER);
-    cam.layers.enable(NO_REFL);
-  }
-}
-function vrQuality(on){
-  reflector.visible = !on;
-  // near 0.5 ist fuer den Desktop gedacht (Tiefenpuffer fuers Haus in der Ferne). In VR
-  // sitzt man im Boot, Ruder, Bordwand und Rute sind in Griffweite und wurden abgeschnitten
-  // - erst recht, wenn man sich vorbeugt. far dafuer kuerzer, das haelt den Puffer genau.
-  camera.near = on ? 0.1 : 0.5;
-  camera.far = on ? 900 : 2000;
-  camera.updateProjectionMatrix();
-  const setMap = (light, size) => {
-    if(light.shadow.map){ light.shadow.map.dispose(); light.shadow.map = null; }
-    light.shadow.mapSize.set(size, size);
-    light.shadow.needsUpdate = true;
-  };
-  setMap(sun, on ? 2048 : SHADOW_MAP);
-  setMap(reedSun, on ? 1024 : REED_MAP);
-  setMap(boatSun, on ? 1024 : 2048);
-  TREE_LOD.r = on ? 45 : 70;
-  // Die Last haengt stark an der Blickrichtung: nach achtern liegt offenes Wasser, nach
-  // vorn die ganze Bucht mit Wald, Inseln und Schilf. Bricht die Bildrate ein, greift die
-  // Quest zu Reprojection und das Bild wirkt zerhackt. Deshalb in VR die Sichtweite
-  // deutlich kuerzen - der Dunst verdeckt den kuerzeren Horizont.
-  scene.fog.density = on ? 0.0075 : 0.0032;
-  waterUniforms.fogDensity.value = scene.fog.density;   // sonst liegt das Wasser im alten Dunst
-  // Gruppen abschalten (Default: die Baeume). Damit laesst sich eingrenzen, was die
-  // Quest ueberlastet, ohne den Code anzufassen: ?vroff=trees,scatter,animals
-  for(const g of ['trees', 'grass', 'landgrass', 'seagrass', 'kelp', 'reed', 'scatter', 'animals', 'birds', 'fish']){
-    if(VR_OFF.has(g)) setGroupVisible(g, !on);
-  }
-  reedSun.shadow.autoUpdate = !on;   // Schilfkarte nicht mehr jedes Bild (wird in updateVR getaktet)
-  updateTreeLod(true);
-}
-const vrTmp = new THREE.Vector3(), vrTmp2 = new THREE.Vector3(), vrQ = new THREE.Quaternion();
-// Bildzeiten in VR, getrennt nach Blickrichtung. Die Quest greift bei Einbruechen zu
-// Reprojection (ASW): das Bild wirkt zerhackt und nahe Dinge scheinen sich mitzudrehen.
-// Genau das sieht aus wie ein Renderfehler, ist aber Last. Nach dem Ende der Session
-// steht das Ergebnis als Toast und in window.__fish.vrStats.
-const vrStats = {fwd: [], back: []};
-function noteVRFrame(dt){
-  // Blick relativ zum Bootskurs: vorn = Richtung Bug
-  const xrCam = renderer.xr.getCamera();
-  if(!xrCam) return;
-  xrCam.getWorldDirection(vrTmp2);
-  const fwd = vrTmp2.x * -Math.sin(state.heading) + vrTmp2.z * -Math.cos(state.heading);
-  const bin = fwd > 0 ? vrStats.fwd : vrStats.back;
-  if(bin.length < 4000) bin.push(dt * 1000);
-}
-function vrReport(){
-  const q = (a, p) => { if(!a.length) return null; const b = [...a].sort((x, y) => x - y); return +b[Math.floor(b.length * p)].toFixed(1); };
-  const r = {
-    vorn: {n: vrStats.fwd.length, median: q(vrStats.fwd, 0.5), p95: q(vrStats.fwd, 0.95)},
-    hinten: {n: vrStats.back.length, median: q(vrStats.back, 0.5), p95: q(vrStats.back, 0.95)}};
-  const f = (o) => o.median === null ? '-' : `${o.median} ms (p95 ${o.p95})`;
-  toast('VR-Bildzeiten', `vorn ${f(r.vorn)} · hinten ${f(r.hinten)}`, 12000);
-  console.log('VR-Bildzeiten', r);
-  return r;
-}
-function updateVR(dt){
-  const session = renderer.xr.getSession();
-  if(!session) return;
-  // Jedes Bild: beim Session-Start ist die Kameraliste noch leer, und three baut sie neu,
-  // sobald sich die Zahl der Views aendert. Layer setzen kostet nichts.
-  syncXRLayers();
-  noteVRFrame(dt);
-  if(frame % 2 === 0) reedSun.shadow.needsUpdate = true;   // statt jedes Bild
-  // cam.yaw wird sonst nur in updateCamera gesetzt, und die laeuft in VR nicht. Der Wert
-  // blieb also stehen, und updateBoat schiebt damit die Mitte der Schilf-Schattenkarte
-  // (+-60 m) in eine feste Weltrichtung statt in die Blickrichtung. Deshalb hier aus der
-  // echten Kopfrichtung nachziehen.
-  const xrCam = renderer.xr.getCamera();
-  if(xrCam){
-    xrCam.getWorldDirection(vrTmp);
-    if(vrTmp.x || vrTmp.z) cam.yaw = Math.atan2(-vrTmp.x, -vrTmp.z);
-  }
-  // Rig sitzt im Boot und dreht sich mit ihm, dazu die Blickdrehung per rechtem Stick
-  xrRig.position.copy(boat.position.clone().add(VR_SEAT.clone().applyQuaternion(boat.quaternion)));
-  xrRig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), state.heading + Math.PI + vr.turn);
-  let aimSet = false;
-  for(const src of session.inputSources){
-    const gp = src.gamepad;
-    if(!gp) continue;
-    const ax = gp.axes, hand = src.handedness;
-    const x = Math.abs(ax[2] || 0) > 0.15 ? ax[2] : 0, y = Math.abs(ax[3] || 0) > 0.15 ? ax[3] : 0;
-    if(hand === 'left'){
-      pad.x = x; pad.y = y;                       // rudern
-    } else {
-      if(Math.abs(x) > 0.6){ if(!vr.snap){ vr.turn -= Math.sign(x) * Math.PI / 6; vr.snap = 1; } }
-      else vr.snap = 0;
-    }
-    // Zielen mit dem Strahl des rechten Controllers
-    const idx = hand === 'left' ? 0 : 1;
-    const c = renderer.xr.getController(idx);
-    if(hand !== 'left' && state.mode === 'fish' && (state.phase === 'idle' || state.phase === 'waiting')){
-      c.getWorldPosition(vrTmp);
-      c.getWorldQuaternion(vrQ);
-      vrTmp2.set(0, 0, -1).applyQuaternion(vrQ);
-      ray.set(vrTmp, vrTmp2);
-      const p = new THREE.Vector3();
-      if(ray.ray.intersectPlane(waterPlane, p)){
-        const d = p.sub(boat.position).setY(0);
-        d.setLength(THREE.MathUtils.clamp(d.length(), 3, 22));
-        vr.aim.copy(boat.position).add(d); vr.aim.y = 0;
-        aimRing.position.set(vr.aim.x, 0.07, vr.aim.z);
-        aimRing.visible = true;
-        aimSet = true;
-      }
-    }
-    const trig = !!gp.buttons[0]?.pressed, ab = !!gp.buttons[4]?.pressed, bb = !!gp.buttons[5]?.pressed;
-    const was = vr.trigger[idx];
-    vr.trigger[idx] = trig;
-    if(hand !== 'left'){
-      pad.hold = trig && state.phase === 'fight';
-      if(trig && !was){
-        if(state.mode !== 'fish') enterFishing();
-        else if(state.phase === 'bite') hookFish();
-        else if(state.phase === 'idle' && aimSet) cast(vr.aim.clone());
-        else if(state.phase === 'waiting') reelIn();
-      }
-      if(ab && !vr.abWas) state.mode === 'fish' ? leaveFishing() : enterFishing();
-      vr.abWas = ab;
-      if(bb && !vr.bbWas && state.phase === 'waiting') reelIn();
-      vr.bbWas = bb;
-    }
-  }
-  if(!aimSet) aimRing.visible = false;
-  // dieselben Mitläufer wie in updateCamera
-  boatSun.target.position.copy(boat.position);
-  boatSun.position.copy(boat.position).addScaledVector(KEY_DIR, 30);
-  sky.position.copy(xrRig.position);
-  water.position.x = Math.round(xrRig.position.x / 50) * 50;
-  water.position.z = Math.round(xrRig.position.z / 50) * 50;
-}
 function loop(){
   const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
   simT += dt;                       // Spielzeit: wächst auch bei Framepausen gleichmäßig
@@ -3991,7 +3796,7 @@ function loop(){
   updateRings(dt);
   updateDocking();
   updateCardFire(t);
-  if(vr.on) updateVR(dt); else updateCamera(dt);
+  updateCamera(dt);
   renderer.render(scene, camera);
 }
 
@@ -4020,6 +3825,7 @@ addEventListener('resize', () => {
   renderBucket();
   state.mode = 'fish';
   leaveFishing();
+  for(const g of VR_OFF) setGroupVisible(g, false);
   sun.shadow.needsUpdate = true;      // Weltschatten einmal rechnen, wenn alles geladen ist
   // Startbildschirm bleibt, bis PLAY gedrückt wird (Klick, Enter/Leertaste oder Ⓐ);
   // die Szene läuft dahinter schon, die Zeit startet erst mit PLAY
@@ -4045,10 +3851,9 @@ addEventListener('resize', () => {
     const gp = [...(navigator.getGamepads?.() || [])].find(g => g && g.connected);
     if(gp && gp.buttons[0]?.pressed) startGame(); else requestAnimationFrame(padStart);
   })();
-  setupVR();
-  renderer.setAnimationLoop(loop);   // läuft auch in VR
+  renderer.setAnimationLoop(loop);
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, syncXRLayers, vrStats, vrReport, vrQuality, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
