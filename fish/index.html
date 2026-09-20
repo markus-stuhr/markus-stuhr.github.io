@@ -157,9 +157,17 @@ const FOG = new THREE.Color(0xd9957e);
 // Die Uniform-Werte sind einfache Objekte, damit cloneUniforms sie nicht kopiert (Referenz).
 const FOG_SUN = {x: -0.8, y: 0, z: -0.55}, FOG_NIGHT_U = {x: 0, y: 0, z: 0};
 scene.fog = new THREE.FogExp2(FOG, 0.0032);
+// ---------- Layer ----------
+// 0 = normale Welt, 1 und 2 gehoeren in WebXR den beiden Augen (nicht benutzen!)
+const BOAT_LAYER = 4;   // Boot und Figur: eigene scharfe Schattenkarte, nicht in der Spiegelung
+const NO_REFL = 5;      // sieht nur die Hauptkamera, wird nicht gespiegelt
+
 // near 0.5 statt 0.1: fünfmal genauerer Tiefenpuffer, sonst flimmert das Haus aus der Ferne (z-fighting)
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 2000);
-camera.layers.enable(1);   // Boot-Layer
+// Layer 1 und 2 sind in WebXR fest fuer das linke und rechte Auge vergeben (three setzt
+// cameraL.layers.enable(1) / cameraR.layers.enable(2)). Eigene Layer muessen darueber
+// liegen, sonst sieht sie in VR nur ein Auge.
+camera.layers.enable(BOAT_LAYER);
 
 // Sonne tief im Westen
 const SUN_DIR = new THREE.Vector3(-0.8, 0.24, -0.55).normalize();
@@ -193,7 +201,7 @@ scene.add(sun, sun.target);
 // Eigene scharfe Schattenkarte nur fürs Boot (Layer 1). Das Licht ist praktisch dunkel –
 // die ShadowMaterial-Fläche auf dem Wasser zeigt seinen Schatten trotzdem.
 // Das Boot selbst liegt nicht auf Layer 0 und fehlt deshalb in der groben Weltkarte.
-const BOAT_LAYER = 1;
+
 const boatSun = new THREE.DirectionalLight(0xffffff, 0.0001);
 boatSun.castShadow = true;
 boatSun.shadow.mapSize.set(2048, 2048);
@@ -725,7 +733,6 @@ scene.add(waterShadow);
 // Der Wasser-Shader liest das Bild und legt es über die Himmelsspiegelung (Alpha = da ist
 // etwas). Was nicht gespiegelt werden muss (Wasser, Himmel, alles unter Wasser), liegt
 // auf Layer NO_REFL, den nur die Hauptkamera sieht.
-const NO_REFL = 3;
 camera.layers.enable(NO_REFL);
 function noRefl(o){ o.traverse(m => m.layers.set(NO_REFL)); }
 const REFL_SCALE = 0.5;
@@ -1538,6 +1545,19 @@ hull.add(seat);
 
 const BENCH_Y = 0.34;                // Oberkante der Querbank, passend zum hohen Bootsrand
 let seatRowY = 0;                    // Sitzhöhe auf der Bank, einmal eingemessen
+let angler = null;                   // die Figur; in VR sitzt man selbst dort und sieht sie nicht
+let anglerMeshes = [];               // nur die Koerperteile, eingesammelt bevor die Rute drankommt
+// Die Rute haengt in einem Holder am Handknochen und liegt damit IM Teilbaum der Figur.
+// Deshalb nicht den ganzen Teilbaum schalten, sondern nur die gemerkten Koerper-Meshes.
+// Die Knochen bleiben bespielt, die Rute schwebt an der unsichtbaren Hand.
+// Beim Ausblenden den vorigen Zustand merken: der Koecher ist dauerhaft aus und darf
+// beim Einblenden nicht wieder auftauchen.
+function showAngler(on){
+  for(const m of anglerMeshes){
+    if(on){ if(m.userData.wasVisible !== undefined) m.visible = m.userData.wasVisible; }
+    else { m.userData.wasVisible = m.visible; m.visible = false; }
+  }
+}
 let benchParts = [];                 // Bank und Stützen, werden an die Hüfte gesetzt
 let mixer, actions = {}, curAction = null, rod, rodTip = new THREE.Object3D(), oars = [], bucketEmpty, bucketFull;
 
@@ -1661,6 +1681,10 @@ async function buildBoat(){
   fit(c, 1.4);             // kleine, runde Figur im Boot
   shadows(c);
   seat.add(c);
+  angler = c;
+  // Jetzt einsammeln, solange nur die Figur selbst im Teilbaum haengt (die Rute kommt spaeter)
+  anglerMeshes = [];
+  c.traverse(o => { if(o.isMesh) anglerMeshes.push(o); });
   const benchMat = new THREE.MeshLambertMaterial({color: 0x7a4a2c});
   const bench = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.28), benchMat);
   bench.position.set(0, BENCH_Y, 0.1);
@@ -3729,9 +3753,11 @@ function setupVR(){
     btn.textContent = 'VR beenden';
     vrQuality(true);
     vr.on = true;
+    showAngler(false);            // man sitzt selbst im Boot
     xrRig.add(camera);            // in VR setzt die Brille die Kamera im Rig
+    syncXRLayers();
     startAudio();
-    session.addEventListener('end', () => { vr.on = false; btn.textContent = 'VR'; vrQuality(false); xrRig.remove(camera); });
+    session.addEventListener('end', () => { vr.on = false; btn.textContent = 'VR'; vrQuality(false); showAngler(true); xrRig.remove(camera); });
   });
   // Controller: Strahl zum Zielen, dazu die Modelle der Quest-Controller
   const factory = new XRControllerModelFactory();
@@ -3748,6 +3774,19 @@ function setupVR(){
   }
 }
 // In VR sparsamer: keine Spiegelung, kleinere Schattenkarten, näher liegende Baumstufe
+// three baut fuer VR eigene Kameras (cameraXR mit cameraL/cameraR) und setzt deren Layer
+// fest auf 0|1|2. Die Maske unserer Kamera wird NIE uebernommen. Ohne diesen Abgleich
+// fehlen in VR alle Objekte auf eigenen Layern: das Wasser, der Himmel, die
+// Schattenflaeche, Seegras, Tang, Fische und der Wal (alle NO_REFL) waren unsichtbar,
+// und das Boot (BOAT_LAYER) sah nur das linke Auge, weil Layer 1 dort das linke Auge ist.
+function syncXRLayers(){
+  const xrCam = renderer.xr.getCamera();
+  if(!xrCam) return;
+  for(const cam of [xrCam, ...(xrCam.cameras || [])]){
+    cam.layers.enable(BOAT_LAYER);
+    cam.layers.enable(NO_REFL);
+  }
+}
 function vrQuality(on){
   reflector.visible = !on;
   const setMap = (light, size) => {
@@ -3765,6 +3804,9 @@ const vrTmp = new THREE.Vector3(), vrTmp2 = new THREE.Vector3(), vrQ = new THREE
 function updateVR(dt){
   const session = renderer.xr.getSession();
   if(!session) return;
+  // Jedes Bild: beim Session-Start ist die Kameraliste noch leer, und three baut sie neu,
+  // sobald sich die Zahl der Views aendert. Layer setzen kostet nichts.
+  syncXRLayers();
   // Rig sitzt im Boot und dreht sich mit ihm, dazu die Blickdrehung per rechtem Stick
   xrRig.position.copy(boat.position.clone().add(VR_SEAT.clone().applyQuaternion(boat.quaternion)));
   xrRig.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), state.heading + Math.PI + vr.turn);
@@ -3906,7 +3948,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // läuft auch in VR
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, syncXRLayers, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
