@@ -172,9 +172,13 @@ camera.layers.enable(BOAT_LAYER);
 const SUN_DIR = new THREE.Vector3(-0.8, 0.24, -0.55).normalize();
 // Winkelradius der Sonnenscheibe (acos 0,9993 aus dem Himmels-Shader)
 const SUN_R = 0.037;
-// Bereich der Sonnenhöhe, in dem das Sonnenlicht ausblendet. Es reicht bis knapp unter
-// den Horizont: solange das Abendrot deutlich am Himmel steht, soll die Sonne auch leuchten
-const SUN_FADE_LO = -0.02, SUN_FADE_HI = 0.035;
+// Bereich der Sonnenhöhe, in dem das Sonnenlicht ausblendet. Es reicht weit unter den
+// Horizont: solange das Abendrot am Himmel steht, soll die Sonne auch noch leuchten.
+const SUN_FADE_LO = -0.09, SUN_FADE_HI = 0.03;
+// Ab hier gibt der Mond das Schluesellicht. Muss mit SUN_FADE_LO zusammenfallen, sonst
+// schneidet der Wechsel das Abendlicht mitten im Ausblenden ab (vorher -SUN_R, also
+// -0,037: damit war bei -0,02 Schluss und das Nachgluehen stand ohne Licht da).
+const SUN_END = SUN_FADE_LO;
 // Tiefster Stand, den die Lichtrichtung annimmt. Darunter bleibt sie stehen und nur die
 // Stärke blendet aus, sonst wandert eine Schattenkante übers ganze Land
 const SUN_DIR_MIN = 0.03;
@@ -256,7 +260,11 @@ const SKY_U = new THREE.Vector3().crossVectors(A_SET, POLE).normalize();
 if(SKY_U.y < 0) SKY_U.negate();                                   // zeigt über den Horizont
 const ALPHA0 = Math.asin(0.24 / SKY_U.y);                        // Startstand: Sonnenhöhe 0,24
 const ALPHA_RATE = ALPHA0 / 0.45;                                 // untergegangen bei n ≈ 0,45
-const MOON_LAG = 0.15 * ALPHA_RATE;
+// Wie weit der Vollmond dem Gegenpunkt der Sonne auf seiner Bahn hinterherhaengt.
+// 0,15 liess ihn schon bei n 0,6 aufgehen, da glomm das Abendrot noch - alles lag zu
+// dicht beieinander. Mit 0,28 kommt er erst gegen n 0,73, dazwischen liegt die dunkle
+// Stunde nur mit Sternen.
+const MOON_LAG = 0.28 * ALPHA_RATE;
 // Drehsinn einmal bestimmen: Drehung um POLE, die die Sonne absinken lässt
 const SKY_SIGN = (() => {
   const s0 = A_SET.clone().multiplyScalar(Math.cos(ALPHA0)).addScaledVector(SKY_U, Math.sin(ALPHA0));
@@ -308,7 +316,11 @@ const SKY_GLSL = `
   }
   // Sterne: je Zelle auf der Himmelskugel höchstens einer, drehen mit dem Himmel (rot)
   vec3 starsCol(vec3 vd, mat3 rot, float n){
-    float starF = smoothstep(0.4, 0.9, n) * smoothstep(0.0, 0.1, vd.y);
+    // Sterne erst in der fortgeschrittenen Daemmerung. Vorher begannen sie bei n 0,4,
+    // also noch VOR dem Sonnenuntergang (n 0,45) und mitten im Abendrot. Jetzt setzen
+    // sie ein, wenn das Sonnenlicht ausgeblendet ist (n 0,58 bis 0,60), und stehen
+    // voll, wenn der Mond aufgeht.
+    float starF = smoothstep(0.58, 0.92, n) * smoothstep(0.0, 0.1, vd.y);
     if(starF <= 0.0) return vec3(0.0);
     vec3 sp = (rot * vd) * 260.0, cell = floor(sp);
     float rn = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
@@ -651,8 +663,11 @@ const water = new THREE.Mesh(
         float nightR = smoothstep(0.4, 1.0, night);
         vec3 rcol = mix(rc.rgb, skyc, smoothstep(15.0, 140.0, vFogDepth) * mix(0.35, 0.6, nightR));
         skyc = mix(skyc, rcol, rc.a * 0.6 * mix(1.0, 0.55, nightR));
-        // Sterne erst danach: wo die gespiegelte Welt ist, sind sie ganz verdeckt
-        skyc += starsCol(rStar, starRot, night) * (1.0 - rc.a);
+        // Sterne erst danach: wo die gespiegelte Welt ist, sind sie ganz verdeckt.
+        // Im Wasser deutlich schwaecher als am Himmel (0,3): eine bewegte Flaeche wirft
+        // nie so klar zurueck wie der Himmel selbst, und in voller Staerke sah es aus,
+        // als laege ein zweiter Sternhimmel im See.
+        skyc += starsCol(rStar, starRot, night) * (1.0 - rc.a) * 0.3;
         skyc = mix(skyc, vec3(0.78, 0.82, 0.85) * mix(1.0, 0.35, nightR), surf * 0.35);
         // Sonne und Mond spiegeln sich an der Brandungsnormale (rS), Land und Sterne nicht
         vec3 rS = reflect(-v, nSurf);
@@ -3786,7 +3801,7 @@ function setTime(n){
   // am Himmel steht; die Schatten sind da über sunShadowFade längst ausgeblendet
   const vis = THREE.MathUtils.smoothstep(y, SUN_FADE_LO, SUN_FADE_HI);
   const moonK = THREE.MathUtils.smoothstep(n, 0.4, 1);
-  if(y > -SUN_R){
+  if(y > SUN_END){
     // Schatten vom oberen Rand der Scheibe aus: das letzte Licht kommt von dort, sonst
     // liegt das Boot schon im Schatten der Bäume, während die Sonne noch hervorschaut
     // Ab SUN_DIR_MIN bleibt die Richtung stehen und nur die Stärke blendet aus;
@@ -3803,12 +3818,14 @@ function setTime(n){
     const my = Math.max(MOON_DIR.y, 0.06), mh = Math.hypot(MOON_DIR.x, MOON_DIR.z), mr = Math.sqrt(1 - my * my);
     KEY_DIR.set(MOON_DIR.x / mh * mr, my, MOON_DIR.z / mh * mr);
     // Mondlicht erst, wenn der Mond über dem Horizont steht
-    sun.intensity = 0.95 * moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
+    // Mondlicht bewusst schwach: 0,95 war deutlich zu hell, die Nacht sah aus wie ein
+    // blauer Tag. Der Aufheller nightFill haelt die Schattenseiten trotzdem lesbar.
+    sun.intensity = 0.34 * moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
     sun.color.copy(MOON_COL);
   }
   sun.position.copy(KEY_DIR).multiplyScalar(700);
   hemi.intensity = THREE.MathUtils.lerp(0.9, 0.36, n);
-  nightFill.intensity = 1.0 * THREE.MathUtils.smoothstep(n, 0.35, 1);
+  nightFill.intensity = 0.72 * THREE.MathUtils.smoothstep(n, 0.35, 1);
   hemi.color.copy(HEMI_SKY0).lerp(HEMI_SKY_N, n);
   hemi.groundColor.copy(HEMI_GND0).lerp(HEMI_GND_N, n);
   FOG.copy(FOG0).lerp(FOG_NIGHT, THREE.MathUtils.smoothstep(n, 0.15, 1));
@@ -3817,12 +3834,12 @@ function setTime(n){
   // Die Schatten der Sonne verschwinden früher als ihr Licht: sonst liegen bei fast
   // waagerechtem Licht noch harte Baumschatten über der ganzen Bucht
   const sunShadowFade = THREE.MathUtils.smoothstep(y, SHADOW_FADE_LO, SHADOW_FADE_HI);
-  const keyVis = y > -SUN_R ? vis * sunShadowFade : moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
+  const keyVis = y > SUN_END ? vis * sunShadowFade : moonK * THREE.MathUtils.smoothstep(MOON_DIR.y, 0, 0.12);
   // Mondschatten deutlich durchsichtiger als Sonnenschatten
-  const shadowStr = y > -SUN_R ? sunShadowFade : MOON_SHADOW;
+  const shadowStr = y > SUN_END ? sunShadowFade : MOON_SHADOW;
   for(const l of [sun, boatSun, reedSun]) l.shadow.intensity = shadowStr;
   waterUniforms.keyVis.value = keyVis * shadowStr;
-  waterShadow.material.opacity = y > -SUN_R ? 0.3 * vis * sunShadowFade : 0.65 * keyVis * shadowStr;
+  waterShadow.material.opacity = y > SUN_END ? 0.3 * vis * sunShadowFade : 0.65 * keyVis * shadowStr;
   // nachts ist das Wasser selbst schon fast so dunkel wie die Schattenfarbe
   waterShadow.material.color.setHex(0x102b34).lerp(SHADOW_NIGHT, n);
   waterUniforms.keyDir.value = KEY_DIR;
