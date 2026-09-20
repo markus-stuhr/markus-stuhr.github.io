@@ -1115,6 +1115,35 @@ const uwTint = new THREE.Color(0x1d5560);
 // werden die Instanzen neu auf beide verteilt: näher als TREE_LOD_R -> volles Modell.
 const TREE_LOD = {r: 70};
 const treeLods = [];
+// ---------- VR-Sparschalter ----------
+// Auf der Quest blieb das Bild haengen oder die Seite stuerzte ab. Zum Eingrenzen laesst
+// sich jede Gruppe einzeln abschalten: ?vroff=trees,scatter,animals,birds,fish
+// (leer lassen fuer nichts: ?vroff=). Default ist trees, das ist der groesste Posten.
+const scatterMeshes = [];          // Pflanzen, Schilf, Felsen, Korallen (alles aus scatter())
+const VR_OFF_DEFAULT = 'trees';
+const vrOffParam = new URLSearchParams(location.search).get('vroff');
+const VR_OFF = new Set((vrOffParam === null ? VR_OFF_DEFAULT : vrOffParam).split(',').map(x => x.trim()).filter(Boolean));
+function vrGroupMeshes(name){
+  switch(name){
+    case 'trees': return treeLods.flatMap(t => [t.hi, t.lo]);
+    case 'scatter': return scatterMeshes;
+    case 'animals': return [...animals.map(a => a.o), ...frogs.map(f => f.o),
+      ...(flyBodies ? [flyBodies, flyWings] : [])];
+    case 'birds': return birds.map(b => b.obj);
+    case 'fish': return [...schools.flatMap(s => s.fish.map(f => f.o || f.obj || f)),
+      ...(whale.obj ? [whale.obj] : [])];
+    default: return [];
+  }
+}
+// Sichtbarkeit umschalten und den vorigen Zustand merken (ferne Fische und Tiere sind
+// von sich aus unsichtbar und duerfen beim Zurueckschalten nicht angehen)
+function setGroupVisible(name, on){
+  for(const o of vrGroupMeshes(name)){
+    if(!o || !o.isObject3D) continue;
+    if(on){ if(o.userData.vrWasVisible !== undefined){ o.visible = o.userData.vrWasVisible; delete o.userData.vrWasVisible; } }
+    else { if(o.userData.vrWasVisible === undefined) o.userData.vrWasVisible = o.visible; o.visible = false; }
+  }
+}
 const simplifier = new SimplifyModifier();
 function simplifiedGeo(geo, keep){
   const g = geo.clone();
@@ -1177,6 +1206,7 @@ function scatter(gltfScene, mats, underwater){
     im.computeBoundingSphere();      // sonst cullt three die Instanzen weg
     im.castShadow = true; im.receiveShadow = true;
     scene.add(im);
+    scatterMeshes.push(im);
   });
 }
 
@@ -2206,6 +2236,7 @@ function pickTarget(a, fromX, fromZ, minD, maxD, awayX, awayZ){
   return false;
 }
 function updateAnimals(dt, t){
+  if(vr.on && VR_OFF.has('animals')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
   const bx = boat.position.x, bz = boat.position.z;
   for(const a of animals){
     const p = a.o.position;
@@ -2497,6 +2528,7 @@ function whaleSteer(dt){
 }
 
 function updateWhale(dt, t){
+  if(vr.on && VR_OFF.has('fish')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
   if(!whale.obj) return;
   whale.t += dt;
   if(!whale.pos){
@@ -2624,6 +2656,7 @@ function buildBirds(){
   }
 }
 function updateBirds(dt, t){
+  if(vr.on && VR_OFF.has('birds')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
   const tmp = new THREE.Vector3();
   for(const b of birds){
     b.ph += dt * b.sp;
@@ -3475,6 +3508,7 @@ function removeFish(f){
 }
 
 function updateSchools(dt, t){
+  if(vr.on && VR_OFF.has('fish')) return;   // abgeschaltet: eigene Sichtbarkeitslogik nicht dagegenarbeiten lassen
   const bp = boat.position;
   for(const s of schools){
     // Schwarm wandert langsam um seinen Heimatplatz
@@ -3811,6 +3845,11 @@ function vrQuality(on){
   // deutlich kuerzen - der Dunst verdeckt den kuerzeren Horizont.
   scene.fog.density = on ? 0.0075 : 0.0032;
   waterUniforms.fogDensity.value = scene.fog.density;   // sonst liegt das Wasser im alten Dunst
+  // Gruppen abschalten (Default: die Baeume). Damit laesst sich eingrenzen, was die
+  // Quest ueberlastet, ohne den Code anzufassen: ?vroff=trees,scatter,animals
+  for(const g of ['trees', 'scatter', 'animals', 'birds', 'fish']){
+    if(VR_OFF.has(g)) setGroupVisible(g, !on);
+  }
   reedSun.shadow.autoUpdate = !on;   // Schilfkarte nicht mehr jedes Bild (wird in updateVR getaktet)
   updateTreeLod(true);
 }
@@ -3997,7 +4036,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // läuft auch in VR
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, syncXRLayers, vrStats, vrReport, vrQuality, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, syncXRLayers, vrStats, vrReport, vrQuality, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
