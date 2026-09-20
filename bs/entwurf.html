@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bente Sommer — Freie Illustratorin, Berlin</title>
+<title>ENTWURF — Bente Sommer, Freie Illustratorin</title>
+<meta name="robots" content="noindex, nofollow">
 <meta name="description" content="Bente Sommer, freie Illustratorin in Berlin. Selbstständige künstlerische Tätigkeit: Buchillustration, Editorial, Character Design und freie Arbeiten.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -92,10 +93,34 @@ footer{padding:2.5rem 0;text-align:center;font-size:.8rem;color:var(--ink-lt);bo
 .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
 .reveal.visible{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+
+/* ── ENTWURF-Kennzeichnung ──────────────────── */
+.draft-bar{position:fixed;bottom:0;left:0;right:0;z-index:200;background:var(--coral);color:#fff;
+  font-size:.8rem;letter-spacing:.04em;text-align:center;padding:.6rem 5%}
+.draft-bar strong{font-weight:500}
+body{padding-bottom:3.2rem}
+/* Beispieldaten sichtbar markieren */
+.ph{background:rgba(200,85,61,.13);box-shadow:0 0 0 2px rgba(200,85,61,.13);border-radius:2px;color:var(--ink)}
+
+/* Werdegang */
+.cv{margin-top:2.2rem;display:grid;gap:0}
+.cv-row{display:grid;grid-template-columns:150px 1fr;gap:1.5rem;padding:1.3rem 0;border-top:1px solid var(--line)}
+.cv-row:last-child{border-bottom:1px solid var(--line)}
+.cv-year{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--coral);line-height:1.3}
+.cv-body p{font-size:.9rem;margin-top:.25rem}
+@media(max-width:640px){.cv-row{grid-template-columns:1fr;gap:.3rem}}
+
+/* Auftraggeber */
+.clients{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin-top:2rem}
+.client{border:1px solid var(--line);border-radius:4px;padding:1.1rem 1.2rem}
+.client strong{display:block;font-weight:500;font-size:.92rem}
+.client span{font-size:.82rem;color:var(--ink-lt)}
 </style>
 <script defer src="/analytics.js"></script>
 </head>
 <body>
+
+<div class="draft-bar"><strong>Entwurf.</strong> Alle farbig markierten Angaben sind Beispieldaten und müssen durch echte Angaben ersetzt werden.</div>
 
 <nav>
   <span class="nav-logo">Bente Sommer</span>
@@ -103,6 +128,7 @@ footer{padding:2.5rem 0;text-align:center;font-size:.8rem;color:var(--ink-lt);bo
     <a href="#leistungen">Leistungen</a>
     <a href="#ablauf">Ablauf</a>
     <a href="#arbeiten">Arbeiten</a>
+    <a href="#werdegang">Werdegang</a>
     <a href="#person">Zur Person</a>
     <a href="#kontakt">Kontakt</a>
   </div>
@@ -175,7 +201,8 @@ footer{padding:2.5rem 0;text-align:center;font-size:.8rem;color:var(--ink-lt);bo
     </div>
   </div>
   <div class="facts">
-    <div class="fact"><span>Honorar</span><strong>projektbezogen, auf Anfrage</strong></div>
+    <div class="fact"><span>Tagessatz</span><strong class="ph">450 – 650 €</strong></div>
+    <div class="fact"><span>Einzelillustration ab</span><strong class="ph">380 €</strong></div>
     <div class="fact"><span>Nutzungsrechte</span><strong>nach Umfang und Dauer</strong></div>
     <div class="fact"><span>Arbeitsweise</span><strong>remote, deutschlandweit</strong></div>
     <div class="fact"><span>Sprachen</span><strong>Deutsch, Englisch</strong></div>
@@ -198,13 +225,62 @@ footer{padding:2.5rem 0;text-align:center;font-size:.8rem;color:var(--ink-lt);bo
   </div>
 </section>
 
+<section id="werdegang" class="wrap reveal">
+  <p class="eyebrow">Werdegang</p>
+  <h2>Ausbildung &amp; Stationen</h2>
+  <p>Der berufliche Weg von der Ausbildung bis zur hauptberuflichen Selbstständigkeit.</p>
+  <div class="cv">
+    <div class="cv-row">
+      <div class="cv-year ph">seit 2021</div>
+      <div class="cv-body">
+        <h3>Selbstständige Illustratorin, Berlin</h3>
+        <p>Hauptberufliche freiberufliche Tätigkeit für Verlage, Redaktionen und Agenturen.
+          <span class="ph">Anmeldung beim Finanzamt Berlin-Friedrichshain-Kreuzberg im März 2021.</span></p>
+      </div>
+    </div>
+    <div class="cv-row">
+      <div class="cv-year ph">2019 – 2021</div>
+      <div class="cv-body">
+        <h3 class="ph">Freie Mitarbeit, Illustrationsstudio</h3>
+        <p class="ph">Mitarbeit an Buch- und Editorialprojekten, Schwerpunkt Figurenentwicklung
+          und Kolorierung.</p>
+      </div>
+    </div>
+    <div class="cv-row">
+      <div class="cv-year ph">Abschluss 20XX</div>
+      <div class="cv-body">
+        <h3>Diplom-Kommunikationsdesignerin</h3>
+        <p>Studium des Kommunikationsdesigns an der Hochschule Augsburg (FH Augsburg),
+          abgeschlossen mit dem Diplom.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="auftraggeber" class="wrap reveal">
+  <p class="eyebrow">Referenzen</p>
+  <h2>Auftraggeber</h2>
+  <p>Eine Auswahl der Auftraggeber der vergangenen Jahre. Rechnungen und Verträge lege ich
+    auf Anfrage vor.</p>
+  <div class="clients">
+    <div class="client"><strong class="ph">Kinderbuchverlag Nord</strong><span class="ph">Buchillustration, 2024 – 2025</span></div>
+    <div class="client"><strong class="ph">Magazin „Vierzehn“</strong><span class="ph">Editorial, laufend</span></div>
+    <div class="client"><strong class="ph">Agentur Halbmond</strong><span class="ph">Character Design, 2023</span></div>
+    <div class="client"><strong class="ph">Kulturstiftung Ostsee</strong><span class="ph">Plakatserie, 2022</span></div>
+  </div>
+  <div class="facts">
+    <div class="fact"><span>Abgeschlossene Projekte</span><strong class="ph">über 40 seit 2021</strong></div>
+    <div class="fact"><span>Auftraggeber gesamt</span><strong class="ph">14</strong></div>
+    <div class="fact"><span>Umsatz über der KSK-Grenze</span><strong class="ph">seit 2022 durchgehend</strong></div>
+  </div>
+</section>
+
 <section id="person" class="wrap reveal">
   <p class="eyebrow">Zur Person</p>
   <h2>Illustration mit Haltung</h2>
   <div class="bio">
     <div>
-      <p>Ich bin Bente Sommer, freie Illustratorin in Berlin und Diplom-Kommunikationsdesignerin
-        (Hochschule Augsburg). Meine Arbeit entsteht an der
+      <p>Ich bin Bente Sommer, <span class="ph">seit 2021</span> freie Illustratorin in Berlin. Meine Arbeit entsteht an der
         Schnittstelle von Zeichnung, Farbe und Gefühl — handgezeichnet, mit einer eigenen
         Bildsprache für jedes Projekt.</p>
       <p>Von der ersten Skizze bis zum fertigen Bild begleite ich Projekte mit Sorgfalt und
