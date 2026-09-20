@@ -2900,6 +2900,8 @@ const state = {
   phase: 'idle',          // idle | casting | flying | waiting | bite | fight | catch
   speed: 0, heading: 0, turn: 0, rowPhase: 0, stroke: 0, leaderLen: 0.08,
   castFrom: new THREE.Vector3(), castTo: new THREE.Vector3(), t: 0,
+  lure: 0, zupfT: 0, zupfWas: false, zupfW: 0,
+  zupfFrom: new THREE.Vector3(), zupfTo: new THREE.Vector3(),
   biteAt: 0, school: null, fish: null, tension: 0, progress: 0, surge: 0,
   bucket: [],
 };
@@ -2998,6 +3000,8 @@ function cast(target){
   const len = THREE.MathUtils.clamp(d.length(), 3, 22);
   d.setLength(len);
   state.castTo.set(bp.x + d.x, 0, bp.z + d.z);
+  state.lure = 0; state.zupfT = ZUPF_DUR; state.zupfWas = false;
+  if(rod) rod.rotation.x = rod.rotation.z = 0;
   // Figur dreht sich zum Ziel (lokal im Boot); Figur schaut lokal nach +Z
   const local = boat.worldToLocal(state.castTo.clone());
   seat.userData.targetYaw = Math.atan2(local.x, local.z - seat.position.z);
@@ -3173,14 +3177,17 @@ function startAudio(){
 }
 function sfx(kind){
   if(!actx || !soundOn) return;
-  const t = actx.currentTime, len = kind === 'whoosh' ? 0.5 : 0.35;
+  // 'plop' ist das kurze, leise Zupfen am Schwimmer - sonst plaetschert es bei jedem Ruck
+  // so laut wie beim Auswerfen.
+  const t = actx.currentTime, len = kind === 'whoosh' ? 0.5 : kind === 'plop' ? 0.12 : 0.35;
   const buf = actx.createBuffer(1, actx.sampleRate * len, actx.sampleRate), d = buf.getChannelData(0);
   for(let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 2);
   const s = actx.createBufferSource(); s.buffer = buf;
   const f = actx.createBiquadFilter(); f.type = 'bandpass';
   f.frequency.setValueAtTime(kind === 'whoosh' ? 2500 : 900, t);
   f.frequency.exponentialRampToValueAtTime(kind === 'whoosh' ? 600 : 300, t + len);
-  const g = actx.createGain(); g.gain.value = kind === 'whoosh' ? 0.25 : 0.6;
+  const g = actx.createGain();
+  g.gain.value = kind === 'whoosh' ? 0.25 : kind === 'plop' ? 0.18 : 0.6;
   s.connect(f); f.connect(g); g.connect(master); s.start();
 }
 document.getElementById('soundBtn').addEventListener('click', e => {
@@ -3421,13 +3428,65 @@ function updateFishing(dt, t){
         sfx('splash');
         play('Fishing_Idle', {fade: 0.5});
         planBite();
-        setHint(pick('Warten … Tippen holt die Schnur ein', 'Warten … Klick oder Leertaste holt die Schnur ein', 'Warten … Ⓑ holt die Schnur ein'));
+        setHint(pick('Warten … Joystick zupft die Schnur an, Tippen holt ein',
+          'Warten … W A S D zupft die Schnur an, Klick holt ein',
+          'Warten … linker Stick zupft die Schnur an, Ⓑ holt ein'));
       }
       break;
     }
     case 'waiting': {
+      // ---- Zupfen ----
+      // Bewusst nur EINE Bewegung: ziehen. Egal welche Richtung man drueckt, der
+      // Schwimmer kommt ein Stueck naeher ans Boot. Seitlich und nach aussen zupfen war
+      // schwer zu treffen und fuehlte sich wie Steuern an - hier gibt es nur den Zug.
+      // Ein Tastendruck = EIN Ruck; gehalten passiert nichts weiter (Flanke zupfWas).
+      const zLen = Math.hypot(
+        (keys.KeyW || keys.ArrowUp ? 1 : 0) - (keys.KeyS || keys.ArrowDown ? 1 : 0) - joy.y - pad.y,
+        (keys.KeyD || keys.ArrowRight ? 1 : 0) - (keys.KeyA || keys.ArrowLeft ? 1 : 0) + joy.x + pad.x);
+      const zAn = zLen > 0.35;
+      if(zAn && !state.zupfWas && state.zupfT >= ZUPF_DUR){
+        const bp = boat.position;
+        const dx = state.castTo.x - bp.x, dz = state.castTo.z - bp.z;
+        const len = Math.hypot(dx, dz) || 1;
+        const ziel = Math.max(3, len - ZUPF_IN);      // nicht naeher als die Mindestweite
+        state.zupfFrom.copy(state.castTo);
+        state.zupfTo.set(bp.x + dx / len * ziel, 0, bp.z + dz / len * ziel);
+        state.zupfT = 0;
+        state.zupfW = len - ziel;
+        // Das Zupfen lockt: planBite rechnet mit dem Abstand zum Schwarm, dazu kommt der
+        // naechste Versuch frueher und die Chance steigt.
+        state.lure = Math.min(1, state.lure + 0.34);
+        if(!state.fish) state.biteAt = Math.max(state.t + 0.5, state.biteAt - 1.2);
+        spawnRing(state.castTo.x, state.castTo.z, 0.32, 1.1, 0.3);
+        sfx('plop');
+      }
+      state.zupfWas = zAn;
+      // Der Ruck laeuft ueber ZUPF_DUR aus: schnell an, weich aus. Die Uhr laeuft danach
+      // WEITER, sonst kann das laengere Wackeln der Rute nie auslaufen und sie bleibt
+      // schief stehen.
+      if(state.zupfT < 9) state.zupfT += dt;
+      if(state.zupfT < ZUPF_DUR){
+        const u = state.zupfT / ZUPF_DUR, e = 1 - (1 - u) * (1 - u);
+        state.castTo.lerpVectors(state.zupfFrom, state.zupfTo, e);
+      } else if(state.zupfW > 0){
+        state.castTo.copy(state.zupfTo);      // exakt ankommen, auch bei langen Bildern
+      }
+      state.lure = Math.max(0, state.lure - dt * 0.09);       // verfliegt langsam wieder
+      // Die Rute reisst dabei deutlich staerker zurueck als der Schwimmer folgt
+      if(rod){
+        const rd = ZUPF_DUR * 1.5;
+        if(state.zupfT < rd){
+          const u = state.zupfT / rd;
+          rod.rotation.x = -Math.sin(u * Math.PI) * (1 - u * 0.4) * ROD_ZUPF;
+        } else if(rod.rotation.x){
+          rod.rotation.x = 0;
+        }
+      }
       bobber.position.set(state.castTo.x, waveH(state.castTo.x, state.castTo.z, t) + 0.02, state.castTo.z);
-      bobber.rotation.z = Math.sin(t * 1.3) * 0.08;
+      // beim Zupfen kippt der Schwimmer deutlicher
+      // waehrend des Rucks kippt der Schwimmer deutlich, danach wieder ruhig
+      const zK = Math.max(0, 1 - state.zupfT / ZUPF_DUR);
+      bobber.rotation.z = Math.sin(t * 1.3) * 0.08 + Math.sin(t * 16) * 0.16 * zK;
       placeHook(t, null, null);
       // Knabbern kurz vor dem Biss: der Fisch kommt zum Haken, nicht zum Schwimmer
       if(state.fish){
@@ -3597,7 +3656,9 @@ function planBite(retry){
     if(d < bd){ bd = d; best = s; }
   }
   const chance = best ? Math.exp(-bd / 7) : 0;
-  if(best && Math.random() < chance * 0.9 + 0.03){
+  // Zupfen erhoeht die Chance zusaetzlich (state.lure waechst beim Bewegen des Schwimmers)
+  const lure = Math.min(0.3, (state.lure || 0) * 0.3);
+  if(best && Math.random() < chance * 0.9 + 0.03 + lure){
     const f = best.fish.find(f => f.mode === 'school');
     f.mode = 'bait';
     f.power = ['Tuna', 'Sunfish', 'Swordfish'].includes(best.species) ? 1.8 : best.species === 'CoralGrouper' || best.species === 'Turbot' ? 1.3 : 1;
@@ -3615,6 +3676,14 @@ function planBite(retry){
 // Mindestabstand zur Bootsmitte (waagerecht): der Rumpf ist 3,5 m lang, die Rutenspitze
 // steht über der Bordwand, ab etwa 2,6 m läuft die Schnur frei übers Wasser
 const BOBBER_MIN_R = 2.8, FISH_MIN_R = 3.8;
+// Ein Zupfer zieht den Schwimmer um ZUPF_IN naeher ans Boot, ausgefuehrt ueber ZUPF_DUR.
+// Bewusst winzig: der Schwimmer soll nur zucken und Ringe ziehen, nicht durchs Wasser
+// fahren (erste Fassung 0,9 bzw. 1,6 m - das war Steuern, kein Zupfen).
+const ZUPF_IN = 0.16, ZUPF_DUR = 0.32;
+// Die Rute macht dabei eine deutlich groessere Bewegung als der Schwimmer - man reisst ja
+// an der Rute, das Vorfach gibt den Ruck nur gedaempft weiter. Fester Winkel, unabhaengig
+// von der Zupfweite: rund 0,19 m Ausschlag an der Spitze.
+const ROD_ZUPF = 0.10, ROD_LEN = 1.9;
 function keepOffBoat(p, r){
   const dx = p.x - boat.position.x, dz = p.z - boat.position.z, d = Math.hypot(dx, dz);
   if(d >= r) return p;
