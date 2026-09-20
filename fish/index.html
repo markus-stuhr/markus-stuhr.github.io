@@ -391,9 +391,11 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(900, 32, 16), new THREE.Shad
 scene.add(sky);
 
 // Sichttiefe im Wasser: alles unter der Oberfläche geht mit der Tiefe in die
-// Wasserfarbe über. Bei etwa 5 m ist nichts mehr zu erkennen.
-// Abklinglänge: bei etwa 11 m Tiefe sieht man nichts mehr
-const WATER_VIS = 5.0;
+// Wasserfarbe über (1 - exp(-Weg / WATER_VIS)). Abklinglänge, nicht Reichweite:
+// blind wird es bei etwa dem 2,2-fachen. 3,5 ergab 8 m, 5,0 ergab 11 m, 8,0 gibt
+// jetzt rund 18 m. Gerechnet wird mit dem Weg des Blicks durchs Wasser, nicht mit
+// der reinen Tiefe (siehe underwaterFade), flach schaut man also weiter.
+const WATER_VIS = 8.0;
 const WATER_BODY = new THREE.Vector3(0.012, 0.055, 0.075);   // linear, dunkles Tiefwasser
 // Zwei Regler: Objekte unter Wasser blenden mit der Entfernung aus, und die
 // Wasseroberfläche wird ab einer Entfernung undurchsichtig. Erst zusammen
@@ -3570,7 +3572,16 @@ function updateFishing(dt, t){
       : state.phase === 'retrieve' ? 0.3 : 0.9;   // beim Einholen leicht durchhängend
     for(let i = 0; i < LINE_N; i++){
       const u = i / (LINE_N - 1);
-      p.setXYZ(i, a.x + (b.x - a.x) * u, a.y + (b.y + 0.05 - a.y) * u - Math.sin(u * Math.PI) * sag, a.z + (b.z - a.z) * u);
+      const x = a.x + (b.x - a.x) * u, z = a.z + (b.z - a.z) * u;
+      const chord = a.y + (b.y + 0.05 - a.y) * u;      // gerade Verbindung ohne Durchhang
+      let y = chord - Math.sin(u * Math.PI) * sag;
+      // Die Schnur taucht nicht ein, sie legt sich auf die Oberflaeche und folgt der
+      // Welle. Bei weiten Wuerfen verschwand der Durchhang sonst im Wasser.
+      // Geprueft wird gegen die SEHNE: liegt schon sie unter Wasser, zieht der Fisch im
+      // Drill die Schnur absichtlich nach unten - dann bleibt alles wie es ist.
+      const wy = waveH(x, z, t) + 0.015;
+      if(y < wy && chord > wy) y = wy;
+      p.setXYZ(i, x, y, z);
     }
     p.needsUpdate = true;
   }
@@ -4208,7 +4219,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // Pflicht fuer WebXR, liefert auch die XR-Frames
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, vr, VR_REFL, VR_REFL_SCALE, reflector, fitReflVR, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, clock, enterFishing, leaveFishing, cast, line, bobber, waveH, vr, VR_REFL, VR_REFL_SCALE, reflector, fitReflVR, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
