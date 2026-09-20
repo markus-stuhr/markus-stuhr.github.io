@@ -1038,7 +1038,14 @@ function buildPlants(){
     if(h > 1.4 && h < 22){
       // Grasbüschel an Land, fleckenweise auf flachem Grund
       const slope = Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h);
-      if(slope < 1.2 && fbm(x * 0.03 - 31, z * 0.03 + 17) > 0.06)
+      // Wiese ist Wiese: auf den freien Flaechen waechst das Gras dicht, im Wald steht
+      // nur vereinzelt ein Bueschel Unterholz. Gesteuert ueber die Schwelle desselben
+      // Fleckenrauschens, damit der Uebergang weich bleibt.
+      // Schwellen gemessen: Wiese -0,06 ergibt 70 700 Bueschel und 1,30 Mio Dreiecke, das
+      // ist mehr als die 810 000 von vorher, als Gras noch ueberall stand. Mit 0,0 sind
+      // es rund 1,0 Mio - dichter als frueher im Schnitt, aber eben nur auf der Wiese.
+      const gT = forestMask(x, z) > FOREST_T ? 0.3 : 0.0;
+      if(slope < 1.2 && fbm(x * 0.03 - 31, z * 0.03 + 17) > gT)
         put(land, x, z, h - 0.03, 1 + rnd() * 1.1, 0.3 + rnd() * 0.45);
       continue;
     }
@@ -1339,9 +1346,12 @@ async function buildNature(){
       continue;
     }
     // Im Waldgebiet dicht, auf der Wiese nur ein vereinzelter Solitaer - so bleibt die
-    // Wiese offen, ohne dass sie leer wirkt.
+    // Wiese offen, ohne dass sie leer wirkt. Die Inseln liegen meist ausserhalb der
+    // Waldgebiete und waeren sonst kahl; sie bekommen einen lockeren Bestand.
     const wald = forestMask(x, z) > FOREST_T;
-    if(wald ? rnd() < 0.92 : rnd() < 0.015){
+    const insel = !mainland(x, z);
+    const dichte = wald ? 0.92 : (insel ? 0.35 : 0.015);
+    if(rnd() < dichte){
       // seltene kahle Bäume nur vereinzelt
       let name = LEAFY[(rnd() * (LEAFY.length - 1)) | 0];
       if(rnd() < 0.04) name = 'DeadTree_3';
@@ -1349,6 +1359,26 @@ async function buildNature(){
       p.set(x, h - 0.15, z);
       s.setScalar(0.8 + rnd() * 0.5);            // Modelle sind schon 4-9 m hoch
       leafy[name].push(m.compose(p, q, s).clone());
+    }
+  }
+  // Jede Insel bekommt ausdruecklich ein paar Baeume. Die Streuschleife oben trifft sie
+  // kaum: die Inseln sind klein und flach, die meisten Stichproben liegen unter der
+  // Baumgrenze von 1,6 m und werden zu Felsen. Ohne das blieben zwei der fuenf kahl.
+  for(const [ix, iz, ir] of ISLANDS){
+    const ziel = 6 + (ir / 9 | 0);
+    for(let t = 0, set = 0; t < 600 && set < ziel; t++){
+      const a = rnd() * 6.28, rr = Math.sqrt(rnd()) * ir * 0.78;
+      const x = ix + Math.cos(a) * rr, z = iz + Math.sin(a) * rr;
+      const h = meshH(x, z);
+      if(h < 1.0 || h > 24) continue;                       // niedriger als sonst: Inseln sind flach
+      if(Math.hypot(x - HOUSE_SPOT.x, z - HOUSE_SPOT.z) < 16) continue;
+      if(Math.abs(meshH(x + 1, z) - h) + Math.abs(meshH(x, z + 1) - h) > 1.4) continue;
+      const name = LEAFY[(rnd() * (LEAFY.length - 1)) | 0];
+      q.setFromAxisAngle(up, rnd() * 6.28);
+      p.set(x, h - 0.15, z);
+      s.setScalar(0.8 + rnd() * 0.5);
+      leafy[name].push(m.compose(p, q, s).clone());
+      set++;
     }
   }
   for(const r of rocks){
