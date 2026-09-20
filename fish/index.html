@@ -45,6 +45,34 @@
   #report li{display:flex;justify-content:space-between;gap:24px;padding:3px 0;opacity:.9}
   #report p{margin:6px 0 18px;opacity:.75;font-style:italic}
   #report .btn{position:static}
+  .knopfZeile{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+  /* Angelladen im Feierabend-Fenster */
+  #shop{margin:14px 0 18px;border-top:1px solid rgba(255,240,220,.18);padding-top:14px;display:none}
+  .shopKopf{display:flex;justify-content:space-between;gap:24px;font-size:15px;margin-bottom:8px}
+  .shopKopf span{opacity:.8}
+  #rutenListe{font-size:14px}
+  #rutenListe li{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:4px 0}
+  #rutenListe li.aktiv{opacity:1;color:#ffd9a0}
+  #rutenListe li.gesperrt{opacity:.45}
+  #rutenListe button{font:inherit;padding:3px 12px;border-radius:999px;cursor:pointer;
+    border:1px solid rgba(255,240,220,.4);background:rgba(255,240,220,.12);color:inherit}
+  #rutenListe button[disabled]{opacity:.35;cursor:default}
+  /* Fischbuch */
+  #book{position:fixed;inset:0;z-index:7;display:none;align-items:center;justify-content:center;
+    background:rgba(20,16,30,.6);backdrop-filter:blur(3px)}
+  #book .card{background:rgba(30,22,38,.94);border:1px solid rgba(255,240,220,.25);border-radius:18px;
+    padding:24px 30px;min-width:320px;max-width:min(560px,90vw);max-height:84vh;overflow:auto;text-align:center}
+  #book h2{margin:0 0 6px;font-size:22px;font-weight:normal;letter-spacing:.04em}
+  #book p{margin:0 0 14px;opacity:.75;font-style:italic}
+  #book ul{list-style:none;margin:0 0 18px;padding:0;font-size:14px;text-align:left}
+  #book li{display:flex;justify-content:space-between;gap:14px;padding:5px 0;
+    border-bottom:1px solid rgba(255,240,220,.1)}
+  #book li.neu{opacity:.4}
+  #book li i{font-style:normal;opacity:.7;font-size:13px}
+  #book .btn{position:static;margin-top:4px}
+  #bookBtn{bottom:18px;right:220px}
+  #geld{margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,240,220,.15);font-size:12px;opacity:.75}
+  @media (max-width:600px){#bookBtn{display:none}}
   #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
     background:linear-gradient(#3b2a4a,#c9786a);z-index:5;transition:opacity .8s}
   /* Startbildschirm: Logo (Boot mit Angler als Silhouette, der Schriftzug ist die Wasserkante) */
@@ -73,7 +101,22 @@
     <h2>Feierabend am Steg</h2>
     <ul id="reportList"></ul>
     <p id="reportSum"></p>
-    <button id="againBtn" class="btn" type="button">Neuer Abend</button>
+    <div id="shop">
+      <div class="shopKopf"><b>Angelladen</b><span id="muenzen">0 Münzen</span></div>
+      <ul id="rutenListe"></ul>
+    </div>
+    <div class="knopfZeile">
+      <button id="sellBtn" class="btn" type="button">Fang verkaufen</button>
+      <button id="againBtn" class="btn" type="button">Neuer Abend</button>
+    </div>
+  </div>
+</div>
+<div id="book">
+  <div class="card">
+    <h2>Fischbuch</h2>
+    <p id="bookSum"></p>
+    <ul id="bookList"></ul>
+    <button id="bookClose" class="btn" type="button">Zurück</button>
   </div>
 </div>
 <div id="loading">
@@ -84,7 +127,9 @@
   <button id="playBtn" class="btn" type="button">PLAY</button>
 </div>
 <div id="title" class="hud"><h1>Abendangeln</h1><p>Eine stille Bucht, ein Ruderboot, ein Eimer.</p></div>
-<div id="bucket" class="hud"><b>Eimer · <span id="count">0</span>/10</b><ul id="list"></ul></div>
+<div id="bucket" class="hud"><b>Eimer · <span id="count">0</span>/10</b><ul id="list"></ul>
+  <div id="geld"><span id="hudMuenzen">0</span> Münzen · <span id="hudRute">Einsteigerrute</span></div></div>
+<button id="bookBtn" class="btn" type="button" title="Fischbuch">Fischbuch</button>
 <div id="hint" class="hud"></div>
 <div id="toast" class="hud"></div>
 <div id="fight" class="hud">
@@ -119,16 +164,50 @@ const LIB_TOOLS = M + 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Mediu
 const LIB_SIM = M + 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/Rig_Medium_Simulation.glb';
 const LIB_GENERAL = M + 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_General.glb';
 
+// kg: Spanne des Fanggewichts · muenzen: Erloes je Kilo · kraft: wie stark der Fisch
+// im Drill zieht (die Rute muss mindestens so viel aushalten, sonst reisst die Schnur)
 const SPECIES = {
-  RedSnapper:   {de:'Roter Schnapper', kg:[0.8, 3.5]},
-  Flatfish:     {de:'Scholle',         kg:[0.4, 2.0]},
-  Turbot:       {de:'Steinbutt',       kg:[1.0, 6.0]},
-  CoralGrouper: {de:'Zackenbarsch',    kg:[2.0, 9.0]},
-  Tuna:         {de:'Thunfisch',       kg:[6.0, 30.0]},
-  Puffer:       {de:'Kugelfisch',      kg:[0.3, 1.5]},
-  Sunfish:      {de:'Mondfisch',       kg:[20.0, 80.0]},
-  Swordfish:    {de:'Schwertfisch',    kg:[15.0, 60.0]},
+  Flatfish:     {de:'Scholle',         kg:[0.4, 2.0],  muenzen: 6,  kraft: 1.0},
+  Puffer:       {de:'Kugelfisch',      kg:[0.3, 1.5],  muenzen: 9,  kraft: 1.0},
+  RedSnapper:   {de:'Roter Schnapper', kg:[0.8, 3.5],  muenzen: 8,  kraft: 1.0},
+  Turbot:       {de:'Steinbutt',       kg:[1.0, 6.0],  muenzen: 11, kraft: 1.3},
+  CoralGrouper: {de:'Zackenbarsch',    kg:[2.0, 9.0],  muenzen: 14, kraft: 1.3},
+  Tuna:         {de:'Thunfisch',       kg:[6.0, 30.0], muenzen: 18, kraft: 1.8},
+  Sunfish:      {de:'Mondfisch',       kg:[20.0, 80.0],muenzen: 20, kraft: 1.8},
+  Swordfish:    {de:'Schwertfisch',    kg:[15.0, 60.0],muenzen: 24, kraft: 1.8},
 };
+// ---------- Ruten ----------
+// haelt: bis zu welcher Fischkraft die Rute muehelos mitgeht. Darueber steigt die
+// Spannung schneller - ein Thunfisch (1,8) an der Einsteigerrute (1,0) ist zu schaffen,
+// aber heikel. einholen: wie schnell der Drill vorangeht.
+const RODS = [
+  {de:'Einsteigerrute', datei:'FishingRod_Lvl1.glb', haelt:1.0, einholen:1.0,  preis:0},
+  {de:'Weidenrute',     datei:'FishingRod_Lvl2.glb', haelt:1.4, einholen:1.1,  preis:150},
+  {de:'Karbonrute',     datei:'FishingRod_Lvl3.glb', haelt:1.9, einholen:1.2,  preis:500},
+  {de:'Hochseerute',    datei:'FishingRod_Lvl4.glb', haelt:2.5, einholen:1.35, preis:1400},
+  {de:'Meisterrute',    datei:'FishingRod_Lvl5.glb', haelt:3.2, einholen:1.5,  preis:3200},
+];
+// ---------- Fortschritt (bleibt im Browser erhalten) ----------
+const SAVE_KEY = 'lakenight.fortschritt';
+function ladeFortschritt(){
+  const leer = {muenzen: 0, rute: 0, gesehen: {}};
+  try{
+    const o = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if(o && typeof o === 'object'){
+      return {...leer, ...o, gesehen: o.gesehen && typeof o.gesehen === 'object' ? o.gesehen : {}};
+    }
+  }catch(e){ console.warn('Fortschritt unlesbar', e); }
+  return leer;
+}
+const fortschritt = ladeFortschritt();
+// rute ist ein Index in RODS und darf nie danebenliegen (alter Speicherstand, Handarbeit)
+fortschritt.rute = THREE_CLAMP(fortschritt.rute, 0, RODS.length - 1);
+function THREE_CLAMP(v, a, b){ v = Number(v) | 0; return v < a ? a : v > b ? b : v; }
+function rute(){ return RODS[fortschritt.rute]; }
+function speichern(){
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(fortschritt)); }
+  catch(e){ console.warn('Fortschritt nicht speicherbar', e); }
+}
 // Seichte Arten nahe der Küste, seltene im tiefen Wasser
 const SHALLOW = ['RedSnapper', 'RedSnapper', 'Flatfish', 'Flatfish', 'Turbot', 'Puffer', 'CoralGrouper'];
 const DEEP = ['Tuna', 'Tuna', 'Tuna', 'CoralGrouper', 'CoralGrouper', 'RedSnapper', 'Turbot', 'Sunfish', 'Swordfish'];
@@ -1802,7 +1881,7 @@ function convexHull(p){
 async function buildBoat(){
   const [b, ch, tools, sim, gen, r, be, bf] = await Promise.all([
     load(FISHPACK + 'Boat.glb'), load(CHAR), load(LIB_TOOLS), load(LIB_SIM), load(LIB_GENERAL),
-    load(FISHPACK + 'FishingRod_Lvl2.glb'),
+    load(FISHPACK + rute().datei),
     load(M + 'Quaternius Pirate Kit/glTF/Prop_Bucket.glb'), load(M + 'Quaternius Pirate Kit/glTF/Prop_Bucket_Fishes.glb'),
   ]);
   const bm = b.scene;
@@ -1855,12 +1934,14 @@ async function buildBoat(){
   holder.add(rod);
   rod.position.y = -0.35;
   slot.add(holder);
+  rodHolder = holder;
   // Spitze der Angel: wird beim ersten Angeln einmalig eingemessen (siehe
   // fixRodTip). Zur Bauzeit sind die Matrizen der Hand-Kette noch nicht gesetzt,
   // eine Messung hier liefert Unsinn.
   rod.add(rodTip);
   rodTip.position.set(0, 4.95, 0);
   rod.visible = false;
+  rod.userData.datei = rute().datei;
 
   // Eigene Ruder: schlichter Schaft ohne Griff, Blatt am Ende, Dolle auf dem Bootsrand.
   // Das Paddelmodell aus dem Pack hat einen T-Griff, der hier nicht passt.
@@ -1927,6 +2008,32 @@ async function buildBoat(){
   });
   hull.add(makeHullMask(bm));
   play('Sit_Chair_Idle');
+}
+
+// Rute austauschen, wenn im Laden eine bessere gekauft wurde. Das Modell haengt im
+// selben Halter an der Hand; die Spitze muss neu eingemessen werden (rodTipFixed
+// zuruecksetzen), denn jede Stufe ist anders lang.
+let rodHolder = null;
+async function tauscheRute(){
+  if(!rodHolder) return;
+  const datei = rute().datei;
+  if(rod && rod.userData.datei === datei) return;
+  const neu = (await load(FISHPACK + datei)).scene;
+  fit(neu, 1.9);
+  neu.userData.datei = datei;
+  const sichtbar = rod ? rod.visible : false;
+  if(rod){
+    rodHolder.remove(rod);
+    rod.traverse(o => { if(o.isMesh){ o.geometry.dispose(); } });
+  }
+  rod = neu;
+  rod.position.y = -0.35;
+  rod.visible = sichtbar;
+  rodHolder.add(rod);
+  rod.add(rodTip);
+  rodTip.position.set(0, 4.95, 0);
+  rodTipFixed = false;            // neue Laenge: Spitze noch einmal messen
+  fixRodTip();
 }
 
 // ---------- Ruderbewegung (zwei-Knochen-IK auf die Rudergriffe) ----------
@@ -3053,14 +3160,45 @@ function landFish(){
   setHint('');
   f.landFrom = f.obj.position.clone();
   sfx('splash');
+  // Fürs Fischbuch zählt jeder gefangene Fisch, auch wenn der Eimer voll ist
+  const art = f.school.species;
+  const e = fortschritt.gesehen[art] || (fortschritt.gesehen[art] = {n: 0, best: 0});
+  e.n++;
+  const rekord = kg > e.best;
+  if(rekord) e.best = kg;
+  speichern();
+  renderGeld();
   if(state.bucket.length < 10){
-    state.bucket.push({name: sp.de, kg});
-    toast(sp.de + '!', kg.toFixed(1).replace('.', ',') + ' kg – ab in den Eimer', 2800);
+    state.bucket.push({name: sp.de, art, kg});
+    toast(sp.de + (rekord && e.n > 1 ? ' · neuer Rekord!' : '!'),
+      kg.toFixed(1).replace('.', ',') + ' kg – ab in den Eimer', 2800);
   } else {
     toast(sp.de + '!', 'Der Eimer ist voll – du lässt ihn wieder frei.', 2800);
     f.releaseAfter = true;
   }
   renderBucket();
+}
+function renderGeld(){
+  const m = document.getElementById('hudMuenzen');
+  if(m) m.textContent = fortschritt.muenzen;
+  const r = document.getElementById('hudRute');
+  if(r) r.textContent = rute().de;
+}
+// ---------- Fischbuch ----------
+// Zeigt alle Arten. Was noch nie am Haken war, bleibt ohne Namen - das Entdecken ist
+// der halbe Reiz.
+function showBook(){
+  const arten = Object.keys(SPECIES);
+  const kennt = arten.filter(a => fortschritt.gesehen[a]);
+  document.getElementById('bookList').innerHTML = arten.map(a => {
+    const sp = SPECIES[a], g = fortschritt.gesehen[a];
+    if(!g) return `<li class="neu"><span>? ? ?</span><i>noch nie gefangen</i></li>`;
+    return `<li><span>${sp.de}</span><i>${g.n}× · Rekord ${g.best.toFixed(1).replace('.', ',')} kg`
+      + ` · ${sp.muenzen} Münzen/kg</i></li>`;
+  }).join('');
+  document.getElementById('bookSum').textContent =
+    `${kennt.length} von ${arten.length} Arten gefangen`;
+  document.getElementById('book').style.display = 'flex';
 }
 function renderBucket(){
   document.getElementById('count').textContent = state.bucket.length;
@@ -3142,6 +3280,19 @@ addEventListener('keyup', e => { const code = codeOf(e); keys[code] = false; if(
 document.getElementById('modeBtn').addEventListener('click', () => { startAudio(); state.mode === 'fish' ? leaveFishing() : enterFishing(); });
 document.getElementById('dockBtn').addEventListener('click', () => { startAudio(); dockAtPier(); });
 document.getElementById('againBtn').addEventListener('click', newEvening);
+document.getElementById('sellBtn').addEventListener('click', verkaufen);
+document.getElementById('bookBtn').addEventListener('click', showBook);
+document.getElementById('bookClose').addEventListener('click',
+  () => { document.getElementById('book').style.display = 'none'; });
+// B wie Buch, Escape schliesst wieder
+addEventListener('keydown', e => {
+  if(e.code === 'KeyB' && !e.repeat){
+    const b = document.getElementById('book');
+    b.style.display = b.style.display === 'flex' ? 'none' : 'flex';
+    if(b.style.display === 'flex') showBook();
+  }
+  if(e.code === 'Escape') document.getElementById('book').style.display = 'none';
+});
 
 // Touch-Joystick
 const stick = document.getElementById('stick'), knob = stick.querySelector('i');
@@ -3366,13 +3517,74 @@ function showReport(){
   document.getElementById('reportSum').textContent = state.bucket.length
     ? `${state.bucket.length} Fische, zusammen ${kg.toFixed(1).replace('.', ',')} kg · größter: ${best.name} mit ${best.kg.toFixed(1).replace('.', ',')} kg`
     : 'Ein stiller Abend auf dem Wasser.';
+  // Erlös auf den Fang: je Art ein eigener Kilopreis
+  const wert = fangWert();
+  const sell = document.getElementById('sellBtn');
+  sell.style.display = wert > 0 ? 'inline-block' : 'none';
+  sell.disabled = false;
+  sell.textContent = `Fang verkaufen (${wert} Münzen)`;
+  renderShop();
   document.getElementById('report').style.display = 'flex';
+}
+function fangWert(){
+  return Math.round(state.bucket.reduce((s, b) =>
+    s + b.kg * (SPECIES[b.art] ? SPECIES[b.art].muenzen : 6), 0));
+}
+function verkaufen(){
+  const wert = fangWert();
+  if(!wert) return;
+  fortschritt.muenzen += wert;
+  state.bucket.length = 0;
+  speichern();
+  renderBucket();
+  renderGeld();
+  const sell = document.getElementById('sellBtn');
+  sell.disabled = true;
+  sell.textContent = `${wert} Münzen erhalten`;
+  document.getElementById('reportSum').textContent =
+    `Verkauft für ${wert} Münzen. Kasse: ${fortschritt.muenzen}.`;
+  renderShop();
+}
+// ---------- Angelladen ----------
+// Jede Rute haelt mehr aus und holt schneller ein. Gekauft wird der Reihe nach, sonst
+// koennte man sich mit einem grossen Fang direkt die Meisterrute holen.
+function renderShop(){
+  const shop = document.getElementById('shop');
+  // ausdruecklich 'block': mit '' greift wieder die CSS-Regel #shop{display:none}
+  shop.style.display = 'block';
+  document.getElementById('muenzen').textContent = fortschritt.muenzen + ' Münzen';
+  document.getElementById('rutenListe').innerHTML = RODS.map((r, i) => {
+    const hat = i <= fortschritt.rute;
+    const dran = i === fortschritt.rute + 1;
+    const kann = dran && fortschritt.muenzen >= r.preis;
+    const info = `hält ${r.haelt.toFixed(1).replace('.', ',')} · Drill ×${r.einholen.toFixed(2).replace('.', ',')}`;
+    let rechts;
+    if(i === fortschritt.rute) rechts = '<b>in Benutzung</b>';
+    else if(hat) rechts = '<i>verkauft</i>';
+    else if(dran) rechts = `<button data-rute="${i}"${kann ? '' : ' disabled'}>${r.preis} Münzen</button>`;
+    else rechts = `<i>${r.preis} Münzen</i>`;
+    return `<li class="${i === fortschritt.rute ? 'aktiv' : hat || dran ? '' : 'gesperrt'}">`
+      + `<span>${r.de}<br><i style="opacity:.6;font-size:12px">${info}</i></span>${rechts}</li>`;
+  }).join('');
+  for(const b of document.querySelectorAll('#rutenListe button[data-rute]')){
+    b.addEventListener('click', () => kaufeRute(+b.dataset.rute));
+  }
+}
+function kaufeRute(i){
+  const r = RODS[i];
+  if(!r || i !== fortschritt.rute + 1 || fortschritt.muenzen < r.preis) return;
+  fortschritt.muenzen -= r.preis;
+  fortschritt.rute = i;
+  speichern();
+  renderGeld();
+  renderShop();
+  toast(r.de + ' gekauft!', `hält bis Kraft ${r.haelt.toFixed(1).replace('.', ',')}`, 3200);
+  tauscheRute().catch(e => console.warn('Rutenmodell', e));
 }
 function newEvening(){
   document.getElementById('report').style.display = 'none';
   docked = false;
-  state.bucket.length = 0;
-  renderBucket();
+  renderBucket();      // ein nicht verkaufter Fang bleibt im Eimer
   setTime(0);
   timePlay.on = true;
   if(timePlay.btn) timePlay.btn.textContent = '❚❚';
@@ -3520,21 +3732,38 @@ function updateFishing(dt, t){
       // Der Fisch zieht in Schüben
       state.surge -= dt;
       if(state.surge < 0) state.surge = 0.6 + Math.random() * 1.6;
+      // Die Rute entscheidet, wie heikel der Drill ist: haelt sie weniger aus als der
+      // Fisch zieht, steigt die Spannung entsprechend schneller. Eine bessere Rute holt
+      // ausserdem zuegiger ein.
+      const R = rute();
+      const zuStark = Math.max(1, f.power / R.haelt);
+      // Eine ueberlastete Rute laesst die Schnur nie ganz locker: sie steht dauerhaft
+      // unter Grundspannung. Erst das macht aus der besseren Rute einen Zugang statt
+      // nur Bequemlichkeit - ohne sie landet man mit Geduld auch jeden Thunfisch an der
+      // Einsteigerrute. Durchgerechnet (vorsichtiges Spiel): Scholle an allen Ruten,
+      // Zackenbarsch an allen (an der Einsteigerrute zaeh), Thunfisch erst ab der
+      // Weidenrute - an der Einsteigerrute reisst er.
+      const grundSpannung = Math.min(0.5, (zuStark - 1) * 0.45);
       const pull = state.surge > 0.35 ? 0 : (0.9 + f.power * 0.6);
       if(holdReel || pad.hold){
-        state.tension += dt * (0.32 + pull * 0.55);
-        state.progress += dt * (0.2 / f.power) * (pull ? 0.2 : 1);
+        state.tension += dt * (0.32 + pull * 0.55) * zuStark;
+        state.progress += dt * (0.2 / f.power) * R.einholen * (pull ? 0.2 : 1);
         play('Fishing_Reeling', {fade: 0.15});
       } else {
         state.tension -= dt * 0.55;
         state.progress -= dt * pull * 0.03;
         play('Fishing_Struggling', {fade: 0.15});
       }
-      state.tension = THREE.MathUtils.clamp(state.tension, 0, 1.2);
+      state.tension = THREE.MathUtils.clamp(state.tension, grundSpannung, 1.2);
       state.progress = THREE.MathUtils.clamp(state.progress, 0, 1);
       document.querySelector('#tension i').style.width = Math.min(100, state.tension * 100) + '%';
       document.querySelector('#progress i').style.width = state.progress * 100 + '%';
-      if(state.tension >= 1){ missed('Schnur gerissen!', 'Nicht so fest ziehen, wenn er kämpft.'); break; }
+      if(state.tension >= 1){
+        missed('Schnur gerissen!', f.power > rute().haelt
+          ? `Der war zu stark für die ${rute().de} – im Laden gibt es bessere.`
+          : 'Nicht so fest ziehen, wenn er kämpft.');
+        break;
+      }
       if(state.progress <= 0 && state.t > 3){ missed('Entwischt …', 'Der Fisch hat sich losgerissen.'); break; }
       // Der Fisch führt: er wird zum Boot gezogen und zappelt dabei. Der
       // Schwimmer hängt an ihm und macht seine Bewegung mit.
@@ -3661,7 +3890,7 @@ function planBite(retry){
   if(best && Math.random() < chance * 0.9 + 0.03 + lure){
     const f = best.fish.find(f => f.mode === 'school');
     f.mode = 'bait';
-    f.power = ['Tuna', 'Sunfish', 'Swordfish'].includes(best.species) ? 1.8 : best.species === 'CoralGrouper' || best.species === 'Turbot' ? 1.3 : 1;
+    f.power = SPECIES[best.species].kraft;      // steht jetzt in der Artentabelle
     state.fish = f;
     fishClip(f, 'Swimming_Impulse');
     state.t = 0;
@@ -4257,6 +4486,7 @@ addEventListener('resize', () => {
   buildFlies();
   buildCardFire().catch(e => console.warn('Kartenfeuer', e));
   renderBucket();
+  renderGeld();
   state.mode = 'fish';
   leaveFishing();
   for(const g of VR_OFF) setGroupVisible(g, false);
@@ -4288,7 +4518,7 @@ addEventListener('resize', () => {
   setupVR();
   renderer.setAnimationLoop(loop);   // Pflicht fuer WebXR, liefert auch die XR-Frames
 })().catch(e => { loadMsg.textContent = 'Fehler beim Laden: ' + e.message; console.error(e); });
-window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, clock, enterFishing, leaveFishing, cast, line, bobber, waveH, vr, VR_REFL, VR_REFL_SCALE, reflector, fitReflVR, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
+window.__fish = {setTime, plantsNear, animals, frogs, flies, THREE, renderer, scene, sun, state, whale, wake, wakeMesh, stepWhale: (dt) => updateWhale(dt, 0), depthAt: (x, z) => -meshH(x, z), get bones(){ return bones; }, get dbg(){ return {rowPoseRuns, rowPoseErr}; }, boat, schools, camera, cam, seat, rodTip, showAngler, showReport, fortschritt, RODS, SPECIES, rute, speichern, showBook, verkaufen, kaufeRute, tauscheRute, clock, enterFishing, leaveFishing, cast, line, bobber, waveH, vr, VR_REFL, VR_REFL_SCALE, reflector, fitReflVR, vrQuality, syncXRLayers, forestMask, FOREST_T, inForest, TREE_LOD, updateTreeLod, camWorld, VR_OFF, setGroupVisible, vrGroupMeshes, get rod(){ return rod; }, get oars(){ return oars; }, get actions(){ return actions; }};
 </script>
 </body>
 </html>
