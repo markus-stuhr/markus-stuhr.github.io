@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bente Sommer — Freie Illustratorin, Berlin</title>
+<meta name="description" content="Bente Sommer, freie Illustratorin in Berlin. Selbstständige künstlerische Tätigkeit: Buchillustration, Editorial, Character Design und freie Arbeiten.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --cream:#faf8f5; --warm:#f2ede6; --ink:#1c1a18; --ink-mid:#4a4540;
+  --ink-lt:#8a837a; --coral:#c8553d; --sage:#7a9e87; --line:rgba(28,26,24,.10);
+}
+html{scroll-behavior:smooth}
+body{background:var(--cream);color:var(--ink);font-family:'Inter',sans-serif;font-weight:300;line-height:1.75;overflow-x:hidden}
+img{display:block;max-width:100%}
+a{color:var(--coral)}
+
+nav{position:fixed;top:0;left:0;right:0;z-index:100;display:flex;justify-content:space-between;align-items:center;
+  height:60px;padding:0 5%;background:rgba(250,248,245,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line)}
+.nav-logo{font-family:'Cormorant Garamond',serif;font-size:1.2rem;letter-spacing:.04em}
+.nav-links{display:flex;gap:1.6rem;font-size:.82rem;letter-spacing:.06em;text-transform:uppercase}
+.nav-links a{color:var(--ink-mid);text-decoration:none;transition:color .2s}
+.nav-links a:hover{color:var(--coral)}
+@media(max-width:700px){.nav-links{display:none}}
+
+.wrap{max-width:980px;margin:0 auto;padding:0 5%}
+section{padding:5.5rem 0}
+section+section{border-top:1px solid var(--line)}
+.eyebrow{font-size:.72rem;letter-spacing:.22em;text-transform:uppercase;color:var(--coral);margin-bottom:1rem}
+h1{font-family:'Cormorant Garamond',serif;font-weight:300;font-size:clamp(2.6rem,7vw,4.6rem);line-height:1.05;letter-spacing:-.01em}
+h2{font-family:'Cormorant Garamond',serif;font-weight:300;font-size:clamp(1.9rem,4vw,2.8rem);line-height:1.15;margin-bottom:1.6rem}
+h3{font-family:'Inter',sans-serif;font-weight:500;font-size:.95rem;letter-spacing:.02em;margin-bottom:.4rem}
+p{color:var(--ink-mid);max-width:62ch}
+p+p{margin-top:1rem}
+
+/* Hero */
+.hero{padding-top:9rem;padding-bottom:4.5rem;display:grid;grid-template-columns:1.15fr .85fr;gap:3rem;align-items:center}
+.hero-sub{margin-top:1.6rem;font-size:1.05rem}
+.hero-meta{margin-top:2rem;display:flex;flex-wrap:wrap;gap:.5rem}
+.tag{font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-mid);
+  border:1px solid var(--line);border-radius:999px;padding:.35rem .85rem}
+.hero figure img{width:100%;border-radius:3px;box-shadow:0 18px 50px rgba(28,26,24,.12)}
+@media(max-width:780px){.hero{grid-template-columns:1fr;padding-top:7rem}}
+
+/* Karten */
+.grid{display:grid;gap:1.4rem;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.card{background:var(--warm);border-radius:4px;padding:1.6rem 1.5rem}
+.card p{font-size:.9rem;color:var(--ink-mid)}
+
+/* Ablauf */
+.steps{counter-reset:step;display:grid;gap:1.2rem;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.step{border-top:2px solid var(--sage);padding-top:1rem}
+.step::before{counter-increment:step;content:"0" counter(step);display:block;font-family:'Cormorant Garamond',serif;
+  font-size:1.6rem;color:var(--sage);line-height:1;margin-bottom:.4rem}
+.step p{font-size:.88rem}
+
+/* Galerie */
+.gallery{display:grid;gap:1.1rem;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));margin-top:2.4rem}
+.gallery figure{background:var(--warm);border-radius:3px;overflow:hidden}
+.gallery img{width:100%;height:240px;object-fit:cover;transition:transform .5s ease}
+.gallery figure:hover img{transform:scale(1.04)}
+.gallery figcaption{padding:.8rem 1rem 1rem;font-size:.82rem;color:var(--ink-mid)}
+.gallery figcaption strong{display:block;font-weight:500;color:var(--ink)}
+
+/* Zur Person */
+.bio{display:grid;gap:3rem;grid-template-columns:1.2fr .8fr;align-items:start}
+@media(max-width:780px){.bio{grid-template-columns:1fr;gap:2rem}}
+
+/* Fakten */
+.facts{display:grid;gap:1.6rem 2.5rem;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-top:2rem}
+.fact span{display:block;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--ink-lt);margin-bottom:.25rem}
+.fact strong{font-weight:400;color:var(--ink)}
+
+/* Kontakt */
+.mail{font-family:'Cormorant Garamond',serif;font-size:clamp(1.6rem,4.5vw,2.6rem);color:var(--coral);text-decoration:none;display:inline-block;margin-top:1rem}
+.mail:hover{text-decoration:underline}
+
+/* Impressum */
+#impressum{background:var(--warm)}
+#impressum p{font-size:.9rem}
+.legal{display:grid;gap:2rem;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:1.5rem}
+
+footer{padding:2.5rem 0;text-align:center;font-size:.8rem;color:var(--ink-lt);border-top:1px solid var(--line)}
+
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+.reveal.visible{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+</style>
+<script defer src="/analytics.js"></script>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">Bente Sommer</span>
+  <div class="nav-links">
+    <a href="#leistungen">Leistungen</a>
+    <a href="#ablauf">Ablauf</a>
+    <a href="#arbeiten">Arbeiten</a>
+    <a href="#person">Zur Person</a>
+    <a href="#kontakt">Kontakt</a>
+  </div>
+</nav>
+
+<header class="wrap hero">
+  <div>
+    <p class="eyebrow">Freiberufliche Illustration · Berlin</p>
+    <h1>Bente<br>Sommer</h1>
+    <p class="hero-sub">Ich arbeite selbstständig als freie Illustratorin. Handgezeichnete Bilder für
+      Buchverlage, Magazine und Agenturen — vom ersten Briefing bis zur druckfertigen Datei.</p>
+    <div class="hero-meta">
+      <span class="tag">Buchillustration</span>
+      <span class="tag">Editorial</span>
+      <span class="tag">Character Design</span>
+      <span class="tag">Auftragsarbeiten</span>
+    </div>
+  </div>
+  <figure>
+    <img src="./img/img4.png" alt="Illustration „Jamilla + The Tamarin“ von Bente Sommer">
+  </figure>
+</header>
+
+<section id="leistungen" class="wrap reveal">
+  <p class="eyebrow">Leistungsangebot</p>
+  <h2>Was ich anbiete</h2>
+  <p>Alle Leistungen werden erwerbsmäßig und auf eigene Rechnung erbracht — als Einzelauftrag
+    oder als laufende Zusammenarbeit über mehrere Motive hinweg.</p>
+  <div class="grid" style="margin-top:2.2rem">
+    <div class="card">
+      <h3>Buchillustration</h3>
+      <p>Illustrationen für Kinder- und Jugendbücher, Cover und Innenseiten — inklusive Figurenentwicklung und Szenenaufbau.</p>
+    </div>
+    <div class="card">
+      <h3>Editorial Illustration</h3>
+      <p>Bilder zu Texten für Magazine, Zeitungen und Online-Publikationen, abgestimmt auf Thema und Layout.</p>
+    </div>
+    <div class="card">
+      <h3>Character Design</h3>
+      <p>Entwicklung von Figuren inklusive Varianten, Mimik und Posen — als Grundlage für Serien, Bücher oder Animation.</p>
+    </div>
+    <div class="card">
+      <h3>Freie &amp; Auftragsarbeiten</h3>
+      <p>Individuelle Illustrationen für Plakate, Verpackungen, Merchandise und persönliche Projekte.</p>
+    </div>
+  </div>
+</section>
+
+<section id="ablauf" class="wrap reveal">
+  <p class="eyebrow">Zusammenarbeit</p>
+  <h2>Ablauf &amp; Konditionen</h2>
+  <p>Jedes Projekt beginnt mit einem Briefing und einem schriftlichen Angebot. Abgerechnet wird
+    projektbezogen; der Umfang der eingeräumten Nutzungsrechte wird im Angebot festgehalten.</p>
+  <div class="steps" style="margin-top:2.2rem">
+    <div class="step">
+      <h3>Briefing &amp; Angebot</h3>
+      <p>Inhalt, Format, Termin und Nutzungsumfang werden geklärt. Danach gibt es ein verbindliches Honorarangebot.</p>
+    </div>
+    <div class="step">
+      <h3>Skizzen</h3>
+      <p>Erste Bildideen als Skizzen zur Auswahl — eine Korrekturschleife ist im Honorar enthalten.</p>
+    </div>
+    <div class="step">
+      <h3>Ausarbeitung</h3>
+      <p>Die freigegebene Skizze wird zeichnerisch ausgearbeitet und koloriert.</p>
+    </div>
+    <div class="step">
+      <h3>Lieferung</h3>
+      <p>Druckfertige Dateien in der benötigten Auflösung, Rechnung und Rechteübertragung wie vereinbart.</p>
+    </div>
+  </div>
+  <div class="facts">
+    <div class="fact"><span>Honorar</span><strong>projektbezogen, auf Anfrage</strong></div>
+    <div class="fact"><span>Nutzungsrechte</span><strong>nach Umfang und Dauer</strong></div>
+    <div class="fact"><span>Arbeitsweise</span><strong>remote, deutschlandweit</strong></div>
+    <div class="fact"><span>Sprachen</span><strong>Deutsch, Englisch</strong></div>
+  </div>
+</section>
+
+<section id="arbeiten" class="wrap reveal">
+  <p class="eyebrow">Arbeitsproben</p>
+  <h2>Ausgewählte Arbeiten</h2>
+  <p>Eine Auswahl aus Auftrags- und freien Arbeiten. Das vollständige Portfolio gibt es auf Anfrage.</p>
+  <div class="gallery">
+    <figure><img src="./img/img2.jpg" alt="Collage" loading="lazy"><figcaption><strong>Collage</strong>Freie Arbeit</figcaption></figure>
+    <figure><img src="./img/img3.jpg" alt="MoMo" loading="lazy"><figcaption><strong>MoMo</strong>Character Design</figcaption></figure>
+    <figure><img src="./img/img8.jpg" alt="Gulp" loading="lazy"><figcaption><strong>Gulp</strong>Freie Arbeit</figcaption></figure>
+    <figure><img src="./img/img6.png" alt="Möwencrew" loading="lazy"><figcaption><strong>Möwencrew</strong>Buchillustration</figcaption></figure>
+    <figure><img src="./img/img9.jpg" alt="Ren + Lemon" loading="lazy"><figcaption><strong>Ren + Lemon</strong>Character Design</figcaption></figure>
+    <figure><img src="./img/img5.jpg" alt="49 Grad" loading="lazy"><figcaption><strong>49°</strong>Editorial</figcaption></figure>
+    <figure><img src="./img/img7.png" alt="Tamarine" loading="lazy"><figcaption><strong>Tamarine</strong>Illustration</figcaption></figure>
+    <figure><img src="./img/img10.jpg" alt="Illustration" loading="lazy"><figcaption><strong>Studie</strong>Freie Arbeit</figcaption></figure>
+  </div>
+</section>
+
+<section id="person" class="wrap reveal">
+  <p class="eyebrow">Zur Person</p>
+  <h2>Illustration mit Haltung</h2>
+  <div class="bio">
+    <div>
+      <p>Ich bin Bente Sommer, freie Illustratorin in Berlin. Meine Arbeit entsteht an der
+        Schnittstelle von Zeichnung, Farbe und Gefühl — handgezeichnet, mit einer eigenen
+        Bildsprache für jedes Projekt.</p>
+      <p>Von der ersten Skizze bis zum fertigen Bild begleite ich Projekte mit Sorgfalt und
+        Neugier. Auftraggeber sind Verlage, Redaktionen, Agenturen und Selbstständige.</p>
+      <p>Die künstlerische Tätigkeit übe ich selbstständig und erwerbsmäßig aus; sie ist nicht
+        nur gelegentlich, sondern bildet meine berufliche Grundlage.</p>
+      <div class="facts">
+        <div class="fact"><span>Tätigkeit</span><strong>Freie Illustratorin</strong></div>
+        <div class="fact"><span>Sitz</span><strong>Berlin</strong></div>
+        <div class="fact"><span>E-Mail</span><strong><a href="mailto:hello@bentesommer.de">hello@bentesommer.de</a></strong></div>
+        <div class="fact"><span>Instagram</span><strong><a href="https://instagram.com/bente_sommer" target="_blank" rel="noopener">@bente_sommer</a></strong></div>
+      </div>
+    </div>
+    <figure><img src="./img/img1.jpg" alt="Bente Sommer" loading="lazy" style="border-radius:3px"></figure>
+  </div>
+</section>
+
+<section id="kontakt" class="wrap reveal">
+  <p class="eyebrow">Kontakt</p>
+  <h2>Anfragen &amp; Aufträge</h2>
+  <p>Für Projektanfragen, Honorarangebote oder das vollständige Portfolio genügt eine kurze Mail.
+    Ich melde mich in der Regel innerhalb von zwei Werktagen.</p>
+  <a class="mail" href="mailto:hello@bentesommer.de">hello@bentesommer.de</a>
+</section>
+
+<section id="impressum">
+  <div class="wrap">
+    <p class="eyebrow">Rechtliches</p>
+    <h2>Impressum</h2>
+    <div class="legal">
+      <div>
+        <h3>Angaben gemäß § 5 TMG</h3>
+        <p>Bente Sommer<br>Wühlischstraße 39a<br>10245 Berlin</p>
+      </div>
+      <div>
+        <h3>Kontakt</h3>
+        <p><a href="mailto:hello@bentesommer.de">hello@bentesommer.de</a></p>
+      </div>
+      <div>
+        <h3>Urheberrecht</h3>
+        <p>Alle Bilder, Illustrationen und Texte dieser Website sind urheberrechtlich geschützt.
+          Das Copyright liegt bei Bente Sommer. Jede Verwertung bedarf der ausdrücklichen Genehmigung.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>© 2026 Bente Sommer — Alle Rechte vorbehalten.</footer>
+
+<script>
+  const reveals = [...document.querySelectorAll('.reveal')];
+  function checkReveals() {
+    for (const el of reveals) {
+      if (el.classList.contains('visible')) continue;
+      // sichtbar, sobald der Abschnitt den unteren Viewportrand erreicht oder bereits darueber liegt
+      if (el.getBoundingClientRect().top < window.innerHeight * 0.92) el.classList.add('visible');
+    }
+  }
+  checkReveals();
+  window.addEventListener('scroll', checkReveals, { passive: true });
+  window.addEventListener('resize', checkReveals);
+  window.addEventListener('load', checkReveals);
+</script>
+</body>
+</html>
