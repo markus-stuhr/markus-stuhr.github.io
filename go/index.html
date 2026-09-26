@@ -11,8 +11,10 @@
   body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, system-ui, sans-serif;
          min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:16px; }
   h1 { margin:4px 0 12px; font-weight:600; letter-spacing:.08em; }
-  .wrap { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; align-items:flex-start; width:100%; max-width:1100px; }
-  canvas { width:min(92vw, 640px); height:min(92vw, 640px); border-radius:6px; box-shadow:0 10px 40px #0008; cursor:pointer; touch-action:manipulation; }
+  body { height:100vh; overflow:hidden; padding:12px 16px; }
+  h1 { margin:0 0 8px; font-size:22px; }
+  .wrap { display:flex; gap:16px; justify-content:center; align-items:flex-start; width:100%; flex:1; min-height:0; }
+  canvas { --s: min(calc(100vw - 360px), calc(100vh - 70px)); width:var(--s); height:var(--s); flex:none; border-radius:6px; box-shadow:0 10px 40px #0008; cursor:pointer; touch-action:manipulation; }
   .panel { background:var(--panel); border-radius:10px; padding:16px; width:min(92vw, 300px); display:flex; flex-direction:column; gap:12px; }
   label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
   select, button { width:100%; padding:9px 10px; border-radius:7px; border:1px solid #4a443b; background:#3a352e; color:var(--text); font-size:14px; }
@@ -24,6 +26,19 @@
   .caps { font-size:13px; color:var(--muted); line-height:1.6; }
   .dot { display:inline-block; width:11px; height:11px; border-radius:50%; vertical-align:-1px; margin-right:4px; }
   .b { background:#111; border:1px solid #666; } .w { background:#f4f4f0; }
+  table.sc { width:100%; border-collapse:collapse; font-size:13px; }
+  table.sc th, table.sc td { padding:3px 4px; text-align:right; white-space:nowrap; }
+  table.sc td.note { white-space:normal; }
+  table.sc th:first-child, table.sc td:first-child { text-align:left; color:var(--muted); font-weight:400; }
+  table.sc tr.tot td { border-top:1px solid #4a443b; font-weight:700; color:var(--text); font-size:15px; }
+  table.sc td.note { color:var(--muted); font-size:11px; text-align:left; }
+  .panel { max-height:calc(100vh - 70px); overflow:auto; }
+  @media (max-width: 760px) {
+    body { height:auto; overflow:auto; }
+    .wrap { flex-direction:column; align-items:center; }
+    canvas { --s: min(calc(100vw - 32px), calc(100vh - 60px)); }
+    .panel { width:100%; max-width:640px; max-height:none; }
+  }
   .hint { font-size:12px; color:var(--muted); line-height:1.5; }
 </style>
 </head>
@@ -116,16 +131,17 @@ function isEye(b, p, c) {
   }
   return edge ? bad === 0 : bad < 2;
 }
-function score(b) {
-  const s = [0, 0, KOMI], seen = new Uint8Array(N*N);
+function score(b, det) {
+  const s = [0, 0, KOMI], st0 = [0, 0, 0], ter = [0, 0, 0], seen = new Uint8Array(N*N);
   for (let i = 0; i < N*N; i++) {
-    if (b[i]) { s[b[i]]++; continue; }
+    if (b[i]) { s[b[i]]++; st0[b[i]]++; continue; }
     if (seen[i]) continue;
     const st = [i], reg = [i]; seen[i] = 1; let touch = 0;
     while (st.length) { const q = st.pop(); for (const r of nbr[q]) {
       if (b[r] === 0 && !seen[r]) { seen[r] = 1; st.push(r); reg.push(r); } else if (b[r]) touch |= b[r]; } }
-    if (touch === 1 || touch === 2) s[touch] += reg.length;
+    if (touch === 1 || touch === 2) { s[touch] += reg.length; ter[touch] += reg.length; }
   }
+  if (det) { s.stones = st0; s.ter = ter; }
   return s;
 }
 
@@ -238,7 +254,7 @@ function next() {
 }
 const names = ['', 'Schwarz', 'Weiß'];
 function update() {
-  const m = $('mode').value, s = score(B);
+  const m = $('mode').value, s = score(B, true);
   let st;
   if (over) {
     const w = s[1] > s[2] ? 1 : 2;
@@ -249,7 +265,16 @@ function update() {
     if (passes === 1) st += '<br><small>Gegner hat gepasst.</small>';
   }
   $('status').innerHTML = st;
-  $('caps').innerHTML = `<span class="dot b"></span>Schwarz: ${s[1]} Punkte · ${caps[1]} gefangen<br><span class="dot w"></span>Weiß: ${s[2]} Punkte (inkl. ${KOMI} Komi) · ${caps[2]} gefangen`;
+  const d = s[1] - s[2];
+  $('caps').innerHTML = `<table class="sc">
+    <tr><th></th><th><span class="dot b"></span>Schwarz</th><th><span class="dot w"></span>Weiß</th></tr>
+    <tr><td>Steine auf dem Brett</td><td>${s.stones[1]}</td><td>${s.stones[2]}</td></tr>
+    <tr><td>Gebiet (umschlossen)</td><td>${s.ter[1]}</td><td>${s.ter[2]}</td></tr>
+    <tr><td>Komi</td><td>–</td><td>${KOMI}</td></tr>
+    <tr class="tot"><td>Summe</td><td>${s[1]}</td><td>${s[2]}</td></tr>
+    <tr><td>Gefangene Steine</td><td>${caps[1]}</td><td>${caps[2]}</td></tr>
+    <tr><td colspan="3" class="note">Neutral/umstritten: ${N*N - s.stones[1] - s.stones[2] - s.ter[1] - s.ter[2]} Punkte · Stand: ${d === 0 ? 'ausgeglichen' : (d > 0 ? 'Schwarz' : 'Weiß') + ' vorn um ' + Math.abs(d)}<br>Gefangene zählen bei Flächenzählung nicht extra – sie stecken schon im Gebiet.</td></tr>
+  </table>`;
   $('pass').disabled = over || !isHuman(turn);
   $('undo').disabled = m === 'aa' || !history.length;
 }
