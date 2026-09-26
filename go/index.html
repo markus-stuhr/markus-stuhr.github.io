@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Go</title>
+<script defer src="/analytics.js"></script>
+<style>
+  :root { --bg:#1c1a17; --panel:#2a2621; --text:#eee6d8; --muted:#a89f90; --accent:#d9a441; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, system-ui, sans-serif;
+         min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:16px; }
+  h1 { margin:4px 0 12px; font-weight:600; letter-spacing:.08em; }
+  .wrap { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; align-items:flex-start; width:100%; max-width:1100px; }
+  canvas { width:min(92vw, 640px); height:min(92vw, 640px); border-radius:6px; box-shadow:0 10px 40px #0008; cursor:pointer; touch-action:manipulation; }
+  .panel { background:var(--panel); border-radius:10px; padding:16px; width:min(92vw, 300px); display:flex; flex-direction:column; gap:12px; }
+  label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
+  select, button { width:100%; padding:9px 10px; border-radius:7px; border:1px solid #4a443b; background:#3a352e; color:var(--text); font-size:14px; }
+  button { cursor:pointer; } button:hover { background:#4a443b; }
+  button.primary { background:var(--accent); color:#1c1a17; border:none; font-weight:600; }
+  button:disabled { opacity:.4; cursor:default; }
+  .row { display:flex; gap:8px; }
+  .status { font-size:15px; min-height:44px; line-height:1.4; }
+  .caps { font-size:13px; color:var(--muted); line-height:1.6; }
+  .dot { display:inline-block; width:11px; height:11px; border-radius:50%; vertical-align:-1px; margin-right:4px; }
+  .b { background:#111; border:1px solid #666; } .w { background:#f4f4f0; }
+  .hint { font-size:12px; color:var(--muted); line-height:1.5; }
+</style>
+</head>
+<body>
+<h1>碁 GO</h1>
+<div class="wrap">
+  <canvas id="c"></canvas>
+  <div class="panel">
+    <div><label>Modus</label>
+      <select id="mode">
+        <option value="hb">Du (Schwarz) gegen KI</option>
+        <option value="hw">Du (Weiß) gegen KI</option>
+        <option value="aa">KI gegen KI zuschauen</option>
+      </select></div>
+    <div class="row">
+      <div style="flex:1"><label id="lvlBLabel">KI-Stärke</label>
+        <select id="lvlB"><option value="0">Anfänger</option><option value="1" selected>Mittel</option><option value="2">Stark</option></select></div>
+      <div style="flex:1" id="lvlWBox"><label>KI Weiß</label>
+        <select id="lvlW"><option value="0">Anfänger</option><option value="1">Mittel</option><option value="2" selected>Stark</option></select></div>
+    </div>
+    <div><label>Brettgröße</label>
+      <select id="size"><option value="9">9 × 9</option><option value="13">13 × 13</option></select></div>
+    <button class="primary" id="newg">Neues Spiel</button>
+    <div class="status" id="status"></div>
+    <div class="caps" id="caps"></div>
+    <div class="row">
+      <button id="pass">Passen</button>
+      <button id="undo">Zurück</button>
+    </div>
+    <div id="speedBox"><label>Tempo (KI gegen KI)</label>
+      <select id="speed"><option value="1200">Langsam</option><option value="500" selected>Normal</option><option value="80">Schnell</option></select></div>
+    <div class="hint">Regeln: Flächenzählung (Steine + umschlossenes Gebiet), Komi 6,5 für Weiß, Ko und Selbstmord verboten. Zwei Pässe hintereinander beenden das Spiel. Tote Steine werden nicht entfernt – also spiel es aus.</div>
+  </div>
+</div>
+<script>
+'use strict';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = id => document.getElementById(id);
+let N, B, ko, turn, passes, caps, history, over, lastMove, thinking, timer, gameId = 0;
+let nbr; // neighbor lists
+const KOMI = 6.5;
+
+// ---------- Regeln ----------
+function setup(n) {
+  N = n; B = new Int8Array(N*N); ko = -1; turn = 1; passes = 0; caps = [0,0,0];
+  history = []; over = false; lastMove = -1;
+  nbr = [];
+  for (let i = 0; i < N*N; i++) {
+    const x = i % N, y = (i / N) | 0, a = [];
+    if (x > 0) a.push(i-1); if (x < N-1) a.push(i+1);
+    if (y > 0) a.push(i-N); if (y < N-1) a.push(i+N);
+    nbr.push(a);
+  }
+}
+// Gruppe + Freiheiten
+const mark = new Int32Array(19*19); let stamp = 1;
+function group(b, p) {
+  const c = b[p], st = [p], g = [p]; let libs = 0; const s = ++stamp, ls = ++stamp;
+  mark[p] = s;
+  while (st.length) {
+    const q = st.pop();
+    for (const r of nbr[q]) {
+      if (b[r] === c && mark[r] !== s) { mark[r] = s; st.push(r); g.push(r); }
+      else if (b[r] === 0 && mark[r] !== s && mark[r] !== ls) { mark[r] = ls; libs++; }
+    }
+  }
+  return { g, libs };
+}
+// spielt Zug auf b; gibt Anzahl gefangener Steine zurück oder -1 wenn illegal. koRef = [ko]
+function play(b, p, c, koRef) {
+  if (b[p] !== 0 || p === koRef[0]) return -1;
+  b[p] = c; const o = 3 - c; let cap = 0, capPos = -1;
+  for (const r of nbr[p]) if (b[r] === o) {
+    const G = group(b, r);
+    if (G.libs === 0) { cap += G.g.length; if (G.g.length === 1) capPos = r; for (const q of G.g) b[q] = 0; }
+  }
+  const me = group(b, p);
+  if (me.libs === 0) { b[p] = 0; return -1; }
+  koRef[0] = (cap === 1 && me.g.length === 1 && me.libs === 1) ? capPos : -1;
+  return cap;
+}
+function isEye(b, p, c) {
+  for (const r of nbr[p]) if (b[r] !== c) return false;
+  // diagonale Prüfung (falsches Auge)
+  const x = p % N, y = (p / N) | 0; let bad = 0, edge = 0;
+  for (const [dx, dy] of [[1,1],[1,-1],[-1,1],[-1,-1]]) {
+    const X = x+dx, Y = y+dy;
+    if (X < 0 || Y < 0 || X >= N || Y >= N) { edge = 1; continue; }
+    if (b[Y*N+X] === 3-c) bad++;
+  }
+  return edge ? bad === 0 : bad < 2;
+}
+function score(b) {
+  const s = [0, 0, KOMI], seen = new Uint8Array(N*N);
+  for (let i = 0; i < N*N; i++) {
+    if (b[i]) { s[b[i]]++; continue; }
+    if (seen[i]) continue;
+    const st = [i], reg = [i]; seen[i] = 1; let touch = 0;
+    while (st.length) { const q = st.pop(); for (const r of nbr[q]) {
+      if (b[r] === 0 && !seen[r]) { seen[r] = 1; st.push(r); reg.push(r); } else if (b[r]) touch |= b[r]; } }
+    if (touch === 1 || touch === 2) s[touch] += reg.length;
+  }
+  return s;
+}
+
+// ---------- KI ----------
+function heuristic(p, c, level) {
+  // Bewertet Zug p für Farbe c auf dem aktuellen Brett, -Infinity wenn illegal
+  const b = B.slice(), kr = [ko]; const cap = play(b, p, c, kr);
+  if (cap < 0) return -Infinity;
+  if (isEye(B, p, c)) return -1000;
+  const o = 3 - c; let v = cap * 12;
+  const me = group(b, p);
+  if (me.libs === 1) v -= 8 * me.g.length + 6;             // Selbst-Atari
+  else if (me.libs === 2) v -= 1;
+  // eigene Gruppen in Atari retten
+  for (const r of nbr[p]) if (B[r] === c) {
+    const G = group(B, r); if (G.libs === 1 && me.libs > 1) v += 10 * G.g.length;
+  }
+  // Gegner in Atari setzen
+  for (const r of nbr[p]) if (b[r] === o) { const G = group(b, r); if (G.libs === 1) v += 3 + G.g.length; else if (G.libs === 2) v += 0.5; }
+  // Position
+  const x = p % N, y = (p / N) | 0, line = Math.min(x, y, N-1-x, N-1-y);
+  let stones = 0; for (let i = 0; i < N*N; i++) if (B[i]) stones++;
+  if (stones < N*N/5) { v += [-3, 0, 2, 2.2, 1][Math.min(line, 4)] || 0.5; }
+  else if (line === 0) v -= 1;
+  // Nähe zu Steinen
+  let near = 0;
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    const X = x+dx, Y = y+dy; if (X < 0 || Y < 0 || X >= N || Y >= N) continue;
+    const q = B[Y*N+X]; if (q) near += (Math.abs(dx)+Math.abs(dy) <= 2 ? 1 : 0.4) * (q === o ? 0.6 : 0.3);
+  }
+  v += Math.min(near, 3) * (stones < 4 ? 0 : 0.5);
+  // Gebiet: leere Nachbarn umgeben von eigenen Steinen -> weniger wert (eigenes Gebiet füllen)
+  let own = 0; for (const r of nbr[p]) if (B[r] === c) own++;
+  if (own >= 3) v -= 3;
+  return v + Math.random() * (level === 0 ? 8 : 1.2);
+}
+function candidates(c, level) {
+  const list = [];
+  for (let p = 0; p < N*N; p++) if (B[p] === 0) {
+    const v = heuristic(p, c, level); if (v > -Infinity && v > -500) list.push({ p, v });
+  }
+  list.sort((a, b) => b.v - a.v);
+  return list;
+}
+function playout(b, c, koRef) {
+  let pass = 0, moves = 0; const max = N*N*3, empt = [];
+  while (pass < 2 && moves < max) {
+    empt.length = 0; for (let i = 0; i < N*N; i++) if (b[i] === 0) empt.push(i);
+    let played = false;
+    while (empt.length) {
+      const k = (Math.random() * empt.length) | 0, p = empt[k];
+      empt[k] = empt[empt.length-1]; empt.pop();
+      if (isEye(b, p, c)) continue;
+      if (play(b, p, c, koRef) >= 0) { played = true; break; }
+    }
+    pass = played ? 0 : pass + 1; c = 3 - c; moves++;
+  }
+  return score(b);
+}
+function mcMove(c) {
+  const cand = candidates(c, 2).slice(0, N === 9 ? 18 : 14);
+  if (!cand.length) return -1;
+  const budget = N === 9 ? 5000 : 2200, stats = cand.map(() => ({ w: 0, n: 0 }));
+  for (let t = 1; t <= budget; t++) {
+    let bi = 0, bv = -1;
+    for (let i = 0; i < cand.length; i++) {
+      const s = stats[i];
+      const u = s.n === 0 ? 1e9 + cand[i].v : s.w / s.n + Math.sqrt(1.4 * Math.log(t) / s.n);
+      if (u > bv) { bv = u; bi = i; }
+    }
+    const b = B.slice(), kr = [ko];
+    play(b, cand[bi].p, c, kr);
+    const sc = playout(b, 3 - c, kr);
+    stats[bi].n++; if (sc[c] > sc[3-c]) stats[bi].w++;
+  }
+  let best = 0; for (let i = 1; i < cand.length; i++) if (stats[i].n > stats[best].n) best = i;
+  const wr = stats[best].w / stats[best].n;
+  // Passen, wenn Gegner gepasst hat und wir vorn liegen, oder wenn aussichtslos spät im Spiel
+  const sNow = score(B);
+  if (passes > 0 && sNow[c] > sNow[3-c]) return -1;
+  if (wr < 0.03 && emptyCount() < N*N*0.25) return -1;
+  return cand[best].p;
+}
+function emptyCount() { let e = 0; for (let i = 0; i < N*N; i++) if (!B[i]) e++; return e; }
+function aiMove(c, level) {
+  if (level === 2) return mcMove(c);
+  const cand = candidates(c, level);
+  if (!cand.length) return -1;
+  if (passes > 0) { const s = score(B); if (s[c] > s[3-c]) return -1; }
+  if (cand[0].v < (level === 0 ? -5 : 0.5) && emptyCount() < N*N*0.4) return -1;
+  return cand[0].p;
+}
+
+// ---------- Spielablauf ----------
+function isHuman(c) { const m = $('mode').value; return (m === 'hb' && c === 1) || (m === 'hw' && c === 2); }
+function levelOf(c) { const m = $('mode').value; return +(m === 'aa' ? (c === 1 ? $('lvlB').value : $('lvlW').value) : $('lvlB').value); }
+function doMove(p) {
+  history.push({ B: B.slice(), ko, turn, passes, caps: caps.slice(), lastMove });
+  if (p < 0) { passes++; lastMove = -1; }
+  else { const kr = [ko]; const cap = play(B, p, turn, kr); ko = kr[0]; caps[turn] += cap; passes = 0; lastMove = p; }
+  if (passes >= 2) over = true;
+  turn = 3 - turn; draw(); update(); next();
+}
+function next() {
+  clearTimeout(timer);
+  if (over || isHuman(turn)) return;
+  thinking = true; update();
+  const id = gameId, delay = $('mode').value === 'aa' ? +$('speed').value : 250;
+  timer = setTimeout(() => { if (id !== gameId || over) return; const p = aiMove(turn, levelOf(turn)); thinking = false; doMove(p); }, delay);
+}
+const names = ['', 'Schwarz', 'Weiß'];
+function update() {
+  const m = $('mode').value, s = score(B);
+  let st;
+  if (over) {
+    const w = s[1] > s[2] ? 1 : 2;
+    st = `<b>Spielende.</b> ${names[w]} gewinnt mit ${Math.abs(s[1]-s[2])} Punkten.`;
+    if (m !== 'aa') st += isHuman(w) ? ' 🎉' : '';
+  } else {
+    st = `<span class="dot ${turn === 1 ? 'b' : 'w'}"></span>${names[turn]} ist am Zug` + (thinking ? ' – denkt …' : '');
+    if (passes === 1) st += '<br><small>Gegner hat gepasst.</small>';
+  }
+  $('status').innerHTML = st;
+  $('caps').innerHTML = `<span class="dot b"></span>Schwarz: ${s[1]} Punkte · ${caps[1]} gefangen<br><span class="dot w"></span>Weiß: ${s[2]} Punkte (inkl. ${KOMI} Komi) · ${caps[2]} gefangen`;
+  $('pass').disabled = over || !isHuman(turn);
+  $('undo').disabled = m === 'aa' || !history.length;
+}
+function newGame() {
+  gameId++; clearTimeout(timer); thinking = false;
+  setup(+$('size').value); resize(); update(); next();
+}
+function syncUI() {
+  const aa = $('mode').value === 'aa';
+  $('lvlWBox').style.display = aa ? '' : 'none';
+  $('lvlBLabel').textContent = aa ? 'KI Schwarz' : 'KI-Stärke';
+  $('speedBox').style.display = aa ? '' : 'none';
+}
+
+// ---------- Zeichnen ----------
+let px, cell, off;
+function resize() {
+  const dpr = window.devicePixelRatio || 1, r = cv.getBoundingClientRect();
+  px = Math.round(r.width * dpr); cv.width = cv.height = px;
+  cell = px / (N + 1); off = cell; draw();
+}
+let hover = -1;
+function draw() {
+  const g = ctx.createLinearGradient(0, 0, px, px);
+  g.addColorStop(0, '#e2b46a'); g.addColorStop(1, '#c9974c');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, px, px);
+  ctx.strokeStyle = '#3b2a14'; ctx.lineWidth = Math.max(1, px / 600);
+  for (let i = 0; i < N; i++) {
+    const a = off + i * cell;
+    ctx.beginPath(); ctx.moveTo(off, a); ctx.lineTo(off + (N-1)*cell, a); ctx.moveTo(a, off); ctx.lineTo(a, off + (N-1)*cell); ctx.stroke();
+  }
+  const hs = N === 9 ? [2, 4, 6] : [3, 6, 9];
+  ctx.fillStyle = '#3b2a14';
+  for (const x of hs) for (const y of hs) {
+    if (N === 9 && (x === 4) !== (y === 4)) continue;
+    ctx.beginPath(); ctx.arc(off + x*cell, off + y*cell, cell * 0.09, 0, 7); ctx.fill();
+  }
+  for (let p = 0; p < N*N; p++) if (B[p]) stone(p, B[p], 1);
+  if (hover >= 0 && !B[hover] && !over && isHuman(turn) && !thinking) stone(hover, turn, 0.45);
+  if (lastMove >= 0 && B[lastMove]) {
+    ctx.strokeStyle = B[lastMove] === 1 ? '#fff' : '#000'; ctx.lineWidth = cell * 0.06;
+    ctx.beginPath(); ctx.arc(off + (lastMove % N)*cell, off + ((lastMove / N)|0)*cell, cell * 0.2, 0, 7); ctx.stroke();
+  }
+}
+function stone(p, c, alpha) {
+  const x = off + (p % N) * cell, y = off + ((p / N) | 0) * cell, r = cell * 0.47;
+  ctx.globalAlpha = alpha;
+  if (alpha === 1) { ctx.fillStyle = '#0005'; ctx.beginPath(); ctx.arc(x + r*0.08, y + r*0.12, r, 0, 7); ctx.fill(); }
+  const g = ctx.createRadialGradient(x - r*0.35, y - r*0.35, r*0.1, x, y, r);
+  if (c === 1) { g.addColorStop(0, '#666'); g.addColorStop(1, '#0b0b0b'); }
+  else { g.addColorStop(0, '#fff'); g.addColorStop(1, '#cfcac0'); }
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+function pointAt(e) {
+  const r = cv.getBoundingClientRect(), s = px / r.width;
+  const x = Math.round(((e.clientX - r.left) * s - off) / cell), y = Math.round(((e.clientY - r.top) * s - off) / cell);
+  return x < 0 || y < 0 || x >= N || y >= N ? -1 : y * N + x;
+}
+cv.addEventListener('mousemove', e => { const p = pointAt(e); if (p !== hover) { hover = p; draw(); } });
+cv.addEventListener('mouseleave', () => { hover = -1; draw(); });
+cv.addEventListener('click', e => {
+  if (over || thinking || !isHuman(turn)) return;
+  const p = pointAt(e); if (p < 0) return;
+  const b = B.slice(); if (play(b, p, turn, [ko]) < 0) return;
+  hover = -1; doMove(p);
+});
+$('pass').onclick = () => { if (isHuman(turn) && !over) doMove(-1); };
+$('undo').onclick = () => {
+  gameId++; clearTimeout(timer); thinking = false;
+  // bis zum letzten eigenen Zug zurück
+  while (history.length) {
+    const h = history.pop(); B = h.B; ko = h.ko; turn = h.turn; passes = h.passes; caps = h.caps; lastMove = h.lastMove;
+    if (isHuman(turn)) break;
+  }
+  over = false; draw(); update(); next();
+};
+$('newg').onclick = newGame;
+$('mode').onchange = () => { syncUI(); newGame(); };
+$('size').onchange = newGame;
+window.addEventListener('resize', resize);
+syncUI(); newGame();
+</script>
+</body>
+</html>
