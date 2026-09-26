@@ -320,7 +320,7 @@ function draw() {
   }
 }
 function stone(p, c, alpha) {
-  const x = off + (p % N) * cell, y = off + ((p / N) | 0) * cell, r = cell * 0.47;
+  const x = off + (p % N) * cell, y = off + ((p / N) | 0) * cell, r = cell * 0.423;
   ctx.globalAlpha = alpha;
   if (alpha === 1) { ctx.fillStyle = '#0005'; ctx.beginPath(); ctx.arc(x + r*0.08, y + r*0.12, r, 0, 7); ctx.fill(); }
   const g = ctx.createRadialGradient(x - r*0.35, y - r*0.35, r*0.1, x, y, r);
