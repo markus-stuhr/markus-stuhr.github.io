@@ -50,6 +50,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { gsap, ui } from '/lib/ui.js';
 
@@ -68,15 +72,30 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 document.body.prepend(renderer.domElement);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 400);
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight); bloom.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
 });
 scene.add(new THREE.HemisphereLight(0x9ab8ff, 0x302040, 1.4));
 const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-sun.position.set(-20, 40, 10); scene.add(sun);
+sun.position.set(-20, 40, 10); scene.add(sun); scene.add(sun.target);
+// Schatten nur im Umkreis des Schiffs, dafür scharf
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -28, right: 28, top: 28, bottom: -28, near: 1, far: 120 });
+sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.03;
+
+// Bloom: nur sehr helle Dinge (Laser, Glühringe, Kristalle) leuchten nach
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.1, 0.45, 0.82);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 
 const world = new THREE.Group(); scene.add(world);
 
@@ -131,6 +150,7 @@ function makeTurret(heavy) {
     const tip = new THREE.Mesh(new THREE.SphereGeometry(0.13 * s, 6, 4), tGlow);
     tip.position.set(ox * s, oy * s, 1.65 * s); head.add(tip);
   }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   g.userData.head = head;
   return g;
 }
@@ -204,6 +224,7 @@ function buildTerrain() {
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
   terrain = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tileTex, vertexColors: true, flatShading: true, roughness: 0.85 }));
+  terrain.receiveShadow = true;
   world.add(terrain);
   scene.background = new THREE.Color(0x000000);
   scene.fog = new THREE.Fog(0x000000, 55, 95);
@@ -218,9 +239,29 @@ let crystalsTotal = 0, crystalsGot = 0, invuln = 0, fireCd = 0;
 const bullets = [], shots = [], sparks = [];
 
 const crystalGeo = new THREE.OctahedronGeometry(0.9);
-const bulletGeo = new THREE.SphereGeometry(0.25, 6, 4);
-const bulletMat = new THREE.MeshBasicMaterial({ color: 0xfff27a });
-const shotMat = new THREE.MeshBasicMaterial({ color: 0xff4040 });
+// Laser: überhellter Kern (Farbe > 1 triggert Bloom) + weicher additiver Glow-Sprite
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.3, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+const boltGeo = new THREE.CapsuleGeometry(0.09, 1.8, 3, 6).rotateX(Math.PI / 2);
+const boltMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 3.4, 1.2), toneMapped: false });
+const shotGeo = new THREE.SphereGeometry(0.22, 8, 6);
+const shotMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(5, 0.8, 0.5), toneMapped: false });
+const glowMatY = new THREE.SpriteMaterial({ map: glowTex, color: 0xffd060, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+const glowMatR = new THREE.SpriteMaterial({ map: glowTex, color: 0xff3020, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+function makeBolt() {
+  const m = new THREE.Mesh(boltGeo, boltMat), g = new THREE.Sprite(glowMatY);
+  g.scale.set(1.3, 1.3, 1); m.add(g); return m;
+}
+function makeShot() {
+  const m = new THREE.Mesh(shotGeo, shotMat), g = new THREE.Sprite(glowMatR);
+  g.scale.set(1.8, 1.8, 1); m.add(g); return m;
+}
+const muzzle = new THREE.PointLight(0xffd070, 0, 14, 1.5);
 const sparkGeo = new THREE.TetrahedronGeometry(0.3);
 
 function wrapZ(z) { return ((z % LEN) + LEN) % LEN - LEN; }   // Weltz -> Gelände-z in [-LEN,0)
@@ -352,16 +393,18 @@ function update(dt) {
 
   camera.position.set(px * 0.6, ship.position.y + 20, pz + 9);
   camera.lookAt(px * 0.8, ship.position.y - 2, pz - 10);
-  sun.position.set(px - 20, 40, pz + 10); sun.target.position.set(px, 0, pz); sun.target.updateMatrixWorld();
+  sun.position.set(px - 14, ship.position.y + 40, pz + 4); sun.target.position.set(px, 0, pz); sun.target.updateMatrixWorld();
 
   // Feuern
   if (k.fire && fireCd <= 0 && ammo > 0.005) {
     fireCd = 0.14; ammo -= 0.008;
     for (const s of [-0.7, 0.7]) {
-      const m = new THREE.Mesh(bulletGeo, bulletMat);
+      const m = makeBolt();
       m.position.set(px + s, ship.position.y + 0.3, pz - 1.5); scene.add(m);
       bullets.push({ mesh: m, life: 1.1 });
     }
+    muzzle.position.set(px, ship.position.y + 0.5, pz - 2);
+    gsap.fromTo(muzzle, { intensity: 40 }, { intensity: 0, duration: 0.12, overwrite: true });
   }
   for (let i = bullets.length - 1; i >= 0; i--) {
     const b = bullets[i]; b.life -= dt; b.mesh.position.z -= (speed + 50) * dt;
@@ -410,7 +453,7 @@ function update(dt) {
       o.cd -= dt;
       if (o.cd <= 0 && z < pz - 6 && z > pz - 70) {
         o.cd = (o.heavy ? 1.1 : 1.8) - level * 0.06 + Math.random();
-        const m = new THREE.Mesh(bulletGeo, shotMat);
+        const m = makeShot();
         m.position.copy(o.mesh.position).y += o.heavy ? 1.6 : 1.3; scene.add(m);
         gsap.fromTo(o.mesh.userData.head.position, { z: -0.35 }, { z: 0, duration: 0.3, ease: 'power2.out' });
         const lead = ship.position.clone(); lead.z -= speed * 0.6; lead.x += vx * 0.6;
@@ -450,14 +493,15 @@ let last = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (ship) { update(dt); if (state !== 'menu') updateHud(); }
-  renderer.render(scene, camera);
+  composer.render();
   requestAnimationFrame(loop);
 }
 
 // Start
 const startBtn = $('start');
 await loadAll();
-ship = inst('ship'); world.add(ship);
+ship = inst('ship'); world.add(ship); scene.add(muzzle);
+ship.traverse(o => { if (o.isMesh) o.castShadow = true; });
 seed = 7919 + 13; initNoise(); buildTerrain();
 ship.position.set(0, height(0, 0) + 1.6, 0); ship.rotation.y = SHIP_YAW;
 camera.position.set(0, 12, 13); camera.lookAt(0, 0, -12);
