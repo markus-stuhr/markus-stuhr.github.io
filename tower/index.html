@@ -234,22 +234,40 @@ addEventListener('resize', ()=>{
   renderer.setSize(innerWidth, innerHeight);
   fitCamera();
 });
-// Feste Kamera: leicht schraeg von oben, Insel immer mittig und ganz im Bild
+// Feste Kamera: leicht schraeg von oben. Die Insel wird in den freien
+// Bereich zwischen oberer und unterer Leiste eingepasst — die Leisten
+// liegen ueber dem Wasser, nicht ueber dem Spielfeld.
 const CAM_ELEV = 55 * Math.PI/180;
-const ISLAND_R = 13.6;
+const ISLAND_R = 13.4;
+const _pp = new THREE.Vector3();
 function fitCamera(){
-  const vf = camera.fov * Math.PI/180 / 2;
-  const hf = Math.atan(Math.tan(vf) * camera.aspect);
-  // Die Insel ist eine flache Scheibe: in der Hoehe sieht man sie verkuerzt.
-  // Oben und unten liegen Leisten, deshalb dort nur ~78 % der Hoehe nutzen.
-  const dV = ISLAND_R * Math.sin(CAM_ELEV) / Math.tan(vf * 0.86);
-  const dH = ISLAND_R / Math.tan(hf * 0.96);
-  const d = Math.max(dV, dH) * 0.88;
-  controls.target.set(0, 0, 0.6);
-  camera.position.set(0, Math.sin(CAM_ELEV) * d, 0.6 + Math.cos(CAM_ELEV) * d);
-  camera.lookAt(controls.target);
-  scene.fog.near = d * 0.9;
-  scene.fog.far = d * 2.6;
+  const W = innerWidth, H = innerHeight;
+  const top = document.getElementById('top').offsetHeight + 6;
+  const bot = document.getElementById('bottom').offsetHeight + 6;
+  const side = 10;
+  // Bildausschnitt so verschieben, dass die Bildmitte in der Mitte des freien Bereichs liegt
+  camera.setViewOffset(W, H, 0, (bot - top)/2, W, H);
+  camera.updateProjectionMatrix();
+  // Grenzen des freien Bereichs in NDC (nach der Verschiebung)
+  // project() rechnet den Versatz schon mit ein: direkt Bildschirmgrenzen
+  const lim = {x:1 - 2*side/W, yTop:1 - 2*top/H, yBot:-1 + 2*bot/H};
+  const fits = d => {
+    camera.position.set(0, Math.sin(CAM_ELEV)*d, Math.cos(CAM_ELEV)*d);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    for(let i = 0; i < 36; i++){
+      const a = i/36*Math.PI*2;
+      _pp.set(Math.cos(a)*ISLAND_R, 0, Math.sin(a)*ISLAND_R).project(camera);
+      if(Math.abs(_pp.x) > lim.x || _pp.y > lim.yTop || _pp.y < lim.yBot) return false;
+    }
+    return true;
+  };
+  let lo = 5, hi = 400;
+  for(let i = 0; i < 30; i++){ const m = (lo + hi)/2; fits(m) ? hi = m : lo = m; }
+  fits(hi);
+  controls.target.set(0, 0, 0);
+  scene.fog.near = hi * 0.9;
+  scene.fog.far = hi * 2.6;
 }
 
 // --- Laden --------------------------------------------------------------
