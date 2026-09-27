@@ -59,6 +59,7 @@ canvas{display:block;touch-action:none}
   <div class="chip">Welle <b id="wave">0</b>/<span id="waves">20</span></div>
   <div class="chip" id="mapno" title="Kartennummer — steht in der URL, zum Teilen">🗺 #<span id="seed"></span></div>
   <div class="spacer"></div>
+  <button class="btn" id="mute" title="Ton an/aus">🔊</button>
   <button class="btn" id="speed">▶ ×1</button>
   <button class="btn" id="next">⚔ Welle starten</button>
 </div>
@@ -278,6 +279,62 @@ function fitCamera(){
   scene.fog.near = hi * 0.9;
   scene.fog.far = hi * 2.6;
 }
+
+// --- Ton --------------------------------------------------------------
+// Kenney-Sounds (CC0), Web Audio. Browser erlauben Ton erst nach der ersten
+// Beruehrung, deshalb wird der Kontext beim ersten Klick/Tastendruck geweckt.
+const SFX = {
+  arrow:['drawKnife1','drawKnife2','drawKnife3'],
+  hit:['impactWood_light_000','impactWood_light_001','impactWood_light_002'],
+  magic:['impactGlass_light_000','impactGlass_light_001'],
+  launch:['creak1','creak2'],
+  boom:['impactMining_000','impactMining_001','impactMining_002'],
+  die:['impactWood_medium_000','impactWood_medium_001','impactWood_medium_002'],
+  chop:['impactPlank_medium_000','impactPlank_medium_001'],
+  wallBreak:['impactWood_heavy_000','impactWood_heavy_001'],
+  build:['impactWood_heavy_002'],
+  coin:['handleCoins','handleCoins2'],
+  upgrade:['confirmation_002'],
+  click:['click_002'], error:['error_004'], select:['select_002'],
+  leak:['impactBell_heavy_000'],
+  land:['impactSoft_medium_000','impactSoft_medium_001','impactSoft_medium_002'],
+  castle:['impactPlate_heavy_000'],
+  wave:['jingles_PIZZI03'], clear:['jingles_PIZZI10'], win:['jingles_PIZZI07'], lose:['jingles_PIZZI16'],
+};
+const actx = new (window.AudioContext || window.webkitAudioContext)();
+const master = actx.createGain();
+master.connect(actx.destination);
+let muted = false;
+try { muted = localStorage.getItem('tower-muted') === '1'; } catch(e){}
+master.gain.value = muted ? 0 : 0.8;
+const buffers = {};
+const lastPlay = {};
+function loadSounds(){
+  const names = [...new Set(Object.values(SFX).flat())];
+  return Promise.all(names.map(n => fetch('sfx/' + n + '.ogg')
+    .then(r => r.arrayBuffer()).then(b => actx.decodeAudioData(b))
+    .then(buf => { buffers[n] = buf; }).catch(()=>{})));
+}
+function sfx(name, vol = 1, {pitch = 0.08, gap = 0.045} = {}){
+  if(muted || actx.state !== 'running') return;
+  // gleiche Sounds nicht im selben Augenblick stapeln (Tempo x3, viele Pfeile)
+  const now = actx.currentTime;
+  if(lastPlay[name] && now - lastPlay[name] < gap) return;
+  lastPlay[name] = now;
+  const list = SFX[name];
+  const buf = buffers[list[Math.floor(Math.random()*list.length)]];
+  if(!buf) return;
+  const src = actx.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = 1 + (Math.random()*2 - 1) * pitch;
+  const g = actx.createGain();
+  g.gain.value = vol;
+  src.connect(g).connect(master);
+  src.start();
+}
+const wakeAudio = ()=>{ if(actx.state !== 'running') actx.resume(); };
+addEventListener('pointerdown', wakeAudio, true);
+addEventListener('keydown', wakeAudio, true);
 
 // --- Laden --------------------------------------------------------------
 const loader = new GLTFLoader();
@@ -770,6 +827,7 @@ function updateEnemy(e, dt){
         e.actor.play('Melee_1H_Attack_Chop', {once:true, fade:.1});
         e.attackT = 1.1 / slow;
         damageWall(w, e.def.dmg);
+        sfx('chop', 0.3, {pitch:.15, gap:.08});
       }
     } else {
       if(e.state !== 'walk'){ e.state = 'walk'; e.actor.play(e.def.walk, {speed:e.def.walkSpeed}); }
@@ -809,6 +867,8 @@ function hurt(e, dmg, pierce = false){
   if(e.hp <= 0){
     e.alive = false;
     e.hp = 0;
+    sfx('die', 0.45, {pitch:.15});
+    sfx('coin', 0.15, {gap:.12});
     e.actor.play(Math.random() < .5 ? 'Death_A' : 'Death_B', {once:true, fade:.1});
     state.gold += e.def.gold;
     floatText(e.pos, '+' + e.def.gold);
@@ -822,6 +882,7 @@ function leak(e){
   world.remove(e.actor.o); e.bar.visible = false;
   state.lives = Math.max(0, state.lives - e.def.lives);
   flash();
+  sfx('leak', 0.6);
   updateHud();
   if(state.lives <= 0) gameOver();
 }
@@ -930,6 +991,7 @@ function removeWall(w, broken){
   w.cell.wall = null;
   if(broken){
     burst(w.pos.clone().setY(.5), 0x9a8f80, 14);
+    sfx('wallBreak', 0.8);
     gsap.to(w.o.position, {y:-1.3, duration:.6, ease:'power2.in', onComplete:()=>world.remove(w.o)});
   } else world.remove(w.o);
   if(state.selected === w) select(null);
@@ -973,10 +1035,12 @@ function updateTower(t, dt){
   t.cd = 1 / d.rate[L];
   if(t.type === 'archer'){
     t.unit.play('Ranged_Bow_Release', {once:true, fade:.05, speed:1.6});
+    sfx('arrow', 0.35);
     shoot({kind:'arrow', from:new THREE.Vector3(t.pos.x, t.topY + 0.45, t.pos.z), target:e, dmg:d.dmg[L], speed:13});
   } else if(t.type === 'mage'){
     const from = t.orb.getWorldPosition(new THREE.Vector3());
     gsap.fromTo(t.orb.scale, {x:2.2, y:2.2, z:2.2}, {x:1.3, y:1.3, z:1.3, duration:.35});
+    sfx('magic', 0.3, {pitch:.15});
     shoot({kind:'orb', from, target:e, dmg:d.dmg[L], speed:8, slow:d.slow[L]});
   } else if(t.type === 'catapult'){
     const T = 1.15;
@@ -987,6 +1051,7 @@ function updateTower(t, dt){
         .to(t.arm.rotation, {x:t.armRest, duration:.8, ease:'power1.inOut'});
     }
     const from = new THREE.Vector3(t.pos.x, 1.9, t.pos.z);
+    sfx('launch', 0.5);
     shoot({kind:'stone', from, to:aimAt, T, dmg:d.dmg[L], splash:d.splash[L]});
   }
 }
@@ -1030,6 +1095,7 @@ function updateProjectile(p, dt){
     world.remove(p.o);
     if(p.kind === 'stone'){
       burst(p.to.clone().setY(.25), 0x8a7a64, 16);
+      sfx('boom', 0.7);
       ring(p.to, 0xd8c6a0, p.splash, 0.35);
       for(const e of state.enemies){
         if(!e.alive) continue;
@@ -1038,6 +1104,7 @@ function updateProjectile(p, dt){
       }
     } else if(p.target.alive){
       hurt(p.target, p.dmg, p.kind === 'orb');
+      sfx(p.kind === 'orb' ? 'magic' : 'hit', 0.22, {pitch:.2});
       if(p.slow){
         p.target.slowT = 2.2;
         p.target.slowF = Math.min(p.target.slowT > 0 ? p.target.slowF : 1, 1 - p.slow);
@@ -1198,6 +1265,7 @@ function clickCell(c){
   if(b){
     if(canBuild(c, b) && state.gold >= TOWERS[b].cost){
       state.gold -= TOWERS[b].cost;
+      sfx('build', 0.7);
       const t = b === 'wall' ? placeWall(c) : placeTower(c, b);
       updateHud();
       if(state.gold < TOWERS[b].cost) setBuild(null);
@@ -1206,13 +1274,16 @@ function clickCell(c){
       return;
     }
     if(c && (c.tower || c.wall)){ setBuild(null); select(c.tower || c.wall); return; }
+    sfx('error', 0.4);
     hint(!c || c.kind === 'water' ? 'Dort kann nicht gebaut werden'
       : state.gold < TOWERS[b].cost ? 'Nicht genug Gold'
       : b === 'wall' ? 'Mauern gehören auf die Straße (nicht direkt an Friedhof oder Burg)'
       : 'Türme gehören auf freie Wiesen');
     return;
   }
-  select(c && (c.tower || c.wall) || null);
+  const sel = c && (c.tower || c.wall) || null;
+  if(sel) sfx('select', 0.4);
+  select(sel);
 }
 
 // --- HUD ----------------------------------------------------------------
@@ -1224,7 +1295,7 @@ for(const [k, d] of Object.entries(TOWERS)){
   b.className = 'btn build';
   b.innerHTML = `<span class="ico">${d.ico}</span><span class="nm">${d.name}</span><span class="cost">🪙 ${d.cost}</span>`;
   b.title = d.desc;
-  b.onclick = ()=> setBuild(state.build === k ? null : k);
+  b.onclick = ()=>{ sfx('click', 0.5); setBuild(state.build === k ? null : k); };
   bottom.appendChild(b);
   buildBtns[k] = b;
 }
@@ -1297,6 +1368,7 @@ function upgrade(t){
     gsap.from(t.g.scale, {y:.6, duration:.4, ease:'back.out(2.5)'});
   }
   burst(t.pos.clone().setY(1.5), 0xf2c14e, 18);
+  sfx('upgrade', 0.6);
   updateHud(); showInfo(t); updateCursor();
 }
 function sellIt(t){
@@ -1309,6 +1381,7 @@ function sellIt(t){
     state.towers = state.towers.filter(x => x !== t);
   }
   burst(t.pos.clone().setY(.6), 0xf2c14e, 10);
+  sfx('coin', 0.6);
   select(null);
   updateHud();
 }
@@ -1319,6 +1392,14 @@ $('speed').onclick = ()=>{
   $('speed').classList.toggle('on', state.speed > 1);
 };
 $('next').onclick = ()=> nextWave();
+function setMute(m){
+  muted = m;
+  master.gain.value = m ? 0 : 0.8;
+  $('mute').textContent = m ? '🔇' : '🔊';
+  try { localStorage.setItem('tower-muted', m ? '1' : '0'); } catch(e){}
+}
+$('mute').onclick = ()=> setMute(!muted);
+setMute(muted);
 
 function nextWave(){
   if(!state.started || state.over || state.wave >= WAVES) return;
@@ -1327,6 +1408,7 @@ function nextWave(){
   state.queue = waveSpec(state.wave);
   state.queueT = 0;
   const boss = state.wave % 5 === 0;
+  sfx('wave', 0.6);
   ui.banner($('banner'), boss ? `Welle ${state.wave} — Knochenfürst!` : `Welle ${state.wave}`, 1);
   updateHud();
 }
@@ -1335,12 +1417,14 @@ function waveCleared(){
   const bonus = 20 + state.wave * 4;
   state.gold += bonus;
   if(state.wave >= WAVES){ victory(); return; }
+  sfx('clear', 0.55);
   ui.banner($('banner'), `Welle geschafft · +${bonus} 🪙`, 1);
   updateHud();
 }
 
 function gameOver(){
   state.over = true;
+  sfx('lose', 0.7);
   const o = $('overlay');
   o.innerHTML = `<h1>Die Burg ist gefallen</h1><p>Du hast ${state.wave - 1} von ${WAVES} Wellen gehalten.</p><div style="display:flex;gap:10px"><button class="btn" onclick="location.reload()">Gleiche Insel</button><button class="btn" id="newmap2">🎲 Neue Insel</button></div>`;
   $('newmap2').onclick = newMap;
@@ -1348,6 +1432,7 @@ function gameOver(){
 }
 function victory(){
   state.over = true; state.won = true;
+  sfx('win', 0.7);
   const o = $('overlay');
   o.innerHTML = `<h1>Sieg!</h1><p>Alle ${WAVES} Wellen abgewehrt, ${state.lives} Leben übrig. Die Toten ruhen wieder.</p><div style="display:flex;gap:10px"><button class="btn" onclick="location.reload()">Gleiche Insel</button><button class="btn" id="newmap2">🎲 Neue Insel</button></div>`;
   $('newmap2').onclick = newMap;
@@ -1557,22 +1642,24 @@ function buildIntro(){
       o.visible = false;
       tl.set(o, {visible:true}, t);
       tl.to(o.position, {y, duration:.55, ease:'bounce.out'}, t);
+      if(o.userData.tile) tl.call(()=> sfx('land', 0.12, {pitch:.25, gap:.035}), null, t + .2);
     }
     if(castle){
       const y = castle.position.y;
       castle.position.y = y + 16; castle.visible = false;
       tl.set(castle, {visible:true}, maxT + .2);
       tl.to(castle.position, {y, duration:.6, ease:'power3.in'}, maxT + .2);
+      tl.call(()=> sfx('castle', 0.9, {pitch:0}), null, maxT + .8);
       tl.to(camera.position, {y:'+=0.25', duration:.06, yoyo:true, repeat:5, ease:'none'}, maxT + .8);
     }
   });
 }
 
 // Debug-/Testzugang
-window.__td = {genPath, mulberry, SEED, animals, updateAnimals, state, step, frame, spawnEnemy, placeTower, placeWall, cells, key, PATH, nextWave, camera, controls, G};
+window.__td = {actx, buffers, sfx, genPath, mulberry, SEED, animals, updateAnimals, state, step, frame, spawnEnemy, placeTower, placeWall, cells, key, PATH, nextWave, camera, controls, G};
 
 // --- Start --------------------------------------------------------------
-await loadAll();
+await Promise.all([loadAll(), loadSounds()]);
 prepClips();
 buildMap();
 fitCamera();
