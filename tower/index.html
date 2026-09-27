@@ -73,7 +73,7 @@ canvas{display:block;touch-action:none}
   <h1>Burgwacht</h1>
   <p>Die Toten erheben sich vom Friedhof am Inselrand und ziehen die Straße hinauf zur Burg. Baue Türme auf die Wiesen und Mauern auf die Straße — und halte 20 Wellen stand.</p>
   <p id="load">Lade Modelle …</p>
-  <div id="credits">Musik: „Suonatore di Liuto“, „Minstrel Guild“, „Crusade“, „Five Armies“ von Kevin MacLeod (<a href="https://incompetech.com" target="_blank" rel="noopener">incompetech.com</a>), lizenziert unter <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> · Sounds: Kenney (CC0) · 3D-Modelle: KayKit, Quaternius (CC0)</div>
+  <div id="credits">Musik: „Suonatore di Liuto“, „Crusade“, „Five Armies“ von Kevin MacLeod (<a href="https://incompetech.com" target="_blank" rel="noopener">incompetech.com</a>), lizenziert unter <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> · Sounds: Kenney (CC0) · 3D-Modelle: KayKit, Quaternius (CC0)</div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
     <button class="btn" id="play" style="display:none">Spiel starten</button>
     <button class="btn" id="newmap" style="display:none">🎲 Neue Insel</button>
@@ -339,7 +339,7 @@ function sfx(name, vol = 1, {pitch = 0.08, gap = 0.045} = {}){
 // Welle; ueberblendet. Gestreamt ueber <audio>, aber durch Web Audio
 // geleitet, damit Stummschalter und Blenden auch auf iOS wirken.
 const MUSIC = {
-  calm:['suonatore_di_liuto','minstrel_guild'],
+  calm:['suonatore_di_liuto'],
   battle:['crusade','five_armies'],
 };
 const MUSIC_VOL = 0.6;
