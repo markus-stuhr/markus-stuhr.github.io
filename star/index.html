@@ -49,16 +49,13 @@
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { gsap, ui } from '/lib/ui.js';
 
 const A = '/assets/models/';
 const MODELS = {
   ship:   'Quaternius Ultimate Spaceships Pack/glTF/Striker/Striker.glb',
-  turret: 'Quaternius Ultimate Space Kit/glTF/Characters/Enemy_Small.glb',
-  heavy:  'Quaternius Ultimate Space Kit/glTF/Characters/Enemy_Large.glb',
-  flyer:  'Quaternius Ultimate Space Kit/glTF/Characters/Enemy_Flying.glb',
-  mine:   'Quaternius Ultimate Space Kit/glTF/Characters/Enemy_ExtraSmall.glb',
   rock:   'Quaternius Ultimate Space Kit/glTF/Environment/Rock_Large_1.glb',
   fuel:   'Quaternius Ultimate Space Kit/glTF/Items/Pickup_Thunder.glb',
   ammo:   'Quaternius Ultimate Space Kit/glTF/Items/Pickup_Bullets.glb',
@@ -103,15 +100,39 @@ function normalize(obj, size) {
   obj.position.sub(c); obj.position.y += (b2.max.y - b2.min.y) / 2;  // Boden auf y=0
   const w = new THREE.Group(); w.add(obj); return w;
 }
-function inst(name) { return proto[name].clone(true); }
+// SkeletonUtils: geriggte Gegner brauchen ein eigenes Skelett pro Kopie
+function inst(name) { return SkeletonUtils.clone(proto[name]); }
 async function loadAll() {
   const L = new GLTFLoader();
   L.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
-  const sizes = { ship: 3.2, turret: 2.2, heavy: 3.2, flyer: 2.4, mine: 1.8, rock: 5, fuel: 1.6, ammo: 1.6, shield: 1.6 };
+  const sizes = { ship: 3.2, rock: 5, fuel: 1.6, ammo: 1.6, shield: 1.6 };
   await Promise.all(Object.entries(MODELS).map(async ([k, p]) => {
     const g = await L.loadAsync(A + p.split('/').map(encodeURIComponent).join('/'));
     proto[k] = normalize(g.scene, sizes[k]);
   }));
+}
+
+// ---------- Geschütztürme (prozedural) ----------
+const tMetal = new THREE.MeshStandardMaterial({ color: 0x5a6070, metalness: 0.7, roughness: 0.35, flatShading: true });
+const tDark = new THREE.MeshStandardMaterial({ color: 0x2a2e38, metalness: 0.6, roughness: 0.5, flatShading: true });
+const tGlow = new THREE.MeshStandardMaterial({ color: 0xff8a20, emissive: 0xff5a00, emissiveIntensity: 1.6 });
+function makeTurret(heavy) {
+  const s = heavy ? 1.35 : 1, g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1 * s, 1.35 * s, 0.7 * s, 8), tDark);
+  base.position.y = 0.35 * s; g.add(base);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.95 * s, 0.1 * s, 6, 16).rotateX(Math.PI / 2), tGlow);
+  ring.position.y = 0.72 * s; g.add(ring);
+  const head = new THREE.Group(); head.position.y = 1.05 * s; g.add(head);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.75 * s, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), tMetal));
+  const offs = heavy ? [[-0.3, 0.1], [0.3, 0.1], [-0.3, 0.45], [0.3, 0.45]] : [[-0.25, 0.2], [0.25, 0.2]];
+  for (const [ox, oy] of offs) {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.1 * s, 0.13 * s, 1.5 * s, 6).rotateX(Math.PI / 2), tDark);
+    b.position.set(ox * s, oy * s, 0.9 * s); head.add(b);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.13 * s, 6, 4), tGlow);
+    tip.position.set(ox * s, oy * s, 1.65 * s); head.add(tip);
+  }
+  g.userData.head = head;
+  return g;
 }
 
 // ---------- Level / Gelände ----------
@@ -214,10 +235,10 @@ function spawnLevel() {
     const m = new THREE.Mesh(crystalGeo, new THREE.MeshStandardMaterial({ color: 0x7affff, emissive: 0x2a9aff, emissiveIntensity: 1.2, flatShading: true }));
     add('crystal', m, (rnd() - 0.5) * (W - 8), -40 - (i + rnd() * 0.6) * (LEN - 60) / crystalsTotal);
   }
-  const nT = 8 + level * 3;
+  const nT = 16 + level * 4;
   for (let i = 0; i < nT; i++) {
     const heavy = rnd() < 0.25 + level * 0.03;
-    add('turret', inst(heavy ? 'heavy' : 'turret'), (rnd() - 0.5) * (W - 6), -30 - rnd() * (LEN - 40), { hp: heavy ? 4 : 2, cd: rnd() * 2, heavy });
+    add('turret', makeTurret(heavy), (rnd() - 0.5) * (W - 6), -30 - rnd() * (LEN - 40), { hp: heavy ? 4 : 2, cd: rnd() * 2, heavy });
   }
   for (let i = 0; i < 10; i++) {
     const m = inst('rock'); m.rotation.y = rnd() * 6;
@@ -325,7 +346,8 @@ function update(dt) {
   const sy = Math.max(gy, gyF, gyB) + 1.6;
   ship.position.y = THREE.MathUtils.lerp(ship.position.y || sy, sy, 1 - Math.exp(-dt * 12));
   ship.position.x = px; ship.position.z = pz;
-  ship.rotation.set(Math.atan2(gyF - gyB, 4) * 0.8, SHIP_YAW, -vx * 0.035, 'YXZ');
+  // Modell ist um 180° gedreht, deshalb Nick- und Rollwinkel mit gespiegeltem Vorzeichen
+  ship.rotation.set(-Math.atan2(gyF - gyB, 4) * 0.8, SHIP_YAW, vx * 0.035, 'YXZ');
   ship.visible = invuln <= 0 || Math.floor(invuln * 12) % 2 === 0;
 
   camera.position.set(px * 0.6, ship.position.y + 20, pz + 9);
@@ -384,12 +406,13 @@ function update(dt) {
       }
     } else if (o.type === 'turret') {
       tmp.copy(ship.position).sub(o.mesh.position);
-      o.mesh.rotation.y = Math.atan2(tmp.x, tmp.z);
+      o.mesh.userData.head.rotation.y = Math.atan2(tmp.x, tmp.z);
       o.cd -= dt;
       if (o.cd <= 0 && z < pz - 6 && z > pz - 70) {
         o.cd = (o.heavy ? 1.1 : 1.8) - level * 0.06 + Math.random();
         const m = new THREE.Mesh(bulletGeo, shotMat);
-        m.position.copy(o.mesh.position).y += 1.5; scene.add(m);
+        m.position.copy(o.mesh.position).y += o.heavy ? 1.6 : 1.3; scene.add(m);
+        gsap.fromTo(o.mesh.userData.head.position, { z: -0.35 }, { z: 0, duration: 0.3, ease: 'power2.out' });
         const lead = ship.position.clone(); lead.z -= speed * 0.6; lead.x += vx * 0.6;
         shots.push({ mesh: m, v: lead.sub(m.position).normalize().multiplyScalar(16 + level * 1.5), life: 5 });
       }
@@ -402,25 +425,6 @@ function update(dt) {
       }
       if (o.alive && Math.abs(o.x - px) < 1.6 && Math.abs(z - pz) < 1.6) hurt(0.3);
     }
-  }
-
-  // Flieger
-  if (Math.random() < dt * (0.25 + level * 0.06)) {
-    const m = inst('flyer'); m.position.set((Math.random() - 0.5) * W * 0.8, 0, pz - 90); scene.add(m);
-    objs.push({ type: 'flyer', mesh: m, alive: true, hp: 2, phase: Math.random() * 6 });
-  }
-  for (let i = objs.length - 1; i >= 0; i--) {
-    const o = objs[i]; if (o.type !== 'flyer') continue;
-    const p = o.mesh.position;
-    p.z += 14 * dt; p.x += Math.sin(performance.now() / 500 + o.phase) * 10 * dt + Math.sign(px - p.x) * 3 * dt;
-    p.y = groundAt(p.x, p.z) + 3.2; o.mesh.rotation.y = 0;
-    let dead = p.z > pz + 15;
-    for (let j = bullets.length - 1; j >= 0; j--) if (bullets[j].mesh.position.distanceTo(p) < 1.8) {
-      scene.remove(bullets[j].mesh); bullets.splice(j, 1);
-      if (--o.hp <= 0) { score += 150; burst(p, 0xff60c0); dead = true; break; }
-    }
-    if (!dead && p.distanceTo(ship.position) < 2) { hurt(0.25); burst(p, 0xff60c0); dead = true; }
-    if (dead) { scene.remove(o.mesh); objs.splice(i, 1); }
   }
 
   // Funken
@@ -439,7 +443,6 @@ function newGame() {
   gsap.killTweensOf(ship.position);
   level = 1; score = 0; lives = 3; shield = fuel = ammo = 1; px = 0; pz = 0; speed = 18; invuln = 2;
   [...bullets, ...shots].forEach(b => scene.remove(b.mesh)); bullets.length = shots.length = 0;
-  objs.filter(o => o.type === 'flyer').forEach(o => scene.remove(o.mesh));
   spawnLevel(); ui.panelOut(msg); state = 'play'; banner('LEVEL 1');
 }
 
