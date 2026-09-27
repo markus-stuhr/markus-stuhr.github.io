@@ -1387,8 +1387,8 @@ function loop(now){
 // Reine Deko: 1-3 Tiere wandern ueber freie Wiesen, nie ueber Strassen,
 // Deko-Felder oder Tuerme. Wege per Breitensuche von Feld zu Feld.
 const ANIMALS = {
-  Deer:{h:0.62, speed:0.55}, Stag:{h:0.72, speed:0.5}, Horse:{h:0.8, speed:0.6},
-  Horse_White:{h:0.8, speed:0.6}, Donkey:{h:0.62, speed:0.45}, Alpaca:{h:0.7, speed:0.45},
+  Deer:{h:0.4, speed:0.22}, Stag:{h:0.46, speed:0.2}, Horse:{h:0.5, speed:0.24},
+  Horse_White:{h:0.5, speed:0.24}, Donkey:{h:0.4, speed:0.18}, Alpaca:{h:0.44, speed:0.18},
 };
 const animals = [];
 const walkable = c => c && c.kind === 'grass' && !c.tower;
@@ -1397,14 +1397,14 @@ function findRoute(from){
   const prev = new Map([[from, null]]), queue = [from], dist = new Map([[from, 0]]);
   while(queue.length){
     const c = queue.shift();
-    if(dist.get(c) >= 6) continue;
+    if(dist.get(c) >= 2) continue;
     for(const [dq, dr] of DIRS){
       const n = cells.get(key(c.q+dq, c.r+dr));
       if(!walkable(n) || prev.has(n)) continue;
       prev.set(n, c); dist.set(n, dist.get(c)+1); queue.push(n);
     }
   }
-  const opts = [...dist.keys()].filter(c => dist.get(c) >= 2);
+  const opts = [...dist.keys()].filter(c => dist.get(c) >= 1);
   if(!opts.length) return [];
   let t = opts[Math.floor(Math.random()*opts.length)];
   const route = [];
@@ -1430,10 +1430,10 @@ async function spawnAnimals(){
     for(const c of g.animations) acts[c.name] = mixer.clipAction(c);
     const start = free[Math.floor(Math.random()*free.length)];
     const a = {name, o, mixer, acts, cur:null, cell:start, route:[], target:null,
-      pos:jitter(start), wait:Math.random()*3, speed:ANIMALS[name].speed, face:Math.random()*6};
+      pos:jitter(start), wait:3 + Math.random()*15, speed:ANIMALS[name].speed, face:Math.random()*6};
     o.position.copy(a.pos); o.rotation.y = a.face;
     world.add(o);
-    animalPlay(a, 'Idle');
+    animalIdle(a);
     animals.push(a);
   }
 }
@@ -1444,36 +1444,54 @@ function animalPlay(a, name){
   if(a.cur) a.cur.fadeOut(0.3);
   a.cur = act;
 }
+// Meist stehen, grasen oder sich umschauen; dann ein paar Schritte,
+// nur selten bis ins Nachbarfeld.
+function animalIdle(a){
+  const r = Math.random();
+  if(r < .35){ animalPlay(a, 'Eating'); a.wait = 6 + Math.random()*8; }
+  else if(r < .6){ animalPlay(a, 'Idle_2'); a.wait = 3 + Math.random()*4; }        // Kopf heben, umschauen
+  else if(r < .8){ animalPlay(a, 'Idle'); a.wait = 3 + Math.random()*5; a.turnTo = a.face + (Math.random()-.5)*2.4; }
+  else { animalPlay(a, 'Idle_Headlow'); a.wait = 4 + Math.random()*6; }
+  a.idles = (a.idles || 0) + 1;
+}
 function updateAnimals(dt){
   for(const a of animals){
     a.mixer.update(dt);
-    if(a.wait > 0){ a.wait -= dt; continue; }
-    if(!a.target){
-      // naechster Wegpunkt; Feld inzwischen bebaut -> neu planen
-      if(a.route.length && !walkable(a.route[0])) a.route = [];
-      if(!a.route.length){
-        if(a.moving){
-          a.moving = false;
-          const r = Math.random();
-          animalPlay(a, r < .5 ? 'Eating' : r < .75 ? 'Idle_Headlow' : 'Idle');
-          a.wait = 3 + Math.random()*7;
-          continue;
-        }
-        a.route = findRoute(a.cell);
-        if(!a.route.length){ a.wait = 4; continue; }
+    if(a.wait > 0){
+      a.wait -= dt;
+      if(a.turnTo !== undefined){
+        // langsam in eine neue Richtung drehen und dort hinschauen
+        let da = a.turnTo - a.face; da = Math.atan2(Math.sin(da), Math.cos(da));
+        a.face += da * Math.min(1, dt*1.2);
+        a.o.rotation.y = a.face;
       }
-      a.cell = a.route.shift();
-      a.target = a.route.length ? a.cell.pos.clone() : jitter(a.cell);
+      if(a.wait <= 0){
+        a.turnTo = undefined;
+        // nach 2-4 Standphasen wieder ein Stueck laufen
+        if(a.idles < 2 + Math.floor(Math.random()*3)) animalIdle(a);
+      }
+      continue;
+    }
+    if(!a.target){
+      if(a.moving){ a.moving = false; a.idles = 0; animalIdle(a); continue; }
+      let c = a.cell;
+      if(Math.random() < .3){
+        const nb = DIRS.map(([dq, dr]) => cells.get(key(c.q+dq, c.r+dr))).filter(walkable);
+        if(nb.length) c = nb[Math.floor(Math.random()*nb.length)];
+      }
+      if(!walkable(c) && c !== a.cell){ a.wait = 3; continue; }
+      a.cell = c;
+      a.target = jitter(c);
       a.moving = true;
       animalPlay(a, 'Walk');
+      a.cur.timeScale = 0.55;
     }
     const d = _dir.copy(a.target).sub(a.pos);
     const len = d.length();
     if(len < 0.05){ a.target = null; continue; }
-    // weich eindrehen statt schlagartig
     const want = Math.atan2(d.x, d.z);
     let da = want - a.face; da = Math.atan2(Math.sin(da), Math.cos(da));
-    a.face += da * Math.min(1, dt*4);
+    a.face += da * Math.min(1, dt*3);
     const step = Math.min(len, a.speed * dt * (Math.abs(da) > 1 ? 0.3 : 1));
     a.pos.addScaledVector(d.normalize(), step);
     a.o.position.copy(a.pos);
