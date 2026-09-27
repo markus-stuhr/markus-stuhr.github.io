@@ -8,7 +8,7 @@
 <style>
 :root{--ink:#f4ead2;--dim:#b9a98a;--panel:rgba(38,28,20,.86);--line:#7a5c36;--gold:#f2c14e;--red:#e0584a;--green:#8fcf5c}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;overflow:hidden;background:#8fc3de;font-family:Georgia,'Times New Roman',serif;color:var(--ink);user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#5aa6e6;font-family:Georgia,'Times New Roman',serif;color:var(--ink);user-select:none;-webkit-user-select:none}
 canvas{display:block;touch-action:none}
 .bar{position:fixed;left:0;right:0;display:flex;gap:8px;align-items:center;padding:10px 12px;pointer-events:none;flex-wrap:wrap}
 .bar>*{pointer-events:auto}
@@ -155,8 +155,8 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8fc3de);
-scene.fog = new THREE.Fog(0x8fc3de, 45, 90);
+scene.background = new THREE.Color(0x5aa6e6);
+scene.fog = new THREE.Fog(0x5aa6e6, 45, 90);
 
 const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.5, 200);
 camera.position.set(0, 26, 22);
@@ -184,11 +184,11 @@ const waterNormals = new THREE.TextureLoader().load('waternormals.jpg', t=>{ t.w
 const water = new Water(new THREE.PlaneGeometry(400, 400), {
   textureWidth:1024, textureHeight:1024, waterNormals,
   sunDirection: sun.position.clone().normalize(), sunColor:0xfff1d6,
-  waterColor:0x0e5f80, distortionScale:2.4, fog:true, alpha:1,
+  waterColor:0x0a78c2, distortionScale:0.7, fog:true, alpha:1,
 });
 water.rotation.x = -Math.PI/2;
 water.position.y = -0.32;
-water.material.uniforms.size.value = 2.2;
+water.material.uniforms.size.value = 1.4;
 scene.add(water);
 
 // Wind: gemeinsame Zeit fuer Gras und Baeume
@@ -1299,7 +1299,7 @@ function frame(){
   const fdt = Math.min(0.1, (now - lastFrame)/1000);
   lastFrame = now;
   wind.value += fdt;
-  water.material.uniforms.time.value += fdt * 0.45;
+  water.material.uniforms.time.value += fdt * 0.3;
   // Lebensbalken zur Kamera drehen
   _cq.copy(camera.quaternion);
   for(const e of state.enemies){
