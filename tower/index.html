@@ -1,0 +1,1203 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Burgwacht — Tower Defence</title>
+<script src="/analytics.js" defer></script>
+<style>
+:root{--ink:#f4ead2;--dim:#b9a98a;--panel:rgba(38,28,20,.86);--line:#7a5c36;--gold:#f2c14e;--red:#e0584a;--green:#8fcf5c}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#8fc3de;font-family:Georgia,'Times New Roman',serif;color:var(--ink);user-select:none;-webkit-user-select:none}
+canvas{display:block;touch-action:none}
+.bar{position:fixed;left:0;right:0;display:flex;gap:8px;align-items:center;padding:10px 12px;pointer-events:none;flex-wrap:wrap}
+.bar>*{pointer-events:auto}
+#top{top:0}
+#bottom{bottom:0;justify-content:center}
+.chip{background:var(--panel);border:2px solid var(--line);border-radius:10px;padding:6px 12px;font-size:17px;white-space:nowrap;box-shadow:0 3px 0 rgba(0,0,0,.35)}
+.chip b{color:var(--gold)}
+.btn{background:linear-gradient(#6b4a27,#4a321a);border:2px solid #b38b4f;color:var(--ink);border-radius:10px;padding:7px 14px;font:inherit;font-size:16px;cursor:pointer;box-shadow:0 3px 0 rgba(0,0,0,.4)}
+.btn:hover{filter:brightness(1.15)}
+.btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(0,0,0,.4)}
+.btn:disabled{opacity:.45;cursor:default;filter:none}
+.btn.on{border-color:var(--gold);background:linear-gradient(#8a6230,#5d3f1d);color:#fff}
+.spacer{flex:1}
+.build{display:flex;flex-direction:column;align-items:center;min-width:86px;padding:6px 10px}
+.build .ico{font-size:24px;line-height:1.1}
+.build .nm{font-size:13px}
+.build .cost{font-size:13px;color:var(--gold)}
+.build.poor .cost{color:var(--red)}
+#info{position:fixed;right:12px;top:64px;width:240px;background:var(--panel);border:2px solid var(--line);border-radius:12px;padding:12px;display:none;box-shadow:0 4px 0 rgba(0,0,0,.35)}
+#info h3{margin:0 0 6px;font-size:18px}
+#info .row{display:flex;justify-content:space-between;font-size:14px;color:var(--dim);margin:2px 0}
+#info .row span:last-child{color:var(--ink)}
+#info .acts{display:flex;gap:6px;margin-top:10px}
+#info .acts .btn{flex:1;font-size:14px;padding:6px 8px}
+#hint{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);background:var(--panel);border:2px solid var(--line);border-radius:10px;padding:6px 14px;font-size:14px;display:none;white-space:nowrap}
+#banner{position:fixed;left:0;right:0;top:32%;text-align:center;font-size:52px;font-weight:bold;color:#fff3cf;text-shadow:0 4px 0 #5a3a18,0 0 24px rgba(0,0,0,.5);pointer-events:none;opacity:0}
+#overlay{position:fixed;inset:0;background:rgba(20,14,8,.6);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;text-align:center;padding:20px}
+#overlay h1{font-size:54px;margin:0;color:#fff3cf;text-shadow:0 4px 0 #5a3a18}
+#overlay p{max-width:520px;font-size:17px;line-height:1.45;color:var(--ink);margin:0}
+#overlay .btn{font-size:22px;padding:10px 28px}
+#load{font-size:15px;color:var(--dim)}
+.float{position:fixed;pointer-events:none;font-weight:bold;font-size:15px;color:var(--gold);text-shadow:0 2px 0 #000;transition:transform 1s ease-out,opacity 1s ease-in;white-space:nowrap}
+@media (max-width:640px){
+  .chip{font-size:14px;padding:5px 8px}
+  .btn{font-size:14px;padding:6px 10px}
+  .build{min-width:64px;padding:4px 6px}
+  .build .ico{font-size:20px}
+  #info{left:12px;right:12px;width:auto;top:auto;bottom:96px}
+  #overlay h1{font-size:38px}
+  #banner{font-size:34px}
+}
+</style>
+</head>
+<body>
+<div id="top" class="bar">
+  <div class="chip">❤️ <b id="lives">20</b></div>
+  <div class="chip">🪙 <b id="gold">0</b></div>
+  <div class="chip">Welle <b id="wave">0</b>/<span id="waves">20</span></div>
+  <div class="spacer"></div>
+  <button class="btn" id="speed">▶ ×1</button>
+  <button class="btn" id="next">⚔ Welle starten</button>
+</div>
+<div id="bottom" class="bar"></div>
+<div id="info"></div>
+<div id="hint"></div>
+<div id="banner"></div>
+<div id="overlay">
+  <h1>Burgwacht</h1>
+  <p>Die Toten erheben sich vom Friedhof am Inselrand und ziehen die Straße hinauf zur Burg. Baue Türme auf die Wiesen und Mauern auf die Straße — und halte 20 Wellen stand.</p>
+  <p id="load">Lade Modelle …</p>
+  <button class="btn" id="play" style="display:none">Spiel starten</button>
+</div>
+
+<script type="importmap">
+{"imports":{
+ "three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+ "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import {gsap, ui} from '/lib/ui.js';
+
+// --- Pfade --------------------------------------------------------------
+const BASE = '/assets/models/';
+const HEX = 'KayKit_Medieval_Hexagon_Pack_1.0_FREE/Assets/gltf/';
+const ANIM = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/';
+const SKEL = 'KayKit_Skeletons_1.1_FREE/';
+const ADV = 'KayKit_Adventurers_2.0_FREE/';
+const HALLO = 'KayKit_HalloweenBits_1.0_FREE/Assets/gltf/';
+const url = p => BASE + p.split('/').map(encodeURIComponent).join('/');
+
+const FILES = {
+  grass: HEX+'tiles/base/hex_grass.gltf',
+  water: HEX+'tiles/base/hex_water.gltf',
+  roadA: HEX+'tiles/roads/hex_road_A.gltf',
+  roadB: HEX+'tiles/roads/hex_road_B.gltf',
+  roadC: HEX+'tiles/roads/hex_road_C.gltf',
+  castle: HEX+'buildings/blue/building_castle_blue.gltf',
+  towerBase: HEX+'buildings/blue/building_tower_base_blue.gltf',
+  towerA: HEX+'buildings/blue/building_tower_A_blue.gltf',
+  towerB: HEX+'buildings/blue/building_tower_B_blue.gltf',
+  towerA3: HEX+'buildings/yellow/building_tower_A_yellow.gltf',
+  towerBase3: HEX+'buildings/yellow/building_tower_base_yellow.gltf',
+  towerB3: HEX+'buildings/yellow/building_tower_B_yellow.gltf',
+  catapult: HEX+'buildings/blue/building_tower_catapult_blue.gltf',
+  catapult3: HEX+'buildings/yellow/building_tower_catapult_yellow.gltf',
+  stone: HEX+'buildings/neutral/projectile_catapult.gltf',
+  wall: HEX+'buildings/neutral/wall_straight.gltf',
+  flag: HEX+'decoration/props/flag_blue.gltf',
+  flag3: HEX+'decoration/props/flag_yellow.gltf',
+  treesA: HEX+'decoration/nature/trees_A_large.gltf',
+  treesB: HEX+'decoration/nature/trees_B_medium.gltf',
+  treeS: HEX+'decoration/nature/tree_single_A.gltf',
+  mountain: HEX+'decoration/nature/mountain_A_grass_trees.gltf',
+  mountainB: HEX+'decoration/nature/mountain_C_grass.gltf',
+  hills: HEX+'decoration/nature/hills_B_trees.gltf',
+  rock: HEX+'decoration/nature/rock_single_C.gltf',
+  tent: HEX+'decoration/props/tent.gltf',
+  crates: HEX+'decoration/props/crate_A_big.gltf',
+  grave: HALLO+'gravestone.gltf',
+  grave2: HALLO+'grave_B.gltf',
+  crypt: HALLO+'crypt.gltf',
+  ranger: ADV+'Characters/gltf/Ranger.glb',
+  mage: ADV+'Characters/gltf/Mage.glb',
+  bow: ADV+'Assets/gltf/bow_withString.gltf',
+  arrow: ADV+'Assets/gltf/arrow_bow.gltf',
+  staff: ADV+'Assets/gltf/staff.gltf',
+  skMinion: SKEL+'characters/gltf/Skeleton_Minion.glb',
+  skWarrior: SKEL+'characters/gltf/Skeleton_Warrior.glb',
+  skRogue: SKEL+'characters/gltf/Skeleton_Rogue.glb',
+  skMage: SKEL+'characters/gltf/Skeleton_Mage.glb',
+  skAxe: SKEL+'assets/gltf/Skeleton_Axe.gltf',
+  skBlade: SKEL+'assets/gltf/Skeleton_Blade.gltf',
+  skShield: SKEL+'assets/gltf/Skeleton_Shield_Large_A.gltf',
+  skStaff: SKEL+'assets/gltf/Skeleton_Staff.gltf',
+  animGeneral: ANIM+'Rig_Medium_General.glb',
+  animMove: ANIM+'Rig_Medium_MovementBasic.glb',
+  animMelee: ANIM+'Rig_Medium_CombatMelee.glb',
+  animRanged: ANIM+'Rig_Medium_CombatRanged.glb',
+};
+
+// --- Szene --------------------------------------------------------------
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fc3de);
+scene.fog = new THREE.Fog(0x8fc3de, 45, 90);
+
+const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.5, 200);
+camera.position.set(0, 26, 22);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = 1.15;
+controls.minPolarAngle = 0.35;
+controls.minDistance = 10;
+controls.maxDistance = 48;
+controls.screenSpacePanning = false;
+
+scene.add(new THREE.HemisphereLight(0xdff2ff, 0x5d6b3a, 1.1));
+const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
+sun.position.set(-14, 26, 10);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {left:-22, right:22, top:22, bottom:-22, near:1, far:70});
+sun.shadow.bias = -0.0005;
+sun.shadow.normalBias = 0.03;
+scene.add(sun);
+
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  fitCamera();
+});
+function fitCamera(){
+  // Hochformat: weiter weg, damit die ganze Insel ins Bild passt
+  const d = camera.aspect < 1 ? 30/Math.max(camera.aspect, .4) : 34;
+  controls.maxDistance = Math.max(48, d + 6);
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, d);
+  scene.fog.far = Math.max(90, d * 2.2);
+}
+
+// --- Laden --------------------------------------------------------------
+const loader = new GLTFLoader();
+const G = {};
+async function loadAll(){
+  const keys = Object.keys(FILES);
+  let done = 0;
+  const loadEl = document.getElementById('load');
+  await Promise.all(keys.map(k => loader.loadAsync(url(FILES[k])).then(g=>{
+    G[k] = g;
+    loadEl.textContent = `Lade Modelle … ${++done}/${keys.length}`;
+  })));
+}
+
+function shadowed(o){
+  o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } });
+  return o;
+}
+const inst = k => shadowed(G[k].scene.clone(true));
+
+function fitHeight(obj, h){
+  obj.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(obj);
+  obj.scale.multiplyScalar(h / (b.max.y - b.min.y));
+}
+
+// --- Hex-Raster ---------------------------------------------------------
+// Spitze Hexe, Kantenmitten in Richtung k*60° (Winkel atan2(z,x)),
+// Nachbarabstand 2. Axiale Koordinaten: q entlang 0°, r entlang 60°.
+const SQ3 = Math.sqrt(3);
+const DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+const hexPos = (q,r) => new THREE.Vector3(2*q + r, 0, SQ3*r);
+const hexDist = (q,r) => Math.max(Math.abs(q), Math.abs(r), Math.abs(q+r));
+const key = (q,r) => q+','+r;
+function worldToHex(x, z){
+  const rf = z/SQ3, qf = (x - rf)/2;
+  let q = Math.round(qf), r = Math.round(rf), s = Math.round(-qf-rf);
+  const dq = Math.abs(q-qf), dr = Math.abs(r-rf), ds = Math.abs(s+qf+rf);
+  if(dq > dr && dq > ds) q = -r - s; else if(dr > ds) r = -q - s;
+  return [q, r];
+}
+
+// Straßenkanten der KayKit-Kacheln, aus den Meshes ausgelesen
+const ROAD_EDGES = {roadA:[0,3], roadB:[3,5], roadC:[3,4]};
+function roadFor(a, b){
+  for(const [k, e] of Object.entries(ROAD_EDGES)){
+    for(let rot = 0; rot < 6; rot++){
+      const s = e.map(x => (x + rot) % 6);
+      if((s[0]===a && s[1]===b) || (s[0]===b && s[1]===a)) return {k, rot};
+    }
+  }
+  return {k:'roadA', rot:0};
+}
+
+const R = 6;
+const PATH = [[-6,3],[-5,2],[-5,1],[-5,0],[-4,-1],[-3,-2],[-2,-3],[-1,-4],[0,-4],[1,-5],[2,-5],[3,-5],[4,-5],[5,-5],[5,-4],[5,-3],[5,-2],[5,-1],[4,0],[3,0],[3,-1],[3,-2],[2,-2],[2,-3],[1,-3],[0,-2],[-1,-2],[-2,-1],[-3,0],[-3,1],[-2,1],[-2,2],[-3,3],[-4,3],[-5,4],[-5,5],[-4,5],[-3,5],[-2,4],[-1,4],[-1,5],[0,5],[1,4],[2,3],[2,2],[1,2],[0,2],[0,1],[0,0]];
+const dirIndex = (a, b) => DIRS.findIndex(d => d[0]===b[0]-a[0] && d[1]===b[1]-a[1]);
+
+const cells = new Map();   // key -> {q,r,kind:'grass'|'road'|'castle'|'deco'|'water', tower, wall, pathIdx}
+const world = new THREE.Group();
+scene.add(world);
+
+// Weg als Polylinie in Weltkoordinaten, Start etwas außerhalb der Insel
+const pathPts = [];
+let pathLen = 0;
+const segLen = [];
+
+function buildMap(){
+  const rnd = mulberry(7);
+  const pathSet = new Map(PATH.map((p,i)=>[key(p[0],p[1]), i]));
+  for(let q = -R-3; q <= R+3; q++) for(let r = -R-3; r <= R+3; r++){
+    const d = hexDist(q,r);
+    if(d > R+3) continue;
+    const p = hexPos(q,r);
+    const c = {q, r, kind:'grass', tower:null, wall:null, pathIdx:-1, pos:p};
+    cells.set(key(q,r), c);
+    let tile;
+    if(d > R){
+      c.kind = 'water';
+      tile = inst('water');
+    } else if(pathSet.has(key(q,r))){
+      const i = pathSet.get(key(q,r));
+      c.pathIdx = i;
+      if(i === PATH.length-1){
+        c.kind = 'castle';
+        tile = inst('grass');
+      } else {
+        c.kind = 'road';
+        const inE = i === 0 ? (dirIndex(PATH[0], PATH[1]) + 3) % 6 : (dirIndex(PATH[i], PATH[i-1]));
+        const outE = dirIndex(PATH[i], PATH[i+1]);
+        const {k, rot} = roadFor(inE, outE);
+        tile = inst(k);
+        tile.rotation.y = -rot * Math.PI/3;
+      }
+    } else {
+      tile = inst('grass');
+    }
+    tile.position.copy(p);
+    world.add(tile);
+  }
+  // Burg
+  const castle = inst('castle');
+  castle.position.copy(hexPos(0,0));
+  castle.rotation.y = -Math.PI/2 - Math.PI/3;
+  world.add(castle);
+  const flag = inst('flag');
+  flag.position.copy(hexPos(0,0)).add(new THREE.Vector3(0.75, 0, 0.35));
+  world.add(flag);
+
+  // Friedhof am Start (außerhalb, im Wasserring aufgeschüttet)
+  const s0 = hexPos(...PATH[0]), s1 = hexPos(...PATH[1]);
+  const back = s0.clone().sub(s1).normalize();
+  const spawnCenter = s0.clone().addScaledVector(back, 2);
+  const sq = worldToHex(spawnCenter.x, spawnCenter.z);
+  const sc = cells.get(key(...sq));
+  if(sc){
+    sc.kind = 'spawn';
+    world.remove(world.children.find(o => o.position.equals(sc.pos)));
+    const g = inst('grass'); g.position.copy(sc.pos); world.add(g);
+    const crypt = inst('crypt'); fitHeight(crypt, 1.3);
+    crypt.position.copy(sc.pos).addScaledVector(back, 0.35);
+    crypt.lookAt(s0.x, 0, s0.z);
+    world.add(crypt);
+  }
+  for(let i = 0; i < 7; i++){
+    const g = inst(i % 2 ? 'grave' : 'grave2'); fitHeight(g, 0.45 + rnd()*.15);
+    const a = Math.atan2(back.z, back.x) + (rnd()-.5)*2.6;
+    const rr = 0.9 + rnd()*0.8;
+    g.position.set(s0.x + Math.cos(a)*rr, 0, s0.z + Math.sin(a)*rr);
+    const nb = worldToHex(g.position.x, g.position.z);
+    if(key(...nb) === key(...PATH[0]) || key(...nb) === key(...PATH[1])){ g.position.addScaledVector(back, 1.2); }
+    g.rotation.y = rnd()*.6 - .3 + Math.atan2(back.x, back.z);
+    world.add(g);
+  }
+
+  // Deko auf einem Teil der freien Wiesen; diese Felder sind nicht bebaubar
+  const decoKinds = ['treesA','treesB','treeS','mountain','mountainB','hills','rock'];
+  for(const c of cells.values()){
+    if(c.kind !== 'grass') continue;
+    const d = hexDist(c.q, c.r);
+    const nearPath = DIRS.some(([dq,dr]) => { const n = cells.get(key(c.q+dq, c.r+dr)); return n && n.pathIdx >= 0; });
+    const chance = nearPath ? 0.05 : (d === R ? 0.55 : 0.2);
+    if(rnd() < chance){
+      c.kind = 'deco';
+      let k = decoKinds[Math.floor(rnd()*decoKinds.length)];
+      if(nearPath && (k === 'mountain' || k === 'mountainB')) k = 'treeS';
+      const o = inst(k);
+      o.position.copy(c.pos);
+      o.rotation.y = Math.floor(rnd()*6) * Math.PI/3;
+      world.add(o);
+    }
+  }
+  // Außenring: ein paar Felsen im Wasser
+  for(const c of cells.values()){
+    if(c.kind === 'water' && hexDist(c.q,c.r) === R+1 && rnd() < 0.12){
+      const o = inst('rock'); o.position.copy(c.pos); o.position.y = -0.15; world.add(o);
+    }
+  }
+
+  // Weg-Polylinie
+  pathPts.length = 0;
+  pathPts.push(spawnCenter.clone());
+  for(const p of PATH) pathPts.push(hexPos(...p));
+  pathLen = 0; segLen.length = 0;
+  for(let i = 0; i < pathPts.length-1; i++){
+    const l = pathPts[i].distanceTo(pathPts[i+1]);
+    segLen.push(l); pathLen += l;
+  }
+  // Wegstrecke jeder Straßenzelle (für Mauern)
+  let acc = segLen[0];
+  for(let i = 0; i < PATH.length; i++){
+    cells.get(key(...PATH[i])).pathS = acc;
+    acc += segLen[i+1] || 0;
+  }
+}
+
+function pathPoint(s, out = new THREE.Vector3()){
+  s = Math.max(0, Math.min(pathLen, s));
+  for(let i = 0; i < segLen.length; i++){
+    if(s <= segLen[i] || i === segLen.length-1){
+      const t = Math.min(1, s / segLen[i]);
+      return out.lerpVectors(pathPts[i], pathPts[i+1], t);
+    }
+    s -= segLen[i];
+  }
+  return out.copy(pathPts[pathPts.length-1]);
+}
+// Kurven glätten: Mittel aus Punkten kurz davor und danach
+const _a = new THREE.Vector3(), _b = new THREE.Vector3();
+function smoothPoint(s, out){
+  pathPoint(s - 0.7, _a); pathPoint(s + 0.7, _b);
+  out.addVectors(_a, _b).multiplyScalar(0.5);
+  pathPoint(s, _a);
+  return out.lerp(_a, 0.35);
+}
+
+function mulberry(a){ return ()=>{ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// --- Animationen --------------------------------------------------------
+function retarget(clip){
+  const keep = clip.tracks.filter(t =>
+    !t.name.endsWith('.scale') &&
+    (!t.name.endsWith('.position') || /^(root|hips)\./.test(t.name)));
+  return new THREE.AnimationClip(clip.name, clip.duration, keep);
+}
+const CLIPS = {};
+function prepClips(){
+  for(const k of ['animGeneral','animMove','animMelee','animRanged'])
+    for(const c of G[k].animations) CLIPS[c.name] = retarget(c);
+}
+function slot(root, side){
+  return root.getObjectByName('handslot' + side) || root.getObjectByName('handslot.' + side);
+}
+function makeActor(k, height, weapons = {}){
+  const o = SkeletonUtils.clone(G[k].scene);
+  shadowed(o);
+  fitHeight(o, height);
+  for(const [side, wk] of Object.entries(weapons)){
+    const s = slot(o, side);
+    if(s) s.add(shadowed(G[wk].scene.clone(true)));
+  }
+  const mixer = new THREE.AnimationMixer(o);
+  const actions = {};
+  const actor = {o, mixer, actions, cur:null, curName:''};
+  actor.play = (name, {fade = .15, once = false, speed = 1} = {})=>{
+    let a = actions[name];
+    if(!a){
+      if(!CLIPS[name]) return;
+      a = actions[name] = mixer.clipAction(CLIPS[name]);
+    }
+    a.timeScale = speed;
+    if(once){ a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+    else a.setLoop(THREE.LoopRepeat, Infinity);
+    if(actor.curName === name && !once) return;
+    a.reset().setEffectiveWeight(1).fadeIn(fade).play();
+    if(actor.cur && actor.cur !== a) actor.cur.fadeOut(fade);
+    actor.cur = a; actor.curName = name;
+  };
+  return actor;
+}
+
+// --- Spielregeln --------------------------------------------------------
+const ENEMIES = {
+  minion:  {model:'skMinion',  weapons:{r:'skAxe'},  hp:42,  speed:1.35, gold:5,  armor:0, h:0.72, walk:'Walking_A', walkSpeed:1.1, dmg:10, lives:1},
+  rogue:   {model:'skRogue',   weapons:{r:'skBlade'},hp:30,  speed:2.3,  gold:6,  armor:0, h:0.7,  walk:'Running_A', walkSpeed:1.0, dmg:8,  lives:1},
+  warrior: {model:'skWarrior', weapons:{r:'skBlade', l:'skShield'}, hp:130, speed:0.95, gold:12, armor:4, h:0.78, walk:'Walking_A', walkSpeed:.8, dmg:22, lives:2},
+  mage:    {model:'skMage',    weapons:{r:'skStaff'},hp:70,  speed:1.15, gold:10, armor:0, h:0.74, walk:'Walking_B', walkSpeed:.9, dmg:12, lives:1, heal:true},
+  boss:    {model:'skWarrior', weapons:{r:'skBlade', l:'skShield'}, hp:900, speed:0.7, gold:80, armor:8, h:1.35, walk:'Walking_A', walkSpeed:.6, dmg:70, lives:5},
+};
+
+const TOWERS = {
+  archer:  {name:'Bogenturm', ico:'🏹', cost:60, range:[5.2,5.8,6.6], dmg:[14,24,40], rate:[1.1,1.3,1.6], up:[55,110],
+            desc:'Schneller Einzelschuss'},
+  mage:    {name:'Magierturm', ico:'🔮', cost:90, range:[4.6,5.0,5.6], dmg:[8,13,22], rate:[0.9,1.0,1.2], up:[75,140],
+            slow:[0.45,0.55,0.65], desc:'Verlangsamt, ignoriert Rüstung'},
+  catapult:{name:'Katapult', ico:'🪨', cost:120, range:[7.5,8.2,9.2], dmg:[34,58,95], rate:[0.33,0.38,0.45], up:[100,180],
+            splash:[1.5,1.7,2.0], desc:'Flächenschaden, weite Reichweite'},
+  wall:    {name:'Mauer', ico:'🧱', cost:40, hp:[220,420,750], up:[40,80], desc:'Auf die Straße — Gegner müssen sie einreißen'},
+};
+
+const WAVES = 20;
+const SPEED_MUL = 1.3;
+const state = {
+  gold:180, lives:20, wave:0, speed:1, running:false, over:false, won:false,
+  enemies:[], towers:[], walls:[], projectiles:[], effects:[], queue:[], queueT:0,
+  build:null, selected:null, time:0, started:false,
+};
+
+function waveSpec(n){
+  const g = [];
+  const hpMul = Math.pow(1.13, n-1);
+  g.push({t:'minion', n:5 + Math.floor(n*1.6), gap:1.0});
+  if(n >= 2) g.push({t:'rogue', n:Math.floor(n*1.2), gap:0.55});
+  if(n >= 4) g.push({t:'warrior', n:Math.floor((n-2)*0.8), gap:1.6});
+  if(n >= 6) g.push({t:'mage', n:Math.floor((n-4)*0.5), gap:2.2});
+  if(n % 5 === 0) g.push({t:'boss', n:Math.floor(n/10)+1, gap:4});
+  const list = [];
+  // Gruppen verzahnen, damit es gemischt kommt
+  let t = 0;
+  for(const grp of g){
+    let tt = t;
+    for(let i = 0; i < grp.n; i++){ list.push({t:grp.t, at:tt, hpMul}); tt += grp.gap; }
+    t += grp.n * grp.gap * 0.45;
+  }
+  list.sort((a,b) => a.at - b.at);
+  return list;
+}
+
+// --- Gegner -------------------------------------------------------------
+const hpGeo = new THREE.PlaneGeometry(1, 0.09);
+const hpBgMat = new THREE.MeshBasicMaterial({color:0x2a1a10, depthTest:false});
+const hpFgMat = new THREE.MeshBasicMaterial({color:0x8fcf5c, depthTest:false});
+const hpFgMatSlow = new THREE.MeshBasicMaterial({color:0x6fb7ff, depthTest:false});
+
+let enemyId = 0;
+function spawnEnemy(type, hpMul){
+  const def = ENEMIES[type];
+  const a = makeActor(def.model, def.h, def.weapons);
+  world.add(a.o);
+  const hp = Math.round(def.hp * hpMul);
+  const bar = new THREE.Group();
+  const bg = new THREE.Mesh(hpGeo, hpBgMat); bg.renderOrder = 10;
+  const fg = new THREE.Mesh(hpGeo, hpFgMat); fg.renderOrder = 11; fg.position.z = 0.001;
+  bar.add(bg, fg);
+  bar.scale.set(type === 'boss' ? 1.1 : 0.6, 1, 1);
+  world.add(bar);
+  const e = {id:++enemyId, type, def, actor:a, hp, maxHp:hp, s:0, off:(Math.random()-.5)*0.5,
+    pos:new THREE.Vector3(), alive:true, slowT:0, slowF:1, state:'spawn', t:0, bar, fg,
+    healT:1, attackT:0, deadT:0};
+  a.play('Spawn_Ground', {once:true, fade:0});
+  e.t = 0.9;
+  smoothPoint(0, e.pos);
+  a.o.position.copy(e.pos);
+  state.enemies.push(e);
+  return e;
+}
+
+const _dir = new THREE.Vector3(), _p = new THREE.Vector3(), _n = new THREE.Vector3();
+function wallAhead(e){
+  let best = null;
+  for(const w of state.walls){
+    if(w.hp <= 0) continue;
+    const stop = w.s - 0.85;
+    if(e.s <= stop + 0.05 && e.s > stop - 3 && (!best || w.s < best.s)) best = w;
+  }
+  return best;
+}
+
+function updateEnemy(e, dt){
+  if(!e.alive){
+    e.deadT += dt;
+    if(e.deadT > 1.6) e.actor.o.position.y -= dt * 0.6;
+    if(e.deadT > 2.6){ world.remove(e.actor.o); e.gone = true; }
+    return;
+  }
+  if(e.state === 'spawn'){
+    e.t -= dt;
+    if(e.t <= 0){ e.state = 'walk'; e.actor.play(e.def.walk, {speed:e.def.walkSpeed}); }
+  } else {
+    e.slowT -= dt;
+    const slow = e.slowT > 0 ? e.slowF : 1;
+    const w = wallAhead(e);
+    const stop = w ? w.s - 0.85 : Infinity;
+    if(w && e.s >= stop - 0.02){
+      if(e.state !== 'attack'){ e.state = 'attack'; e.attackT = 0.3; }
+      e.attackT -= dt;
+      if(e.attackT <= 0){
+        e.actor.play('Melee_1H_Attack_Chop', {once:true, fade:.1});
+        e.attackT = 1.1 / slow;
+        damageWall(w, e.def.dmg);
+      }
+    } else {
+      if(e.state !== 'walk'){ e.state = 'walk'; e.actor.play(e.def.walk, {speed:e.def.walkSpeed}); }
+      e.actor.cur && (e.actor.cur.timeScale = e.def.walkSpeed * slow);
+      e.s = Math.min(e.s + e.def.speed * SPEED_MUL * slow * dt, stop);
+      if(e.s >= pathLen - 0.9){ leak(e); return; }
+    }
+    if(e.def.heal){
+      e.healT -= dt;
+      if(e.healT <= 0){
+        e.healT = 1.5;
+        let any = false;
+        for(const o of state.enemies){
+          if(o.alive && o !== e && o.hp < o.maxHp && o.pos.distanceToSquared(e.pos) < 2.6*2.6){
+            o.hp = Math.min(o.maxHp, o.hp + o.maxHp * 0.08); any = true;
+          }
+        }
+        if(any) ring(e.pos, 0x7dffa0, 2.6, 0.6);
+      }
+    }
+  }
+  smoothPoint(e.s, _p);
+  pathPoint(e.s + 0.4, _n).sub(pathPoint(e.s - 0.4, _dir));
+  const ang = Math.atan2(_n.x, _n.z);
+  // seitlich versetzt laufen, damit nicht alle auf einer Linie gehen
+  _p.x += Math.cos(ang) * e.off; _p.z -= Math.sin(ang) * e.off;
+  e.pos.copy(_p);
+  e.actor.o.position.copy(_p);
+  e.actor.o.rotation.y = ang;
+  e.actor.mixer.update(dt);
+}
+
+function hurt(e, dmg, pierce = false){
+  if(!e.alive) return;
+  const d = pierce ? dmg : Math.max(dmg * 0.25, dmg - e.def.armor);
+  e.hp -= d;
+  if(e.hp <= 0){
+    e.alive = false;
+    e.hp = 0;
+    e.actor.play(Math.random() < .5 ? 'Death_A' : 'Death_B', {once:true, fade:.1});
+    state.gold += e.def.gold;
+    floatText(e.pos, '+' + e.def.gold);
+    e.bar.visible = false;
+    updateHud();
+  }
+}
+
+function leak(e){
+  e.alive = false; e.gone = true;
+  world.remove(e.actor.o); e.bar.visible = false;
+  state.lives = Math.max(0, state.lives - e.def.lives);
+  flash();
+  updateHud();
+  if(state.lives <= 0) gameOver();
+}
+
+const orbGeo = new THREE.SphereGeometry(0.13, 12, 8);
+const orbMat = new THREE.MeshBasicMaterial({color:0x9fd4ff});
+const orbCoreMat = new THREE.MeshBasicMaterial({color:0xcfeaff});
+
+// --- Türme --------------------------------------------------------------
+function topOf(obj){
+  // Standhöhe oben auf dem Turm: senkrecht von oben auf die Mitte schießen
+  obj.updateMatrixWorld(true);
+  const rc = new THREE.Raycaster(new THREE.Vector3(obj.position.x, 20, obj.position.z), new THREE.Vector3(0,-1,0));
+  const h = rc.intersectObject(obj, true)[0];
+  return h ? h.point.y : 2;
+}
+
+function towerVisual(t){
+  const g = new THREE.Group();
+  const lvl = t.level;
+  if(t.type === 'archer' || t.type === 'mage'){
+    // Bogenschützen stehen auf den Zinnen des Turmsockels, der Magier
+    // wohnt im Turm mit Dach und zaubert von der Galerie
+    const top = inst(t.type === 'archer' ? (lvl === 2 ? 'towerBase3' : 'towerBase') : (lvl === 2 ? 'towerB3' : 'towerB'));
+    g.add(top);
+  } else if(t.type === 'catapult'){
+    g.add(inst(lvl === 2 ? 'catapult3' : 'catapult'));
+  }
+  if(lvl >= 1){
+    const f = inst(lvl === 2 ? 'flag3' : 'flag');
+    f.position.set(0.62, 0, 0.4);
+    g.add(f);
+  }
+  return g;
+}
+
+function placeTower(c, type){
+  const t = {type, def:TOWERS[type], level:0, cell:c, cd:0.4, spent:TOWERS[type].cost, pos:c.pos.clone(), g:null, unit:null, aim:0};
+  c.tower = t;
+  state.towers.push(t);
+  rebuildTower(t, true);
+  return t;
+}
+
+function rebuildTower(t, pop){
+  if(t.g) world.remove(t.g);
+  t.g = towerVisual(t);
+  t.g.position.copy(t.pos);
+  world.add(t.g);
+  if(t.type === 'archer'){
+    const y = topOf(t.g.children[0]);
+    t.topY = y;
+    if(!t.unit){
+      t.unit = makeActor('ranger', 0.62, {l:'bow'});
+      t.unit.play('Ranged_Bow_Idle');
+    }
+    t.unit.o.position.set(t.pos.x, y, t.pos.z);
+    world.add(t.unit.o);
+  } else if(t.type === 'mage'){
+    // Unter dem Dach ist fuer eine Figur kein Platz: eine Zauberkugel
+    // kreist auf Hoehe der Galerie und feuert von dort
+    t.topY = 1.2;
+    t.orb = new THREE.Mesh(orbGeo, orbCoreMat);
+    t.orb.scale.setScalar(1.3);
+    t.g.add(t.orb);
+    t.orbA = t.orbA || 0;
+  } else if(t.type === 'catapult'){
+    t.turret = t.g.getObjectByName(t.level === 2 ? 'catapult_turret_yellow' : 'catapult_turret_blue');
+    t.arm = t.g.getObjectByName(t.level === 2 ? 'catapult_arm_yellow' : 'catapult_arm_blue');
+    t.armRest = t.arm ? t.arm.rotation.x : 0;
+    t.topY = 1.6;
+    if(t.turret) t.turret.rotation.y = t.aim;
+  }
+  if(pop){
+    gsap.from(t.g.scale, {x:.2, y:.2, z:.2, duration:.45, ease:'back.out(2)'});
+    if(t.unit) gsap.from(t.unit.o.position, {y:t.topY + 1.2, duration:.5, ease:'bounce.out'});
+  }
+}
+
+function placeWall(c){
+  const def = TOWERS.wall;
+  const i = c.pathIdx;
+  const a = hexPos(...PATH[Math.max(0,i-1)]), b = hexPos(...PATH[i+1]);
+  const ang = Math.atan2(b.z - a.z, b.x - a.x);
+  const o = inst('wall');
+  o.position.copy(c.pos);
+  o.rotation.y = -(ang + Math.PI/2);
+  o.scale.set(0.85, 0.8, 0.8);
+  world.add(o);
+  gsap.from(o.position, {y:-1.2, duration:.45, ease:'back.out(1.6)'});
+  const w = {type:'wall', def, cell:c, o, hp:def.hp[0], maxHp:def.hp[0], level:0, s:c.pathS, spent:def.cost, pos:c.pos.clone()};
+  c.wall = w;
+  state.walls.push(w);
+  return w;
+}
+
+function damageWall(w, d){
+  w.hp -= d;
+  gsap.fromTo(w.o.position, {x:w.pos.x + (Math.random()-.5)*.08}, {x:w.pos.x, duration:.15});
+  if(w.hp <= 0) removeWall(w, true);
+  if(state.selected === w) showInfo(w);
+}
+function removeWall(w, broken){
+  w.hp = 0;
+  state.walls = state.walls.filter(x => x !== w);
+  w.cell.wall = null;
+  if(broken){
+    burst(w.pos.clone().setY(.5), 0x9a8f80, 14);
+    gsap.to(w.o.position, {y:-1.3, duration:.6, ease:'power2.in', onComplete:()=>world.remove(w.o)});
+  } else world.remove(w.o);
+  if(state.selected === w) select(null);
+}
+
+function targetFor(t, range){
+  let best = null;
+  const r2 = range*range;
+  for(const e of state.enemies){
+    if(!e.alive || e.state === 'spawn') continue;
+    const dx = e.pos.x - t.pos.x, dz = e.pos.z - t.pos.z;
+    if(dx*dx + dz*dz <= r2 && (!best || e.s > best.s)) best = e;
+  }
+  return best;
+}
+
+function updateTower(t, dt){
+  const d = t.def, L = t.level;
+  t.cd -= dt;
+  if(t.unit) t.unit.mixer.update(dt);
+  if(t.orb){
+    t.orbA += dt * (1.2 + t.level*0.4);
+    t.orb.position.set(Math.cos(t.orbA)*0.62, 1.62 + Math.sin(t.orbA*2.3)*0.06, Math.sin(t.orbA)*0.62);
+  }
+  const e = targetFor(t, d.range[L]);
+  if(!e){
+    if(t.unit && t.idleT !== undefined && (t.idleT += dt) > 1.2){
+      t.unit.play(t.type === 'archer' ? 'Ranged_Bow_Idle' : 'Idle_A', {fade:.3});
+    }
+    return;
+  }
+  const ang = Math.atan2(e.pos.x - t.pos.x, e.pos.z - t.pos.z);
+  if(t.unit){ t.unit.o.rotation.y = ang; t.idleT = 0; }
+  if(t.turret){
+    let da = (ang - Math.PI) - t.aim;
+    da = Math.atan2(Math.sin(da), Math.cos(da));
+    t.aim += da * Math.min(1, dt*6);
+    t.turret.rotation.y = t.aim;
+  }
+  if(t.cd > 0) return;
+  t.cd = 1 / d.rate[L];
+  if(t.type === 'archer'){
+    t.unit.play('Ranged_Bow_Release', {once:true, fade:.05, speed:1.6});
+    shoot({kind:'arrow', from:new THREE.Vector3(t.pos.x, t.topY + 0.45, t.pos.z), target:e, dmg:d.dmg[L], speed:13});
+  } else if(t.type === 'mage'){
+    const from = t.orb.getWorldPosition(new THREE.Vector3());
+    gsap.fromTo(t.orb.scale, {x:2.2, y:2.2, z:2.2}, {x:1.3, y:1.3, z:1.3, duration:.35});
+    shoot({kind:'orb', from, target:e, dmg:d.dmg[L], speed:8, slow:d.slow[L]});
+  } else if(t.type === 'catapult'){
+    const T = 1.15;
+    const aimAt = pathPoint(e.s + e.def.speed * SPEED_MUL * (e.slowT > 0 ? e.slowF : 1) * T * (e.state === 'attack' ? 0 : 1));
+    if(t.arm){
+      gsap.timeline()
+        .to(t.arm.rotation, {x:t.armRest - 1.7, duration:.18, ease:'power3.out'})
+        .to(t.arm.rotation, {x:t.armRest, duration:.8, ease:'power1.inOut'});
+    }
+    const from = new THREE.Vector3(t.pos.x, 1.9, t.pos.z);
+    shoot({kind:'stone', from, to:aimAt, T, dmg:d.dmg[L], splash:d.splash[L]});
+  }
+}
+
+// --- Geschosse ----------------------------------------------------------
+
+function shoot(p){
+  let o;
+  if(p.kind === 'arrow'){ o = G.arrow.scene.clone(true); fitHeight(o, 0.06); o.scale.setScalar(o.scale.x); }
+  else if(p.kind === 'orb'){ o = new THREE.Mesh(orbGeo, orbMat); }
+  else { o = inst('stone'); o.scale.setScalar(1.3); }
+  o.position.copy(p.from);
+  world.add(o);
+  p.o = o; p.t = 0;
+  p.start = p.from.clone();
+  if(p.kind !== 'stone'){
+    const dist = p.from.distanceTo(p.target.pos);
+    p.T = Math.max(0.2, dist / p.speed);
+  }
+  state.projectiles.push(p);
+}
+
+const _q = new THREE.Vector3(), _prev = new THREE.Vector3();
+function updateProjectile(p, dt){
+  p.t += dt;
+  const k = Math.min(1, p.t / p.T);
+  _prev.copy(p.o.position);
+  const end = p.kind === 'stone' ? p.to : _q.copy(p.target.pos).setY(p.target.def.h * 0.55);
+  p.o.position.lerpVectors(p.start, end, k);
+  const arc = p.kind === 'stone' ? 3.2 : p.kind === 'arrow' ? 0.9 : 0.3;
+  p.o.position.y += Math.sin(k * Math.PI) * arc * Math.min(1, p.T);
+  if(p.kind === 'arrow'){
+    // Modellspitze zeigt nach +Z
+    _prev.sub(p.o.position).negate();
+    if(_prev.lengthSq() > 1e-8) p.o.lookAt(p.o.position.clone().add(_prev));
+  } else if(p.kind === 'stone'){
+    p.o.rotation.x += dt * 8;
+  }
+  if(k >= 1){
+    p.done = true;
+    world.remove(p.o);
+    if(p.kind === 'stone'){
+      burst(p.to.clone().setY(.25), 0x8a7a64, 16);
+      ring(p.to, 0xd8c6a0, p.splash, 0.35);
+      for(const e of state.enemies){
+        if(!e.alive) continue;
+        const d = Math.hypot(e.pos.x - p.to.x, e.pos.z - p.to.z);
+        if(d <= p.splash) hurt(e, p.dmg * (d < p.splash*0.4 ? 1 : 0.6));
+      }
+    } else if(p.target.alive){
+      hurt(p.target, p.dmg, p.kind === 'orb');
+      if(p.slow){
+        p.target.slowT = 2.2;
+        p.target.slowF = Math.min(p.target.slowT > 0 ? p.target.slowF : 1, 1 - p.slow);
+        burst(p.o.position.clone(), 0x9fd4ff, 6);
+      }
+    }
+  }
+}
+
+// --- Effekte ------------------------------------------------------------
+const partGeo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+function burst(at, color, n){
+  const mat = new THREE.MeshBasicMaterial({color, transparent:true});
+  for(let i = 0; i < n; i++){
+    const m = new THREE.Mesh(partGeo, mat);
+    m.position.copy(at);
+    world.add(m);
+    state.effects.push({o:m, v:new THREE.Vector3((Math.random()-.5)*3, Math.random()*3+1, (Math.random()-.5)*3), life:0.7, t:0, mat});
+  }
+}
+const ringGeo = new THREE.RingGeometry(0.85, 1, 40).rotateX(-Math.PI/2);
+function ring(at, color, r, life){
+  const mat = new THREE.MeshBasicMaterial({color, transparent:true, opacity:.8, depthWrite:false});
+  const m = new THREE.Mesh(ringGeo, mat);
+  m.position.set(at.x, 0.06, at.z);
+  m.scale.setScalar(r*0.3);
+  world.add(m);
+  state.effects.push({o:m, ring:true, r, life, t:0, mat});
+}
+function updateEffect(f, dt){
+  f.t += dt;
+  const k = f.t / f.life;
+  if(f.ring){
+    f.o.scale.setScalar(f.r * (0.3 + 0.7*k));
+    f.mat.opacity = 0.8 * (1-k);
+  } else {
+    f.v.y -= 9 * dt;
+    f.o.position.addScaledVector(f.v, dt);
+    if(f.o.position.y < 0.03){ f.o.position.y = 0.03; f.v.set(0,0,0); }
+    f.mat.opacity = 1 - k;
+  }
+  if(k >= 1){ world.remove(f.o); f.done = true; }
+}
+
+const floats = [];
+function floatText(at, text){
+  const v = at.clone().setY(1).project(camera);
+  const el = document.createElement('div');
+  el.className = 'float';
+  el.textContent = text;
+  el.style.left = ((v.x+1)/2*innerWidth) + 'px';
+  el.style.top = ((1-v.y)/2*innerHeight) + 'px';
+  document.body.appendChild(el);
+  requestAnimationFrame(()=>{ el.style.transform = 'translateY(-36px)'; el.style.opacity = '0'; });
+  setTimeout(()=>el.remove(), 1100);
+}
+function flash(){
+  document.body.animate([{boxShadow:'inset 0 0 0 0 rgba(224,88,74,0)'},{boxShadow:'inset 0 0 120px 20px rgba(224,88,74,.7)'},{boxShadow:'inset 0 0 0 0 rgba(224,88,74,0)'}], {duration:500});
+}
+
+// --- Auswahl, Cursor, Reichweite ---------------------------------------
+const cursorMat = new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:.35, depthWrite:false});
+const hexShape = new THREE.Shape();
+for(let i = 0; i < 6; i++){
+  const a = Math.PI/6 + i*Math.PI/3, r = 1.12;
+  i ? hexShape.lineTo(Math.cos(a)*r, Math.sin(a)*r) : hexShape.moveTo(Math.cos(a)*r, Math.sin(a)*r);
+}
+const cursor = new THREE.Mesh(new THREE.ShapeGeometry(hexShape).rotateX(Math.PI/2), cursorMat);
+cursor.position.y = 0.04;
+cursor.visible = false;
+cursor.renderOrder = 5;
+scene.add(cursor);
+const rangeMat = new THREE.MeshBasicMaterial({color:0xfff3cf, transparent:true, opacity:.22, depthWrite:false, side:THREE.DoubleSide});
+const rangeMesh = new THREE.Mesh(new THREE.RingGeometry(0.97, 1, 64).rotateX(-Math.PI/2), rangeMat);
+const rangeFill = new THREE.Mesh(new THREE.CircleGeometry(1, 64).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({color:0xfff3cf, transparent:true, opacity:.08, depthWrite:false}));
+rangeMesh.add(rangeFill);
+rangeMesh.position.y = 0.05;
+rangeMesh.visible = false;
+scene.add(rangeMesh);
+
+function canBuild(c, type){
+  if(!c) return false;
+  if(type === 'wall'){
+    return c.kind === 'road' && !c.wall && c.pathIdx >= 2 && c.pathIdx <= PATH.length - 3;
+  }
+  return c.kind === 'grass' && !c.tower;
+}
+
+const ray = new THREE.Raycaster();
+const plane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+const mouse = new THREE.Vector2();
+function cellAt(cx, cy){
+  mouse.set(cx/innerWidth*2-1, -(cy/innerHeight)*2+1);
+  ray.setFromCamera(mouse, camera);
+  const hit = new THREE.Vector3();
+  if(!ray.ray.intersectPlane(plane, hit)) return null;
+  // zuerst Türme direkt treffen (die ragen über das Feld hinaus)
+  const objs = state.towers.map(t => t.g).concat(state.walls.map(w => w.o));
+  const h = ray.intersectObjects(objs, true)[0];
+  if(h){
+    const [q, r] = worldToHex(h.object.getWorldPosition(new THREE.Vector3()).x, h.object.getWorldPosition(new THREE.Vector3()).z);
+    let o = h.object; while(o.parent && o.parent !== world) o = o.parent;
+    const t = state.towers.find(t => t.g === o) || state.walls.find(w => w.o === o);
+    if(t) return t.cell;
+  }
+  const [q, r] = worldToHex(hit.x, hit.z);
+  return cells.get(key(q, r)) || null;
+}
+
+let hoverCell = null;
+function updateCursor(){
+  const c = hoverCell;
+  const b = state.build;
+  rangeMesh.visible = false;
+  if(!c || c.kind === 'water'){ cursor.visible = false; return; }
+  cursor.visible = true;
+  cursor.position.x = c.pos.x; cursor.position.z = c.pos.z;
+  if(b){
+    const ok = canBuild(c, b) && state.gold >= TOWERS[b].cost;
+    cursorMat.color.set(ok ? 0x9cff7a : 0xff6a5a);
+    if(TOWERS[b].range && ok) showRange(c.pos, TOWERS[b].range[0]);
+  } else {
+    cursorMat.color.set(0xffffff);
+    cursor.visible = !!(c.tower || c.wall);
+  }
+  const sel = state.selected;
+  if(sel && sel.def.range) showRange(sel.pos, sel.def.range[sel.level]);
+}
+function showRange(p, r){
+  rangeMesh.visible = true;
+  rangeMesh.position.x = p.x; rangeMesh.position.z = p.z;
+  rangeMesh.scale.setScalar(r);
+}
+
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e=>{ downAt = {x:e.clientX, y:e.clientY}; });
+renderer.domElement.addEventListener('pointermove', e=>{
+  if(e.pointerType === 'mouse'){ hoverCell = cellAt(e.clientX, e.clientY); updateCursor(); }
+});
+renderer.domElement.addEventListener('pointerup', e=>{
+  if(!downAt || Math.hypot(e.clientX-downAt.x, e.clientY-downAt.y) > 8) return;
+  const c = cellAt(e.clientX, e.clientY);
+  hoverCell = c;
+  clickCell(c);
+  updateCursor();
+});
+addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){ setBuild(null); select(null); }
+  const n = {'1':'archer','2':'mage','3':'catapult','4':'wall'}[e.key];
+  if(n) setBuild(state.build === n ? null : n);
+  if(e.key === ' ' ){ e.preventDefault(); nextWave(); }
+});
+
+function clickCell(c){
+  if(!state.started || state.over) return;
+  const b = state.build;
+  if(b){
+    if(canBuild(c, b) && state.gold >= TOWERS[b].cost){
+      state.gold -= TOWERS[b].cost;
+      const t = b === 'wall' ? placeWall(c) : placeTower(c, b);
+      updateHud();
+      if(state.gold < TOWERS[b].cost) setBuild(null);
+      select(t);
+      if(state.build) state.selected = null, showInfo(null);
+      return;
+    }
+    if(c && (c.tower || c.wall)){ setBuild(null); select(c.tower || c.wall); return; }
+    hint(!c || c.kind === 'water' ? 'Dort kann nicht gebaut werden'
+      : state.gold < TOWERS[b].cost ? 'Nicht genug Gold'
+      : b === 'wall' ? 'Mauern gehören auf die Straße (nicht direkt an Friedhof oder Burg)'
+      : 'Türme gehören auf freie Wiesen');
+    return;
+  }
+  select(c && (c.tower || c.wall) || null);
+}
+
+// --- HUD ----------------------------------------------------------------
+const $ = id => document.getElementById(id);
+const bottom = $('bottom');
+const buildBtns = {};
+for(const [k, d] of Object.entries(TOWERS)){
+  const b = document.createElement('button');
+  b.className = 'btn build';
+  b.innerHTML = `<span class="ico">${d.ico}</span><span class="nm">${d.name}</span><span class="cost">🪙 ${d.cost}</span>`;
+  b.title = d.desc;
+  b.onclick = ()=> setBuild(state.build === k ? null : k);
+  bottom.appendChild(b);
+  buildBtns[k] = b;
+}
+function setBuild(k){
+  state.build = k;
+  for(const [n, b] of Object.entries(buildBtns)) b.classList.toggle('on', n === k);
+  if(k){ select(null); hint(k === 'wall' ? 'Tippe auf ein Straßenfeld' : 'Tippe auf eine freie Wiese'); }
+  updateCursor();
+}
+let hintTimer;
+function hint(text){
+  const h = $('hint');
+  h.textContent = text; h.style.display = 'block';
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(()=> h.style.display = 'none', 2200);
+}
+function updateHud(){
+  $('gold').textContent = state.gold;
+  $('lives').textContent = state.lives;
+  $('wave').textContent = state.wave;
+  for(const [k, b] of Object.entries(buildBtns)) b.classList.toggle('poor', state.gold < TOWERS[k].cost);
+  const active = state.queue.length || state.enemies.some(e => e.alive);
+  $('next').disabled = state.over || (active && state.wave > 0) || state.wave >= WAVES;
+  $('next').textContent = state.wave === 0 ? '⚔ Erste Welle' : '⚔ Nächste Welle';
+  if(state.selected) showInfo(state.selected);
+}
+function select(t){
+  state.selected = t;
+  showInfo(t);
+  updateCursor();
+}
+function showInfo(t){
+  const el = $('info');
+  if(!t){ el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  const d = t.def, L = t.level;
+  const rows = [];
+  if(t.type === 'wall'){
+    rows.push(['Stabilität', `${Math.max(0,Math.ceil(t.hp))} / ${t.maxHp}`]);
+  } else {
+    rows.push(['Schaden', d.dmg[L] + (d.dmg[L+1] ? ` → ${d.dmg[L+1]}` : '')]);
+    rows.push(['Reichweite', d.range[L].toFixed(1) + (d.range[L+1] ? ` → ${d.range[L+1].toFixed(1)}` : '')]);
+    rows.push(['Schüsse/s', d.rate[L].toFixed(2) + (d.rate[L+1] ? ` → ${d.rate[L+1].toFixed(2)}` : '')]);
+    if(d.slow) rows.push(['Verlangsamung', Math.round(d.slow[L]*100) + ' %']);
+    if(d.splash) rows.push(['Wirkradius', d.splash[L].toFixed(1)]);
+  }
+  const upCost = d.up[L];
+  const sell = Math.floor(t.spent * 0.7);
+  el.innerHTML = `<h3>${d.ico} ${d.name} <span style="color:var(--gold)">${'★'.repeat(L+1)}</span></h3>
+    ${rows.map(r=>`<div class="row"><span>${r[0]}</span><span>${r[1]}</span></div>`).join('')}
+    <div class="acts">
+      ${upCost ? `<button class="btn" id="up" ${state.gold < upCost ? 'disabled' : ''}>⬆ ${upCost}</button>` : `<button class="btn" disabled>Maximal</button>`}
+      <button class="btn" id="sell">Verkaufen +${sell}</button>
+    </div>`;
+  const up = $('up');
+  if(up) up.onclick = ()=> upgrade(t);
+  $('sell').onclick = ()=> sellIt(t);
+}
+function upgrade(t){
+  const c = t.def.up[t.level];
+  if(!c || state.gold < c) return;
+  state.gold -= c; t.spent += c; t.level++;
+  if(t.type === 'wall'){
+    const add = t.def.hp[t.level] - t.maxHp;
+    t.maxHp = t.def.hp[t.level]; t.hp += add;
+    t.o.scale.y = 0.8 + t.level*0.15;
+    gsap.from(t.o.scale, {x:1.1, duration:.3, ease:'back.out(3)'});
+  } else {
+    rebuildTower(t, false);
+    gsap.from(t.g.scale, {y:.6, duration:.4, ease:'back.out(2.5)'});
+  }
+  burst(t.pos.clone().setY(1.5), 0xf2c14e, 18);
+  updateHud(); showInfo(t); updateCursor();
+}
+function sellIt(t){
+  state.gold += Math.floor(t.spent * 0.7);
+  if(t.type === 'wall') removeWall(t, false);
+  else {
+    world.remove(t.g);
+    if(t.unit) world.remove(t.unit.o);
+    t.cell.tower = null;
+    state.towers = state.towers.filter(x => x !== t);
+  }
+  burst(t.pos.clone().setY(.6), 0xf2c14e, 10);
+  select(null);
+  updateHud();
+}
+
+$('speed').onclick = ()=>{
+  state.speed = state.speed === 1 ? 2 : state.speed === 2 ? 3 : 1;
+  $('speed').textContent = `▶ ×${state.speed}`;
+  $('speed').classList.toggle('on', state.speed > 1);
+};
+$('next').onclick = ()=> nextWave();
+
+function nextWave(){
+  if(!state.started || state.over || state.wave >= WAVES) return;
+  if(state.wave > 0 && (state.queue.length || state.enemies.some(e => e.alive))) return;
+  state.wave++;
+  state.queue = waveSpec(state.wave);
+  state.queueT = 0;
+  const boss = state.wave % 5 === 0;
+  ui.banner($('banner'), boss ? `Welle ${state.wave} — Knochenfürst!` : `Welle ${state.wave}`, 1);
+  updateHud();
+}
+
+function waveCleared(){
+  const bonus = 20 + state.wave * 4;
+  state.gold += bonus;
+  if(state.wave >= WAVES){ victory(); return; }
+  ui.banner($('banner'), `Welle geschafft · +${bonus} 🪙`, 1);
+  updateHud();
+}
+
+function gameOver(){
+  state.over = true;
+  const o = $('overlay');
+  o.innerHTML = `<h1>Die Burg ist gefallen</h1><p>Du hast ${state.wave - 1} von ${WAVES} Wellen gehalten.</p><button class="btn" onclick="location.reload()">Noch einmal</button>`;
+  ui.panelIn(o);
+}
+function victory(){
+  state.over = true; state.won = true;
+  const o = $('overlay');
+  o.innerHTML = `<h1>Sieg!</h1><p>Alle ${WAVES} Wellen abgewehrt, ${state.lives} Leben übrig. Die Toten ruhen wieder.</p><button class="btn" onclick="location.reload()">Noch einmal</button>`;
+  ui.panelIn(o);
+}
+
+// --- Schleife -----------------------------------------------------------
+function step(dt){
+  state.time += dt;
+  if(state.queue.length){
+    state.queueT += dt;
+    while(state.queue.length && state.queue[0].at <= state.queueT){
+      const s = state.queue.shift();
+      spawnEnemy(s.t, s.hpMul);
+    }
+  }
+  for(const t of state.towers) updateTower(t, dt);
+  for(const e of state.enemies) updateEnemy(e, dt);
+  for(const p of state.projectiles) updateProjectile(p, dt);
+  for(const f of state.effects) updateEffect(f, dt);
+  const hadAlive = state.enemies.some(e => e.alive);
+  state.enemies = state.enemies.filter(e => !e.gone);
+  state.projectiles = state.projectiles.filter(p => !p.done);
+  state.effects = state.effects.filter(f => !f.done);
+  if(state.wave > 0 && !state.over && !state.queue.length && !state.enemies.some(e => e.alive) && state.waveActive){
+    state.waveActive = false;
+    waveCleared();
+  }
+  if(state.queue.length || hadAlive) state.waveActive = true;
+}
+
+const _cq = new THREE.Quaternion();
+function frame(){
+  // Lebensbalken zur Kamera drehen
+  _cq.copy(camera.quaternion);
+  for(const e of state.enemies){
+    if(!e.alive) continue;
+    e.bar.position.set(e.pos.x, e.def.h + 0.25, e.pos.z);
+    e.bar.quaternion.copy(_cq);
+    const k = Math.max(0, e.hp / e.maxHp);
+    e.fg.scale.x = k; e.fg.position.x = -(1-k)/2;
+    e.fg.material = e.slowT > 0 ? hpFgMatSlow : hpFgMat;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+let last = performance.now(), hudT = 0;
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if(state.started && !state.over){
+    const sub = state.speed;
+    for(let i = 0; i < sub; i++) step(dt);
+  } else {
+    for(const t of state.towers) t.unit && t.unit.mixer.update(dt);
+  }
+  hudT += dt;
+  if(hudT > 0.25){ hudT = 0; updateHud(); }
+  frame();
+}
+
+// Debug-/Testzugang
+window.__td = {state, step, frame, spawnEnemy, placeTower, placeWall, cells, key, PATH, nextWave, camera, controls, G};
+
+// --- Start --------------------------------------------------------------
+await loadAll();
+prepClips();
+buildMap();
+fitCamera();
+updateHud();
+$('load').style.display = 'none';
+$('play').style.display = '';
+$('play').onclick = ()=>{
+  state.started = true;
+  ui.panelOut($('overlay'));
+  hint('Baue Türme, dann starte die erste Welle');
+};
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
