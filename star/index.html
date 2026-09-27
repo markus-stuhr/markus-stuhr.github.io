@@ -135,6 +135,18 @@ async function loadAll() {
 const tMetal = new THREE.MeshStandardMaterial({ color: 0x5a6070, metalness: 0.7, roughness: 0.35, flatShading: true });
 const tDark = new THREE.MeshStandardMaterial({ color: 0x2a2e38, metalness: 0.6, roughness: 0.5, flatShading: true });
 const tGlow = new THREE.MeshStandardMaterial({ color: 0xff8a20, emissive: 0xff5a00, emissiveIntensity: 1.6 });
+const hpGeo = new THREE.PlaneGeometry(1, 1);
+const hpBgMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.75, depthTest: false });
+function showDamage(o) {
+  const bar = o.mesh.userData.bar, fill = bar.userData.fill, max = o.heavy ? 8 : 4, f = o.hp / max;
+  bar.visible = true; bar.children[0].renderOrder = 10;
+  // Füllung schrumpft linksbündig und färbt sich von grün nach rot
+  gsap.to(fill.scale, { x: 2.5 * f, duration: 0.25, ease: 'power2.out' });
+  gsap.to(fill.position, { x: -2.5 * (1 - f) / 2, duration: 0.25, ease: 'power2.out' });
+  fill.material.color.setHSL(0.33 * f, 1, 0.55).multiplyScalar(1.6);
+  gsap.fromTo(bar.scale, { x: 1.5, y: 1.5 }, { x: 1, y: 1, duration: 0.4, ease: 'back.out(3)' });
+  burst(o.mesh.position.clone().setY(o.mesh.position.y + 1.2), 0xffe0a0);
+}
 function makeTurret(heavy) {
   const s = heavy ? 1.35 : 1, g = new THREE.Group();
   const base = new THREE.Mesh(new THREE.CylinderGeometry(1.1 * s, 1.35 * s, 0.7 * s, 8), tDark);
@@ -152,6 +164,12 @@ function makeTurret(heavy) {
   }
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   g.userData.head = head;
+  // Schadensanzeige: kleiner Balken über dem Turm, erscheint erst nach dem ersten Treffer
+  const bar = new THREE.Group(); bar.position.y = 3 * s; bar.visible = false;
+  const bg = new THREE.Mesh(hpGeo, hpBgMat); bg.scale.set(2.8, 0.5, 1); bar.add(bg);
+  const fill = new THREE.Mesh(hpGeo, new THREE.MeshBasicMaterial({ color: 0x40ff60, toneMapped: false, depthTest: false }));
+  fill.scale.set(2.5, 0.3, 1); fill.position.z = 0.01; fill.renderOrder = 11; bar.add(fill);
+  bar.userData.fill = fill; g.userData.bar = bar; g.add(bar);
   return g;
 }
 
@@ -279,7 +297,7 @@ function spawnLevel() {
   const nT = 16 + level * 4;
   for (let i = 0; i < nT; i++) {
     const heavy = rnd() < 0.25 + level * 0.03;
-    add('turret', makeTurret(heavy), (rnd() - 0.5) * (W - 6), -30 - rnd() * (LEN - 40), { hp: heavy ? 4 : 2, cd: rnd() * 2, heavy });
+    add('turret', makeTurret(heavy), (rnd() - 0.5) * (W - 6), -30 - rnd() * (LEN - 40), { hp: heavy ? 8 : 4, cd: rnd() * 2, heavy });
   }
   for (let i = 0; i < 10; i++) {
     const m = inst('rock'); m.rotation.y = rnd() * 6;
@@ -319,6 +337,65 @@ function input() {
 }
 
 // ---------- Effekte / HUD ----------
+// ---------- Explosionen ----------
+let shakeAmt = 0;
+const expLights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xff9a40, 0, 30, 1.6); scene.add(l); return l; });
+let expLightIdx = 0;
+const debrisGeo = new THREE.DodecahedronGeometry(0.28, 0);
+const scorchTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), r = g.createRadialGradient(32, 32, 4, 32, 32, 32);
+  r.addColorStop(0, 'rgba(0,0,0,0.9)'); r.addColorStop(0.6, 'rgba(20,10,0,0.55)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c);
+})();
+function explode(pos, big = 1) {
+  // Lichtblitz (drei Lichter im Wechsel, damit keine Shader neu kompiliert werden)
+  const L = expLights[expLightIdx++ % 3];
+  L.position.copy(pos).y += 1.5;
+  gsap.fromTo(L, { intensity: 140 * big }, { intensity: 0, duration: 0.6 * big, ease: 'power2.out', overwrite: true });
+  // Feuerball: mehrere additive Sprites, die aufblähen und von gelb über orange verglühen
+  for (let i = 0; i < 4 + 3 * big; i++) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffb050, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.75 }));
+    m.position.copy(pos).add(new THREE.Vector3((Math.random() - .5) * 1.6 * big, 0.8 + Math.random() * big, (Math.random() - .5) * 1.6 * big));
+    scene.add(m);
+    const s = (1.6 + Math.random() * 1.6) * big, d = 0.45 + Math.random() * 0.4, dl = Math.random() * 0.12;
+    gsap.fromTo(m.scale, { x: 0.3, y: 0.3 }, { x: s, y: s, duration: d, delay: dl, ease: 'expo.out' });
+    gsap.to(m.material.color, { r: 1, g: 0.25, b: 0.05, duration: d, delay: dl });
+    gsap.to(m.material, { opacity: 0, duration: d * 0.7, delay: dl + d * 0.5, onComplete: () => { scene.remove(m); m.material.dispose(); } });
+    gsap.to(m.position, { y: '+=' + (1 + Math.random() * 1.5), duration: d * 1.3, delay: dl, ease: 'power1.out' });
+  }
+  // Rauch steigt langsam auf
+  for (let i = 0; i < 5 * big; i++) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x302a28, depthWrite: false, transparent: true, opacity: 0 }));
+    m.position.copy(pos).add(new THREE.Vector3((Math.random() - .5) * 2, 1, (Math.random() - .5) * 2));
+    scene.add(m);
+    const s = (3 + Math.random() * 2) * big;
+    gsap.to(m.material, { opacity: 0.7, duration: 0.3, delay: 0.2 });
+    gsap.fromTo(m.scale, { x: 1, y: 1 }, { x: s, y: s, duration: 1.8, delay: 0.2, ease: 'power1.out' });
+    gsap.to(m.position, { y: '+=' + (3 + Math.random() * 2), duration: 1.8, delay: 0.2 });
+    gsap.to(m.material, { opacity: 0, duration: 1, delay: 1, onComplete: () => { scene.remove(m); m.material.dispose(); } });
+  }
+  // Druckwelle am Boden
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 32).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.6, 0.6), toneMapped: false, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  ring.position.copy(pos).y += 0.15; scene.add(ring);
+  gsap.fromTo(ring.scale, { x: 0.5, z: 0.5 }, { x: 7 * big, z: 7 * big, duration: 0.55, ease: 'expo.out' });
+  gsap.to(ring.material, { opacity: 0, duration: 0.55, ease: 'power2.in', onComplete: () => { scene.remove(ring); ring.geometry.dispose(); } });
+  // Trümmer fliegen im Bogen und hüpfen
+  for (let i = 0; i < 8 * big; i++) {
+    const m = new THREE.Mesh(debrisGeo, tDark); m.castShadow = true;
+    m.position.copy(pos).y += 1; scene.add(m);
+    const v = new THREE.Vector3((Math.random() - .5) * 14, 7 + Math.random() * 9, (Math.random() - .5) * 14);
+    sparks.push({ m, parent: scene, v, life: 1.6, debris: true });
+  }
+  burst(pos.clone().setY(pos.y + 1), 0xffd070);
+  shakeAmt = Math.max(shakeAmt, 0.5 * big);
+}
+function scorch(o) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(4, 4).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ map: scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+  m.position.y = 0.05; o.mesh.add(m); o.scorch = m;
+}
 function burst(pos, color, parent = scene) {
   for (let i = 0; i < 14; i++) {
     const m = new THREE.Mesh(sparkGeo, new THREE.MeshBasicMaterial({ color }));
@@ -353,7 +430,7 @@ function hurt(a) {
   if (shield <= 0) die('SCHILD ZERSTÖRT');
 }
 function die(why) {
-  burst(ship.getWorldPosition(new THREE.Vector3()), 0xffa040);
+  explode(ship.getWorldPosition(new THREE.Vector3()), 1.8);
   lives--; shield = 1; fuel = Math.max(fuel, 0.6); ammo = Math.max(ammo, 0.5); invuln = 3;
   if (lives < 0) { lives = 0; gameOver(); return; }
   banner(why + ' – ' + lives + ' übrig');
@@ -393,6 +470,11 @@ function update(dt) {
 
   camera.position.set(px * 0.6, ship.position.y + 20, pz + 9);
   camera.lookAt(px * 0.8, ship.position.y - 2, pz - 10);
+  if (shakeAmt > 0.01) {
+    camera.position.x += (Math.random() - 0.5) * shakeAmt;
+    camera.position.y += (Math.random() - 0.5) * shakeAmt;
+    shakeAmt *= Math.exp(-dt * 7);
+  }
   sun.position.set(px - 14, ship.position.y + 40, pz + 4); sun.target.position.set(px, 0, pz); sun.target.updateMatrixWorld();
 
   // Feuern
@@ -424,7 +506,14 @@ function update(dt) {
     o.mesh.visible = near; if (!near) { if ((o.type === 'turret' || o.type === 'pickup') && !o.alive) o.respawn = true; continue; }
     if ((o.type === 'turret' || o.type === 'pickup') && !o.alive) {
       // Zerstörte Türme kommen in der nächsten Runde zurück
-      if (o.respawn && z < pz - 100) { o.alive = true; o.hp = o.heavy ? 4 : 2; o.respawn = false; }
+      if (o.respawn && z < pz - 100) {
+        o.alive = true; o.respawn = false;
+        if (o.type === 'turret') {
+          o.hp = o.heavy ? 8 : 4; const b = o.mesh.userData.bar; b.userData.fill.scale.x = 2.5; b.userData.fill.position.x = 0;
+          o.mesh.children.forEach(c => c.visible = c !== b && c !== o.scorch);
+        }
+      }
+      else if (o.type === 'turret') { o.mesh.position.set(o.x, groundAt(o.x, z), z); continue; }
       else { o.mesh.visible = false; continue; }
     }
     const y = groundAt(o.x, z);
@@ -450,6 +539,7 @@ function update(dt) {
     } else if (o.type === 'turret') {
       tmp.copy(ship.position).sub(o.mesh.position);
       o.mesh.userData.head.rotation.y = Math.atan2(tmp.x, tmp.z);
+      if (o.mesh.userData.bar.visible) o.mesh.userData.bar.quaternion.copy(camera.quaternion);
       o.cd -= dt;
       if (o.cd <= 0 && z < pz - 6 && z > pz - 70) {
         o.cd = (o.heavy ? 1.1 : 1.8) - level * 0.06 + Math.random();
@@ -463,7 +553,14 @@ function update(dt) {
         const b = bullets[i].mesh.position;
         if (Math.abs(b.x - o.x) < (o.heavy ? 1.8 : 1.3) && Math.abs(b.z - z) < 1.5) {
           scene.remove(bullets[i].mesh); bullets.splice(i, 1);
-          if (--o.hp <= 0) { o.alive = false; score += o.heavy ? 200 : 100; burst(o.mesh.position, 0xffa040); break; }
+          if (--o.hp <= 0) {
+            o.alive = false; o.mesh.userData.bar.visible = false; score += o.heavy ? 200 : 100;
+            explode(o.mesh.position.clone(), o.heavy ? 1.5 : 1);
+            if (!o.scorch) scorch(o);
+            o.mesh.children.forEach(c => c.visible = c === o.scorch);
+            break;
+          }
+          showDamage(o);
         }
       }
       if (o.alive && Math.abs(o.x - px) < 1.6 && Math.abs(z - pz) < 1.6) hurt(0.3);
@@ -472,7 +569,11 @@ function update(dt) {
 
   // Funken
   for (let i = sparks.length - 1; i >= 0; i--) {
-    const s = sparks[i]; s.life -= dt; s.m.position.addScaledVector(s.v, dt); s.v.y -= 15 * dt; s.m.rotation.x += dt * 8;
+    const s = sparks[i]; s.life -= dt; s.m.position.addScaledVector(s.v, dt); s.v.y -= (s.debris ? 30 : 15) * dt; s.m.rotation.x += dt * 8;
+    if (s.debris) {
+      const gy = groundAt(s.m.position.x, s.m.position.z) + 0.2;
+      if (s.m.position.y < gy) { s.m.position.y = gy; s.v.y = Math.abs(s.v.y) * 0.4; s.v.x *= 0.6; s.v.z *= 0.6; }
+    }
     if (s.life <= 0) { s.parent.remove(s.m); sparks.splice(i, 1); }
   }
   // Mesh deckt z ∈ [-2LEN,0]; um Vielfache von LEN verschieben (Gelände ist periodisch)
