@@ -35,7 +35,7 @@
 <div id="banner"></div>
 <div id="msg">
   <h1>STAR GOOSE</h1>
-  <p>Sammle alle Kristalle jeder Welle. Sprit, Munition und Schild gibt es nur in den Tunneln – flieg durch die leuchtenden Tore.</p>
+  <p>Sammle alle Kristalle jeder Welle. Sprit, Munition und Schild liegen verstreut auf dem Plateau – einsammeln, bevor sie ausgehen.</p>
   <p>← → lenken · ↑ ↓ Tempo · Leertaste feuern<br>Touch: ziehen zum Lenken, Finger drauf = Dauerfeuer</p>
   <button id="start">Laden …</button>
 </div>
@@ -82,7 +82,6 @@ const sun = new THREE.DirectionalLight(0xffffff, 2.2);
 sun.position.set(-20, 40, 10); scene.add(sun);
 
 const world = new THREE.Group(); scene.add(world);
-const tunnel = new THREE.Group(); tunnel.visible = false; scene.add(tunnel);
 
 // Sternenhimmel
 {
@@ -121,43 +120,72 @@ let seed = 1;
 const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 let noiseT = [];
 function initNoise() { noiseT = Array.from({ length: 12 }, () => [rnd() * 6.28, rnd() * 6.28, 0.5 + rnd()]); }
-function height(x, z) {
-  // z läuft zyklisch, damit das Gelände nahtlos wiederholt
-  const a = z / LEN * Math.PI * 2;
+const T = 2, NX = W / T, NZ = LEN / T;   // Kachelraster wie im Original
+function smooth(x, z) {
+  const a = z / LEN * Math.PI * 2;   // periodisch in z
   let h = 0;
   for (let i = 0; i < 6; i++) {
     const [p, q, f] = noiseT[i];
     h += Math.sin(a * (i + 2) + p + Math.sin(x * 0.07 * f + q) * 1.3) * (4.5 / (1 + i * 0.6));
   }
-  h += Math.sin(x * 0.18 + a * 5 + noiseT[7][0]) * 1.2;
-  return h * (0.6 + level * 0.07);
+  return h + Math.sin(x * 0.18 + a * 5 + noiseT[7][0]) * 1.2;
 }
-const PALETTES = [
-  [0x2a1f5c, 0x6a3fa0, 0xe07ac8], [0x0d3b2e, 0x2e8a5c, 0xd7f07a], [0x40200c, 0xa04a1a, 0xffc36a],
-  [0x0c2a4a, 0x2a6ab0, 0x9ae8ff], [0x3a0c1c, 0x90203c, 0xff9a6a], [0x1a1a1a, 0x505a6a, 0xd8e0f0],
-  [0x0a2a10, 0x507a18, 0xfff27a], [0x200a3a, 0x5a1aa0, 0x6affd8],
+// Plateaustufe an einer Kachelecke (i: 0..NX, j: beliebig, periodisch NZ)
+function step(i, j) {
+  const k = Math.round(smooth(i * T - W / 2, -j * T) * (0.7 + level * 0.06) / 3.2);
+  return THREE.MathUtils.clamp(k, -2, 3);
+}
+const STEP_H = 1.5;
+// Höhe über bilineare Interpolation der Ecken -> passt exakt zu den Rampen im Mesh
+function height(x, z) {
+  const fi = THREE.MathUtils.clamp((x + W / 2) / T, 0, NX - 0.001), fj = -z / T;
+  const i = Math.floor(fi), j = Math.floor(fj), u = fi - i, v = fj - j;
+  const h00 = step(i, j), h10 = step(i + 1, j), h01 = step(i, j + 1), h11 = step(i + 1, j + 1);
+  return ((h00 * (1 - u) + h10 * u) * (1 - v) + (h01 * (1 - u) + h11 * u) * v) * STEP_H;
+}
+const PALETTES = [   // [helle Kachel, dunkle Kachel]
+  [0x3ac8c8, 0x7a8a8a], [0x6ad05a, 0x8a7a5a], [0xe0a040, 0x806a6a], [0x5a8aff, 0x8a8aa0],
+  [0xe05a7a, 0x7a6a8a], [0xc0c0d0, 0x6a7a8a], [0xd0d040, 0x5a8a6a], [0xb05aff, 0x6a8aa0],
 ];
+// Kacheltextur: Fase + Emblem, Pixel-Look
+const tileTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const g = c.getContext('2d');
+  g.fillStyle = '#d8d8d8'; g.fillRect(0, 0, 32, 32);
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, 32, 2); g.fillRect(0, 0, 2, 32);
+  g.fillStyle = '#707070'; g.fillRect(0, 30, 32, 2); g.fillRect(30, 0, 2, 32);
+  g.fillStyle = '#9a9a9a'; g.fillRect(7, 7, 18, 18);
+  g.fillStyle = '#e8e8e8'; g.fillRect(8, 8, 17, 17);
+  g.strokeStyle = '#6a6a6a'; g.lineWidth = 2;
+  g.beginPath(); g.arc(16, 13, 4, Math.PI * 0.2, Math.PI * 1.5); g.arc(16, 19, 4, Math.PI * 1.2, Math.PI * 0.5, true); g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapNearestFilter; t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+})();
 let terrain;
 function buildTerrain() {
   if (terrain) { world.remove(terrain); terrain.geometry.dispose(); }
-  const nx = 44, nz = 260;
-  const g = new THREE.PlaneGeometry(W + 30, LEN * 2, nx, nz * 2).rotateX(-Math.PI / 2);
-  const pos = g.attributes.position, col = [], pal = PALETTES[(level - 1) % 8].map(c => new THREE.Color(c));
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i), z = pos.getZ(i) - LEN;  // Mesh deckt z ∈ [-2LEN, 0]
-    const y = height(x, z); pos.setY(i, y); pos.setZ(i, z);
-    const t = THREE.MathUtils.clamp((y + 6) / 14, 0, 1);
-    const c = t < 0.5 ? pal[0].clone().lerp(pal[1], t * 2) : pal[1].clone().lerp(pal[2], (t - 0.5) * 2);
-    if (Math.abs(x) > W / 2) c.multiplyScalar(0.45);  // Randzone dunkler
-    col.push(c.r, c.g, c.b);
+  const pos = [], uv = [], col = [], pal = PALETTES[(level - 1) % 8].map(c => new THREE.Color(c));
+  const rows = NZ * 2;    // zwei Runden: Mesh deckt z ∈ [-2LEN, 0]
+  for (let j = 0; j < rows; j++) for (let i = 0; i < NX; i++) {
+    const x0 = i * T - W / 2, x1 = x0 + T, z0 = -j * T, z1 = z0 - T;
+    const y00 = step(i, j) * STEP_H, y10 = step(i + 1, j) * STEP_H, y01 = step(i, j + 1) * STEP_H, y11 = step(i + 1, j + 1) * STEP_H;
+    const lo = Math.min(y00, y10, y01, y11);
+    const c = (Math.round(lo / STEP_H) & 1 ? pal[1] : pal[0]);
+    // zwei Dreiecke, gegen den Uhrzeigersinn von oben
+    pos.push(x0, y00, z0, x1, y10, z0, x1, y11, z1,  x0, y00, z0, x1, y11, z1, x0, y01, z1);
+    uv.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+    for (let k = 0; k < 6; k++) col.push(c.r, c.g, c.b);
   }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
-  terrain = new THREE.Mesh(g.toNonIndexed(), new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.9 }));
-  terrain.geometry.computeVertexNormals();
+  terrain = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tileTex, vertexColors: true, flatShading: true, roughness: 0.85 }));
   world.add(terrain);
-  scene.background = pal[0].clone().multiplyScalar(0.25);
-  scene.fog = new THREE.Fog(scene.background, 60, 150);
+  scene.background = new THREE.Color(0x000000);
+  scene.fog = new THREE.Fog(0x000000, 55, 95);
 }
 
 // ---------- Spielzustand ----------
@@ -195,11 +223,9 @@ function spawnLevel() {
     const m = inst('rock'); m.rotation.y = rnd() * 6;
     add('rock', m, (rnd() < .5 ? -1 : 1) * (W / 2 + 3 + rnd() * 8), -rnd() * LEN);
   }
-  for (let i = 0; i < 2; i++) {   // Tunneltore
-    const g = new THREE.Group();
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.2, 0.45, 8, 24), new THREE.MeshStandardMaterial({ color: 0xffd84a, emissive: 0xff8a00, emissiveIntensity: 1.5 }));
-    ring.position.y = 2.6; g.add(ring);
-    add('gate', g, (rnd() - 0.5) * (W - 16), -LEN * (0.3 + i * 0.45) - rnd() * 30);
+  for (let i = 0; i < 9 + level; i++) {   // Sprit, Munition, Schild liegen auf den Kacheln
+    const t = ['fuel', 'fuel', 'ammo', 'shield'][i % 4];
+    add('pickup', inst(t), (rnd() - 0.5) * (W - 6), -20 - rnd() * (LEN - 30), { t });
   }
   updateHud();
 }
@@ -207,58 +233,6 @@ function objZ(o) {   // aktuelle Welt-z des Objekts (nächste Wiederholung vor/u
   let z = o.zl + Math.round((pz - o.zl) / LEN) * LEN;
   if (z > pz + 20) z -= LEN;
   return z;
-}
-
-// ---------- Tunnel ----------
-let tunnelT = 0, tpods = [], tx = 0, ty = 0;
-const TR = 5;
-const tube = new THREE.Mesh(new THREE.CylinderGeometry(TR + 1, TR + 1, 400, 20, 40, true).rotateX(Math.PI / 2),
-  new THREE.MeshStandardMaterial({ color: 0x3a2a70, side: THREE.BackSide, flatShading: true, wireframe: false }));
-const tubeWire = new THREE.Mesh(tube.geometry, new THREE.MeshBasicMaterial({ color: 0xffd84a, wireframe: true, transparent: true, opacity: 0.35 }));
-tunnel.add(tube, tubeWire);
-const tunnelLight = new THREE.PointLight(0xffd8a0, 60, 40); tunnel.add(tunnelLight);
-function enterTunnel() {
-  state = 'tunnel'; tunnelT = 14; tx = 0; ty = 0;
-  world.visible = false; tunnel.visible = true; scene.fog = new THREE.Fog(0x05060f, 20, 90);
-  bullets.concat(shots).forEach(b => scene.remove(b.mesh)); bullets.length = shots.length = 0;
-  tunnel.add(ship); ui.flash('#ffd84a', 0.8); banner('TUNNEL – TANKEN!');
-}
-function leaveTunnel() {
-  tpods.forEach(p => tunnel.remove(p.mesh)); tpods = [];
-  ui.flash('#fff', 0.6); world.visible = true; tunnel.visible = false; world.add(ship);
-  scene.fog = new THREE.Fog(scene.background, 60, 150); state = 'play'; invuln = 2;
-}
-function updateTunnel(dt) {
-  tunnelT -= dt;
-  const k = input();
-  tx = THREE.MathUtils.clamp(tx + k.x * 9 * dt, -TR + 1, TR - 1);
-  ty = THREE.MathUtils.clamp(ty + k.y * 9 * dt, -TR + 1.2, TR - 1);
-  const r = Math.hypot(tx, ty); if (r > TR - 1) { tx *= (TR - 1) / r; ty *= (TR - 1) / r; }
-  ship.position.set(tx, ty, 0); ship.rotation.set(0, SHIP_YAW, -k.x * 0.5);
-  tube.rotation.z += dt * 0.3; tubeWire.rotation.z = tube.rotation.z;
-  tube.position.z = tubeWire.position.z = (tube.position.z + dt * 40) % 10;
-  camera.position.set(tx * 0.6, ty * 0.6 + 2.5, 9); camera.lookAt(tx * 0.3, ty * 0.3, -20);
-  tunnelLight.position.set(0, 0, 2);
-  if (tunnelT > 1.5 && Math.random() < dt * 3.2) {
-    const types = ['fuel', 'fuel', 'ammo', 'ammo', 'shield', 'mine', 'mine'];
-    const t = types[Math.floor(Math.random() * types.length)];
-    const m = inst(t), a = Math.random() * 6.28, rr = Math.random() * (TR - 1.5);
-    m.position.set(Math.cos(a) * rr, Math.sin(a) * rr, -120); tunnel.add(m);
-    tpods.push({ t, mesh: m });
-  }
-  for (let i = tpods.length - 1; i >= 0; i--) {
-    const p = tpods[i]; p.mesh.position.z += 45 * dt; p.mesh.rotation.y += dt * 2;
-    const d = p.mesh.position.distanceTo(new THREE.Vector3(tx, ty + 0.8, 0));
-    if (d < 1.9) {
-      if (p.t === 'fuel') fuel = Math.min(1, fuel + 0.22);
-      if (p.t === 'ammo') ammo = Math.min(1, ammo + 0.25);
-      if (p.t === 'shield') shield = Math.min(1, shield + 0.3);
-      if (p.t === 'mine') { hurt(0.2); burst(p.mesh.position, 0xff6040, tunnel); } else { score += 50; burst(p.mesh.position, 0x7affff, tunnel); }
-      tunnel.remove(p.mesh); tpods.splice(i, 1); continue;
-    }
-    if (p.mesh.position.z > 12) { tunnel.remove(p.mesh); tpods.splice(i, 1); }
-  }
-  if (tunnelT <= 0) { banner(''); leaveTunnel(); }
 }
 
 // ---------- Eingabe ----------
@@ -317,8 +291,7 @@ function hurt(a) {
   if (shield <= 0) die('SCHILD ZERSTÖRT');
 }
 function die(why) {
-  burst(ship.getWorldPosition(new THREE.Vector3()), 0xffa040, state === 'tunnel' ? tunnel : scene);
-  if (state === 'tunnel') leaveTunnel();
+  burst(ship.getWorldPosition(new THREE.Vector3()), 0xffa040);
   lives--; shield = 1; fuel = Math.max(fuel, 0.6); ammo = Math.max(ammo, 0.5); invuln = 3;
   if (lives < 0) { lives = 0; gameOver(); return; }
   banner(why + ' – ' + lives + ' übrig');
@@ -338,7 +311,6 @@ const tmp = new THREE.Vector3();
 function update(dt) {
   if (invuln > 0) invuln -= dt;
   fireCd -= dt;
-  if (state === 'tunnel') { updateTunnel(dt); return; }
   if (state !== 'play') return;
   const k = input();
   speed = THREE.MathUtils.clamp(speed + k.y * 14 * dt, 10, 30);
@@ -356,8 +328,8 @@ function update(dt) {
   ship.rotation.set(Math.atan2(gyF - gyB, 4) * 0.8, SHIP_YAW, -vx * 0.035, 'YXZ');
   ship.visible = invuln <= 0 || Math.floor(invuln * 12) % 2 === 0;
 
-  camera.position.set(px * 0.55, ship.position.y + 11, pz + 13);
-  camera.lookAt(px * 0.8, ship.position.y, pz - 12);
+  camera.position.set(px * 0.6, ship.position.y + 20, pz + 9);
+  camera.lookAt(px * 0.8, ship.position.y - 2, pz - 10);
   sun.position.set(px - 20, 40, pz + 10); sun.target.position.set(px, 0, pz); sun.target.updateMatrixWorld();
 
   // Feuern
@@ -382,10 +354,10 @@ function update(dt) {
 
   // Weltobjekte
   for (const o of objs) {
-    if (!o.alive && o.type !== 'turret') { o.mesh.visible = false; continue; }
+    if (!o.alive && o.type !== 'turret' && o.type !== 'pickup') { o.mesh.visible = false; continue; }
     const z = objZ(o), near = z > pz - 140 && z < pz + 20;
-    o.mesh.visible = near; if (!near) { if (o.type === 'turret' && !o.alive) o.respawn = true; continue; }
-    if (o.type === 'turret' && !o.alive) {
+    o.mesh.visible = near; if (!near) { if ((o.type === 'turret' || o.type === 'pickup') && !o.alive) o.respawn = true; continue; }
+    if ((o.type === 'turret' || o.type === 'pickup') && !o.alive) {
       // Zerstörte Türme kommen in der nächsten Runde zurück
       if (o.respawn && z < pz - 100) { o.alive = true; o.hp = o.heavy ? 4 : 2; o.respawn = false; }
       else { o.mesh.visible = false; continue; }
@@ -399,8 +371,17 @@ function update(dt) {
         o.alive = false; crystalsGot++; ui.flash('#7ff', 0.25); score += 250; burst(o.mesh.position, 0x7affff);
         if (crystalsGot === crystalsTotal) nextLevel();
       }
-    } else if (o.type === 'gate') {
-      if (Math.abs(z - pz) < 1 && Math.abs(o.x - px) < 3.4) { enterTunnel(); return; }
+    } else if (o.type === 'pickup') {
+      o.mesh.position.y = y + 0.4 + Math.sin(performance.now() / 350 + o.x) * 0.2;
+      o.mesh.rotation.y += dt * 1.5;
+      if (o.mesh.position.distanceTo(ship.position) < 2.3) {
+        o.alive = false; o.respawn = false; score += 50;
+        if (o.t === 'fuel') fuel = Math.min(1, fuel + 0.3);
+        if (o.t === 'ammo') ammo = Math.min(1, ammo + 0.35);
+        if (o.t === 'shield') shield = Math.min(1, shield + 0.35);
+        burst(o.mesh.position, { fuel: 0xffd84a, ammo: 0xff6040, shield: 0x40c0ff }[o.t]);
+        ui.flash({ fuel: '#fc4', ammo: '#f64', shield: '#4cf' }[o.t], 0.25);
+      }
     } else if (o.type === 'turret') {
       tmp.copy(ship.position).sub(o.mesh.position);
       o.mesh.rotation.y = Math.atan2(tmp.x, tmp.z);
