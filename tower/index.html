@@ -169,7 +169,7 @@ const camera = new THREE.PerspectiveCamera(38, innerWidth/innerHeight, 0.5, 200)
 camera.position.set(0, 26, 22);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0, 0);
-controls.enableDamping = true;
+controls.enabled = false;             // Ansicht ist fest
 controls.maxPolarAngle = 1.15;
 controls.minPolarAngle = 0.35;
 controls.minDistance = 10;
@@ -234,13 +234,22 @@ addEventListener('resize', ()=>{
   renderer.setSize(innerWidth, innerHeight);
   fitCamera();
 });
+// Feste Kamera: leicht schraeg von oben, Insel immer mittig und ganz im Bild
+const CAM_ELEV = 55 * Math.PI/180;
+const ISLAND_R = 13.6;
 function fitCamera(){
-  // Hochformat: weiter weg, damit die ganze Insel ins Bild passt
-  const d = camera.aspect < 1 ? 30/Math.max(camera.aspect, .4) : 34;
-  controls.maxDistance = Math.max(48, d + 6);
-  const dir = camera.position.clone().sub(controls.target).normalize();
-  camera.position.copy(controls.target).addScaledVector(dir, d);
-  scene.fog.far = Math.max(90, d * 2.2);
+  const vf = camera.fov * Math.PI/180 / 2;
+  const hf = Math.atan(Math.tan(vf) * camera.aspect);
+  // Die Insel ist eine flache Scheibe: in der Hoehe sieht man sie verkuerzt.
+  // Oben und unten liegen Leisten, deshalb dort nur ~78 % der Hoehe nutzen.
+  const dV = ISLAND_R * Math.sin(CAM_ELEV) / Math.tan(vf * 0.86);
+  const dH = ISLAND_R / Math.tan(hf * 0.96);
+  const d = Math.max(dV, dH) * 0.88;
+  controls.target.set(0, 0, 0.6);
+  camera.position.set(0, Math.sin(CAM_ELEV) * d, 0.6 + Math.cos(CAM_ELEV) * d);
+  camera.lookAt(controls.target);
+  scene.fog.near = d * 0.9;
+  scene.fog.far = d * 2.6;
 }
 
 // --- Laden --------------------------------------------------------------
@@ -1386,7 +1395,6 @@ function frame(){
     e.fg.scale.x = k; e.fg.position.x = -(1-k)/2;
     e.fg.material = e.slowT > 0 ? hpFgMatSlow : hpFgMat;
   }
-  controls.update();
   renderer.render(scene, camera);
 }
 
