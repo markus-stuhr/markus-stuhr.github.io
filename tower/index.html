@@ -403,6 +403,10 @@ function buildMap(){
     // weiter draussen; jeweils tief genug eingesunken
     const d = hexDist(c.q, c.r);
     if(c.kind !== 'water') continue;
+    // Felsgruppen: Dichte schwankt entlang der Kueste, dazwischen freies Wasser
+    const ang = Math.atan2(c.pos.z, c.pos.x);
+    const dens = Math.sin(ang*3 + 0.7) * 0.6 + Math.sin(ang*5 + 2.1) * 0.4;
+    if(dens < 0.05) continue;
     const n = d === R+1 ? 1 + Math.floor(rnd()*2.4) : rnd() < (d === R+2 ? 0.45 : 0.3) ? 1 : 0;
     for(let i = 0; i < n; i++){
       const big = d > R+1 && rnd() < 0.35;
