@@ -40,6 +40,8 @@ canvas{display:block;touch-action:none}
 #overlay p{max-width:520px;font-size:17px;line-height:1.45;color:var(--ink);margin:0}
 #overlay .btn{font-size:22px;padding:10px 28px}
 #load{font-size:15px;color:var(--dim)}
+#credits{order:10;max-width:520px;margin-top:10px;font-size:12px;line-height:1.4;color:var(--dim);opacity:.85}
+#credits a{color:var(--dim)}
 .float{position:fixed;pointer-events:none;font-weight:bold;font-size:15px;color:var(--gold);text-shadow:0 2px 0 #000;transition:transform 1s ease-out,opacity 1s ease-in;white-space:nowrap}
 @media (max-width:640px){
   .chip{font-size:14px;padding:5px 8px}
@@ -71,6 +73,7 @@ canvas{display:block;touch-action:none}
   <h1>Burgwacht</h1>
   <p>Die Toten erheben sich vom Friedhof am Inselrand und ziehen die Straße hinauf zur Burg. Baue Türme auf die Wiesen und Mauern auf die Straße — und halte 20 Wellen stand.</p>
   <p id="load">Lade Modelle …</p>
+  <div id="credits">Musik: „Suonatore di Liuto“, „Minstrel Guild“, „Crusade“, „Five Armies“ von Kevin MacLeod (<a href="https://incompetech.com" target="_blank" rel="noopener">incompetech.com</a>), lizenziert unter <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> · Sounds: Kenney (CC0) · 3D-Modelle: KayKit, Quaternius (CC0)</div>
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
     <button class="btn" id="play" style="display:none">Spiel starten</button>
     <button class="btn" id="newmap" style="display:none">🎲 Neue Insel</button>
@@ -332,7 +335,49 @@ function sfx(name, vol = 1, {pitch = 0.08, gap = 0.045} = {}){
   src.connect(g).connect(master);
   src.start();
 }
-const wakeAudio = ()=>{ if(actx.state !== 'running') actx.resume(); };
+// Musik: ruhig im Aufbau und zwischen den Wellen, treibend waehrend der
+// Welle; ueberblendet. Gestreamt ueber <audio>, aber durch Web Audio
+// geleitet, damit Stummschalter und Blenden auch auf iOS wirken.
+const MUSIC = {
+  calm:['suonatore_di_liuto','minstrel_guild'],
+  battle:['crusade','five_armies'],
+};
+const MUSIC_VOL = 0.32;
+const music = {mood:null, cur:null, idx:{calm:0, battle:0}};
+function musicTrack(mood){
+  const list = MUSIC[mood];
+  const name = list[music.idx[mood]++ % list.length];
+  const el = new Audio('music/' + name + '.m4a');
+  el.crossOrigin = 'anonymous';
+  const g = actx.createGain();
+  g.gain.value = 0;
+  actx.createMediaElementSource(el).connect(g).connect(master);
+  el.addEventListener('ended', ()=>{ if(music.mood === mood && music.cur && music.cur.el === el){ music.mood = null; setMusic(mood); } });
+  return {el, g};
+}
+function setMusic(mood){
+  if(music.mood === mood) return;
+  music.mood = mood;
+  const old = music.cur;
+  if(old){
+    old.g.gain.cancelScheduledValues(actx.currentTime);
+    old.g.gain.setValueAtTime(old.g.gain.value, actx.currentTime);
+    old.g.gain.linearRampToValueAtTime(0, actx.currentTime + 2);
+    setTimeout(()=> old.el.pause(), 2200);
+  }
+  if(!mood){ music.cur = null; return; }
+  const t = musicTrack(mood);
+  music.cur = t;
+  t.el.play().catch(()=>{});
+  t.g.gain.linearRampToValueAtTime(MUSIC_VOL, actx.currentTime + 2.5);
+}
+
+// Vor der ersten Beruehrung blockiert der Browser meist den Ton: dann
+// beim ersten Klick/Tippen die schon gewaehlte Musik nachstarten
+const wakeAudio = ()=>{
+  if(actx.state !== 'running') actx.resume();
+  if(music.cur && music.cur.el.paused) music.cur.el.play().catch(()=>{});
+};
 addEventListener('pointerdown', wakeAudio, true);
 addEventListener('keydown', wakeAudio, true);
 
@@ -1409,6 +1454,7 @@ function nextWave(){
   state.queueT = 0;
   const boss = state.wave % 5 === 0;
   sfx('wave', 0.6);
+  setMusic('battle');
   ui.banner($('banner'), boss ? `Welle ${state.wave} — Knochenfürst!` : `Welle ${state.wave}`, 1);
   updateHud();
 }
@@ -1418,6 +1464,7 @@ function waveCleared(){
   state.gold += bonus;
   if(state.wave >= WAVES){ victory(); return; }
   sfx('clear', 0.55);
+  setMusic('calm');
   ui.banner($('banner'), `Welle geschafft · +${bonus} 🪙`, 1);
   updateHud();
 }
@@ -1425,6 +1472,7 @@ function waveCleared(){
 function gameOver(){
   state.over = true;
   sfx('lose', 0.7);
+  setMusic('calm');
   const o = $('overlay');
   o.innerHTML = `<h1>Die Burg ist gefallen</h1><p>Du hast ${state.wave - 1} von ${WAVES} Wellen gehalten.</p><div style="display:flex;gap:10px"><button class="btn" onclick="location.reload()">Gleiche Insel</button><button class="btn" id="newmap2">🎲 Neue Insel</button></div>`;
   $('newmap2').onclick = newMap;
@@ -1433,6 +1481,7 @@ function gameOver(){
 function victory(){
   state.over = true; state.won = true;
   sfx('win', 0.7);
+  setMusic('calm');
   const o = $('overlay');
   o.innerHTML = `<h1>Sieg!</h1><p>Alle ${WAVES} Wellen abgewehrt, ${state.lives} Leben übrig. Die Toten ruhen wieder.</p><div style="display:flex;gap:10px"><button class="btn" onclick="location.reload()">Gleiche Insel</button><button class="btn" id="newmap2">🎲 Neue Insel</button></div>`;
   $('newmap2').onclick = newMap;
@@ -1656,7 +1705,7 @@ function buildIntro(){
 }
 
 // Debug-/Testzugang
-window.__td = {actx, buffers, sfx, genPath, mulberry, SEED, animals, updateAnimals, state, step, frame, spawnEnemy, placeTower, placeWall, cells, key, PATH, nextWave, camera, controls, G};
+window.__td = {music, setMusic, actx, buffers, sfx, genPath, mulberry, SEED, animals, updateAnimals, state, step, frame, spawnEnemy, placeTower, placeWall, cells, key, PATH, nextWave, camera, controls, G};
 
 // --- Start --------------------------------------------------------------
 await Promise.all([loadAll(), loadSounds()]);
@@ -1670,10 +1719,12 @@ $('newmap').style.display = '';
 $('seed').textContent = SEED;
 requestAnimationFrame(loop);
 $('newmap').onclick = newMap;
+setMusic('calm');
 await buildIntro();
 spawnAnimals();
 $('play').onclick = ()=>{
   state.started = true;
+  wakeAudio();
   ui.panelOut($('overlay'));
   hint('Baue Türme, dann starte die erste Welle');
 };
