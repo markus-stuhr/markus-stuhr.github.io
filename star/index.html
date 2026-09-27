@@ -375,12 +375,14 @@ function explode(pos, big = 1) {
     gsap.to(m.position, { y: '+=' + (3 + Math.random() * 2), duration: 1.8, delay: 0.2 });
     gsap.to(m.material, { opacity: 0, duration: 1, delay: 1, onComplete: () => { scene.remove(m); m.material.dispose(); } });
   }
-  // Druckwelle am Boden
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.6, 0.6), toneMapped: false, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-  ring.position.copy(pos).y += 0.15; scene.add(ring);
-  gsap.fromTo(ring.scale, { x: 0.5, z: 0.5 }, { x: 7 * big, z: 7 * big, duration: 0.55, ease: 'expo.out' });
-  gsap.to(ring.material, { opacity: 0, duration: 0.55, ease: 'power2.in', onComplete: () => { scene.remove(ring); ring.geometry.dispose(); } });
+  // Druckwelle am Boden nur bei großen Explosionen (eigenes Schiff, später Endgegner)
+  if (big >= 1.8) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.7, 1, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 1.6, 0.6), toneMapped: false, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    ring.position.copy(pos).y += 0.15; scene.add(ring);
+    gsap.fromTo(ring.scale, { x: 0.5, z: 0.5 }, { x: 7 * big, z: 7 * big, duration: 0.55, ease: 'expo.out' });
+    gsap.to(ring.material, { opacity: 0, duration: 0.55, ease: 'power2.in', onComplete: () => { scene.remove(ring); ring.geometry.dispose(); } });
+  }
   // Trümmer fliegen im Bogen und hüpfen
   for (let i = 0; i < 8 * big; i++) {
     const m = new THREE.Mesh(debrisGeo, tDark); m.castShadow = true;
