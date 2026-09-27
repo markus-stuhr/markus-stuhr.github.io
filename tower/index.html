@@ -57,6 +57,7 @@ canvas{display:block;touch-action:none}
   <div class="chip">❤️ <b id="lives">20</b></div>
   <div class="chip">🪙 <b id="gold">0</b></div>
   <div class="chip">Welle <b id="wave">0</b>/<span id="waves">20</span></div>
+  <div class="chip" id="mapno" title="Kartennummer — steht in der URL, zum Teilen">🗺 #<span id="seed"></span></div>
   <div class="spacer"></div>
   <button class="btn" id="speed">▶ ×1</button>
   <button class="btn" id="next">⚔ Welle starten</button>
@@ -69,7 +70,10 @@ canvas{display:block;touch-action:none}
   <h1>Burgwacht</h1>
   <p>Die Toten erheben sich vom Friedhof am Inselrand und ziehen die Straße hinauf zur Burg. Baue Türme auf die Wiesen und Mauern auf die Straße — und halte 20 Wellen stand.</p>
   <p id="load">Lade Modelle …</p>
-  <button class="btn" id="play" style="display:none">Spiel starten</button>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button class="btn" id="play" style="display:none">Spiel starten</button>
+    <button class="btn" id="newmap" style="display:none">🎲 Neue Insel</button>
+  </div>
 </div>
 
 <script type="importmap">
@@ -197,6 +201,12 @@ water.rotation.x = -Math.PI/2;
 water.position.y = -0.32;
 water.material.uniforms.size.value = 7;
 scene.add(water);
+// Water empfaengt keine Schatten: eine reine Schattenflaeche knapp darueber
+const waterShadow = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.ShadowMaterial({opacity:0.38}));
+waterShadow.rotation.x = -Math.PI/2;
+waterShadow.position.y = water.position.y + 0.01;
+waterShadow.receiveShadow = true;
+scene.add(waterShadow);
 
 // Wind: gemeinsame Zeit fuer Gras und Baeume
 const wind = {value:0};
@@ -238,12 +248,11 @@ addEventListener('resize', ()=>{
 // Bereich zwischen oberer und unterer Leiste eingepasst — die Leisten
 // liegen ueber dem Wasser, nicht ueber dem Spielfeld.
 const CAM_ELEV = 55 * Math.PI/180;
-const ISLAND_R = 13.4;
 const _pp = new THREE.Vector3();
 function fitCamera(){
   const W = innerWidth, H = innerHeight;
-  const top = document.getElementById('top').offsetHeight + 6;
-  const bot = document.getElementById('bottom').offsetHeight + 6;
+  const top = document.getElementById('top').offsetHeight + 14;
+  const bot = document.getElementById('bottom').offsetHeight + 26;
   const side = 10;
   // Bildausschnitt so verschieben, dass die Bildmitte in der Mitte des freien Bereichs liegt
   camera.setViewOffset(W, H, 0, (bot - top)/2, W, H);
@@ -251,13 +260,13 @@ function fitCamera(){
   // Grenzen des freien Bereichs in NDC (nach der Verschiebung)
   // project() rechnet den Versatz schon mit ein: direkt Bildschirmgrenzen
   const lim = {x:1 - 2*side/W, yTop:1 - 2*top/H, yBot:-1 + 2*bot/H};
+  const C = ISLAND_C;
   const fits = d => {
-    camera.position.set(0, Math.sin(CAM_ELEV)*d, Math.cos(CAM_ELEV)*d);
-    camera.lookAt(0, 0, 0);
+    camera.position.set(C.x, Math.sin(CAM_ELEV)*d, C.z + Math.cos(CAM_ELEV)*d);
+    camera.lookAt(C.x, 0, C.z);
     camera.updateMatrixWorld(true);
-    for(let i = 0; i < 36; i++){
-      const a = i/36*Math.PI*2;
-      _pp.set(Math.cos(a)*ISLAND_R, 0, Math.sin(a)*ISLAND_R).project(camera);
+    for(const p of ISLAND_PTS){
+      _pp.copy(p).project(camera);
       if(Math.abs(_pp.x) > lim.x || _pp.y > lim.yTop || _pp.y < lim.yBot) return false;
     }
     return true;
@@ -265,7 +274,7 @@ function fitCamera(){
   let lo = 5, hi = 400;
   for(let i = 0; i < 30; i++){ const m = (lo + hi)/2; fits(m) ? hi = m : lo = m; }
   fits(hi);
-  controls.target.set(0, 0, 0);
+  controls.target.set(C.x, 0, C.z);
   scene.fog.near = hi * 0.9;
   scene.fog.far = hi * 2.6;
 }
@@ -325,7 +334,63 @@ function roadFor(a, b){
 }
 
 const R = 6;
-const PATH = [[-6,3],[-5,2],[-5,1],[-5,0],[-4,-1],[-3,-2],[-2,-3],[-1,-4],[0,-4],[1,-5],[2,-5],[3,-5],[4,-5],[5,-5],[5,-4],[5,-3],[5,-2],[5,-1],[4,0],[3,0],[3,-1],[3,-2],[2,-2],[2,-3],[1,-3],[0,-2],[-1,-2],[-2,-1],[-3,0],[-3,1],[-2,1],[-2,2],[-3,3],[-4,3],[-5,4],[-5,5],[-4,5],[-3,5],[-2,4],[-1,4],[-1,5],[0,5],[1,4],[2,3],[2,2],[1,2],[0,2],[0,1],[0,0]];
+// Karte per Zufall, aber wiederholbar: die Nummer steht in der URL
+const params = new URLSearchParams(location.search);
+const SEED = parseInt(params.get('karte')) || (1 + Math.floor(Math.random()*99999));
+history.replaceState(null, '', location.pathname + '?karte=' + SEED);
+const FALLBACK_PATH = [[-6,3],[-5,2],[-5,1],[-5,0],[-4,-1],[-3,-2],[-2,-3],[-1,-4],[0,-4],[1,-5],[2,-5],[3,-5],[4,-5],[5,-5],[5,-4],[5,-3],[5,-2],[5,-1],[4,0],[3,0],[3,-1],[3,-2],[2,-2],[2,-3],[1,-3],[0,-2],[-1,-2],[-2,-1],[-3,0],[-3,1],[-2,1],[-2,2],[-3,3],[-4,3],[-5,4],[-5,5],[-4,5],[-3,5],[-2,4],[-1,4],[-1,5],[0,5],[1,4],[2,3],[2,2],[1,2],[0,2],[0,1],[0,0]];
+
+// Weg vom Inselrand zur Mitte: Tiefensuche mit Ruecksprung. Nur Drehungen
+// um 60°, hoechstens drei Felder geradeaus, der Weg beruehrt sich nie selbst.
+function genPath(rnd, minL = 42, maxL = 52){
+  for(let attempt = 0; attempt < 60; attempt++){
+    const side = Math.floor(rnd()*6), t = 1 + Math.floor(rnd()*(R-1));
+    const c0 = DIRS[side], c1 = DIRS[(side+2)%6];
+    const start = [c0[0]*R + c1[0]*t, c0[1]*R + c1[1]*t];
+    const path = [start], set = new Set([key(...start)]);
+    let budget = 20000;
+    const touches = (n, prev) => DIRS.some(([a,b]) => { const k = key(n[0]+a, n[1]+b); return set.has(k) && k !== key(...prev); });
+    const dfs = (dir, straight)=>{
+      if(--budget < 0) return false;
+      const cur = path[path.length-1], L = path.length;
+      if(L >= minL && cur[0] === 0 && cur[1] === 0) return true;
+      if(L >= maxL || hexDist(...cur) > maxL - L) return false;
+      const opts = [dir-1, dir, dir+1].map(d => (d+6)%6);
+      for(let i = 2; i > 0; i--){ const j = Math.floor(rnd()*(i+1)); [opts[i], opts[j]] = [opts[j], opts[i]]; }
+      for(const d of opts){
+        if(d === dir && straight >= 3) continue;
+        const n = [cur[0]+DIRS[d][0], cur[1]+DIRS[d][1]];
+        if(hexDist(...n) > R-1 || set.has(key(...n)) || touches(n, cur)) continue;
+        if(n[0] === 0 && n[1] === 0 && L+1 < minL) continue;
+        path.push(n); set.add(key(...n));
+        if(dfs(d, d === dir ? straight+1 : 0)) return true;
+        path.pop(); set.delete(key(...n));
+      }
+      return false;
+    };
+    if(dfs((side+3)%6, 0) && pathQuality(path)) return path;
+  }
+  return null;
+}
+// Balance: genug Wiesen, von denen aus ein Turm zwei weit auseinander
+// liegende Wegabschnitte erreicht
+function pathQuality(path){
+  const idx = new Map(path.map((p,i) => [key(...p), i]));
+  let good = 0;
+  for(let q = -R; q <= R; q++) for(let r = -R; r <= R; r++){
+    if(hexDist(q,r) > R-1 || idx.has(key(q,r))) continue;
+    const seen = [];
+    for(let dq = -2; dq <= 2; dq++) for(let dr = -2; dr <= 2; dr++){
+      if(hexDist(dq,dr) > 2) continue;
+      const i = idx.get(key(q+dq, r+dr));
+      if(i !== undefined) seen.push(i);
+    }
+    if(seen.length && Math.max(...seen) - Math.min(...seen) >= 10) good++;
+  }
+  return good >= 14;
+}
+const mapRnd = mulberry(SEED);
+const PATH = genPath(mapRnd) || FALLBACK_PATH;
 const dirIndex = (a, b) => DIRS.findIndex(d => d[0]===b[0]-a[0] && d[1]===b[1]-a[1]);
 
 const cells = new Map();   // key -> {q,r,kind:'grass'|'road'|'castle'|'deco'|'water', tower, wall, pathIdx}
@@ -337,17 +402,58 @@ const pathPts = [];
 let pathLen = 0;
 const segLen = [];
 
+// Inselform: Radius schwankt mit dem Winkel, dazu ein paar Buchten am
+// Rand. Weg, seine Nachbarn und der Friedhof bleiben immer Land.
+function islandShape(rnd){
+  const ph = [rnd()*6.3, rnd()*6.3, rnd()*6.3];
+  const amp = [0.7 + rnd()*0.4, 0.4 + rnd()*0.3, 0.25];
+  const radius = a => R - 0.2 + amp[0]*Math.sin(2*a + ph[0]) + amp[1]*Math.sin(3*a + ph[1]) + amp[2]*Math.sin(5*a + ph[2]);
+  const land = new Set();
+  const must = new Set();
+  for(const p of PATH){ must.add(key(...p)); for(const [a,b] of DIRS) must.add(key(p[0]+a, p[1]+b)); }
+  const s0 = PATH[0], s1 = PATH[1];
+  must.add(key(2*s0[0]-s1[0], 2*s0[1]-s1[1]));               // Friedhof
+  for(let q = -R-2; q <= R+2; q++) for(let r = -R-2; r <= R+2; r++){
+    const p = hexPos(q,r);
+    const a = Math.atan2(p.z, p.x);
+    if(hexDist(q,r) <= radius(a) || must.has(key(q,r))) land.add(key(q,r));
+  }
+  // Buchten: Randfelder ausbeissen, manchmal zwei tief
+  const coast = () => [...land].filter(k => { const [q,r] = k.split(',').map(Number); return DIRS.some(([a,b]) => !land.has(key(q+a, r+b))); });
+  for(const k of coast()){
+    if(must.has(k) || rnd() > 0.2) continue;
+    land.delete(k);
+    const [q,r] = k.split(',').map(Number);
+    const [a,b] = DIRS[Math.floor(rnd()*6)];
+    if(rnd() < 0.5 && !must.has(key(q+a, r+b)) && hexDist(q+a, r+b) > 2) land.delete(key(q+a, r+b));
+  }
+  // Einzelne Landzipfel entfernen, Loecher im Inneren fuellen
+  for(let pass = 0; pass < 2; pass++){
+    for(let q = -R-2; q <= R+2; q++) for(let r = -R-2; r <= R+2; r++){
+      const k = key(q,r);
+      const n = DIRS.filter(([a,b]) => land.has(key(q+a, r+b))).length;
+      if(land.has(k) && n <= 1 && !must.has(k)) land.delete(k);
+      else if(!land.has(k) && n >= 5) land.add(k);
+    }
+  }
+  return land;
+}
+let ISLAND_R = 13.4;
+const ISLAND_PTS = [];                 // Hexecken aller Landfelder, fuer die Kamera
+const ISLAND_C = new THREE.Vector3();
+
 function buildMap(){
-  const rnd = mulberry(7);
+  const rnd = mapRnd;
+  const land = islandShape(rnd);
   const pathSet = new Map(PATH.map((p,i)=>[key(p[0],p[1]), i]));
-  for(let q = -R-3; q <= R+3; q++) for(let r = -R-3; r <= R+3; r++){
+  for(let q = -R-5; q <= R+5; q++) for(let r = -R-5; r <= R+5; r++){
     const d = hexDist(q,r);
-    if(d > R+3) continue;
+    if(d > R+5) continue;
     const p = hexPos(q,r);
     const c = {q, r, kind:'grass', tower:null, wall:null, pathIdx:-1, pos:p};
     cells.set(key(q,r), c);
     let tile;
-    if(d > R){
+    if(!land.has(key(q,r))){
       c.kind = 'water';
       continue;
     } else if(pathSet.has(key(q,r))){
@@ -389,7 +495,6 @@ function buildMap(){
   const sc = cells.get(key(...sq));
   if(sc){
     sc.kind = 'spawn';
-    const g = inst('grass'); g.position.copy(sc.pos); g.userData.tile = true; world.add(g);
     const crypt = inst('crypt'); fitHeight(crypt, 1.3);
     crypt.position.copy(sc.pos).addScaledVector(back, 0.35);
     crypt.lookAt(s0.x, 0, s0.z);
@@ -410,9 +515,9 @@ function buildMap(){
   const decoKinds = ['treesA','treesB','treeS','mountain','mountainB','hills','rock'];
   for(const c of cells.values()){
     if(c.kind !== 'grass') continue;
-    const d = hexDist(c.q, c.r);
+    const coastal = DIRS.some(([dq,dr]) => { const n = cells.get(key(c.q+dq, c.r+dr)); return !n || n.kind === 'water'; });
     const nearPath = DIRS.some(([dq,dr]) => { const n = cells.get(key(c.q+dq, c.r+dr)); return n && n.pathIdx >= 0; });
-    const chance = nearPath ? 0.05 : (d === R ? 0.55 : 0.2);
+    const chance = nearPath ? 0.05 : (coastal ? 0.45 : 0.2);
     if(rnd() < chance){
       c.kind = 'deco';
       let k = decoKinds[Math.floor(rnd()*decoKinds.length)];
@@ -425,12 +530,22 @@ function buildMap(){
       world.add(o);
     }
   }
-  // Außenring: ein paar Felsen im Wasser
+  // Felsen nach Abstand zur Kueste (Breitensuche vom Land aus)
+  const wd = new Map(), queue = [];
+  for(const c of cells.values()) if(c.kind !== 'water'){ wd.set(c, 0); queue.push(c); }
+  while(queue.length){
+    const c = queue.shift();
+    for(const [dq,dr] of DIRS){
+      const n = cells.get(key(c.q+dq, c.r+dr));
+      if(n && !wd.has(n)){ wd.set(n, wd.get(c)+1); queue.push(n); }
+    }
+  }
   for(const c of cells.values()){
     // Felsen in drei Ringen: kleine dicht an der Kueste, grosse Klippen
     // weiter draussen; jeweils tief genug eingesunken
-    const d = hexDist(c.q, c.r);
     if(c.kind !== 'water') continue;
+    const d = R + wd.get(c);
+    if(d > R+3) continue;
     // Felsgruppen: Dichte schwankt entlang der Kueste, dazwischen freies Wasser
     const ang = Math.atan2(c.pos.z, c.pos.x);
     const dens = Math.sin(ang*3 + 0.7) * 0.6 + Math.sin(ang*5 + 2.1) * 0.4;
@@ -464,150 +579,19 @@ function buildMap(){
     cells.get(key(...PATH[i])).pathS = acc;
     acc += segLen[i+1] || 0;
   }
-  buildGrass(rnd);
-}
-
-// --- Gras ---------------------------------------------------------------
-// Buescheln aus je drei schmalen Halmen, instanziert. Jede Wiesenzelle
-// merkt sich ihre Instanzen, damit ein Turm das Gras darunter ausblendet.
-let grass = null;
-const grassMats = [];
-function buildGrass(rnd){
-  // Ein Halm = ein Dreieck; nur so passen Hunderttausende Bueschel
-  const blade = new THREE.BufferGeometry();
-  blade.setAttribute('position', new THREE.Float32BufferAttribute([-0.012,0,0, 0.012,0,0, 0,0.1,0], 3));
-  blade.setAttribute('normal', new THREE.Float32BufferAttribute([0,1,0, 0,1,0, 0,1,0], 3));
-  blade.setIndex([0,1,2]);
-  const parts = [];
-  for(let i = 0; i < 3; i++){
-    const g = blade.clone();
-    g.rotateZ((i-1) * 0.32);
-    g.rotateY(i * 2.1);
-    g.translate((i-1)*0.02, 0, (i%2)*0.014);
-    const back = g.clone(); back.setIndex([0,2,1]);
-    parts.push(g, back);
-  }
-  const tuft = mergeGeos(parts);
-  const tn = tuft.attributes.normal;
-  for(let i = 0; i < tn.count; i++) tn.setXYZ(i, 0, 1, 0);
-  const cols = [];
-  const cp = tuft.attributes.position;
-  const lo = new THREE.Color(0x5f7a1a), hi = new THREE.Color(0xb9cc4a);
-  for(let i = 0; i < cp.count; i++){
-    const k = Math.min(1, cp.getY(i)/0.1);
-    const c = lo.clone().lerp(hi, k);
-    cols.push(c.r, c.g, c.b);
-  }
-  tuft.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-  const base = new THREE.MeshLambertMaterial({vertexColors:true});
-  const mat = windify(base, 3.2, 0, true);
-
-  const PER = matchMedia('(pointer: coarse)').matches ? 600 : 1500;
-  const list = [...cells.values()].filter(c => c.kind === 'grass' || c.kind === 'deco' || c.kind === 'road');
-  // Strassenfelder: Gras genau bis an den Weg. Pro Kacheltyp einmal
-  // von oben auf ein 96er-Raster schiessen und an der Trefferstelle die
-  // Texturfarbe lesen — Weg ist hell/sandig, Wiese gelbgruen.
-  const masks = {};
-  const MN = 96, MR = 1.2;
-  function roadMask(k){
-    if(masks[k]) return masks[k];
-    const o = G[k].scene.clone(true);
-    o.updateMatrixWorld(true);
-    let img = null;
-    o.traverse(n => { if(n.isMesh && !img) img = n.material.map.image; });
-    const cv = document.createElement('canvas');
-    cv.width = img.width; cv.height = img.height;
-    const cx = cv.getContext('2d');
-    cx.drawImage(img, 0, 0);
-    const px = cx.getImageData(0, 0, cv.width, cv.height).data;
-    const rc = new THREE.Raycaster();
-    const down = new THREE.Vector3(0, -1, 0);
-    const m = new Uint8Array(MN*MN);
-    for(let j = 0; j < MN; j++) for(let i = 0; i < MN; i++){
-      const x = (i + .5)/MN*2*MR - MR, z = (j + .5)/MN*2*MR - MR;
-      rc.set(new THREE.Vector3(x, 5, z), down);
-      const h = rc.intersectObject(o, true)[0];
-      if(!h || !h.uv) continue;
-      const u = Math.min(cv.width-1, Math.floor(h.uv.x*cv.width));
-      const v = Math.min(cv.height-1, Math.floor(h.uv.y*cv.height));
-      const p = (v*cv.width + u)*4;
-      if(px[p+2] > 80) m[j*MN + i] = 1;
+  ISLAND_R = 0;
+  const box = new THREE.Box3();
+  for(const c of cells.values()){
+    if(c.kind === 'water') continue;
+    ISLAND_R = Math.max(ISLAND_R, Math.hypot(c.pos.x, c.pos.z) + 1.1);
+    for(let i = 0; i < 6; i++){
+      const a = Math.PI/6 + i*Math.PI/3;
+      const p = new THREE.Vector3(c.pos.x + Math.cos(a)*1.15, 0, c.pos.z + Math.sin(a)*1.15);
+      ISLAND_PTS.push(p); box.expandByPoint(p);
     }
-    // einen Rasterpunkt aufweiten, damit kein Halm auf der Kante steht
-    const d = m.slice();
-    for(let j = 1; j < MN-1; j++) for(let i = 1; i < MN-1; i++)
-      if(m[j*MN+i]) d[j*MN+i-1] = d[j*MN+i+1] = d[(j-1)*MN+i] = d[(j+1)*MN+i] = 1;
-    return masks[k] = d;
   }
-  function onRoad(c, x, z){
-    // Welt -> Kachel: die Kachel ist um -rot*60° gedreht, also zurueckdrehen
-    const a = c.roadRot * Math.PI/3, ca = Math.cos(a), sa = Math.sin(a);
-    const lx = x*ca + z*sa, lz = -x*sa + z*ca;
-    const i = Math.floor((lx + MR)/(2*MR)*MN), j = Math.floor((lz + MR)/(2*MR)*MN);
-    if(i < 0 || j < 0 || i >= MN || j >= MN) return false;
-    return roadMask(c.roadKind)[j*MN + i] === 1;
-  }
-  grass = new THREE.InstancedMesh(tuft, mat, list.length * PER);
-  grass.receiveShadow = true;
-  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), p = new THREE.Vector3();
-  const tint = new THREE.Color();
-  let n = 0;
-  for(const c of list){
-    c.grassFrom = n;
-    const cnt = c.kind === 'deco' ? PER/4 : c.kind === 'road' ? PER*0.65 : PER;
-    for(let i = 0; i < cnt; i++){
-      // gleichverteilt im Innenkreis des Hexfelds (Radius 0.95)
-      // gleichverteilt im ganzen Sechseck (Kantenmitten bei k*60°, Abstand 1)
-      let x, z;
-      do { x = (rnd()*2-1)*1.0; z = (rnd()*2-1)*1.16; }
-      while(Math.abs(x) > 0.97 || Math.abs(x*0.5 + z*0.866) > 0.97 || Math.abs(-x*0.5 + z*0.866) > 0.97
-        || (c.kind === 'road' && onRoad(c, x, z)));
-      p.set(c.pos.x + x, 0, c.pos.z + z);
-      q.setFromAxisAngle(UP, rnd()*Math.PI*2);
-      const s = 0.6 + rnd()*0.8;
-      sc.set(s, s*(0.8 + rnd()*0.5), s);
-      grass.setMatrixAt(n, m.compose(p, q, sc));
-      tint.setRGB(0.8 + rnd()*0.25, 0.85 + rnd()*0.2, 0.6 + rnd()*0.3);
-      grass.setColorAt(n, tint);
-      n++;
-    }
-    c.grassTo = n;
-  }
-  grass.count = n;
-  grass.userData.orig = grass.instanceMatrix.array.slice();
-  grass.layers.set(1);
-  camera.layers.enable(1);
-  grass.frustumCulled = false;
-  world.add(grass);
-}
-const UP = new THREE.Vector3(0,1,0);
-const ZERO = new THREE.Matrix4().makeScale(0,0,0);
-function grassUnder(c, hide){
-  if(!grass || c.grassFrom === undefined) return;
-  const a = grass.instanceMatrix.array, o = grass.userData.orig;
-  for(let i = c.grassFrom; i < c.grassTo; i++){
-    const x = o[i*16+12] - c.pos.x, z = o[i*16+14] - c.pos.z;
-    if(x*x + z*z > 0.62*0.62) continue;
-    if(hide) ZERO.toArray(a, i*16);
-    else for(let j = 0; j < 16; j++) a[i*16+j] = o[i*16+j];
-  }
-  grass.instanceMatrix.needsUpdate = true;
-}
-function mergeGeos(geos){
-  const pos = [], nor = [], idx = [];
-  let off = 0;
-  for(const g of geos){
-    const gi = g.index ? g.index.array : [...Array(g.attributes.position.count).keys()];
-    pos.push(...g.attributes.position.array);
-    nor.push(...g.attributes.normal.array);
-    for(const i of gi) idx.push(i + off);
-    off += g.attributes.position.count;
-  }
-  const out = new THREE.BufferGeometry();
-  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  out.setIndex(idx);
-  return out;
+  box.getCenter(ISLAND_C);
+  ISLAND_C.y = 0;
 }
 
 function pathPoint(s, out = new THREE.Vector3()){
@@ -877,7 +861,6 @@ function towerVisual(t){
 function placeTower(c, type){
   const t = {type, def:TOWERS[type], level:0, cell:c, cd:0.4, spent:TOWERS[type].cost, pos:c.pos.clone(), g:null, unit:null, aim:0};
   c.tower = t;
-  grassUnder(c, true);
   state.towers.push(t);
   rebuildTower(t, true);
   return t;
@@ -1323,7 +1306,6 @@ function sellIt(t){
     world.remove(t.g);
     if(t.unit) world.remove(t.unit.o);
     t.cell.tower = null;
-    grassUnder(t.cell, false);
     state.towers = state.towers.filter(x => x !== t);
   }
   burst(t.pos.clone().setY(.6), 0xf2c14e, 10);
@@ -1360,13 +1342,15 @@ function waveCleared(){
 function gameOver(){
   state.over = true;
   const o = $('overlay');
-  o.innerHTML = `<h1>Die Burg ist gefallen</h1><p>Du hast ${state.wave - 1} von ${WAVES} Wellen gehalten.</p><button class="btn" onclick="location.reload()">Noch einmal</button>`;
+  o.innerHTML = `<h1>Die Burg ist gefallen</h1><p>Du hast ${state.wave - 1} von ${WAVES} Wellen gehalten.</p><div style="display:flex;gap:10px"><button class="btn" onclick="location.reload()">Gleiche Insel</button><button class="btn" id="newmap2">🎲 Neue Insel</button></div>`;
+  $('newmap2').onclick = newMap;
   ui.panelIn(o);
 }
 function victory(){
   state.over = true; state.won = true;
   const o = $('overlay');
-  o.innerHTML = `<h1>Sieg!</h1><p>Alle ${WAVES} Wellen abgewehrt, ${state.lives} Leben übrig. Die Toten ruhen wieder.</p><button class="btn" onclick="location.reload()">Noch einmal</button>`;
+  o.innerHTML = `<h1>Sieg!</h1><p>Alle ${WAVES} Wellen abgewehrt, ${state.lives} Leben übrig. Die Toten ruhen wieder.</p><div style="display:flex;gap:10px"><button class="btn" onclick="location.reload()">Gleiche Insel</button><button class="btn" id="newmap2">🎲 Neue Insel</button></div>`;
+  $('newmap2').onclick = newMap;
   ui.panelIn(o);
 }
 
@@ -1549,6 +1533,10 @@ function updateAnimals(dt){
   }
 }
 
+function newMap(){
+  location.search = '?karte=' + (1 + Math.floor(Math.random()*99999));
+}
+
 // --- Aufbau-Animation ---------------------------------------------------
 // Kacheln fallen von der Mitte nach aussen herab, dann Deko und Felsen auf
 // ihre Felder, zuletzt die Burg; danach waechst das Gras.
@@ -1559,7 +1547,6 @@ function buildIntro(){
     const tl = gsap.timeline({onComplete:()=>{ ui.panelIn(ov); done(); }});
     let castle = null, maxT = 0;
     for(const o of [...world.children]){
-      if(o === grass) continue;
       const [q, r] = worldToHex(o.position.x, o.position.z);
       const d = Math.min(hexDist(q, r), R+3);
       const y = o.position.y;
@@ -1578,15 +1565,11 @@ function buildIntro(){
       tl.to(castle.position, {y, duration:.6, ease:'power3.in'}, maxT + .2);
       tl.to(camera.position, {y:'+=0.25', duration:.06, yoyo:true, repeat:5, ease:'none'}, maxT + .8);
     }
-    if(grass){
-      grass.scale.y = 0.001;
-      tl.to(grass.scale, {y:1, duration:1.1, ease:'power2.out'}, maxT + .7);
-    }
   });
 }
 
 // Debug-/Testzugang
-window.__td = {animals, updateAnimals, state, step, frame, spawnEnemy, placeTower, placeWall, cells, key, PATH, nextWave, camera, controls, G};
+window.__td = {genPath, mulberry, SEED, animals, updateAnimals, state, step, frame, spawnEnemy, placeTower, placeWall, cells, key, PATH, nextWave, camera, controls, G};
 
 // --- Start --------------------------------------------------------------
 await loadAll();
@@ -1596,7 +1579,10 @@ fitCamera();
 updateHud();
 $('load').style.display = 'none';
 $('play').style.display = '';
+$('newmap').style.display = '';
+$('seed').textContent = SEED;
 requestAnimationFrame(loop);
+$('newmap').onclick = newMap;
 await buildIntro();
 spawnAnimals();
 $('play').onclick = ()=>{
