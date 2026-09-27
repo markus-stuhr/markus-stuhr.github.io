@@ -391,7 +391,7 @@ function buildMap(){
   // Außenring: ein paar Felsen im Wasser
   for(const c of cells.values()){
     if(c.kind === 'water' && hexDist(c.q,c.r) === R+1 && rnd() < 0.12){
-      const o = inst('rock'); o.position.copy(c.pos); o.position.y = -0.15; world.add(o);
+      const o = inst('rock'); o.position.copy(c.pos); o.position.y = -0.45; world.add(o);
     }
   }
 
