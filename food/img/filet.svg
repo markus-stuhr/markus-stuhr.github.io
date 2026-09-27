@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+<defs>
+<radialGradient id="s" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="#8a4a2a"/><stop offset=".7" stop-color="#5e2a14"/><stop offset="1" stop-color="#3a180a"/></radialGradient>
+<linearGradient id="fo" x1="0" x2="1"><stop offset="0" stop-color="#9aa1a8"/><stop offset=".4" stop-color="#eef1f4"/><stop offset=".7" stop-color="#b7bec6"/><stop offset="1" stop-color="#e2e6ea"/></linearGradient>
+<linearGradient id="br" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#e8b060"/><stop offset="1" stop-color="#b8702a"/></linearGradient>
+</defs>
+<ellipse cx="100" cy="156" rx="94" ry="14" fill="#000" opacity=".2"/>
+<ellipse cx="100" cy="128" rx="92" ry="32" fill="#2a2a2a"/><ellipse cx="100" cy="124" rx="90" ry="30" fill="#f7f4ee"/>
+<!-- Steak -->
+<ellipse cx="80" cy="124" rx="34" ry="16" fill="#3a180a"/>
+<ellipse cx="80" cy="118" rx="34" ry="16" fill="url(#s)"/>
+<g stroke="#2a0e04" stroke-width="3" stroke-linecap="round" opacity=".8"><path d="M58 112 L84 104"/><path d="M60 122 L96 110"/><path d="M68 130 L102 118"/></g>
+<!-- Kraeuterbutter -->
+<g transform="translate(82 108)"><ellipse cy="3" rx="11" ry="4.5" fill="#e8c860"/><ellipse rx="11" ry="4.5" fill="#fbe39a"/>
+<g fill="#3f8a22"><circle cx="-5" cy="-1" r="1.1"/><circle cx="3" cy="1" r="1.1"/><circle cx="6" cy="-2" r="1"/><circle cx="-1" cy="-2" r="1"/><circle cx="0" cy="2" r="1"/></g></g>
+<!-- Backkartoffel in Folie -->
+<g transform="translate(140 118)">
+<path d="M-26 4 Q-28 -14 -8 -16 L10 -16 Q28 -14 26 4 Q24 14 0 16 Q-24 14 -26 4z" fill="url(#fo)" stroke="#8a9098" stroke-width="1"/>
+<path d="M-16 -8 Q0 -16 16 -8 Q10 2 0 3 Q-10 2 -16 -8z" fill="#c8a060"/>
+<path d="M-10 -8 Q0 -14 10 -8 Q6 -2 0 -2 Q-6 -2 -10 -8z" fill="#fbfaf4"/>
+<g fill="#3f8a22"><circle cx="-3" cy="-8" r="1"/><circle cx="3" cy="-7" r="1"/><circle cx="0" cy="-10" r="1"/></g>
+</g>
+<!-- Knoblauch-Roestbrot -->
+<g transform="translate(112 90) rotate(-12)">
+<path d="M-18 -6 Q-18 -14 -8 -14 L10 -14 Q18 -14 18 -6 L18 6 L-18 6z" fill="url(#br)" stroke="#8a4a14" stroke-width="1"/>
+<path d="M-15 -4 Q-15 -11 -7 -11 L9 -11 Q15 -11 15 -4 L15 3 L-15 3z" fill="#f6d890"/>
+<g fill="#b8702a" opacity=".6"><circle cx="-8" cy="-5" r="1.5"/><circle cx="4" cy="-3" r="1.8"/><circle cx="9" cy="-8" r="1.2"/></g>
+<g fill="#3f8a22"><circle cx="-4" cy="-8" r=".9"/><circle cx="6" cy="-6" r=".9"/></g>
+</g>
+</svg>
