@@ -369,6 +369,7 @@ function buildMap(){
       tile = inst('grass');
     }
     tile.position.copy(p);
+    tile.userData.tile = true;
     world.add(tile);
   }
   // Burg
@@ -388,7 +389,7 @@ function buildMap(){
   const sc = cells.get(key(...sq));
   if(sc){
     sc.kind = 'spawn';
-    const g = inst('grass'); g.position.copy(sc.pos); world.add(g);
+    const g = inst('grass'); g.position.copy(sc.pos); g.userData.tile = true; world.add(g);
     const crypt = inst('crypt'); fitHeight(crypt, 1.3);
     crypt.position.copy(sc.pos).addScaledVector(back, 0.35);
     crypt.lookAt(s0.x, 0, s0.z);
@@ -1548,6 +1549,42 @@ function updateAnimals(dt){
   }
 }
 
+// --- Aufbau-Animation ---------------------------------------------------
+// Kacheln fallen von der Mitte nach aussen herab, dann Deko und Felsen auf
+// ihre Felder, zuletzt die Burg; danach waechst das Gras.
+function buildIntro(){
+  return new Promise(done=>{
+    const ov = $('overlay');
+    gsap.to(ov, {autoAlpha:0, duration:.4});
+    const tl = gsap.timeline({onComplete:()=>{ ui.panelIn(ov); done(); }});
+    let castle = null, maxT = 0;
+    for(const o of [...world.children]){
+      if(o === grass) continue;
+      const [q, r] = worldToHex(o.position.x, o.position.z);
+      const d = Math.min(hexDist(q, r), R+3);
+      const y = o.position.y;
+      if(d === 0 && !o.userData.tile && new THREE.Box3().setFromObject(o).max.y > 2){ castle = o; continue; }
+      const t = d*0.11 + Math.random()*0.18 + (o.userData.tile ? 0 : 0.35);
+      maxT = Math.max(maxT, t);
+      o.position.y = y + 9 + Math.random()*3;
+      o.visible = false;
+      tl.set(o, {visible:true}, t);
+      tl.to(o.position, {y, duration:.55, ease:'bounce.out'}, t);
+    }
+    if(castle){
+      const y = castle.position.y;
+      castle.position.y = y + 16; castle.visible = false;
+      tl.set(castle, {visible:true}, maxT + .2);
+      tl.to(castle.position, {y, duration:.6, ease:'power3.in'}, maxT + .2);
+      tl.to(camera.position, {y:'+=0.25', duration:.06, yoyo:true, repeat:5, ease:'none'}, maxT + .8);
+    }
+    if(grass){
+      grass.scale.y = 0.001;
+      tl.to(grass.scale, {y:1, duration:1.1, ease:'power2.out'}, maxT + .7);
+    }
+  });
+}
+
 // Debug-/Testzugang
 window.__td = {animals, updateAnimals, state, step, frame, spawnEnemy, placeTower, placeWall, cells, key, PATH, nextWave, camera, controls, G};
 
@@ -1557,15 +1594,16 @@ prepClips();
 buildMap();
 fitCamera();
 updateHud();
-spawnAnimals();
 $('load').style.display = 'none';
 $('play').style.display = '';
+requestAnimationFrame(loop);
+await buildIntro();
+spawnAnimals();
 $('play').onclick = ()=>{
   state.started = true;
   ui.panelOut($('overlay'));
   hint('Baue Türme, dann starte die erste Welle');
 };
-requestAnimationFrame(loop);
 </script>
 </body>
 </html>
