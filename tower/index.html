@@ -122,6 +122,12 @@ const FILES = {
   mountainB: HEX+'decoration/nature/mountain_C_grass.gltf',
   hills: HEX+'decoration/nature/hills_B_trees.gltf',
   rock: HEX+'decoration/nature/rock_single_C.gltf',
+  rockA: HEX+'decoration/nature/rock_single_A.gltf',
+  rockB: HEX+'decoration/nature/rock_single_B.gltf',
+  rockD: HEX+'decoration/nature/rock_single_D.gltf',
+  rockE: HEX+'decoration/nature/rock_single_E.gltf',
+  cliffA: HEX+'decoration/nature/mountain_A.gltf',
+  cliffB: HEX+'decoration/nature/mountain_B.gltf',
   tent: HEX+'decoration/props/tent.gltf',
   crates: HEX+'decoration/props/crate_A_big.gltf',
   grave: HALLO+'gravestone.gltf',
@@ -393,8 +399,21 @@ function buildMap(){
   }
   // Außenring: ein paar Felsen im Wasser
   for(const c of cells.values()){
-    if(c.kind === 'water' && hexDist(c.q,c.r) === R+1 && rnd() < 0.12){
-      const o = inst('rock'); o.position.copy(c.pos); o.position.y = -0.45; world.add(o);
+    // Felsen in drei Ringen: kleine dicht an der Kueste, grosse Klippen
+    // weiter draussen; jeweils tief genug eingesunken
+    const d = hexDist(c.q, c.r);
+    if(c.kind !== 'water') continue;
+    const n = d === R+1 ? 1 + Math.floor(rnd()*2.4) : rnd() < (d === R+2 ? 0.45 : 0.3) ? 1 : 0;
+    for(let i = 0; i < n; i++){
+      const big = d > R+1 && rnd() < 0.35;
+      const k = big ? (rnd() < .5 ? 'cliffA' : 'cliffB') : ['rock','rockA','rockB','rockD','rockE'][Math.floor(rnd()*5)];
+      const o = inst(k);
+      const sc = big ? 0.6 + rnd()*0.7 : 0.9 + rnd()*1.6;
+      o.scale.set(sc*(0.8 + rnd()*.4), sc*(0.7 + rnd()*.6), sc*(0.8 + rnd()*.4));
+      const a = rnd()*Math.PI*2, r = rnd()*0.7;
+      o.position.set(c.pos.x + Math.cos(a)*r, -0.4 - rnd()*0.25 - (big ? 0.15 : 0), c.pos.z + Math.sin(a)*r);
+      o.rotation.y = rnd()*Math.PI*2;
+      world.add(o);
     }
   }
 
