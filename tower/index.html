@@ -184,11 +184,11 @@ const waterNormals = new THREE.TextureLoader().load('waternormals.jpg', t=>{ t.w
 const water = new Water(new THREE.PlaneGeometry(400, 400), {
   textureWidth:1024, textureHeight:1024, waterNormals,
   sunDirection: sun.position.clone().normalize(), sunColor:0xfff1d6,
-  waterColor:0x0a78c2, distortionScale:0.7, fog:true, alpha:1,
+  waterColor:0x0a78c2, distortionScale:0.35, fog:true, alpha:1,
 });
 water.rotation.x = -Math.PI/2;
 water.position.y = -0.32;
-water.material.uniforms.size.value = 1.4;
+water.material.uniforms.size.value = 7;
 scene.add(water);
 
 // Wind: gemeinsame Zeit fuer Gras und Baeume
