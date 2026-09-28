@@ -767,7 +767,7 @@ window.REZEPTE = [
     tipps: ['Kein Ketchup: die orange Farbe kommt aus Paprika und Kurkuma.', 'Zucker + Essig ersetzen das amerikanische Sweet Relish.', 'Nur Zwiebelpulver – die gehackte Zwiebel liegt beim Big Mac separat auf dem Burger.', 'Hält abgedeckt etwa eine Woche im Kühlschrank.']
   },
   {
-    id: 'kuerbiscurry', titel: 'Ofenkürbis-Curry mit Kichererbsen', kategorie: 'Indisch', emoji: '🎃',
+    id: 'kuerbiscurry', titel: 'Kürbis-Curry', kategorie: 'Indisch', emoji: '🎃',
     farbe: ['#b8561c', '#f2c078'], portionen: '4 Portionen', zeit: '40 Min.',
     teaser: 'Würzig geröstete Kürbiswürfel und knusprige Kichererbsen in cremiger Kokos-Tomaten-Sauce – mit Pita, Crème fraîche und Limette.',
     tags: ['vegetarisch', 'Herbst', 'Ofen'],
