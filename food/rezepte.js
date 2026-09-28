@@ -765,5 +765,29 @@ window.REZEPTE = [
       ]
     }],
     tipps: ['Kein Ketchup: die orange Farbe kommt aus Paprika und Kurkuma.', 'Zucker + Essig ersetzen das amerikanische Sweet Relish.', 'Nur Zwiebelpulver – die gehackte Zwiebel liegt beim Big Mac separat auf dem Burger.', 'Hält abgedeckt etwa eine Woche im Kühlschrank.']
+  },
+  {
+    id: 'kuerbiscurry', titel: 'Ofenkürbis-Curry mit Kichererbsen', kategorie: 'Indisch', emoji: '🎃',
+    farbe: ['#b8561c', '#f2c078'], portionen: '4 Portionen', zeit: '40 Min.',
+    teaser: 'Würzig geröstete Kürbiswürfel und knusprige Kichererbsen in cremiger Kokos-Tomaten-Sauce – mit Pita, Crème fraîche und Limette.',
+    tags: ['vegetarisch', 'Herbst', 'Ofen'],
+    abschnitte: [
+      { titel: 'Gemüse', zutaten: [['800 g', 'Hokkaido-Kürbis, gewürfelt'], ['1 Dose', 'Kichererbsen (240 g Abtropfgewicht)'], ['2 EL', 'Rapsöl'], ['1 TL', 'Salz'], ['1 Prise', 'Pfeffer'], ['1 EL', 'brauner Zucker'], ['½ TL', 'Chiliflocken'], ['2 TL', 'Curry-Gewürzmischung']],
+        schritte: [
+          { t: 'Würzen', x: 'Kürbis und abgetropfte Kichererbsen mit Rapsöl, Salz, Pfeffer, Zucker, Chiliflocken und Curry-Gewürz vermengen und auf einem Backblech verteilen.' },
+          { t: 'Rösten', x: 'Im Ofen bei 200 °C Umluft rösten, bis der Kürbis weich und an den Kanten gebräunt ist.', z: '20–25 Min.' }
+        ] },
+      { titel: 'Soße', zutaten: [['2', 'Knoblauchzehen, fein gehackt'], ['1 EL', 'Ingwer, fein gehackt'], ['2 EL', 'Currypaste'], ['400 ml', 'Kokosmilch'], ['400 g', 'passierte Tomaten'], ['', 'Salz & Pfeffer']],
+        schritte: [
+          { t: 'Anbraten', x: 'Knoblauch, Ingwer und Currypaste in etwas Öl kurz anbraten, bis es duftet.', z: '1–2 Min.' },
+          { t: 'Köcheln', x: 'Kokosmilch und passierte Tomaten dazugeben und die Soße köcheln lassen.', z: '10 Min.' },
+          { t: 'Zusammenführen', x: 'Kürbis und Kichererbsen aus dem Ofen in die Soße geben, mit Salz und Pfeffer abschmecken.' }
+        ] },
+      { titel: 'Topping', zutaten: [['2', 'Pita-Brote'], ['30 g', 'Kürbiskerne, geröstet'], ['100 g', 'Crème fraîche'], ['½ Bund', 'glatte Petersilie, gehackt'], ['1', 'Limette, geviertelt']],
+        schritte: [
+          { t: 'Servieren', x: 'Curry mit Pita, Kürbiskernen, einem Klecks Crème fraîche, Petersilie und Limettenvierteln servieren.' }
+        ] }
+    ],
+    tipps: ['Pita kurz mit in den Ofen legen, dann ist sie warm und knusprig.', 'Mit Kokosjoghurt statt Crème fraîche wird das Gericht vegan.', 'Quelle: @15minutenrezepte']
   }
 ];
