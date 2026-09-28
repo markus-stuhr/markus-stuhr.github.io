@@ -214,20 +214,6 @@ window.REZEPTE = [
     tipps: ["Je dunkler die Haut, desto rauchiger das Aroma – keine Angst vor Schwarz.", "Mit der Gabel statt im Mixer: so bleibt eine schöne Struktur.", "Passt zu Fladenbrot und zum Köfte-Teller."]
   },
   {
-    id: "bulgur",
-    titel: "Bulgur-Pilav",
-    kategorie: "Türkisch",
-    bild: "img/bulgur.svg",
-    emoji: "🌾",
-    farbe: ["#a8421e", "#f2a86a"],
-    portionen: "4 Portionen als Beilage",
-    zeit: "30 Min.",
-    teaser: "Die türkische Beilage schlechthin: grober Bulgur mit Zwiebel, Tomaten- und Paprikamark geschmort – körnig, würzig und die perfekte Alternative zu Reis bei Köfte.",
-    tags: ["vegan", "Beilage"],
-    abschnitte: [{"zutaten": [["250 g", "Grober Bulgur (Pilavlık)"], ["1", "Zwiebel"], ["1", "Grüne Spitzpaprika"], ["2 EL", "Olivenöl oder Butter"], ["1 EL", "Tomatenmark"], ["1 EL", "Paprikamark (Biber Salçası)"], ["500 ml", "Heiße Brühe"], ["1 TL", "Salz"], ["", "Pfeffer, Pul Biber"]], "schritte": [{"t": "Andünsten", "x": "Zwiebel und Paprika fein würfeln und im Öl glasig dünsten.", "z": "4 Min."}, {"t": "Mark rösten", "x": "Tomaten- und Paprikamark einrühren und kurz mitrösten, bis es duftet.", "z": "1 Min."}, {"t": "Bulgur dazu", "x": "Bulgur dazugeben und unter Rühren kurz anschwitzen, bis alle Körner rot überzogen sind."}, {"t": "Garen", "x": "Mit heißer Brühe aufgießen, salzen, aufkochen und zugedeckt bei kleinster Hitze garen, bis die Flüssigkeit aufgesogen ist.", "z": "15 Min."}, {"t": "Ruhen lassen", "x": "Vom Herd nehmen, ein Küchentuch unter den Deckel legen und ziehen lassen. Mit einer Gabel auflockern.", "z": "10 Min."}]}],
-    tipps: ["Unbedingt groben Bulgur nehmen – der feine ist für Salate.", "Das Tuch unter dem Deckel fängt Dampf auf, so wird der Bulgur schön körnig.", "Mit Joghurt und Hirtensalat ist es fast schon ein ganzes Essen."]
-  },
-  {
     id: "coban",
     titel: "Hirtensalat (Çoban Salatası)",
     kategorie: "Türkisch",
