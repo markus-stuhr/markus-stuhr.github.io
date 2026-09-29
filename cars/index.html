@@ -22,14 +22,15 @@ h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:
 .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:22px; padding:10px 16px 60px; max-width:1300px; margin:0 auto; }
 
 /* Karte */
-.card { perspective:1200px; aspect-ratio:5/7.4; cursor:pointer; }
+.card { aspect-ratio:5/7.4; cursor:pointer; --rx:0deg; --ry:0deg; --mx:50%; --my:50%; --o:0; --s:1;
+  transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) scale(var(--s)); transform-style:preserve-3d;
+  transition:transform .5s cubic-bezier(.2,.9,.3,1.2); will-change:transform; }
+.card.active { transition:transform .08s linear; z-index:2; }
 .inner { position:relative; width:100%; height:100%; transition:transform .6s cubic-bezier(.3,1.4,.5,1); transform-style:preserve-3d; }
 .card.flip .inner { transform:rotateY(180deg); }
 .face { position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden; border-radius:16px; overflow:hidden;
   border:3px solid var(--rc); background:linear-gradient(160deg,var(--panel),#0d1018); box-shadow:0 10px 30px #0008, 0 0 0 1px #0006 inset; display:flex; flex-direction:column; }
 .back { transform:rotateY(180deg); padding:14px; }
-.card:hover .inner:not(.x) { transform:translateY(-4px) rotateX(4deg); }
-.card.flip:hover .inner { transform:rotateY(180deg); }
 .top { display:flex; justify-content:space-between; align-items:center; padding:10px 12px 6px; }
 .nr { font:800 13px Inter; color:var(--dim); }
 .rar { font:800 11px Inter; letter-spacing:1px; padding:3px 8px; border-radius:99px; background:var(--rc); color:#000; }
@@ -40,10 +41,14 @@ h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:
 .stats { display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:0 10px 10px; margin-top:auto; }
 .st { background:#0006; border-radius:8px; padding:6px 8px; }
 .st b { display:block; font-size:17px; } .st span { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; }
-/* Glitzer für Epic/Legendary */
-.shine::after { content:''; position:absolute; inset:0; pointer-events:none; border-radius:13px;
-  background:linear-gradient(115deg,transparent 30%,#ffffff40 45%,#ffe9a060 50%,transparent 65%); background-size:250% 100%; animation:sh 3.5s linear infinite; mix-blend-mode:screen; }
-@keyframes sh { from{background-position:150% 0} to{background-position:-100% 0} }
+/* Holo-Glanz: nur sichtbar, solange der Zeiger auf der Karte ist */
+.face::after { content:''; position:absolute; inset:0; pointer-events:none; border-radius:13px; opacity:var(--o); transition:opacity .3s;
+  background:radial-gradient(farthest-corner circle at var(--mx) var(--my), #ffffffcc 0%, #ffffff33 25%, transparent 60%); mix-blend-mode:overlay; }
+.holo::before { content:''; position:absolute; inset:0; pointer-events:none; border-radius:13px; opacity:calc(var(--o) * .6); transition:opacity .3s; z-index:1;
+  background:repeating-linear-gradient(110deg, #ff0080 0%, #ffd000 7%, #38ff9c 14%, #00c8ff 21%, #b048ff 28%, #ff0080 35%);
+  background-size:300% 300%; background-position:var(--mx) var(--my); mix-blend-mode:color-dodge; filter:saturate(.9) brightness(.45) contrast(1.4);
+  -webkit-mask:radial-gradient(farthest-corner circle at var(--mx) var(--my), #000 0%, #0006 30%, transparent 65%);
+          mask:radial-gradient(farthest-corner circle at var(--mx) var(--my), #000 0%, #0006 30%, transparent 65%); }
 .back h3 { font-family:'Russo One'; margin:4px 0 8px; font-size:20px; }
 .back p { font-size:15px; line-height:1.45; margin:0 0 10px; }
 .back .zeile { display:flex; justify-content:space-between; border-bottom:1px solid #ffffff14; padding:6px 0; font-size:14px; }
@@ -126,7 +131,7 @@ function renderGrid() {
     el.style.setProperty('--rc', rc);
     el.style.setProperty('--mc', c.farbe);
     el.innerHTML = `<div class="inner">
-      <div class="face front ${c.rar>=3?'shine':''}">
+      <div class="face front ${c.rar>=3?'holo':''}">
         <div class="top"><span class="nr">#${String(i+1).padStart(3,'0')} ${c.land}</span><span class="rar">${rn}</span></div>
         <div class="pic"><img src="thumbs/${c.uid}.jpg" alt="${c.marke} ${c.name}" loading="lazy"></div>
         <div class="marke">${c.marke}</div>
@@ -154,7 +159,27 @@ function renderGrid() {
       if (e.target.closest('.btn3d')) { openGarage(c); return; }
       el.classList.toggle('flip');
     };
+    tilt(el);
     grid.appendChild(el);
+  });
+}
+
+// Neigung + Glanz folgen dem Zeiger (wie poke-holo), nur bei Hover
+function tilt(el) {
+  const set = (k, v) => el.style.setProperty(k, v);
+  el.addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch') return;
+    const r = el.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    el.classList.add('active');
+    set('--ry', ((x - 0.5) * 28) + 'deg');
+    set('--rx', ((0.5 - y) * 28) + 'deg');
+    set('--mx', x * 100 + '%'); set('--my', y * 100 + '%');
+    set('--o', 1); set('--s', 1.05);
+  });
+  el.addEventListener('pointerleave', () => {
+    el.classList.remove('active');
+    set('--rx', '0deg'); set('--ry', '0deg'); set('--o', 0); set('--s', 1);
   });
 }
 
