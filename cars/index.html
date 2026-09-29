@@ -186,7 +186,7 @@ function tilt(el) {
 // ---------- 3D-Garage ----------
 const gar = document.getElementById('garage'), canvas = document.getElementById('gcanvas'), frame = document.getElementById('gframe');
 const gload = document.getElementById('gload');
-let renderer, scene, camera, controls, current, running = false, spin = true, bodyMats = [];
+let renderer, scene, camera, controls, current, running = false, spin = true, bodyMats = [], drive = null;
 
 function initThree() {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -219,7 +219,8 @@ function resize() {
 function loop() {
   if (!running) return;
   requestAnimationFrame(loop);
-  if (spin) controls.autoRotate = true, controls.autoRotateSpeed = 1.5; else controls.autoRotate = false;
+  if (drive) animateDrive(performance.now());
+  controls.autoRotate = spin && !drive; controls.autoRotateSpeed = 1.5;
   controls.update();
   renderer.render(scene, camera);
 }
@@ -260,11 +261,32 @@ async function openGarage(c) {
   const ctr = box.getCenter(new THREE.Vector3());
   car.position.x -= ctr.x; car.position.z -= ctr.z; car.position.y -= box.min.y;
   car.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  scene.add(car); current = car;
+  // Rig: fährt das Auto entlang seiner Längsachse aus dem Nebel in die Mitte
+  const rig = new THREE.Group(); rig.add(car);
+  scene.add(rig); current = rig;
+  const alongX = size.x >= size.z;
+  drive = { rig, alongX, dir: c.rueck ? -1 : 1, t0: performance.now(), dist: 16, dur: 2600 };
+  animateDrive(drive.t0);
   bodyMats = findBodyMats(car);
   buildSwatches(c);
   camera.position.set(5, 2.2, 6); controls.target.set(0, 0.6, 0);
   gload.style.display = 'none';
+}
+
+// Einfahrt: abbremsen (ease-out), beim Stehenbleiben nickt die Front kurz ein und federt nach
+function animateDrive(now) {
+  const d = drive, t = (now - d.t0) / d.dur;
+  const k = Math.min(t, 1), e = 1 - Math.pow(1 - k, 3);
+  const pos = -d.dir * d.dist * (1 - e);
+  let pitch = 0;
+  if (t > 0.55) {
+    const u = (now - d.t0 - d.dur * 0.55) / 1000;
+    pitch = 0.035 * Math.sin(u * 7) * Math.exp(-u * 3.5);
+  }
+  pitch += 0.004 * Math.sin(now / 45) * (1 - k);
+  if (d.alongX) { d.rig.position.set(pos, 0, 0); d.rig.rotation.z = -pitch * d.dir; }
+  else { d.rig.position.set(0, 0, pos); d.rig.rotation.x = pitch * d.dir; }
+  if (t > 1 && now - d.t0 > d.dur + 1500) { d.rig.rotation.set(0, 0, 0); drive = null; }
 }
 
 // Lack = größtes nicht-transparentes, farbiges Material

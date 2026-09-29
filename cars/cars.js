@@ -1,4 +1,5 @@
 // Autodaten. model: lokale GLB unter models/<uid>.glb, sonst Sketchfab-Viewer als Fallback.
+// rueck: true, wenn das Modell bei der Einfahrt rückwärts fährt (Front zeigt andersrum)
 // rar: 1 = Common, 2 = Rare, 3 = Epic, 4 = Legendary
 window.CARS = [
   { uid: '8568d9d14a994b9cae59499f0dbed21e', marke: 'Porsche', name: '911 Turbo (930)', jahr: 1975, ps: 260, kmh: 250, null100: 5.5, zyl: 'B6 Turbo', land: '🇩🇪', rar: 2, farbe: '#c8102e',
