@@ -44,11 +44,29 @@ h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:
 /* Holo-Glanz: nur sichtbar, solange der Zeiger auf der Karte ist */
 .face::after { content:''; position:absolute; inset:0; pointer-events:none; border-radius:13px; opacity:var(--o); transition:opacity .3s;
   background:radial-gradient(farthest-corner circle at var(--mx) var(--my), #ffffffcc 0%, #ffffff33 25%, transparent 60%); mix-blend-mode:overlay; }
-.holo::before { content:''; position:absolute; inset:0; pointer-events:none; border-radius:13px; opacity:calc(var(--o) * .6); transition:opacity .3s; z-index:1;
+.fx::before { content:''; position:absolute; inset:0; pointer-events:none; border-radius:13px; z-index:1; opacity:0; transition:opacity .3s; }
+/* Rare: silbrig-blaue Folie, schräge Lichtstreifen wandern mit */
+.fx-2::before { opacity:calc(var(--o) * .55);
+  background:repeating-linear-gradient(125deg, transparent 0 8%, #9fd4ff55 10%, #ffffff88 11%, #9fd4ff55 12%, transparent 14% 22%);
+  background-size:220% 220%; background-position:var(--mx) var(--my); mix-blend-mode:soft-light; }
+/* Epic: Regenbogen-Holo um den Lichtpunkt */
+.fx-3::before { opacity:calc(var(--o) * .6);
   background:repeating-linear-gradient(110deg, #ff0080 0%, #ffd000 7%, #38ff9c 14%, #00c8ff 21%, #b048ff 28%, #ff0080 35%);
   background-size:300% 300%; background-position:var(--mx) var(--my); mix-blend-mode:color-dodge; filter:saturate(.9) brightness(.45) contrast(1.4);
   -webkit-mask:radial-gradient(farthest-corner circle at var(--mx) var(--my), #000 0%, #0006 30%, transparent 65%);
           mask:radial-gradient(farthest-corner circle at var(--mx) var(--my), #000 0%, #0006 30%, transparent 65%); }
+/* Legendary: Goldglitzer (Rauschmuster verschiebt sich gegenläufig) + goldener Schimmer + leuchtender Rand */
+.fx-4::before { opacity:calc(var(--o) * .9);
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='1' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 .85 0 0 0 0 .4 0 0 0 9 -6.2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"),
+    linear-gradient(115deg, transparent 20%, #ffd76a88 45%, #fff3c4aa 50%, #ffd76a88 55%, transparent 80%);
+  background-size:160px 160px, 250% 250%;
+  background-position:calc(100% - var(--mx)) calc(100% - var(--my)), var(--mx) var(--my);
+  mix-blend-mode:color-dodge;
+  -webkit-mask:radial-gradient(farthest-corner circle at var(--mx) var(--my), #000 0%, #0009 40%, #0003 80%);
+          mask:radial-gradient(farthest-corner circle at var(--mx) var(--my), #000 0%, #0009 40%, #0003 80%); }
+.card.active .fx-4 { box-shadow:0 10px 30px #0008, 0 0 28px #ffb30088, 0 0 0 1px #0006 inset; }
+.card.active .fx-3 { box-shadow:0 10px 30px #0008, 0 0 22px #b14dff66, 0 0 0 1px #0006 inset; }
 .back h3 { font-family:'Russo One'; margin:4px 0 8px; font-size:20px; }
 .back p { font-size:15px; line-height:1.45; margin:0 0 10px; }
 .back .zeile { display:flex; justify-content:space-between; border-bottom:1px solid #ffffff14; padding:6px 0; font-size:14px; }
@@ -68,6 +86,7 @@ h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:
 .gtitle .n { font-family:'Russo One'; font-size:clamp(22px,4vw,36px); }
 .gbtn { background:#ffffff1a; backdrop-filter:blur(8px); border:1px solid #ffffff30; color:#fff; border-radius:99px; padding:10px 16px; font:700 15px Inter; cursor:pointer; }
 .gbar { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; width:calc(100% - 32px); }
+.gbtn.finish.on { background:#fff; color:#000; }
 .swatch { width:36px; height:36px; border-radius:50%; border:3px solid #fff8; cursor:pointer; }
 #gload { position:absolute; inset:0; display:grid; place-items:center; font:700 18px Inter; color:var(--dim); pointer-events:none; }
 #gcredit { position:absolute; right:12px; bottom:70px; font-size:11px; color:#fff8; }
@@ -117,7 +136,9 @@ let filter = 'Alle';
 function renderFilter() {
   const marken = ['Alle', ...new Set(CARS.map(c => c.marke))];
   document.getElementById('filter').innerHTML = marken.map(m => `<button class="${m===filter?'on':''}">${m}</button>`).join('');
-  document.querySelectorAll('#filter button').forEach(b => b.onclick = () => { filter = b.textContent; renderFilter(); renderGrid(); });
+  document.querySelectorAll('#filter button').forEach(b => b.onclick = () => { filter = b.textContent; // Debug-Zugriff für Tests (Radanzahl, Achse)
+window.__garage = { get drive() { return drive; }, open: openGarage };
+renderFilter(); renderGrid(); });
 }
 
 function renderGrid() {
@@ -131,7 +152,7 @@ function renderGrid() {
     el.style.setProperty('--rc', rc);
     el.style.setProperty('--mc', c.farbe);
     el.innerHTML = `<div class="inner">
-      <div class="face front ${c.rar>=3?'holo':''}">
+      <div class="face front fx fx-${c.rar}">
         <div class="top"><span class="nr">#${String(i+1).padStart(3,'0')} ${c.land}</span><span class="rar">${rn}</span></div>
         <div class="pic"><img src="thumbs/${c.uid}.jpg" alt="${c.marke} ${c.name}" loading="lazy"></div>
         <div class="marke">${c.marke}</div>
@@ -157,7 +178,10 @@ function renderGrid() {
     el.onclick = e => {
       if (e.target.closest('a')) return;
       if (e.target.closest('.btn3d')) { openGarage(c); return; }
-      el.classList.toggle('flip');
+      // immer nur eine Karte umgedreht
+      const war = el.classList.contains('flip');
+      grid.querySelectorAll('.card.flip').forEach(k => k.classList.remove('flip'));
+      if (!war) el.classList.add('flip');
     };
     tilt(el);
     grid.appendChild(el);
@@ -186,7 +210,7 @@ function tilt(el) {
 // ---------- 3D-Garage ----------
 const gar = document.getElementById('garage'), canvas = document.getElementById('gcanvas'), frame = document.getElementById('gframe');
 const gload = document.getElementById('gload');
-let renderer, scene, camera, controls, current, running = false, spin = true, bodyMats = [], drive = null;
+let renderer, scene, camera, controls, current, running = false, spin = true, drive = null;
 
 function initThree() {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -225,6 +249,8 @@ function loop() {
   renderer.render(scene, camera);
 }
 
+// Modellversion: bei jedem Neubau der GLBs hochzählen, sonst liefern Browser-Caches alte Dateien
+const MODEL_V = 4;
 const loader = new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
 
@@ -239,7 +265,7 @@ async function openGarage(c) {
   gar.classList.add('open');
   gload.style.display = 'grid';
   if (!(await hasLocal(c.uid))) {
-    // Fallback: offizieller Sketchfab-Viewer, bis die GLB lokal liegt
+    // Fallback: offizieller Sketchfab-Viewer, falls die GLB fehlt
     canvas.style.display = 'none'; frame.style.display = 'block';
     document.getElementById('gbar').style.display = 'none';
     frame.src = `https://sketchfab.com/models/${c.uid}/embed?autostart=1&autospin=0.3&ui_theme=dark&ui_infos=0&ui_watermark=0&ui_controls=1&ui_stop=0`;
@@ -251,104 +277,116 @@ async function openGarage(c) {
   if (!renderer) initThree();
   resize();
   if (current) { scene.remove(current); current = null; }
+  drive = null;
   running = true; spin = true; loop();
-  const gltf = await loader.loadAsync(`models/${c.uid}.glb`);
-  const car = gltf.scene;
-  // auf ca. 4,5 m Länge normieren und auf den Boden stellen
-  let box = new THREE.Box3().setFromObject(car), size = box.getSize(new THREE.Vector3());
-  car.scale.setScalar(4.5 / Math.max(size.x, size.z));
-  box.setFromObject(car);
-  const ctr = box.getCenter(new THREE.Vector3());
-  car.position.x -= ctr.x; car.position.z -= ctr.z; car.position.y -= box.min.y;
-  car.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  // Rig: fährt das Auto entlang seiner Längsachse aus dem Nebel in die Mitte
-  const rig = new THREE.Group(); rig.add(car);
+  const gltf = await loader.loadAsync(`models/${c.uid}.glb?v=${MODEL_V}`);
+  // Modelle sind vorbereitet (pipeline/rig_car.py): Meter, Front +Z, links +X, Boden y=0,
+  // Knoten car > body und car > wheel_FL|FR|RL|RR (lenkt um y) > wheel_XX_spin (rollt um x)
+  const car = gltf.scene.getObjectByName('car') || gltf.scene;
+  const info = car.userData;
+  gltf.scene.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  const wheels = [];
+  for (const n of ['FL', 'FR', 'RL', 'RR']) {
+    const steer = car.getObjectByName('wheel_' + n), spin = car.getObjectByName('wheel_' + n + '_spin');
+    if (steer && spin) wheels.push({ steer, spin, vorne: n[0] === 'F' });
+  }
+  const rig = new THREE.Group(); rig.add(gltf.scene);
+  rig.rotation.order = 'YXZ';
   scene.add(rig); current = rig;
-  const alongX = size.x >= size.z;
-  drive = { rig, alongX, dir: c.rueck ? -1 : 1, t0: performance.now(), dist: 16, dur: 2600, wheels: findWheels(rig) };
+  drive = { rig, wheels, t0: performance.now(), dist: 20, dur: 4200, curve: buildCurve(20),
+    radius: info.radius || 0.33, radstand: info.radstand || 2.6 };
   animateDrive(drive.t0);
-  bodyMats = findBodyMats(car);
-  buildSwatches(c);
-  // Kamera schräg vor die Front: das Auto fährt auf den Betrachter zu
-  const f = drive.dir * 6.5;
-  if (alongX) camera.position.set(f, 2.2, 4.5); else camera.position.set(4.5, 2.2, f);
-  controls.target.set(0, 0.6, 0);
+  setupPaint(gltf.scene);
+  camera.position.set(4.2, 1.8, 7); controls.target.set(0, 0.6, 0);
   gload.style.display = 'none';
 }
 
-// Räder finden (oberste Knoten mit passendem Namen) und je in einen Drehpunkt in Radmitte hängen,
-// weil der Ursprung der Radknoten in vielen Modellen nicht in der Achse liegt
-function findWheels(rig) {
-  rig.updateMatrixWorld(true);
-  const re = /(^|[_\s.-])(wheels?|tires?|tyres?|rims?|felgen?|reifen|rad|räder)([_\s.\d-]|$)/i, found = [];
-  rig.traverse(o => {
-    if (!re.test(o.name) || /steer|lenk/i.test(o.name)) return;
-    for (let p = o.parent; p; p = p.parent) if (found.includes(p)) return;
-    found.push(o);
-  });
-  const wheels = [];
-  for (const o of found) {
-    const b = new THREE.Box3().setFromObject(o);
-    if (b.isEmpty()) continue;
-    const sz = b.getSize(new THREE.Vector3());
-    if (sz.y > 1.2 || sz.y < 0.2) continue;
-    const p = new THREE.Object3D();
-    p.position.copy(b.getCenter(new THREE.Vector3()));
-    rig.add(p); p.attach(o);
-    wheels.push({ p, r: sz.y / 2 });
+// Einfahrt als Kurve: Kurs psi(s) hängt von der Reststrecke s ab, am Ende geradeaus.
+// Position wird vorab aufintegriert; Lenkwinkel nach Einspurmodell: atan(Radstand * Krümmung).
+const PSI0 = 1.1;
+const psiAt = s => { const u = Math.min(Math.max((s - 4) / 13, 0), 1); return PSI0 * u * u * (3 - 2 * u); };
+function buildCurve(dist) {
+  const n = 400, pts = [new THREE.Vector3()];
+  const p = new THREE.Vector3();
+  for (let i = 1; i <= n; i++) {
+    const ds = dist / n, psi = psiAt(dist * i / n - ds / 2);
+    p.x -= Math.sin(psi) * ds; p.z -= Math.cos(psi) * ds;
+    pts.push(p.clone());
   }
-  return wheels;
+  return pts;
 }
 
 // Einfahrt: abbremsen (ease-out), beim Stehenbleiben nickt die Front kurz ein und federt nach
 function animateDrive(now) {
   const d = drive, t = (now - d.t0) / d.dur;
-  const k = Math.min(t, 1), e = 1 - Math.pow(1 - k, 3);
-  const pos = -d.dir * d.dist * (1 - e);
+  // Tempo: 55 % der Zeit gleichmäßig (durch die Kurve), danach gleichmäßig bis zum Stand bremsen
+  const k = Math.min(t, 1), TC = 0.55, v = 1 / (TC + (1 - TC) / 2);
+  const e = k < TC ? v * k : v * TC + v * (k - TC) * (1 - (k - TC) / (1 - TC) / 2);
+  const rest = d.dist * (1 - Math.min(e, 1));
+  d.rig.position.copy(d.curve[Math.round(rest / d.dist * (d.curve.length - 1))]);
+  d.rig.rotation.y = psiAt(rest);
+  // Krümmung pro gefahrenem Meter (rest nimmt beim Fahren ab, daher das Minus); positiv = links
+  const kappa = -(psiAt(rest + 0.05) - psiAt(rest - 0.05)) / 0.1;
+  const lenk = Math.atan(d.radstand * kappa);
   let pitch = 0;
-  if (t > 0.55) {
-    const u = (now - d.t0 - d.dur * 0.55) / 1000;
-    pitch = 0.035 * Math.sin(u * 7) * Math.exp(-u * 3.5);
+  if (k > TC && k < 1) pitch = 0.02;                         // beim Bremsen taucht die Front ein
+  if (t >= 1) {
+    const u = (now - d.t0 - d.dur) / 1000;
+    pitch = 0.02 * Math.cos(u * 9) * Math.exp(-u * 4);        // nach dem Stillstand federt sie nach
   }
-  pitch += 0.004 * Math.sin(now / 45) * (1 - k);
-  if (d.alongX) { d.rig.position.set(pos, 0, 0); d.rig.rotation.z = -pitch * d.dir; }
-  else { d.rig.position.set(0, 0, pos); d.rig.rotation.x = pitch * d.dir; }
-  // Räder abrollen: Winkel = gefahrene Strecke / Radius
-  const weg = pos + d.dir * d.dist;
+  d.rig.rotation.x = pitch + 0.004 * Math.sin(now / 45) * (1 - k);
+  // Räder abrollen (Winkel = Strecke / Radius), Vorderräder lenken
+  const weg = d.dist - rest;
   for (const w of d.wheels) {
-    const a = weg / w.r;
-    if (d.alongX) w.p.rotation.z = -a; else w.p.rotation.x = a;
+    w.spin.rotation.x = weg / d.radius;
+    w.steer.rotation.y = w.vorne ? lenk : 0;
   }
-  if (t > 1 && now - d.t0 > d.dur + 1500) { d.rig.rotation.set(0, 0, 0); drive = null; }
+  if (t > 1 && now - d.t0 > d.dur + 1500) { d.rig.rotation.x = 0; drive = null; }
 }
 
-// Lack = größtes nicht-transparentes, farbiges Material
-function findBodyMats(root) {
-  const area = new Map();
+// Lack-Editor: alle Flächen mit Material "paint" teilen sich ein MeshPhysicalMaterial
+const FINISH = {
+  'Hochglanz': { roughness: 0.15, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0.03, iridescence: 0 },
+  'Metallic':  { roughness: 0.3, metalness: 0.8, clearcoat: 1, clearcoatRoughness: 0.05, iridescence: 0 },
+  'Matt':      { roughness: 0.7, metalness: 0.2, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0 },
+  'Chrom':     { roughness: 0.04, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0 },
+  'Perleffekt': { roughness: 0.2, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.05, iridescence: 1 },
+};
+let paint = null;
+function setupPaint(root) {
+  paint = null;
   root.traverse(o => {
-    if (!o.isMesh) return;
-    for (const m of [].concat(o.material)) {
-      if (m.transparent || !m.color) continue;
-      const hsl = {}; m.color.getHSL(hsl);
-      if (hsl.s < 0.25 && !/paint|body|lack|carpaint/i.test(m.name)) continue;
-      area.set(m, (area.get(m) || 0) + (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count));
+    if (!o.isMesh || o.material.name !== 'paint') return;
+    if (!paint) {
+      const alt = o.material;
+      paint = new THREE.MeshPhysicalMaterial({ name: 'paint', color: alt.color, map: alt.map, normalMap: alt.normalMap, envMapIntensity: 1.2 });
+      Object.assign(paint, FINISH['Hochglanz']);
     }
+    o.material = paint;
   });
-  const named = [...area.keys()].filter(m => /paint|body|carpaint/i.test(m.name));
-  if (named.length) return named;
-  const best = [...area.entries()].sort((a, b) => b[1] - a[1])[0];
-  return best ? [best[0]] : [];
-}
-function buildSwatches(c) {
-  document.querySelectorAll('.swatch').forEach(s => s.remove());
-  if (!bodyMats.length) return;
-  const orig = bodyMats[0].color.getStyle();
   const bar = document.getElementById('gbar');
-  [orig, '#e10600', '#ffb300', '#2a7fff', '#18c964', '#111111', '#f4f4f4', '#ff4fd8'].forEach(col => {
+  bar.querySelectorAll('.swatch, .finish').forEach(s => s.remove());
+  if (!paint) return;
+  // erster Knopf = Originallack (inkl. Textur, z. B. Streifen), die anderen färben einfarbig
+  const origColor = paint.color.clone(), origMap = paint.map;
+  const orig = origMap ? 'conic-gradient(#e10600,#ffb300,#2a7fff,#e10600)' : '#' + origColor.getHexString();
+  [orig, '#e10600', '#ffb300', '#2a7fff', '#18c964', '#111111', '#f4f4f4', '#ff4fd8'].forEach((col, i) => {
     const s = document.createElement('div');
-    s.className = 'swatch'; s.style.background = col;
-    s.onclick = () => bodyMats.forEach(m => m.color.set(col));
+    s.className = 'swatch'; s.style.background = col; s.title = i ? '' : 'Original';
+    s.onclick = () => {
+      if (i) { paint.color.set(col); paint.map = null; } else { paint.color.copy(origColor); paint.map = origMap; }
+      paint.needsUpdate = true;
+    };
     bar.appendChild(s);
+  });
+  Object.keys(FINISH).forEach((name, i) => {
+    const b = document.createElement('button');
+    b.className = 'gbtn finish' + (i === 0 ? ' on' : ''); b.textContent = name;
+    b.onclick = () => {
+      Object.assign(paint, FINISH[name]); paint.needsUpdate = true;
+      bar.querySelectorAll('.finish').forEach(x => x.classList.toggle('on', x === b));
+    };
+    bar.appendChild(b);
   });
 }
 
@@ -357,6 +395,8 @@ document.getElementById('gclose').onclick = () => {
 };
 document.getElementById('gspin').onclick = () => spin = !spin;
 
+// Debug-Zugriff für Tests (Radanzahl, Achse)
+window.__garage = { get drive() { return drive; }, open: openGarage };
 renderFilter(); renderGrid();
 </script>
 </body>
