@@ -183,8 +183,7 @@ const ANIMS = ['General','MovementBasic','CombatMelee','CombatRanged','Tools'].m
 const ARROW = ADV+'Assets/gltf/arrow_bow.gltf';
 const DECO = {
   grass:['Grass_Common_Short','Grass_Common_Tall','Grass_Wispy_Short','Grass_Wispy_Tall'],
-  clover:['Clover_1','Clover_2'], flower:['Flower_3_Group','Flower_4_Group','Flower_3_Single','Flower_4_Single'],
-  bush:['Bush_Common'], fern:['Fern_1'],
+    bush:['Bush_Common'], fern:['Fern_1'],
   mush:['Mushroom_Common','Mushroom_Laetiporus'], pebble:['Pebble_Round_1','Pebble_Round_3','Pebble_Square_2','Pebble_Square_4'],
   rock:['Rock_Medium_1','Rock_Medium_2','Rock_Medium_3'],
 };
@@ -483,14 +482,13 @@ let water = null;
   const C = h => new THREE.Color(h);
   const lush = C(0x5d8f35), grass = C(0x72a043), dry = C(0xa9b35e), forest = C(0x4f6a2c), rock = C(0x8a8278),
         scree = C(0x9d978a), mud = C(0x6e5c40), sand = C(0xcdb88a), dirt = C(0x9a7650), rut = C(0x7f6142),
-        bloom = C(0x8fae4a), c3 = new THREE.Color();
+        c3 = new THREE.Color();
   for(let i=0;i<pos.count;i++){
     const x = pos.getX(i), z = pos.getZ(i), h = HG(x, z), sl = slope(x, z, HG);
     pos.setY(i, h);
     // Wiese: saftig in Senken, trocken auf Kuppen, dazu großflächige Flecken
     c3.copy(lush).lerp(grass, sstep(-0.2, 1.2, h + (n2(x*0.035, z*0.035) - 0.5)*2));
     c3.lerp(dry, sstep(1.8, 4, h + (n2(x*0.05 + 9, z*0.05) - 0.5)*3) * 0.8);
-    c3.lerp(bloom, sstep(0.62, 0.8, n2(x*0.07 + 30, z*0.07 + 4)) * 0.5);
     c3.lerp(forest, sstep(0.55, 0.66, forestK(x, z)) * 0.85);
     // Geröll auf hohen Kuppen
     c3.lerp(scree, sstep(3.2, 4.5, h) * sstep(0.5, 0.7, n2(x*0.15, z*0.15)));
@@ -861,9 +859,15 @@ async function buildWorld(){
       continue;
     }
     if(f > 0.52 && r < 0.12){ await put(DECO.bush, x, z, rnd(0.9, 1.5), true); continue; }
-    if(n2(x*0.07 + 30, z*0.07 + 4) > 0.66 && r < 0.12){ await put(DECO.flower, x, z, rnd(0.3, 0.5), false); continue; }
     if(h > 3.3 && r < 0.02){ await put(DECO.rock, x, z, rnd(0.8, 1.6), true); terrainOK[cellX(z)*GN + cellX(x)] = 0; continue; }
-    if(r < 0.32) await put(r < 0.05 ? DECO.clover : DECO.grass, x, z, rnd(0.7, 1.2), false);
+    // Gras nur in Flecken: je dichter das Fleckenrauschen, desto mehr Büschel, dazwischen freie Wiese
+    const clump = sstep(0.58, 0.8, n2(x*0.11 + 7, z*0.11 - 3)) * (0.6 + 0.4*n2(x*0.5, z*0.5));
+    if(r < clump*0.9){
+      for(let k=0;k<3;k++){
+        const gx = x + rnd(-0.7, 0.7), gz = z + rnd(-0.7, 0.7);
+        await put(DECO.grass, gx, gz, rnd(0.6, 1.1), false);
+      }
+    }
   }
   gridDirty = true;
   // Gold: je zwei an den Basen, zwei umkämpft in der Mitte
