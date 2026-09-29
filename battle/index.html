@@ -828,10 +828,34 @@ function moveTo(u, target, stopDist, dt){
   const dx = target.x - u.pos.x, dz = target.z - u.pos.z, d = Math.hypot(dx, dz);
   if(d <= stopDist) return true;
   const sp = UNIT[u.type].speed * dt, k = Math.min(sp, d - stopDist) / d;
-  u.pos.x += dx*k; u.pos.z += dz*k;
+  u.pos.x += dx*k; u.pos.z += dz*k; u.moving = true;
   u.facing = Math.atan2(dx, dz);
   play(u, u.carry ? 'Walking_A' : 'Running_A', 0.2, u.carry ? 1.1 : 0.9);
   return false;
+}
+function slotCount(n){ return Math.max(4, Math.floor(2*Math.PI*(n.r + 0.55) / 1.0)); }
+function slotPos(n, i){
+  const a = i / slotCount(n) * Math.PI*2 + n.id;          // je Rohstoff etwas gedreht
+  return {x:n.pos.x + Math.cos(a)*(n.r + 0.55), z:n.pos.z + Math.sin(a)*(n.r + 0.55)};
+}
+function slotTaken(n, i, me){
+  return ents.some(o=> o !== me && o.alive && o.kind === 'unit' && o.state === 'gather'
+    && o.slotNode === n && o.slot === i);
+}
+function freeSlot(n, u){
+  let best = -1, bd = 1e9;
+  for(let i=0;i<slotCount(n);i++){
+    if(slotTaken(n, i, u)) continue;
+    const d = d2(u.pos, slotPos(n, i)); if(d < bd){ bd = d; best = i; }
+  }
+  return best;
+}
+function nearestFreeNode(u, not){
+  let best = null, bd = 25;
+  for(const e of ents) if(e !== not && e.alive && e.kind === 'resource' && e.type === not.type && e.amount > 0){
+    const d = d2(u.pos, e.pos); if(d < bd && freeSlot(e, u) >= 0){ bd = d; best = e; }
+  }
+  return best;
 }
 function face(u, p){ u.facing = Math.atan2(p.x - u.pos.x, p.z - u.pos.z); }
 
@@ -839,6 +863,7 @@ function updateUnit(u, dt){
   const d = UNIT[u.type];
   u.cd -= dt;
   const busy = u.anim && ONCE.test(u.anim) && u.actions[u.anim]?.isRunning();
+  u.working = false; u.moving = false;
 
   // Automatisch angreifen, was in der Nähe ist
   if(u.state === 'idle' || u.state === 'amove'){
@@ -884,8 +909,21 @@ function updateUnit(u, dt){
         n = u.gatherNode = nearestNode(u.pos, u.carryKind === 'gold' ? 'gold' : (n ? n.type : 'tree'));
         if(!n){ u.state = u.carry ? 'return' : 'idle'; break; }
       }
-      if(d2(u.pos, n.pos) > n.r + 0.8){ moveTo(u, n.pos, n.r + 0.6, dt); u.gt = 0; }
-      else {
+      // Jeder Arbeiter bekommt einen eigenen Arbeitsplatz rund um den Rohstoff
+      if(u.slotNode !== n || slotTaken(n, u.slot, u)){
+        const alt = freeSlot(n, u);
+        if(alt < 0){
+          const other = nearestFreeNode(u, n);
+          if(other){ n = u.gatherNode = other; }
+        }
+        u.slotNode = n; u.slot = Math.max(0, freeSlot(n, u)); u.atSlot = false;
+      }
+      const sp = slotPos(n, u.slot);
+      // Wer angekommen ist, bleibt, auch wenn ihn jemand ein Stück wegschubst
+      if(u.atSlot && d2(u.pos, sp) < 0.7 || moveTo(u, sp, 0.3, dt)) u.atSlot = true;
+      else { u.atSlot = false; u.gt = 0; }
+      if(u.atSlot){
+        u.working = true;
         face(u, n.pos);
         const kind = RES[n.type].kind;
         if(u.carryKind !== kind){ u.carry = 0; u.carryKind = kind; }
@@ -899,6 +937,7 @@ function updateUnit(u, dt){
       break;
     }
     case 'return': {
+      u.atSlot = false;
       const b = (u.dropAt && u.dropAt.alive) ? u.dropAt : dropSite(u);
       if(!b){ u.state = 'idle'; break; }
       if(moveTo(u, b.pos, b.r + 0.7, dt)){
@@ -917,6 +956,7 @@ function updateUnit(u, dt){
         break; }
       if(d2(u.pos, b.pos) > b.r + 0.9){ moveTo(u, b.pos, b.r + 0.7, dt); }
       else {
+        u.working = true;
         face(u, b.pos); play(u, 'Hammering', 0.25);
         const bd = BUILD[b.type];
         const step = dt / bd.time;
@@ -953,8 +993,11 @@ function separate(){
     for(let j=i+1;j<us.length;j++){
       const b = us[j], dx = b.pos.x-a.pos.x, dz = b.pos.z-a.pos.z, d = Math.hypot(dx,dz), m = a.r+b.r;
       if(d < m && d > 1e-4){
-        const k = (m-d)/d*0.5;
-        a.pos.x -= dx*k; a.pos.z -= dz*k; b.pos.x += dx*k; b.pos.z += dz*k;
+        // Arbeitende stehen fest, Laufende weichen aus – sonst schubsen sie sich im Kreis
+        if(a.working && b.working) continue;
+        const wa = a.working ? 0 : b.working ? 1 : 0.5, wb = 1 - wa;
+        const k = (m-d)/d;
+        a.pos.x -= dx*k*wa; a.pos.z -= dz*k*wa; b.pos.x += dx*k*wb; b.pos.z += dz*k*wb;
       } else if(d <= 1e-4){ a.pos.x += 0.05; }
     }
     for(const s of ents){
@@ -963,7 +1006,8 @@ function separate(){
       if(d < m){
         // radial herausschieben, mit etwas Seitwärtsdrall, damit niemand frontal hängen bleibt
         const nx = dx/(d||1), nz = dz/(d||1);
-        a.pos.x = s.pos.x + nx*m - nz*0.03; a.pos.z = s.pos.z + nz*m + nx*0.03;
+        const side = a.moving ? 0.03 : 0;     // Drall nur beim Laufen, sonst kreisen Stehende
+        a.pos.x = s.pos.x + nx*m - nz*side; a.pos.z = s.pos.z + nz*m + nx*side;
       }
     }
     a.pos.x = THREE.MathUtils.clamp(a.pos.x, -MAP, MAP);
