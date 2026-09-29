@@ -318,7 +318,18 @@ const ROADS = [];
     const order = heads.slice().sort((a, b)=> a.i - b.i);
     for(let k=0;k<order.length-1;k++){
       const a = order[k].out, b = order[k+1].out;
-      ROADS.push(roadPts(a.x, a.z, b.x, b.z, k*1.7 + base.z*0.03));
+      const pts = roadPts(a.x, a.z, b.x, b.z, k*1.7 + base.z*0.03);
+      // Abstand zum Fluss halten: zu nahe Punkte quer zum Fluss nach außen schieben, dann glätten
+      for(let pass=0; pass<3; pass++){
+        for(const p of pts.slice(1, -1)){
+          const {sv, w} = riverCoords(p.x, p.z), keep = w + 9;
+          if(Math.abs(sv) < keep){ const dv = (keep - Math.abs(sv))*Math.sign(sv || 1)/Math.SQRT2; p.x += dv; p.z -= dv; }
+        }
+        for(let j=1;j<pts.length-1;j++){
+          pts[j].x = (pts[j-1].x + pts[j].x*2 + pts[j+1].x)/4; pts[j].z = (pts[j-1].z + pts[j].z*2 + pts[j+1].z)/4;
+        }
+      }
+      ROADS.push(pts);
     }
   }
   for(const pts of ROADS) for(let k=0;k<pts.length-1;k++){
@@ -601,7 +612,12 @@ function msg(t, col){
 // Ein Modell = je Teilmesh ein InstancedMesh; Instanzen werden über eine Matrix gesetzt.
 const INST = {};
 const _m4 = new THREE.Matrix4(), _q = new THREE.Quaternion(), _v = new THREE.Vector3(), _s = new THREE.Vector3(), _up = new THREE.Vector3(0,1,0);
-async function inst(path, cap = 1500, shadow = true){
+async function greenLeaves(){
+  let map = null;
+  (await load(RES.tree.m[0])).scene.traverse(o=>{ if(o.isMesh && /leaves/i.test(o.material.name)) map = o.material.map; });
+  return map;
+}
+async function inst(path, cap = 1500, shadow = true, tint = null){
   if(INST[path]) return INST[path];
   const src = (await load(path)).scene.clone(true), g = new THREE.Group();
   g.add(src); fit(src, 1, true);                       // Einheitshöhe, Fuß auf 0
@@ -610,7 +626,12 @@ async function inst(path, cap = 1500, shadow = true){
   const parts = [];
   src.traverse(o=>{
     if(!o.isMesh) return;
-    const im = new THREE.InstancedMesh(o.geometry, o.material, cap);
+    let mat = o.material;
+    if(tint && /leaves/i.test(mat.name)){
+      // rötliches Laub gegen die grüne Blatttextur der Laubbäume tauschen
+      mat = mat.clone(); mat.map = tint;
+    }
+    const im = new THREE.InstancedMesh(o.geometry, mat, cap);
     im.count = 0; im.castShadow = shadow; im.receiveShadow = true; im.frustumCulled = false;
     scene.add(im);
     parts.push({im, local:o.matrixWorld.clone()});
@@ -844,7 +865,7 @@ async function buildWorld(){
   // Bodendeko als Instanzen: Gras und Klee auf Wiesen, Blumen in Flecken, Büsche am Waldrand,
   // Farne und Pilze im Wald, Kiesel am Ufer, ein paar Felsbrocken auf Kuppen
   const put = async (list, x, z, size, shadow) => {
-    const I = await inst(list[Math.floor(Math.random()*list.length)], 3000, shadow);
+    const I = await inst(list[Math.floor(Math.random()*list.length)], 3000, shadow, list === DECO.bush ? await greenLeaves() : null);
     instAdd(I, x, HG(x, z) - 0.03, z, rnd(0, 7), size);
   };
   for(let i=0;i<9000;i++){
@@ -1934,7 +1955,7 @@ buildWorld().then(()=>{
   console.error(err);
   document.getElementById('ltext').textContent = 'Fehler beim Laden: ' + err.message;
 });
-window.__battle = {renderer, scene, camera, fishes, riverXZ, setZoom:z=>zoom=z, H, findPath, step, select, order, attackMove, produce, startPlace, tryPlace, ents, res, get selected(){ return selected; }, foe, camTarget};
+window.__battle = {INST, riverCoords, roadDist, BRIDGES, renderer, scene, camera, fishes, riverXZ, setZoom:z=>zoom=z, H, findPath, step, select, order, attackMove, produce, startPlace, tryPlace, ents, res, get selected(){ return selected; }, foe, camTarget};
 </script>
 </body>
 </html>
