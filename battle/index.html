@@ -178,6 +178,7 @@ const DECOR = [RTS+'Mountain_Group_1.glb', RTS+'Mountain_Group_2.glb', RTS+'Moun
                RTS+'Rock_Group.glb', RTS+'Rock.glb', RTS+'Resource_Tree1.glb', RTS+'Resource_PineTree.glb'];
 const ANIMS = ['General','MovementBasic','CombatMelee','CombatRanged','Tools'].map(n=>ANI+'Rig_Medium_'+n+'.glb');
 const ARROW = ADV+'Assets/gltf/arrow_bow.gltf';
+const BR_COL = 'Quaternius Ultimate Modular Ruins Pack/glTF/Column_BridgeSupport.glb';
 
 // ---------------------------------------------------------------- Szene
 const MAP = 90;                                    // halbe Kantenlänge
@@ -192,8 +193,8 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8fb8d8);
 scene.fog = new THREE.Fog(0x8fb8d8, 110, 220);
 const camera = new THREE.PerspectiveCamera(38, 1, 1, 500);
-scene.add(new THREE.HemisphereLight(0xdfeeff, 0x4a5a2a, 1.1));
-const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
+scene.add(new THREE.HemisphereLight(0xdfeeff, 0x4a5a2a, 0.75));
+const sun = new THREE.DirectionalLight(0xfff1d6, 2.9);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, {left:-55, right:55, top:55, bottom:-55, near:1, far:200});
@@ -201,50 +202,81 @@ sun.shadow.bias = -0.0005;
 scene.add(sun, sun.target);
 
 // ---------------------------------------------------------------- Gelände
-// Zwei Basisplateaus mit Steilklippen und je zwei Rampen, ein Fluss mit drei Furten
-// quer über die Karte, sanfte Hügel und ein paar unpassierbare Felsspitzen.
+// Welliges Land aus mehrlagigem Rauschen, ein mäandernder Fluss mit ausgefransten
+// Ufern, Sandbänken und flachem Tal, drei Steinbrücken, ein paar Felsnasen.
+// HG = Bodenhöhe (fürs Gelände-Mesh), H = Laufhöhe (Boden oder Brückendeck).
 const WATER = -0.9;
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x-a)/(b-a))); return t*t*(3-2*t); };
-const PLATEAUS = [
-  {x:-55, z:55, ramps:[-Math.PI/4, -Math.PI/4 - 1.25]},
-  {x:55, z:-55, ramps:[Math.PI*3/4, Math.PI*3/4 - 1.25]},
-];
-const HILLS = [[-38,2,3,10],[38,-2,3,10],[-8,-44,2.6,9],[8,44,2.6,9],[-70,-30,3.5,12],[70,30,3.5,12],
-               [30,70,2.5,10],[-30,-70,2.5,10]];
-const CRAGS = [[-22,-8,6,3.6],[22,8,6,3.6],[-58,4,6,3.2],[58,-4,6,3.2],[6,-68,6,3.4],[-6,68,6,3.4]];
-const FORDS = [-52, 0, 52];
-function plateauK(x, z){
-  let k = 0;
-  for(const p of PLATEAUS){
-    const dx = x-p.x, dz = z-p.z, d = Math.hypot(dx, dz), a = Math.atan2(dz, dx);
-    let ramp = 0;
-    for(const r of p.ramps){
-      const da = Math.abs(Math.atan2(Math.sin(a-r), Math.cos(a-r)));
-      ramp = Math.max(ramp, 1 - sstep(0.14, 0.28, da));
-    }
-    k = Math.max(k, 1 - sstep(29.5, 33.5 + 15*ramp, d));
-  }
-  return k;
+const hash = (i, j) => { const v = Math.sin(i*127.1 + j*311.7)*43758.5453; return v - Math.floor(v); };
+function n2(x, z){
+  const i = Math.floor(x), j = Math.floor(z), fx = x - i, fz = z - j;
+  const u = fx*fx*(3-2*fx), v = fz*fz*(3-2*fz);
+  return (hash(i,j)*(1-u) + hash(i+1,j)*u)*(1-v) + (hash(i,j+1)*(1-u) + hash(i+1,j+1)*u)*v;
 }
-function H(x, z){
-  const pk = plateauK(x, z);
-  let h = (0.35*Math.sin(x*0.13)*Math.cos(z*0.11) + 0.25*Math.sin((x+z)*0.07)) * (1 - pk);
-  for(const [hx,hz,hh,hr] of HILLS) h += hh*Math.exp(-((x-hx)**2 + (z-hz)**2)/(hr*hr));
-  for(const [hx,hz,hh,hr] of CRAGS) h += hh*Math.exp(-((x-hx)**2 + (z-hz)**2)/(hr*hr));
-  h = Math.max(h, 4*pk);
-  // Fluss entlang der Diagonale x = z
-  const sv = (x - z)/Math.SQRT2 + 5*Math.sin((x + z)*0.045), uv = (x + z)/Math.SQRT2;
-  const rk = 1 - sstep(3.5, 7, Math.abs(sv));
+const fbm = (x, z) => (n2(x,z) + 0.5*n2(x*2.03+17, z*2.03+9) + 0.25*n2(x*4.1+5, z*4.1+31)) / 1.75;
+const RIVER_OFF = u => 16*Math.sin(u*0.03 + 0.6) + 7*Math.sin(u*0.083 + 2) + 3*Math.sin(u*0.19);
+const RIVER_W = u => 4.6 + 1.8*Math.sin(u*0.05 + 1) + 1.2*Math.sin(u*0.13);
+const BASES = [{x:-55, z:55}, {x:55, z:-55}];
+function riverCoords(x, z){
+  const u = (x + z)/Math.SQRT2, v = (x - z)/Math.SQRT2;
+  return {u, sv: v - RIVER_OFF(u), w: RIVER_W(u)};
+}
+function HG(x, z){
+  let h = 1.4 + 8*(fbm(x*0.012 + 3.3, z*0.012 + 7.1) - 0.5) + 2.2*(fbm(x*0.045 + 11, z*0.045 + 2) - 0.5);
+  // Senken sanft auffüllen: Wasser gibt es nur im Fluss
+  h = 0.4 + Math.log(1 + Math.exp((h - 0.4)*2.5))/2.5;
+  for(const b of BASES){                               // Wiesen für die Basen einebnen
+    const k = 1 - sstep(16, 32, Math.hypot(x - b.x, z - b.z));
+    h += (1.2 - h)*k;
+  }
+  const {sv, w} = riverCoords(x, z);
+  h -= 1.0*(1 - sstep(w, w + 26, Math.abs(sv)));      // Flusstal
+  // ausgefranstes Ufer: das Rauschen verschiebt die Uferlinie, Sandbänke ragen heraus
+  const e = Math.abs(sv) + 2.4*(n2(x*0.22, z*0.22) - 0.5) + 1.1*(n2(x*0.6 + 40, z*0.6) - 0.5);
+  const rk = 1 - sstep(w - 0.8, w + 3.2, e);
   if(rk > 0){
-    let ford = 0; for(const f of FORDS) ford = Math.max(ford, 1 - sstep(3, 6, Math.abs(uv - f)));
-    const bed = -2.2 + 1.8*ford;
-    h = h + (bed - h)*rk;
+    const bed = -2.7 + 1.9*sstep(0.55, 0.85, n2(x*0.13 + 70, z*0.13));
+    h += (bed - h)*rk;
+  }
+  for(const c of CRAGS){
+    const d = Math.hypot(x - c.x, z - c.z);
+    h += c.h * Math.exp(-(d*d)/(c.r*c.r)) * (0.8 + 0.4*n2(x*0.7, z*0.7));
   }
   return h;
 }
-function slope(x, z){
+// Felsnasen nur dort, wo sie weder im Fluss noch in einer Basis liegen
+const CRAGS = [[-45,-5],[45,5],[-12,-62],[12,62],[-75,-40],[75,40],[-30,20],[30,-20]]
+  .map(([x,z])=>({x, z, h:5.5, r:3.4}))
+  .filter(c=>{ const {sv, w} = riverCoords(c.x, c.z); return Math.abs(sv) > w + 10 && BASES.every(b=>Math.hypot(c.x-b.x, c.z-b.z) > 34); });
+// Brücken: quer zur Flussrichtung, Deck als flacher Bogen zwischen den Uferhöhen
+const BRIDGE_HALF_W = 1.9;
+const BRIDGES = [-58, 2, 60].map(u=>{
+  const v = RIVER_OFF(u), du = 0.5, dv = (RIVER_OFF(u+du) - RIVER_OFF(u-du))/(2*du);
+  const cx = (u + v)/Math.SQRT2, cz = (u - v)/Math.SQRT2;
+  // Flussrichtung in Weltkoordinaten, Brückenachse senkrecht dazu
+  const tx = (1 + dv)/Math.SQRT2, tz = (1 - dv)/Math.SQRT2, tl = Math.hypot(tx, tz);
+  const ax = -tz/tl, az = tx/tl;
+  const L = RIVER_W(u) + 7;
+  return {cx, cz, ax, az, L};
+});
+for(const b of BRIDGES){
+  b.hA = HG(b.cx - b.ax*b.L, b.cz - b.az*b.L); b.hB = HG(b.cx + b.ax*b.L, b.cz + b.az*b.L);
+  b.deck = t => b.hA + (b.hB - b.hA)*t + 1.1*Math.sin(Math.PI*t) + 0.15;
+}
+function bridgeAt(x, z){
+  for(const b of BRIDGES){
+    const dx = x - b.cx, dz = z - b.cz, a = dx*b.ax + dz*b.az, c = -dx*b.az + dz*b.ax;
+    if(Math.abs(a) <= b.L && Math.abs(c) <= BRIDGE_HALF_W) return {b, t:(a + b.L)/(2*b.L)};
+  }
+  return null;
+}
+function H(x, z){
+  const g = HG(x, z), br = bridgeAt(x, z);
+  return br ? Math.max(g, br.b.deck(br.t)) : g;
+}
+function slope(x, z, f = H){
   const e = 0.5;
-  return Math.hypot(H(x+e,z) - H(x-e,z), H(x,z+e) - H(x,z-e)) / (2*e);
+  return Math.hypot(f(x+e,z) - f(x-e,z), f(x,z+e) - f(x,z-e)) / (2*e);
 }
 // Laufraster: eine Zelle pro Welteinheit
 const GN = MAP*2, terrainOK = new Uint8Array(GN*GN), blocked = new Uint8Array(GN*GN);
@@ -371,12 +403,14 @@ function findPath(sx, sz, gx, gz){
   const geo = new THREE.PlaneGeometry(SZ, SZ, SEG, SEG).rotateX(-Math.PI/2);
   const pos = geo.attributes.position, col = new Float32Array(pos.count*3);
   const grass = new THREE.Color(0xffffff), rock = new THREE.Color(0x8a8278), mud = new THREE.Color(0xb59a6a),
-        high = new THREE.Color(0xe6f0c8), c3 = new THREE.Color();
+        high = new THREE.Color(0xe6f0c8), sand = new THREE.Color(0xd8c59a), c3 = new THREE.Color();
   for(let i=0;i<pos.count;i++){
-    const x = pos.getX(i), z = pos.getZ(i), h = H(x, z), sl = slope(x, z);
+    const x = pos.getX(i), z = pos.getZ(i), h = HG(x, z), sl = slope(x, z, HG);
     pos.setY(i, h);
-    c3.copy(grass).lerp(high, THREE.MathUtils.clamp(h/4, 0, 1)*0.5);
-    if(h < -0.3) c3.lerp(mud, THREE.MathUtils.clamp((-0.3-h)/0.6, 0, 1));
+    c3.copy(grass).lerp(high, THREE.MathUtils.clamp(h/5 + (n2(x*0.08, z*0.08) - 0.5)*0.8, 0, 1)*0.55);
+    // Kiesig-sandiger Uferstreifen, darunter Schlamm
+    c3.lerp(sand, THREE.MathUtils.clamp((0.35 - h)/0.6, 0, 1) * (0.7 + 0.3*n2(x*0.5, z*0.5)));
+    if(h < -0.4) c3.lerp(mud, THREE.MathUtils.clamp((-0.4-h)/0.8, 0, 1));
     c3.lerp(rock, THREE.MathUtils.smoothstep(sl, 0.45, 0.9));
     col.set([c3.r, c3.g, c3.b], i*3);
   }
@@ -538,7 +572,7 @@ async function buildWorld(){
   const txt = document.getElementById('ltext');
   // alles vorladen, damit das Spiel nicht mitten im Kampf stockt
   const all = [...Object.values(BUILD).flatMap(b=>b.m), ...Object.values(UNIT).flatMap(u=>[u.m, ...(u.r||[]), ...(u.l||[])]),
-    ...RES.tree.m, ...RES.tree.cut, ...RES.gold.m, ...DECOR, ...ANIMS, ARROW];
+    ...RES.tree.m, ...RES.tree.cut, ...RES.gold.m, ...DECOR, ...ANIMS, ARROW, BR_COL];
   await Promise.all(all.map(load));
   txt.textContent = 'Baue Karte …';
   for(const p of ANIMS) for(const c of (await load(p)).animations) clips[c.name] = retarget(c);
@@ -554,13 +588,76 @@ async function buildWorld(){
     const g = prop(await load(DECOR[Math.floor(rnd(0,3))]), rnd(14, 24));
     g.position.set(x,H(x,z)-0.5,z); g.rotation.y = rnd(0,7); scene.add(g);
   }
-  for(let i=0;i<40;i++){
-    const x = rnd(-MAP,MAP), z = rnd(-MAP,MAP);
-    if(d2({x,z},HOME) < 26 || d2({x,z},FOE) < 26 || H(x,z) < WATER+0.3) continue;
-    const g = prop(await load(DECOR[3+Math.floor(rnd(0,4))]), rnd(1.5,3.5));
-    g.position.set(x,H(x,z)-0.1,z); g.rotation.y = rnd(0,7); scene.add(g);
+  // Deko in Gruppen: Baumhaine bevorzugt auf Kuppen, Findlinge dazwischen; jede Stelle sperrt ihre Zelle
+  for(let c=0;c<34;c++){
+    const cx = rnd(-MAP+6, MAP-6), cz = rnd(-MAP+6, MAP-6);
+    if(HG(cx, cz) < 1.2 && Math.random() < 0.6) continue;
+    const n = 3 + Math.floor(rnd(0, 6)), spread = rnd(3, 7);
+    for(let i=0;i<n;i++){
+      const x = cx + rnd(-spread, spread), z = cz + rnd(-spread, spread);
+      if(d2({x,z},HOME) < 28 || d2({x,z},FOE) < 28 || HG(x,z) < 0.3 || slope(x, z) > 0.6) continue;
+      if(BRIDGES.some(b=>Math.hypot(x-b.cx, z-b.cz) < b.L + 4)) continue;
+      if(ents.some(e=> e.kind === 'resource' && d2(e.pos,{x,z}) < e.r + 2)) continue;
+      const rock = Math.random() < 0.25;
+      const g = prop(await load(rock ? DECOR[3+Math.floor(rnd(0,2))] : DECOR[5+Math.floor(rnd(0,2))]),
+        rock ? rnd(1.2, 2.4) : rnd(2.2, 3.4));
+      g.position.set(x, H(x,z)-0.1, z); g.rotation.y = rnd(0,7); scene.add(g);
+      terrainOK[cellX(z)*GN + cellX(x)] = 0; gridDirty = true;
+    }
   }
-  for(const [x,z,,r] of CRAGS){
+  // Steinbrücken: Pflasterplatten entlang des Bogens, Brüstungen, Stützpfeiler im Wasser
+  const stone = new THREE.MeshStandardMaterial({color:0x9a958a, roughness:.95});
+  // durchgehendes Deck: Band entlang des Bogens (Pflaster oben, Stein an den Seiten), Brüstungen als Bänder darauf
+  const cob = document.createElement('canvas'); cob.width = cob.height = 128;
+  { const g = cob.getContext('2d'); g.fillStyle = '#6f6a62'; g.fillRect(0,0,128,128);
+    for(let r=0;r<8;r++) for(let c=0;c<5;c++){
+      const x = c*26 + (r%2)*13 - 6, y = r*16;
+      g.fillStyle = `hsl(35,${6+Math.random()*6}%,${46+Math.random()*14}%)`;
+      g.beginPath(); g.roundRect(x+1, y+1, 23, 13, 4); g.fill();
+    } }
+  const cobTex = new THREE.CanvasTexture(cob); cobTex.wrapS = cobTex.wrapT = THREE.RepeatWrapping;
+  cobTex.colorSpace = THREE.SRGBColorSpace;
+  const deckMat = new THREE.MeshStandardMaterial({map:cobTex, roughness:.95});
+  function ribbon(b, off0, off1, up0, up1, down, mat, vRep){
+    // Querschnitt von off0..off1 quer zur Achse, Oberkante deck+up, Unterkante deck-down
+    const N = 40, P = [], UV = [], I = [];
+    const px = -b.az, pz = b.ax;                        // quer zur Brücke
+    const quad = [[off0, up0], [off1, up1], [off1, -down], [off0, -down]];
+    for(let k=0;k<=N;k++){
+      const t = k/N, a = -b.L + t*2*b.L, y = b.deck(t);
+      for(const [o, h] of quad){
+        P.push(b.cx + b.ax*a + px*o, y + h, b.cz + b.az*a + pz*o);
+        UV.push((o - off0)/2, t*vRep);
+      }
+    }
+    for(let k=0;k<N;k++) for(let f=0;f<4;f++){
+      const a0 = k*4 + f, a1 = k*4 + (f+1)%4, b0 = a0 + 4, b1 = a1 + 4;
+      I.push(a0, b0, a1, a1, b0, b1);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2));
+    g.setIndex(I); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true;
+    mat.side = THREE.DoubleSide;
+    scene.add(m);
+  }
+  for(const b of BRIDGES){
+    const W = BRIDGE_HALF_W + 0.2, rep = Math.round(b.L);
+    ribbon(b, -W, W, 0, 0, 0.9, deckMat, rep);
+    for(const side of [-1, 1]){
+      const o = side*(W + 0.2);
+      ribbon(b, o - 0.22, o + 0.22, 0.8, 0.8, 1.0, stone, rep);
+    }
+    for(const t of [0.33, 0.67]){
+      const a = -b.L + t*2*b.L, top = b.deck(t) - 0.35;
+      const c = prop(await load(BR_COL), top + 3, true);
+      c.position.set(b.cx + b.ax*a, -3, b.cz + b.az*a);
+      c.rotation.y = Math.atan2(b.ax, b.az);
+      scene.add(c);
+    }
+  }
+  for(const {x, z, r} of CRAGS){
     const g = prop(await load(DECOR[2]), r*2.2);
     g.position.set(x, H(x,z) - 3.5, z); g.rotation.y = rnd(0,7); scene.add(g);
   }
@@ -579,8 +676,16 @@ async function buildWorld(){
   await forest(-10, -10, 8, 14); await forest(12, 14, 8, 12);
   await forest(-60, -40, 8, 10); await forest(40, 60, 8, 10);
   // Gold: je zwei an den Basen, zwei umkämpft in der Mitte
-  for(const [x,z] of [[-42,74],[-74,42],[74,-42],[42,-74],[-2,26],[2,-26],[-50,-10],[50,10]])
-    await spawnResource('gold', x, z);
+  for(const [x,z] of [[-42,74],[-74,42],[74,-42],[42,-74],[-2,26],[2,-26],[-50,-10],[50,10]]){
+    // liegt die Stelle im Fluss oder am Hang, zur nächsten ebenen Wiese rücken
+    let px = x, pz = z;
+    for(let r=0, found=false; r<20 && !found; r++) for(let a=0;a<12;a++){
+      const qx = x + Math.cos(a*0.5236)*r, qz = z + Math.sin(a*0.5236)*r;
+      if([0,1,2,3].every(k=>walkTerrain(qx + Math.cos(k*1.57)*3, qz + Math.sin(k*1.57)*3)) && slope(qx, qz) < 0.3){
+        px = qx; pz = qz; found = true; break; }
+    }
+    await spawnResource('gold', px, pz);
+  }
 
   // Spieler
   const tc = await spawnBuilding('towncenter', 0, HOME.x, HOME.z);
@@ -1322,11 +1427,16 @@ function updateBuilding(b, dt){
 }
 
 // ---------------------------------------------------------------- Gegner-KI
+// Solange am Level gebaut wird, greifen die Skelette nicht von selbst an
+const WAVES = false;
 const foe = {gather:new THREE.Vector3(FOE.x-26, 0, FOE.z+28), next:150, wave:0};
 function updateFoe(dt){
-  foe.next -= dt;
   const el = document.getElementById('wave');
-  el.textContent = foe.next > 0 ? `Nächster Angriff in ${Math.ceil(foe.next)} s` : 'Angriff!';
+  if(!WAVES){ el.textContent = 'Angriffswellen aus'; }
+  else {
+    foe.next -= dt;
+    el.textContent = foe.next > 0 ? `Nächster Angriff in ${Math.ceil(foe.next)} s` : 'Angriff!';
+  }
   // Kasernen produzieren ständig nach
   const n = ents.filter(e=>e.alive && e.team===1 && e.kind==='unit').length;
   const cap = 10 + foe.wave*3;
