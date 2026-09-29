@@ -72,7 +72,7 @@ button.big{background:var(--gold);color:#221;border:0;border-radius:6px;padding:
   <div class="wave" id="wave"></div>
 </div>
 <div id="msg"></div>
-<div id="help">Linksklick/Rahmen: auswählen · Rechtsklick: bewegen/angreifen/sammeln<br>
+<div id="help">Rahmen ziehen: auswählen · Klick: hinlaufen/angreifen/sammeln · Esc: abwählen<br>
 WASD/Pfeile/Rand: Kamera · Mausrad: Zoom · A+Klick: Angriffsmarsch · S: Stopp · H: Burg</div>
 <div id="box"></div>
 <div id="bottom">
@@ -411,7 +411,7 @@ function updateCamera(dt){
   if(keys.KeyA && !aMode && !selected.length || keys.ArrowLeft) dx -= 1;
   if(keys.KeyD || keys.ArrowRight) dx += 1;
   if(mouse.in && !dragging){
-    const m = 12;
+    const m = 30;
     if(mouse.x < m) dx -= 1; if(mouse.x > innerWidth-m) dx += 1;
     if(mouse.y < m) dz -= 1; if(mouse.y > innerHeight-m) dz += 1;
   }
@@ -459,7 +459,7 @@ function pick(x, y){
 let dragging = false, dragStart = null, aMode = false, placing = null, ghost = null;
 const boxEl = document.getElementById('box');
 cv.addEventListener('contextmenu', e=>e.preventDefault());
-cv.addEventListener('mousemove', e=>{
+addEventListener('mousemove', e=>{
   mouse.x = e.clientX; mouse.y = e.clientY; mouse.in = true;
   if(dragStart && !dragging && Math.hypot(e.clientX-dragStart.x, e.clientY-dragStart.y) > 6) dragging = true;
   if(dragging){
@@ -497,7 +497,11 @@ addEventListener('mouseup', e=>{
     if(sel.length || !e.shiftKey) select(e.shiftKey ? [...new Set([...selected, ...sel])] : sel);
   } else {
     const t = pick(e.clientX, e.clientY);
-    if(e.shiftKey && t && t.team === 0 && t.kind === 'unit')
+    const haveUnits = selected.some(s=>s.kind==='unit' && s.team===0);
+    // Mit ausgewählten Einheiten ist ein Linksklick ein Befehl – nur eigene Figuren/Gebäude werden neu gewählt
+    if(haveUnits && !e.shiftKey && !(t && t.team === 0 && (t.kind === 'unit' || t.done)))
+      order(t, groundAt(e.clientX, e.clientY));
+    else if(e.shiftKey && t && t.team === 0 && t.kind === 'unit')
       select(selected.includes(t) ? selected.filter(s=>s!==t) : [...selected, t]);
     else select(t ? [t] : []);
   }
