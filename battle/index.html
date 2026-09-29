@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Burgenkrieg</title>
+<script defer src="/analytics.js"></script>
+<style>
+:root{
+  --panel:#1d1a16ee; --line:#5a4a33; --text:#f1e6cf; --muted:#b7a78a;
+  --gold:#e8c14a; --wood:#b98a52; --ok:#7fd36b; --bad:#e2574c; --btn:#2d271f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#1a1712;color:var(--text);
+  font:14px/1.3 "Trebuchet MS",system-ui,sans-serif;user-select:none;-webkit-user-select:none}
+canvas#gl{display:block;position:fixed;inset:0}
+canvas#ov{position:fixed;inset:0;pointer-events:none}
+#top{position:fixed;top:0;left:0;right:0;height:38px;display:flex;gap:22px;align-items:center;
+  padding:0 16px;background:linear-gradient(#000a,#0000);font-weight:bold;text-shadow:0 1px 2px #000}
+#top .res{display:flex;gap:6px;align-items:center}
+#top .dot{width:12px;height:12px;border-radius:50%}
+#top .wave{margin-left:auto;color:var(--muted);font-weight:normal}
+#msg{position:fixed;top:46px;left:50%;transform:translateX(-50%);text-align:center;
+  text-shadow:0 1px 3px #000;font-weight:bold;pointer-events:none}
+#msg div{animation:fade 3.5s forwards}
+@keyframes fade{0%,70%{opacity:1}100%{opacity:0}}
+#bottom{position:fixed;left:0;right:0;bottom:0;height:150px;display:flex;gap:10px;padding:10px;
+  background:var(--panel);border-top:2px solid var(--line)}
+#mini{width:130px;height:130px;flex:none;border:1px solid var(--line);background:#2d4020;cursor:pointer}
+#info{flex:1;min-width:0;overflow:hidden}
+#info h3{margin:0 0 4px;font-size:16px}
+#info .sub{color:var(--muted);font-size:13px}
+#info .icons{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}
+#info .icons span{padding:1px 5px;background:#0005;border-radius:3px;font-size:12px}
+#queue{display:flex;gap:4px;margin-top:6px;align-items:center}
+#queue span{padding:2px 6px;background:#0006;border-radius:3px;font-size:12px}
+#queue .bar{width:120px;height:6px;background:#0008;border-radius:3px;overflow:hidden}
+#queue .bar i{display:block;height:100%;background:var(--ok)}
+#cmds{display:grid;grid-template-columns:repeat(4,86px);grid-auto-rows:62px;gap:5px;flex:none;align-content:start}
+#cmds button{background:var(--btn);color:var(--text);border:1px solid var(--line);border-radius:4px;
+  font:inherit;font-size:12px;cursor:pointer;padding:3px;line-height:1.15}
+#cmds button:hover{background:#40372b}
+#cmds button:disabled{opacity:.4;cursor:default}
+#cmds button small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+#cmds button kbd{float:right;font-size:10px;color:var(--muted)}
+#box{position:fixed;border:1px solid #9f9;background:#9f92;display:none;pointer-events:none}
+#load,#end{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:#1a1712;gap:12px;z-index:10;text-align:center;padding:16px}
+#load h1,#end h1{margin:0;font-size:40px;letter-spacing:2px;color:var(--gold)}
+#load .bar{width:min(320px,80vw);height:8px;background:#000;border-radius:4px;overflow:hidden}
+#load .bar i{display:block;height:100%;width:0;background:var(--gold);transition:width .2s}
+#load p,#end p{color:var(--muted);max-width:520px;margin:0}
+#end{display:none;background:#000c}
+button.big{background:var(--gold);color:#221;border:0;border-radius:6px;padding:10px 22px;font:bold 16px inherit;cursor:pointer}
+#help{position:fixed;top:44px;right:12px;color:var(--muted);font-size:12px;text-align:right;
+  text-shadow:0 1px 2px #000;line-height:1.5;pointer-events:none}
+@media (max-width:760px){
+  #bottom{height:auto;flex-wrap:wrap}
+  #mini{width:90px;height:90px}
+  #cmds{grid-template-columns:repeat(4,1fr);width:100%}
+  #help{display:none}
+}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="ov"></canvas>
+<div id="top">
+  <div class="res"><span class="dot" style="background:var(--wood)"></span>Holz <span id="rWood">0</span></div>
+  <div class="res"><span class="dot" style="background:var(--gold)"></span>Gold <span id="rGold">0</span></div>
+  <div class="res">👥 <span id="rPop">0/0</span></div>
+  <div class="wave" id="wave"></div>
+</div>
+<div id="msg"></div>
+<div id="help">Linksklick/Rahmen: auswählen · Rechtsklick: bewegen/angreifen/sammeln<br>
+WASD/Pfeile/Rand: Kamera · Mausrad: Zoom · A+Klick: Angriffsmarsch · S: Stopp · H: Burg</div>
+<div id="box"></div>
+<div id="bottom">
+  <canvas id="mini" width="260" height="260"></canvas>
+  <div id="info"></div>
+  <div id="cmds"></div>
+</div>
+<div id="load"><h1>BURGENKRIEG</h1><div class="bar"><i id="lbar"></i></div><p id="ltext">Lade Modelle …</p></div>
+<div id="end"><h1 id="endT"></h1><p id="endP"></p><button class="big" onclick="location.reload()">Neues Spiel</button></div>
+
+<script type="importmap">
+{"imports":{
+ "three":"https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+ "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {DRACOLoader} from 'three/addons/loaders/DRACOLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+
+// ---------------------------------------------------------------- Assets
+const BASE = '/assets/models/';
+const RTS = 'Quaternius Ultimate Fantasy RTS/glTF/';
+const ADV = 'KayKit_Adventurers_2.0_FREE/';
+const SKL = 'KayKit_Skeletons_1.1_FREE/';
+const ANI = 'KayKit_Character_Animations_1.1/Animations/gltf/Rig_Medium/';
+const url = p => BASE + p.split('/').map(encodeURIComponent).join('/');
+
+const loader = new GLTFLoader();
+loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
+const cache = {};
+let loaded = 0, toLoad = 0;
+function load(p){
+  if(!cache[p]){
+    toLoad++;
+    cache[p] = loader.loadAsync(url(p)).then(g=>{
+      loaded++;
+      document.getElementById('lbar').style.width = (100*loaded/toLoad)+'%';
+      return g;
+    });
+  }
+  return cache[p];
+}
+
+// Gebäude: Modell, Grundfläche (Weltbreite), Werte
+const BUILD = {
+  towncenter:{name:'Burg', m:[RTS+'TowerHouse_FirstAge.glb', RTS+'TowerHouse_SecondAge.glb'],
+    size:11, hp:1600, pop:10, drop:true, make:['worker'], time:0, shoot:{range:13, dmg:7, cd:1.6}},
+  house:{name:'Haus', m:[RTS+'Houses_FirstAge_1_Level1.glb', RTS+'Houses_SecondAge_1_Level1.glb'],
+    size:6, hp:350, pop:5, cost:{wood:60}, time:14, key:'Q'},
+  storage:{name:'Lager', m:[RTS+'Storage_FirstAge_Level1.glb', RTS+'Storage_SecondAge_Level1.glb'],
+    size:7, hp:450, drop:true, cost:{wood:80}, time:16, key:'E'},
+  barracks:{name:'Kaserne', m:[RTS+'Barracks_FirstAge_Level1.glb', RTS+'Barracks_SecondAge_Level1.glb'],
+    size:10, hp:900, cost:{wood:150}, time:24, make:['knight'], key:'R'},
+  archery:{name:'Schießstand', m:[RTS+'Archery_FirstAge_Level1.glb', RTS+'Archery_SecondAge_Level1.glb'],
+    size:10, hp:800, cost:{wood:120, gold:40}, time:24, make:['ranger'], key:'T'},
+  temple:{name:'Tempel', m:[RTS+'Temple_FirstAge_Level1.glb', RTS+'Temple_SecondAge_Level1.glb'],
+    size:10, hp:800, cost:{wood:150, gold:120}, time:30, make:['mage'], key:'F'},
+  tower:{name:'Wachturm', m:[RTS+'WatchTower_FirstAge_Level1.glb', RTS+'WatchTower_SecondAge_Level1.glb'],
+    size:5, hp:600, cost:{wood:100, gold:50}, time:20, shoot:{range:15, dmg:9, cd:1.4}, key:'G'},
+};
+const BUILD_MENU = ['house','storage','barracks','archery','temple','tower'];
+
+// Einheiten: Modell, Waffen (Handslot r/l), Werte, Animationen
+const UNIT = {
+  worker:{name:'Arbeiter', m:ADV+'Characters/gltf/Rogue.glb', r:[ADV+'Assets/gltf/axe_1handed.gltf'],
+    hp:45, speed:4.2, dmg:3, range:1.3, cd:1.2, cost:{gold:50}, time:10, pop:1},
+  knight:{name:'Ritter', m:ADV+'Characters/gltf/Knight.glb', r:[ADV+'Assets/gltf/sword_1handed.gltf'],
+    l:[ADV+'Assets/gltf/shield_round_color.gltf'], hp:140, speed:3.8, dmg:13, range:1.5, cd:1.1, armor:2,
+    cost:{gold:60, wood:20}, time:14, pop:1},
+  ranger:{name:'Bogenschütze', m:ADV+'Characters/gltf/Ranger.glb', l:[ADV+'Assets/gltf/bow_withString.gltf'],
+    hp:60, speed:4, dmg:8, range:13, cd:1.6, shot:'arrow', atk:'Ranged_Bow_Release',
+    cost:{gold:30, wood:50}, time:12, pop:1},
+  mage:{name:'Magier', m:ADV+'Characters/gltf/Mage.glb', r:[ADV+'Assets/gltf/staff.gltf'],
+    hp:55, speed:3.6, dmg:22, range:11, cd:2.4, shot:'magic', splash:2.2, atk:'Ranged_Magic_Shoot',
+    cost:{gold:90, wood:30}, time:18, pop:1},
+  // Gegner
+  s_minion:{name:'Skelett', m:SKL+'characters/gltf/Skeleton_Minion.glb', r:[SKL+'assets/gltf/Skeleton_Axe.gltf'],
+    hp:55, speed:3.6, dmg:7, range:1.3, cd:1.2},
+  s_warrior:{name:'Skelettkrieger', m:SKL+'characters/gltf/Skeleton_Warrior.glb', r:[SKL+'assets/gltf/Skeleton_Blade.gltf'],
+    l:[SKL+'assets/gltf/Skeleton_Shield_Small_A.gltf'], hp:120, speed:3.5, dmg:12, range:1.5, cd:1.2, armor:2},
+  s_rogue:{name:'Skelettschütze', m:SKL+'characters/gltf/Skeleton_Rogue.glb', r:[SKL+'assets/gltf/Skeleton_Crossbow.gltf'],
+    hp:50, speed:3.8, dmg:8, range:12, cd:1.9, shot:'arrow', atk:'Ranged_1H_Shoot'},
+  s_mage:{name:'Skelettmagier', m:SKL+'characters/gltf/Skeleton_Mage.glb', r:[SKL+'assets/gltf/Skeleton_Staff.gltf'],
+    hp:50, speed:3.4, dmg:18, range:10, cd:2.6, shot:'magic', splash:2, atk:'Ranged_Magic_Shoot'},
+};
+
+const RES = {
+  tree:{m:[RTS+'Resource_Tree_Group.glb', RTS+'Resource_PineTree_Group.glb'],
+        cut:[RTS+'Resource_Tree_Group_Cut.glb', RTS+'Resource_PineTree_Group_Cut.glb'], size:4.5, amount:350, kind:'wood'},
+  gold:{m:[RTS+'Resource_Gold_2.glb', RTS+'Resource_Gold_3.glb'], size:3.6, amount:900, kind:'gold'},
+};
+const DECOR = [RTS+'Mountain_Group_1.glb', RTS+'Mountain_Group_2.glb', RTS+'MountainLarge_Single.glb',
+               RTS+'Rock_Group.glb', RTS+'Rock.glb', RTS+'Resource_Tree1.glb', RTS+'Resource_PineTree.glb'];
+const ANIMS = ['General','MovementBasic','CombatMelee','CombatRanged','Tools'].map(n=>ANI+'Rig_Medium_'+n+'.glb');
+const ARROW = ADV+'Assets/gltf/arrow_bow.gltf';
+
+// ---------------------------------------------------------------- Szene
+const MAP = 90;                                    // halbe Kantenlänge
+const cv = document.getElementById('gl');
+const renderer = new THREE.WebGLRenderer({canvas:cv, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8fb8d8);
+scene.fog = new THREE.Fog(0x8fb8d8, 110, 220);
+const camera = new THREE.PerspectiveCamera(38, 1, 1, 500);
+scene.add(new THREE.HemisphereLight(0xdfeeff, 0x4a5a2a, 1.1));
+const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, {left:-55, right:55, top:55, bottom:-55, near:1, far:200});
+sun.shadow.bias = -0.0005;
+scene.add(sun, sun.target);
+
+// Boden mit Rauschtextur
+{
+  const c = document.createElement('canvas'); c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#6b8f3e'; g.fillRect(0,0,512,512);
+  for(let i=0;i<9000;i++){
+    const l = 30 + Math.random()*22;
+    g.fillStyle = `hsla(${80+Math.random()*25},45%,${l}%,.35)`;
+    const s = 2 + Math.random()*6;
+    g.fillRect(Math.random()*512, Math.random()*512, s, s);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(14,14);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP*2+120, MAP*2+120),
+    new THREE.MeshStandardMaterial({map:t, roughness:1}));
+  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+  scene.add(ground);
+}
+
+// ---------------------------------------------------------------- Hilfen
+function fit(obj, size, byHeight){
+  obj.updateMatrixWorld(true);
+  const b = new THREE.Box3().setFromObject(obj), s = b.getSize(new THREE.Vector3());
+  const k = size / (byHeight ? s.y : Math.max(s.x, s.z));
+  obj.scale.multiplyScalar(k);
+  obj.updateMatrixWorld(true);
+  const b2 = new THREE.Box3().setFromObject(obj), c = b2.getCenter(new THREE.Vector3());
+  if(!byHeight){ obj.position.x -= c.x; obj.position.z -= c.z; }
+  obj.position.y -= b2.min.y;
+  return b2.max.y - b2.min.y;
+}
+function darken(o){
+  o.traverse(m=>{ if(m.isMesh){ m.material = m.material.clone(); m.material.color.multiply(new THREE.Color(0.55, 0.5, 0.62)); } });
+}
+function shadows(o){ o.traverse(m=>{ if(m.isMesh){ m.castShadow = true; m.receiveShadow = true; } }); }
+function prop(gltf, size, byHeight){
+  const g = new THREE.Group(), o = gltf.scene.clone(true);
+  shadows(o); g.add(o); g.userData.h = fit(o, size, byHeight);
+  return g;
+}
+function retarget(clip){
+  const keep = clip.tracks.filter(t => !t.name.endsWith('.scale') &&
+    (!t.name.endsWith('.position') || /^(root|hips)\./.test(t.name)));
+  return new THREE.AnimationClip(clip.name, clip.duration, keep);
+}
+const rnd = (a,b)=> a + Math.random()*(b-a);
+const d2 = (a,b)=> Math.hypot(a.x-b.x, a.z-b.z);
+const canPay = c => !c || ((c.wood||0) <= res.wood && (c.gold||0) <= res.gold);
+const pay = c => { res.wood -= c.wood||0; res.gold -= c.gold||0; };
+const costTxt = c => [c.gold ? c.gold+' G' : '', c.wood ? c.wood+' H' : ''].filter(Boolean).join(' · ');
+function msg(t, col){
+  const d = document.createElement('div'); d.textContent = t; if(col) d.style.color = col;
+  const m = document.getElementById('msg'); m.prepend(d);
+  setTimeout(()=>d.remove(), 3600);
+}
+
+// ---------------------------------------------------------------- Zustand
+const res = {wood:200, gold:150};
+const ents = [];
+let nextId = 1, clips = {}, arrowProto = null, gameOver = false, time = 0;
+let selected = [];
+
+// Ringe für die Auswahl
+const ringGeo = new THREE.RingGeometry(0.85, 1, 40).rotateX(-Math.PI/2);
+const ringMat = [new THREE.MeshBasicMaterial({color:0x7fff6b, transparent:true, opacity:.9, depthWrite:false}),
+                 new THREE.MeshBasicMaterial({color:0xff5a4a, transparent:true, opacity:.9, depthWrite:false})];
+
+function addEnt(e){
+  e.id = nextId++; e.alive = true;
+  e.ring = new THREE.Mesh(ringGeo, ringMat[e.team === 1 ? 1 : 0]);
+  e.ring.scale.setScalar(e.r + 0.25); e.ring.position.y = 0.06; e.ring.visible = false;
+  e.obj.add(e.ring);
+  e.obj.position.copy(e.pos);
+  scene.add(e.obj);
+  ents.push(e);
+  return e;
+}
+
+async function spawnBuilding(type, team, x, z, done=true){
+  const d = BUILD[type];
+  // Spieler baut im zweiten Zeitalter (Stein), die Skelette hausen in Holz
+  const g = prop(await load(d.m[team === 0 ? 1 : 0]), d.size);
+  if(team === 1){ g.rotation.y = Math.PI; darken(g); }
+  const e = addEnt({kind:'building', type, team, obj:g, pos:new THREE.Vector3(x,0,z),
+    r:d.size*0.46, hp:done ? d.hp : 1, maxHp:d.hp, done, progress:done ? 1 : 0,
+    queue:[], qt:0, cd:0, rally:null});
+  if(!done) g.children[0].scale.y *= 0.05, e.fullY = g.children[0].scale.y / 0.05;
+  return e;
+}
+
+async function spawnResource(type, x, z, variant){
+  const d = RES[type];
+  const v = variant ?? Math.floor(Math.random()*d.m.length);
+  const g = prop(await load(d.m[v]), d.size*rnd(.9,1.1));
+  g.rotation.y = rnd(0, Math.PI*2);
+  return addEnt({kind:'resource', type, team:-1, obj:g, pos:new THREE.Vector3(x,0,z),
+    r:d.size*0.42, amount:d.amount, v});
+}
+
+async function spawnUnit(type, team, x, z){
+  const d = UNIT[type];
+  const gl = await load(d.m);
+  const ch = SkeletonUtils.clone(gl.scene);
+  shadows(ch);
+  const g = new THREE.Group(); g.add(ch);
+  fit(ch, type.startsWith('s_') ? 1.9 : 1.8, true);
+  for(const side of ['r','l']){
+    for(const w of d[side] || []){
+      const slot = ch.getObjectByName('handslot'+side) || ch.getObjectByName('handslot.'+side);
+      if(!slot) continue;
+      const o = (await load(w)).scene.clone(true); shadows(o); slot.add(o);
+    }
+  }
+  const mixer = new THREE.AnimationMixer(ch);
+  const e = addEnt({kind:'unit', type, team, obj:g, pos:new THREE.Vector3(x,0,z), r:0.45,
+    hp:d.hp, maxHp:d.hp, mixer, actions:{}, anim:'', state:'idle', cd:0, carry:0, carryKind:null,
+    goal:null, target:null, amove:null, gatherNode:null, buildTarget:null, facing:0});
+  play(e, 'Idle_A');
+  return e;
+}
+
+const ONCE = /Attack|Shoot|Release|Death|Hit_/;
+function play(e, name, fade=0.2, speed=1){
+  if(e.anim === name && !ONCE.test(name)) return;
+  let a = e.actions[name];
+  if(!a){
+    if(!clips[name]) return;
+    a = e.actions[name] = e.mixer.clipAction(clips[name]);
+    if(ONCE.test(name)){ a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+  }
+  const prev = e.actions[e.anim];
+  a.reset(); a.timeScale = speed; a.play();
+  if(prev && prev !== a) a.crossFadeFrom(prev, fade, false);
+  e.anim = name;
+}
+
+// ---------------------------------------------------------------- Welt aufbauen
+const HOME = new THREE.Vector3(-55, 0, 55), FOE = new THREE.Vector3(55, 0, -55);
+
+async function buildWorld(){
+  const txt = document.getElementById('ltext');
+  // alles vorladen, damit das Spiel nicht mitten im Kampf stockt
+  const all = [...Object.values(BUILD).flatMap(b=>b.m), ...Object.values(UNIT).flatMap(u=>[u.m, ...(u.r||[]), ...(u.l||[])]),
+    ...RES.tree.m, ...RES.tree.cut, ...RES.gold.m, ...DECOR, ...ANIMS, ARROW];
+  await Promise.all(all.map(load));
+  txt.textContent = 'Baue Karte …';
+  for(const p of ANIMS) for(const c of (await load(p)).animations) clips[c.name] = retarget(c);
+  arrowProto = (await load(ARROW)).scene;
+
+  // Randgebirge
+  const ring = [];
+  for(let a=0; a<Math.PI*2; a+=0.11){
+    const R = MAP + rnd(16, 26);
+    ring.push([Math.cos(a)*R*1.05, Math.sin(a)*R*1.05]);
+  }
+  for(const [x,z] of ring){
+    const g = prop(await load(DECOR[Math.floor(rnd(0,3))]), rnd(14, 24));
+    g.position.set(x,0,z); g.rotation.y = rnd(0,7); scene.add(g);
+  }
+  for(let i=0;i<40;i++){
+    const x = rnd(-MAP,MAP), z = rnd(-MAP,MAP);
+    if(d2({x,z},HOME) < 26 || d2({x,z},FOE) < 26) continue;
+    const g = prop(await load(DECOR[3+Math.floor(rnd(0,4))]), rnd(1.5,3.5));
+    g.position.set(x,0,z); g.rotation.y = rnd(0,7); scene.add(g);
+  }
+
+  // Wälder: Streifen hinter den Basen, verstreute Gruppen in der Mitte
+  const forest = async (cx, cz, n, spread) => {
+    for(let i=0;i<n;i++){
+      const x = cx + rnd(-spread, spread), z = cz + rnd(-spread, spread);
+      if(ents.some(e=> e.kind !== 'unit' && d2(e.pos,{x,z}) < e.r + 3.2)) continue;
+      await spawnResource('tree', x, z);
+    }
+  };
+  await forest(-78, 30, 10, 8); await forest(-30, 78, 10, 8);
+  await forest(78, -30, 10, 8); await forest(30, -78, 10, 8);
+  await forest(-10, -10, 8, 14); await forest(12, 14, 8, 12);
+  await forest(-60, -40, 8, 10); await forest(40, 60, 8, 10);
+  // Gold: je zwei an den Basen, zwei umkämpft in der Mitte
+  for(const [x,z] of [[-42,74],[-74,42],[74,-42],[42,-74],[-2,26],[2,-26],[-50,-10],[50,10]])
+    await spawnResource('gold', x, z);
+
+  // Spieler
+  const tc = await spawnBuilding('towncenter', 0, HOME.x, HOME.z);
+  tc.rally = new THREE.Vector3(HOME.x+9, 0, HOME.z-9);
+  for(let i=0;i<5;i++) await spawnUnit('worker', 0, HOME.x+6+i*1.3, HOME.z-8);
+  await spawnUnit('knight', 0, HOME.x+11, HOME.z-4);
+  await spawnUnit('knight', 0, HOME.x+12, HOME.z-5.5);
+  await spawnUnit('ranger', 0, HOME.x+10, HOME.z-7);
+
+  // Gegner: Burg, Kaserne, Türme, Wachen
+  await spawnBuilding('towncenter', 1, FOE.x, FOE.z);
+  foe.barracks = await spawnBuilding('barracks', 1, FOE.x-16, FOE.z+4);
+  foe.barracks2 = await spawnBuilding('archery', 1, FOE.x-4, FOE.z+16);
+  await spawnBuilding('tower', 1, FOE.x-22, FOE.z+18);
+  await spawnBuilding('tower', 1, FOE.x-8, FOE.z+26);
+  await spawnBuilding('house', 1, FOE.x+10, FOE.z+12);
+  await spawnBuilding('house', 1, FOE.x+14, FOE.z+2);
+  for(const t of ['s_warrior','s_warrior','s_minion','s_minion','s_rogue','s_mage'])
+    await spawnUnit(t, 1, FOE.x-24+rnd(-4,4), FOE.z+26+rnd(-4,4));
+
+  camTarget.set(HOME.x+10, 0, HOME.z-10);
+}
+
+// ---------------------------------------------------------------- Kamera
+const camTarget = new THREE.Vector3();
+let zoom = 42;
+const keys = {};
+let mouse = {x:innerWidth/2, y:innerHeight/2, in:false};
+function updateCamera(dt){
+  const sp = zoom * 1.1 * dt;
+  let dx = 0, dz = 0;
+  if(keys.KeyW || keys.ArrowUp) dz -= 1;
+  if(keys.KeyS && !selected.length || keys.ArrowDown) dz += 1;
+  if(keys.KeyA && !aMode && !selected.length || keys.ArrowLeft) dx -= 1;
+  if(keys.KeyD || keys.ArrowRight) dx += 1;
+  if(mouse.in && !dragging){
+    const m = 12;
+    if(mouse.x < m) dx -= 1; if(mouse.x > innerWidth-m) dx += 1;
+    if(mouse.y < m) dz -= 1; if(mouse.y > innerHeight-m) dz += 1;
+  }
+  camTarget.x = THREE.MathUtils.clamp(camTarget.x + dx*sp, -MAP, MAP);
+  camTarget.z = THREE.MathUtils.clamp(camTarget.z + dz*sp, -MAP, MAP);
+  camera.position.set(camTarget.x, zoom, camTarget.z + zoom*0.72);
+  camera.lookAt(camTarget);
+  sun.position.set(camTarget.x + 30, 70, camTarget.z + 20);
+  sun.target.position.copy(camTarget);
+}
+function resize(){
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  ov.width = innerWidth*devicePixelRatio; ov.height = innerHeight*devicePixelRatio;
+  ov.style.width = innerWidth+'px'; ov.style.height = innerHeight+'px';
+}
+const ov = document.getElementById('ov'), octx = ov.getContext('2d');
+addEventListener('resize', resize);
+
+// ---------------------------------------------------------------- Eingabe
+const ray = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+function groundAt(x, y){
+  ray.setFromCamera(new THREE.Vector2(x/innerWidth*2-1, -(y/innerHeight)*2+1), camera);
+  const p = new THREE.Vector3();
+  return ray.ray.intersectPlane(plane, p) ? p : null;
+}
+const tmpV = new THREE.Vector3();
+function screenOf(p, h=0.9){
+  tmpV.set(p.x, h, p.z).project(camera);
+  return {x:(tmpV.x+1)/2*innerWidth, y:(1-tmpV.y)/2*innerHeight, ok:tmpV.z < 1};
+}
+function pick(x, y){
+  let best = null, bd = 28;
+  for(const e of ents){
+    if(!e.alive || e.kind !== 'unit') continue;
+    const s = screenOf(e.pos); const d = Math.hypot(s.x-x, s.y-y);
+    if(d < bd){ bd = d; best = e; }
+  }
+  if(best) return best;
+  const g = groundAt(x, y); if(!g) return null;
+  for(const e of ents) if(e.alive && e.kind !== 'unit' && d2(e.pos, g) < e.r + 0.5) return e;
+  return null;
+}
+
+let dragging = false, dragStart = null, aMode = false, placing = null, ghost = null;
+const boxEl = document.getElementById('box');
+cv.addEventListener('contextmenu', e=>e.preventDefault());
+cv.addEventListener('mousemove', e=>{
+  mouse.x = e.clientX; mouse.y = e.clientY; mouse.in = true;
+  if(dragStart && !dragging && Math.hypot(e.clientX-dragStart.x, e.clientY-dragStart.y) > 6) dragging = true;
+  if(dragging){
+    const x = Math.min(dragStart.x, e.clientX), y = Math.min(dragStart.y, e.clientY);
+    Object.assign(boxEl.style, {display:'block', left:x+'px', top:y+'px',
+      width:Math.abs(e.clientX-dragStart.x)+'px', height:Math.abs(e.clientY-dragStart.y)+'px'});
+  }
+});
+document.addEventListener('mouseleave', ()=> mouse.in = false);
+cv.addEventListener('mousedown', e=>{
+  if(gameOver) return;
+  if(e.button === 0){
+    if(placing){ tryPlace(); return; }
+    if(aMode){
+      const g = groundAt(e.clientX, e.clientY), t = pick(e.clientX, e.clientY);
+      if(t && t.team === 1) order(t); else if(g) attackMove(g);
+      aMode = false; cv.style.cursor = ''; return;
+    }
+    dragStart = {x:e.clientX, y:e.clientY};
+  }
+  if(e.button === 2){
+    if(placing){ cancelPlace(); return; }
+    if(aMode){ aMode = false; cv.style.cursor = ''; return; }
+    const t = pick(e.clientX, e.clientY);
+    order(t, groundAt(e.clientX, e.clientY));
+  }
+});
+addEventListener('mouseup', e=>{
+  if(e.button !== 0 || !dragStart) return;
+  if(dragging){
+    const x0 = Math.min(dragStart.x, e.clientX), x1 = Math.max(dragStart.x, e.clientX);
+    const y0 = Math.min(dragStart.y, e.clientY), y1 = Math.max(dragStart.y, e.clientY);
+    const sel = ents.filter(u=> u.alive && u.kind === 'unit' && u.team === 0 && (()=>{
+      const s = screenOf(u.pos); return s.x>=x0 && s.x<=x1 && s.y>=y0 && s.y<=y1; })());
+    if(sel.length || !e.shiftKey) select(e.shiftKey ? [...new Set([...selected, ...sel])] : sel);
+  } else {
+    const t = pick(e.clientX, e.clientY);
+    if(e.shiftKey && t && t.team === 0 && t.kind === 'unit')
+      select(selected.includes(t) ? selected.filter(s=>s!==t) : [...selected, t]);
+    else select(t ? [t] : []);
+  }
+  dragging = false; dragStart = null; boxEl.style.display = 'none';
+});
+cv.addEventListener('wheel', e=>{
+  zoom = THREE.MathUtils.clamp(zoom + Math.sign(e.deltaY)*4, 18, 95);
+  e.preventDefault();
+}, {passive:false});
+
+// Touch: ein Finger wählt/befiehlt, zwei Finger schieben
+let touchCam = null;
+cv.addEventListener('touchstart', e=>{
+  if(e.touches.length === 2){
+    const t = e.touches; touchCam = {x:(t[0].clientX+t[1].clientX)/2, y:(t[0].clientY+t[1].clientY)/2,
+      d:Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY), z:zoom};
+  }
+  e.preventDefault();
+}, {passive:false});
+cv.addEventListener('touchmove', e=>{
+  if(touchCam && e.touches.length === 2){
+    const t = e.touches, x = (t[0].clientX+t[1].clientX)/2, y = (t[0].clientY+t[1].clientY)/2;
+    const k = zoom / innerHeight * 1.2;
+    camTarget.x -= (x - touchCam.x)*k; camTarget.z -= (y - touchCam.y)*k;
+    touchCam.x = x; touchCam.y = y;
+    zoom = THREE.MathUtils.clamp(touchCam.z * touchCam.d / Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY), 18, 95);
+  }
+  e.preventDefault();
+}, {passive:false});
+cv.addEventListener('touchend', e=>{
+  if(touchCam){ if(!e.touches.length) touchCam = null; return; }
+  const t = e.changedTouches[0]; const hit = pick(t.clientX, t.clientY);
+  if(placing){ mouse.x = t.clientX; mouse.y = t.clientY; updateGhost(); tryPlace(); return; }
+  // eigene Einheit/Gebäude antippen = auswählen, sonst Befehl an die Auswahl
+  if(hit && hit.team === 0 || !selected.some(s=>s.kind==='unit')) select(hit ? [hit] : []);
+  else order(hit, groundAt(t.clientX, t.clientY));
+});
+
+addEventListener('keydown', e=>{
+  keys[e.code] = true;
+  if(gameOver) return;
+  if(e.code === 'Escape'){ cancelPlace(); aMode = false; cv.style.cursor = ''; select([]); }
+  if(e.code === 'KeyH'){ const tc = ents.find(b=>b.alive && b.team===0 && b.type==='towncenter'); if(tc) camTarget.copy(tc.pos); }
+  if(e.code === 'KeyA' && selected.some(s=>s.kind==='unit' && s.team===0)){ aMode = true; cv.style.cursor = 'crosshair'; }
+  if(e.code === 'KeyS' && selected.length){
+    for(const u of selected) if(u.kind==='unit') stop(u);
+  }
+  const btn = [...document.querySelectorAll('#cmds button')].find(b=>b.dataset.key === e.key.toUpperCase());
+  if(btn && !btn.disabled && e.code !== 'KeyA' && e.code !== 'KeyS') btn.click();
+});
+addEventListener('keyup', e=> keys[e.code] = false);
+
+function select(list){
+  for(const s of selected) s.ring.visible = false;
+  selected = list.filter(e=>e.alive);
+  // gemischte Auswahl: nur Einheiten behalten
+  if(selected.length > 1) selected = selected.filter(e=>e.kind==='unit' && e.team===0);
+  for(const s of selected) s.ring.visible = true;
+  uiDirty = true;
+}
+
+// ---------------------------------------------------------------- Befehle
+function stop(u){ u.state = 'idle'; u.target = u.goal = u.amove = u.gatherNode = u.buildTarget = null; }
+function formation(center, n, i){
+  const cols = Math.ceil(Math.sqrt(n)), sp = 1.4;
+  const cx = (i % cols) - (cols-1)/2, cz = Math.floor(i/cols) - (Math.ceil(n/cols)-1)/2;
+  return new THREE.Vector3(center.x + cx*sp, 0, center.z + cz*sp);
+}
+function order(t, g){
+  const units = selected.filter(s=>s.kind==='unit' && s.team===0);
+  if(!units.length){
+    // Gebäude ausgewählt: Sammelpunkt setzen
+    const b = selected[0];
+    if(b && b.kind==='building' && b.team===0 && g){ b.rally = g.clone(); flag(g, 0x7fff6b); }
+    return;
+  }
+  if(t && t.team === 1){ for(const u of units){ stop(u); u.state = 'attack'; u.target = t; } flag(t.pos, 0xff5a4a); return; }
+  if(t && t.kind === 'resource'){
+    units.forEach((u,i)=>{ stop(u);
+      if(u.type === 'worker'){ u.state = 'gather'; u.gatherNode = t; }
+      else { u.state = 'move'; u.goal = formation(t.pos, units.length, i); } });
+    flag(t.pos, 0xe8c14a); return;
+  }
+  if(t && t.kind === 'building' && t.team === 0){
+    units.forEach((u,i)=>{ stop(u);
+      if(u.type === 'worker' && !t.done){ u.state = 'build'; u.buildTarget = t; }
+      else if(u.type === 'worker' && u.carry && BUILD[t.type].drop){ u.state = 'return'; u.dropAt = t; }
+      else { u.state = 'move'; u.goal = formation(t.pos, units.length, i); } });
+    flag(t.pos, 0x7fff6b); return;
+  }
+  if(!g) return;
+  units.forEach((u,i)=>{ stop(u); u.state = 'move'; u.goal = formation(g, units.length, i); });
+  flag(g, 0x7fff6b);
+}
+function attackMove(g){
+  const units = selected.filter(s=>s.kind==='unit' && s.team===0);
+  units.forEach((u,i)=>{ stop(u); u.state = 'amove'; u.amove = formation(g, units.length, i); });
+  flag(g, 0xff5a4a);
+}
+const flags = [];
+function flag(p, col){
+  const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({color:col, transparent:true, depthWrite:false}));
+  m.position.set(p.x, 0.08, p.z); scene.add(m); flags.push({m, t:0});
+}
+
+// ---------------------------------------------------------------- Bauen
+async function startPlace(type){
+  if(!canPay(BUILD[type].cost)){ msg('Nicht genug Rohstoffe', '#e2574c'); return; }
+  cancelPlace();
+  placing = type;
+  ghost = prop(await load(BUILD[type].m[1]), BUILD[type].size);
+  ghost.traverse(m=>{ if(m.isMesh){ m.material = m.material.clone(); m.material.transparent = true; m.material.opacity = .55; m.castShadow = false; } });
+  scene.add(ghost); updateGhost();
+}
+function cancelPlace(){ if(ghost) scene.remove(ghost); ghost = null; placing = null; }
+function placeOk(p){
+  const r = BUILD[placing].size*0.46;
+  if(Math.abs(p.x) > MAP-r || Math.abs(p.z) > MAP-r) return false;
+  return !ents.some(e=> e.alive && (e.kind !== 'unit' || e.team === 1) && d2(e.pos, p) < e.r + r + 0.6);
+}
+function updateGhost(){
+  if(!ghost) return;
+  const g = groundAt(mouse.x, mouse.y); if(!g) return;
+  ghost.position.set(Math.round(g.x), 0, Math.round(g.z));
+  const ok = placeOk(ghost.position);
+  ghost.traverse(m=>{ if(m.isMesh) m.material.color.setHex(ok ? 0xaaffaa : 0xff7777); });
+}
+async function tryPlace(){
+  if(!ghost) return;
+  const p = ghost.position.clone(), type = placing, cost = BUILD[type].cost;
+  if(!placeOk(p)){ msg('Hier kann nicht gebaut werden', '#e2574c'); return; }
+  if(!canPay(cost)){ msg('Nicht genug Rohstoffe', '#e2574c'); cancelPlace(); return; }
+  pay(cost);
+  const builders = selected.filter(s=>s.type==='worker');
+  cancelPlace();
+  const b = await spawnBuilding(type, 0, p.x, p.z, false);
+  b.rally = new THREE.Vector3(p.x + b.r + 2, 0, p.z - b.r - 2);
+  for(const u of builders){ stop(u); u.state = 'build'; u.buildTarget = b; }
+  uiDirty = true;
+}
+
+function produce(b, type){
+  const d = UNIT[type];
+  if(b.queue.length >= 5) return;
+  if(!canPay(d.cost)){ msg('Nicht genug Rohstoffe', '#e2574c'); return; }
+  pay(d.cost); b.queue.push(type); uiDirty = true;
+}
+function popInfo(team){
+  let used = 0, cap = 0;
+  for(const e of ents){
+    if(!e.alive || e.team !== team) continue;
+    if(e.kind === 'unit') used++;
+    if(e.kind === 'building'){ if(e.done) cap += BUILD[e.type].pop || 0; used += e.queue.length ? 1 : 0; }
+  }
+  return {used, cap:Math.min(cap, 80)};
+}
+
+// ---------------------------------------------------------------- Kampf
+const shots = [];
+function damage(t, dmg, from){
+  if(!t.alive) return;
+  const armor = t.kind === 'unit' ? (UNIT[t.type].armor || 0) : 0;
+  t.hp -= Math.max(1, dmg - armor);
+  t.hitT = time;
+  if(t.kind === 'unit' && from && from.alive){
+    // Angegriffene wehren sich, wenn sie gerade nichts Wichtigeres tun
+    if(t.state === 'idle' || (t.state === 'gather' && t.type !== 'worker'))
+      { t.state = 'attack'; t.target = from; }
+    if(t.team === 0 && t.type === 'worker' && t.state !== 'attack' && from.kind === 'unit' && UNIT[from.type].range < 2){
+      // Arbeiter fliehen nicht, sie schlagen zurück
+      t.prevState = t.state; t.prevNode = t.gatherNode; t.state = 'attack'; t.target = from;
+    }
+  }
+  // Nachbarn eilen zu Hilfe
+  if(from && from.alive && t.team !== -1){
+    for(const a of ents)
+      if(a.alive && a.kind === 'unit' && a.team === t.team && a.type !== 'worker' && a.state === 'idle' && d2(a.pos, t.pos) < 14)
+        { a.state = 'attack'; a.target = from; }
+  }
+  if(t.hp <= 0) kill(t);
+}
+function kill(e){
+  e.alive = false; e.ring.visible = false;
+  selected = selected.filter(s=>s!==e); uiDirty = true;
+  if(e.kind === 'unit'){
+    play(e, 'Death_A', 0.1);
+    e.deadT = time;
+  } else if(e.kind === 'building'){
+    e.deadT = time; e.sink = true;
+    if(e.team === 0) msg(BUILD[e.type].name + ' zerstört!', '#e2574c');
+  }
+  checkEnd();
+}
+function fire(u, t){
+  const d = UNIT[u.type];
+  const from = u.pos.clone().setY(1.3), to = t.pos.clone().setY(t.kind === 'unit' ? 1 : 2);
+  let m;
+  if(d.shot === 'arrow'){
+    m = new THREE.Group(); const a = arrowProto.clone(true); a.scale.setScalar(1.4); m.add(a);
+    a.rotation.x = Math.PI/2;
+  } else {
+    m = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 8),
+      new THREE.MeshBasicMaterial({color: u.team ? 0x9dff5a : 0x7fd8ff}));
+    m.add(new THREE.PointLight(u.team ? 0x9dff5a : 0x7fd8ff, 4, 6));
+  }
+  scene.add(m);
+  const dist = from.distanceTo(to);
+  shots.push({m, from, to, t:0, dur:dist/(d.shot==='arrow'?26:14), target:t, dmg:d.dmg, splash:d.splash, src:u, arc:d.shot==='arrow'?dist*0.12:0.4});
+}
+function towerFire(b, t){
+  const s = BUILD[b.type].shoot;
+  const from = b.pos.clone().setY(b.obj.userData.h*0.8), to = t.pos.clone().setY(1);
+  const m = new THREE.Group(); const a = arrowProto.clone(true); a.scale.setScalar(1.4); a.rotation.x = Math.PI/2; m.add(a);
+  scene.add(m);
+  shots.push({m, from, to, t:0, dur:from.distanceTo(to)/28, target:t, dmg:s.dmg, src:b, arc:1});
+}
+function updateShots(dt){
+  for(let i=shots.length-1;i>=0;i--){
+    const s = shots[i]; s.t += dt/s.dur;
+    if(s.target.alive) s.to.set(s.target.pos.x, s.to.y, s.target.pos.z);
+    const k = Math.min(s.t, 1);
+    const p = s.from.clone().lerp(s.to, k); p.y += Math.sin(k*Math.PI)*s.arc;
+    const prev = s.m.position.clone();
+    s.m.position.copy(p);
+    if(k > 0.01) s.m.lookAt(p.clone().add(p.clone().sub(prev)));
+    if(s.t >= 1){
+      scene.remove(s.m); shots.splice(i,1);
+      if(s.splash){
+        for(const e of ents) if(e.alive && e.team !== s.src.team && e.team !== -1 && d2(e.pos, s.to) < s.splash + e.r)
+          damage(e, e === s.target ? s.dmg : s.dmg*0.5, s.src);
+      } else damage(s.target, s.dmg, s.src);
+    }
+  }
+}
+function nearestEnemy(u, radius){
+  let best = null, bd = radius;
+  for(const e of ents){
+    if(!e.alive || e.team === u.team || e.team === -1) continue;
+    const d = d2(u.pos, e.pos) - e.r - (e.kind === 'building' ? 4 : 0);   // Einheiten zuerst
+    if(d < bd){ bd = d; best = e; }
+  }
+  return best;
+}
+function dropSite(u){
+  let best = null, bd = 1e9;
+  for(const b of ents) if(b.alive && b.team === u.team && b.kind === 'building' && b.done && BUILD[b.type].drop){
+    const d = d2(u.pos, b.pos); if(d < bd){ bd = d; best = b; }
+  }
+  return best;
+}
+function nearestNode(p, type, max=30){
+  let best = null, bd = max;
+  for(const e of ents) if(e.alive && e.kind === 'resource' && e.type === type && e.amount > 0){
+    const d = d2(p, e.pos); if(d < bd){ bd = d; best = e; }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------- Einheiten-KI
+function moveTo(u, target, stopDist, dt){
+  const dx = target.x - u.pos.x, dz = target.z - u.pos.z, d = Math.hypot(dx, dz);
+  if(d <= stopDist) return true;
+  const sp = UNIT[u.type].speed * dt, k = Math.min(sp, d - stopDist) / d;
+  u.pos.x += dx*k; u.pos.z += dz*k;
+  u.facing = Math.atan2(dx, dz);
+  play(u, u.carry ? 'Walking_A' : 'Running_A', 0.2, u.carry ? 1.1 : 0.9);
+  return false;
+}
+function face(u, p){ u.facing = Math.atan2(p.x - u.pos.x, p.z - u.pos.z); }
+
+function updateUnit(u, dt){
+  const d = UNIT[u.type];
+  u.cd -= dt;
+  const busy = u.anim && ONCE.test(u.anim) && u.actions[u.anim]?.isRunning();
+
+  // Automatisch angreifen, was in der Nähe ist
+  if(u.state === 'idle' || u.state === 'amove'){
+    const aggro = u.type === 'worker' ? 0 : Math.max(9, d.range + 2);
+    const t = aggro ? nearestEnemy(u, aggro) : null;
+    if(t){ u.target = t; u.state = u.state === 'amove' ? 'amove-attack' : 'attack'; }
+  }
+
+  switch(u.state){
+    case 'idle': if(!busy) play(u, 'Idle_A', 0.3); break;
+    case 'move':
+      if(moveTo(u, u.goal, 0.2, dt)){ u.state = 'idle'; u.goal = null; }
+      break;
+    case 'amove':
+      if(moveTo(u, u.amove, 0.3, dt)){ u.state = 'idle'; u.amove = null; }
+      break;
+    case 'attack': case 'amove-attack': {
+      const t = u.target;
+      if(!t || !t.alive){
+        u.target = null;
+        if(u.state === 'amove-attack') u.state = 'amove';
+        else if(u.prevState === 'gather' && u.prevNode?.alive){ u.state = 'gather'; u.gatherNode = u.prevNode; u.prevState = null; }
+        else u.state = 'idle';
+        break;
+      }
+      const reach = d.range + t.r;
+      if(d2(u.pos, t.pos) > reach){ if(!busy) moveTo(u, t.pos, reach - 0.1, dt); }
+      else {
+        face(u, t.pos);
+        if(u.cd <= 0){
+          u.cd = d.cd;
+          play(u, d.atk || 'Melee_1H_Attack_Chop', 0.1, 1.2);
+          if(d.shot) setTimeout(()=>{ if(u.alive && t.alive) fire(u, t); }, 280);
+          else setTimeout(()=>{ if(u.alive && t.alive && d2(u.pos,t.pos) <= reach + 0.6) damage(t, d.dmg, u); }, 300);
+        } else if(!busy) play(u, 'Idle_A', 0.3);
+      }
+      break;
+    }
+    case 'gather': {
+      let n = u.gatherNode;
+      if(u.carry >= 10){ u.state = 'return'; break; }
+      if(!n || !n.alive || n.amount <= 0){
+        n = u.gatherNode = nearestNode(u.pos, u.carryKind === 'gold' ? 'gold' : (n ? n.type : 'tree'));
+        if(!n){ u.state = u.carry ? 'return' : 'idle'; break; }
+      }
+      if(d2(u.pos, n.pos) > n.r + 0.8){ moveTo(u, n.pos, n.r + 0.6, dt); u.gt = 0; }
+      else {
+        face(u, n.pos);
+        const kind = RES[n.type].kind;
+        if(u.carryKind !== kind){ u.carry = 0; u.carryKind = kind; }
+        play(u, kind === 'wood' ? 'Chopping' : 'Pickaxing', 0.25);
+        u.gt = (u.gt || 0) + dt;
+        if(u.gt >= 0.9){
+          u.gt = 0; u.carry++; n.amount--;
+          if(n.amount <= 0) depleteNode(n);
+        }
+      }
+      break;
+    }
+    case 'return': {
+      const b = (u.dropAt && u.dropAt.alive) ? u.dropAt : dropSite(u);
+      if(!b){ u.state = 'idle'; break; }
+      if(moveTo(u, b.pos, b.r + 0.7, dt)){
+        if(u.team === 0){ res[u.carryKind] += u.carry; uiDirty = true; }
+        u.carry = 0; u.dropAt = null;
+        u.state = 'gather';
+      }
+      break;
+    }
+    case 'build': {
+      const b = u.buildTarget;
+      if(!b || !b.alive || b.done){ u.state = 'idle';
+        // danach gleich weiter sammeln, wenn ein Rohstoff in der Nähe ist
+        const n = nearestNode(u.pos, 'tree', 14) || nearestNode(u.pos, 'gold', 14);
+        if(n){ u.state = 'gather'; u.gatherNode = n; }
+        break; }
+      if(d2(u.pos, b.pos) > b.r + 0.9){ moveTo(u, b.pos, b.r + 0.7, dt); }
+      else {
+        face(u, b.pos); play(u, 'Hammering', 0.25);
+        const bd = BUILD[b.type];
+        const step = dt / bd.time;
+        b.progress = Math.min(1, b.progress + step);
+        b.hp = Math.min(b.maxHp, b.hp + bd.hp*step);
+        b.obj.children[0].scale.y = b.fullY * (0.05 + 0.95*b.progress);
+        if(b.progress >= 1){ b.done = true; msg(bd.name + ' fertig'); uiDirty = true; }
+      }
+      break;
+    }
+  }
+  u.obj.position.copy(u.pos);
+  // weich drehen
+  const cur = u.obj.rotation.y, diff = Math.atan2(Math.sin(u.facing-cur), Math.cos(u.facing-cur));
+  u.obj.rotation.y = cur + diff*Math.min(1, dt*12);
+  u.mixer.update(dt);
+}
+
+async function depleteNode(n){
+  n.alive = false;
+  selected = selected.filter(s=>s!==n);
+  scene.remove(n.obj);
+  if(n.type === 'tree'){
+    const g = prop(await load(RES.tree.cut[n.v]), RES.tree.size);
+    g.position.copy(n.pos); g.rotation.y = n.obj.rotation.y; scene.add(g);
+  }
+}
+
+// Kollision: Einheiten stoßen sich voneinander und von festen Objekten ab
+function separate(){
+  const us = ents.filter(e=>e.alive && e.kind === 'unit');
+  for(let i=0;i<us.length;i++){
+    const a = us[i];
+    for(let j=i+1;j<us.length;j++){
+      const b = us[j], dx = b.pos.x-a.pos.x, dz = b.pos.z-a.pos.z, d = Math.hypot(dx,dz), m = a.r+b.r;
+      if(d < m && d > 1e-4){
+        const k = (m-d)/d*0.5;
+        a.pos.x -= dx*k; a.pos.z -= dz*k; b.pos.x += dx*k; b.pos.z += dz*k;
+      } else if(d <= 1e-4){ a.pos.x += 0.05; }
+    }
+    for(const s of ents){
+      if(!s.alive || s.kind === 'unit') continue;
+      const dx = a.pos.x-s.pos.x, dz = a.pos.z-s.pos.z, d = Math.hypot(dx,dz), m = s.r + a.r;
+      if(d < m){
+        // radial herausschieben, mit etwas Seitwärtsdrall, damit niemand frontal hängen bleibt
+        const nx = dx/(d||1), nz = dz/(d||1);
+        a.pos.x = s.pos.x + nx*m - nz*0.03; a.pos.z = s.pos.z + nz*m + nx*0.03;
+      }
+    }
+    a.pos.x = THREE.MathUtils.clamp(a.pos.x, -MAP, MAP);
+    a.pos.z = THREE.MathUtils.clamp(a.pos.z, -MAP, MAP);
+  }
+}
+
+// ---------------------------------------------------------------- Gebäude
+function updateBuilding(b, dt){
+  if(!b.done) return;
+  const d = BUILD[b.type];
+  if(b.queue.length){
+    const type = b.queue[0], ud = UNIT[type];
+    const pop = popInfo(b.team);
+    if(b.team === 1 || pop.used - 1 < pop.cap){
+      b.qt += dt;
+      if(b.qt >= (ud.time || 16)){
+        b.qt = 0; b.queue.shift(); uiDirty = true;
+        const a = Math.atan2(-b.pos.z, -b.pos.x);
+        const out = new THREE.Vector3(b.pos.x + Math.cos(a)*(b.r+1.2), 0, b.pos.z + Math.sin(a)*(b.r+1.2));
+        spawnUnit(type, b.team, out.x, out.z).then(u=>{
+          if(b.team === 1){ u.state = 'amove'; u.amove = foe.gather.clone().add(new THREE.Vector3(rnd(-4,4),0,rnd(-4,4))); return; }
+          const rp = b.rally;
+          if(type === 'worker' && rp){
+            const n = ents.find(r=> r.alive && r.kind==='resource' && d2(r.pos, rp) < r.r + 1.5);
+            if(n){ u.state = 'gather'; u.gatherNode = n; return; }
+          }
+          if(rp){ u.state = 'move'; u.goal = rp.clone().add(new THREE.Vector3(rnd(-1.5,1.5),0,rnd(-1.5,1.5))); }
+        });
+      }
+    }
+  }
+  if(d.shoot){
+    b.cd -= dt;
+    if(b.cd <= 0){
+      let best = null, bd = d.shoot.range;
+      for(const e of ents) if(e.alive && e.kind === 'unit' && e.team !== b.team){
+        const dd = d2(e.pos, b.pos); if(dd < bd){ bd = dd; best = e; } }
+      if(best){ towerFire(b, best); b.cd = d.shoot.cd; }
+    }
+  }
+}
+
+// ---------------------------------------------------------------- Gegner-KI
+const foe = {gather:new THREE.Vector3(FOE.x-26, 0, FOE.z+28), next:150, wave:0};
+function updateFoe(dt){
+  foe.next -= dt;
+  const el = document.getElementById('wave');
+  el.textContent = foe.next > 0 ? `Nächster Angriff in ${Math.ceil(foe.next)} s` : 'Angriff!';
+  // Kasernen produzieren ständig nach
+  const n = ents.filter(e=>e.alive && e.team===1 && e.kind==='unit').length;
+  const cap = 10 + foe.wave*3;
+  for(const [b, types] of [[foe.barracks, ['s_minion','s_warrior','s_minion']], [foe.barracks2, ['s_rogue','s_mage','s_rogue']]]){
+    if(b && b.alive && !b.queue.length && n < cap)
+      b.queue.push(types[Math.floor(Math.random()*types.length)]);
+  }
+  if(foe.next <= 0){
+    foe.wave++;
+    foe.next = Math.max(55, 110 - foe.wave*8);
+    // Alle wartenden Skelette ausser ein paar Wachen losschicken
+    const army = ents.filter(e=>e.alive && e.team===1 && e.kind==='unit' && (e.state==='idle' || e.state==='amove'));
+    const guards = 3, goal = HOME.clone();
+    army.slice(guards).forEach((u,i)=>{ u.state = 'amove'; u.amove = formation(goal, army.length, i); });
+    if(army.length > guards) msg(`Welle ${foe.wave}: ${army.length-guards} Skelette greifen an!`, '#e2574c');
+  }
+}
+
+function checkEnd(){
+  if(gameOver) return;
+  const mine = ents.some(e=>e.alive && e.team===0 && e.type==='towncenter');
+  const theirs = ents.some(e=>e.alive && e.team===1 && (e.type==='towncenter' || e.type==='barracks' || e.type==='archery'));
+  if(!mine || !theirs){
+    gameOver = true;
+    document.getElementById('endT').textContent = mine ? 'SIEG!' : 'NIEDERLAGE';
+    document.getElementById('endP').textContent = mine
+      ? `Die Skelettfestung ist gefallen – nach ${Math.floor(time/60)} min ${Math.floor(time%60)} s.`
+      : 'Deine Burg wurde zerstört.';
+    setTimeout(()=> document.getElementById('end').style.display = 'flex', 1500);
+  }
+}
+
+// ---------------------------------------------------------------- UI
+let uiDirty = true;
+const infoEl = document.getElementById('info'), cmdEl = document.getElementById('cmds');
+function button(label, sub, key, fn, enabled=true){
+  const b = document.createElement('button');
+  b.innerHTML = `${key ? `<kbd>${key}</kbd>` : ''}${label}${sub ? `<small>${sub}</small>` : ''}`;
+  b.dataset.key = key || ''; b.disabled = !enabled;
+  b.onclick = fn; cmdEl.appendChild(b);
+}
+function renderUI(){
+  const pop = popInfo(0);
+  document.getElementById('rWood').textContent = Math.floor(res.wood);
+  document.getElementById('rGold').textContent = Math.floor(res.gold);
+  document.getElementById('rPop').textContent = `${pop.used}/${pop.cap}`;
+  if(!uiDirty && !(selected[0]?.queue?.length)) return;
+  const q = selected[0];
+  if(q && q.kind === 'building' && q.queue.length && !uiDirty){
+    const bar = infoEl.querySelector('.bar i');
+    if(bar){ bar.style.width = (100*q.qt/UNIT[q.queue[0]].time)+'%'; return; }
+  }
+  uiDirty = false;
+  infoEl.innerHTML = ''; cmdEl.innerHTML = '';
+  if(!selected.length){
+    infoEl.innerHTML = `<h3>Burgenkrieg</h3><div class="sub">Sammle Holz und Gold, baue eine Armee und zerstöre die Skelettfestung im Nordosten (Burg und beide Kasernen).</div>`;
+    return;
+  }
+  if(selected.length > 1){
+    const c = {};
+    for(const s of selected) c[UNIT[s.type].name] = (c[UNIT[s.type].name]||0)+1;
+    infoEl.innerHTML = `<h3>${selected.length} Einheiten</h3><div class="icons">${Object.entries(c).map(([k,v])=>`<span>${v}× ${k}</span>`).join('')}</div>`;
+  } else if(q.kind === 'unit'){
+    const d = UNIT[q.type];
+    infoEl.innerHTML = `<h3>${d.name}</h3><div class="sub">❤ ${Math.ceil(q.hp)}/${q.maxHp} · ⚔ ${d.dmg} · Reichweite ${d.range}${q.carry ? ` · trägt ${q.carry} ${q.carryKind==='wood'?'Holz':'Gold'}` : ''}</div>`;
+  } else if(q.kind === 'building'){
+    const d = BUILD[q.type];
+    infoEl.innerHTML = `<h3>${d.name}${q.team===1?' (Feind)':''}</h3><div class="sub">❤ ${Math.ceil(q.hp)}/${q.maxHp}${!q.done ? ` · im Bau ${Math.floor(q.progress*100)} %` : ''}${d.pop ? ` · +${d.pop} Bevölkerung` : ''}${d.drop ? ' · Rohstofflager' : ''}</div>`;
+    if(q.queue.length){
+      infoEl.innerHTML += `<div id="queue"><div class="bar"><i style="width:${100*q.qt/UNIT[q.queue[0]].time}%"></i></div>${q.queue.map(t=>`<span>${UNIT[t].name}</span>`).join('')}</div>`;
+    }
+  } else {
+    infoEl.innerHTML = `<h3>${q.type === 'tree' ? 'Wald' : 'Goldader'}</h3><div class="sub">Noch ${q.amount} ${q.type==='tree'?'Holz':'Gold'}</div>`;
+  }
+  // Befehle
+  if(selected.some(s=>s.type==='worker' && s.team===0)){
+    for(const t of BUILD_MENU){ const d = BUILD[t];
+      button(d.name, costTxt(d.cost), d.key, ()=>startPlace(t), canPay(d.cost)); }
+  }
+  if(selected.length === 1 && q.kind === 'building' && q.team === 0 && q.done){
+    const keys = ['Q','W','E'];
+    (BUILD[q.type].make || []).forEach((t,i)=>{ const d = UNIT[t];
+      button(d.name, costTxt(d.cost), keys[i], ()=>produce(q, t), canPay(d.cost) && q.queue.length < 5); });
+  }
+  if(selected.some(s=>s.kind==='unit' && s.team===0)){
+    button('Angriffs­marsch', 'dann Ziel klicken', 'A', ()=>{ aMode = true; cv.style.cursor = 'crosshair'; });
+    button('Stopp', '', 'S', ()=>{ for(const u of selected) if(u.kind==='unit') stop(u); });
+  }
+}
+setInterval(()=>{ if(selected.length === 1) uiDirty = true; }, 500);
+
+// Lebensbalken + Minikarte
+function drawOverlay(){
+  const k = devicePixelRatio;
+  octx.setTransform(k,0,0,k,0,0);
+  octx.clearRect(0,0,innerWidth,innerHeight);
+  for(const e of ents){
+    if(!e.alive || e.kind === 'resource') continue;
+    const show = e.ring.visible || e.hp < e.maxHp && (time - (e.hitT||-99) < 4 || e.kind === 'building');
+    if(!show) continue;
+    const h = e.kind === 'unit' ? 2.3 : e.obj.userData.h + 0.5;
+    const s = screenOf(e.pos, h); if(!s.ok) continue;
+    const w = e.kind === 'unit' ? 30 : 60, f = Math.max(0, e.hp/e.maxHp);
+    octx.fillStyle = '#000a'; octx.fillRect(s.x-w/2-1, s.y-1, w+2, 6);
+    octx.fillStyle = e.team === 1 ? '#e2574c' : f > .5 ? '#7fd36b' : f > .25 ? '#e8c14a' : '#e2574c';
+    octx.fillRect(s.x-w/2, s.y, w*f, 4);
+  }
+}
+const mini = document.getElementById('mini'), mctx = mini.getContext('2d');
+function drawMini(){
+  const S = mini.width, k = S/(MAP*2), P = p => [(p.x+MAP)*k, (p.z+MAP)*k];
+  mctx.fillStyle = '#4c6b2c'; mctx.fillRect(0,0,S,S);
+  for(const e of ents){
+    if(!e.alive) continue;
+    const [x,y] = P(e.pos);
+    mctx.fillStyle = e.kind === 'resource' ? (e.type === 'tree' ? '#1f3d17' : '#e8c14a')
+      : e.team === 0 ? '#5aa9ff' : '#ff4a3a';
+    const s = e.kind === 'unit' ? 3 : Math.max(4, e.r*k*1.6);
+    mctx.fillRect(x-s/2, y-s/2, s, s);
+  }
+  // Sichtbereich
+  const c = [[0,0],[innerWidth,0],[innerWidth,innerHeight-150],[0,innerHeight-150]].map(([x,y])=>groundAt(x,y));
+  if(c.every(Boolean)){
+    mctx.strokeStyle = '#fff'; mctx.lineWidth = 1.5; mctx.beginPath();
+    c.forEach((p,i)=>{ const [x,y] = P(p); i ? mctx.lineTo(x,y) : mctx.moveTo(x,y); });
+    mctx.closePath(); mctx.stroke();
+  }
+}
+function miniJump(e){
+  const r = mini.getBoundingClientRect();
+  camTarget.x = ((e.clientX-r.left)/r.width)*MAP*2 - MAP;
+  camTarget.z = ((e.clientY-r.top)/r.height)*MAP*2 - MAP - zoom*0.1;
+}
+mini.addEventListener('mousedown', e=>{
+  if(e.button === 2 && selected.length){
+    const r = mini.getBoundingClientRect();
+    order(null, new THREE.Vector3(((e.clientX-r.left)/r.width)*MAP*2-MAP, 0, ((e.clientY-r.top)/r.height)*MAP*2-MAP));
+  } else { miniJump(e); mini.onmousemove = ev=> ev.buttons & 1 && miniJump(ev); }
+});
+mini.addEventListener('contextmenu', e=>e.preventDefault());
+
+// ---------------------------------------------------------------- Loop
+const clock = new THREE.Clock();
+function loop(){
+  requestAnimationFrame(loop);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  updateCamera(dt);
+  updateGhost();
+  step(dt);
+  renderer.render(scene, camera);
+  drawOverlay();
+  drawMini();
+  renderUI();
+}
+function step(dt){
+  if(!gameOver) time += dt;
+  if(!gameOver){
+    for(const e of ents){
+      if(!e.alive) continue;
+      if(e.kind === 'unit') updateUnit(e, dt);
+      else if(e.kind === 'building') updateBuilding(e, dt);
+    }
+    separate();
+    updateShots(dt);
+    updateFoe(dt);
+  }
+  // Tote ausblenden und aufräumen
+  for(let i=ents.length-1;i>=0;i--){
+    const e = ents[i];
+    if(e.alive || e.deadT === undefined){ if(!e.alive && e.kind === 'resource') ents.splice(i,1); continue; }
+    const t = time - e.deadT;
+    if(e.kind === 'unit'){ e.mixer.update(dt); if(t > 2.5) e.obj.position.y = -(t-2.5)*0.8; }
+    else e.obj.position.y = -t*1.2;
+    if(t > 5 || (gameOver && t > 1.5 && e.kind === 'building' && e.obj.position.y < -e.obj.userData.h)){ scene.remove(e.obj); ents.splice(i,1); }
+  }
+  for(let i=flags.length-1;i>=0;i--){
+    const f = flags[i]; f.t += dt; f.m.scale.setScalar(0.4 + f.t*1.4); f.m.material.opacity = 1 - f.t/0.6;
+    if(f.t > 0.6){ scene.remove(f.m); flags.splice(i,1); }
+  }
+}
+
+resize();
+buildWorld().then(()=>{
+  document.getElementById('load').style.display = 'none';
+  msg('Wähle deine Arbeiter aus und schicke sie per Rechtsklick zu Wald oder Gold.');
+  loop();
+}).catch(err=>{
+  console.error(err);
+  document.getElementById('ltext').textContent = 'Fehler beim Laden: ' + err.message;
+});
+window.__battle = {step, select, order, attackMove, produce, startPlace, tryPlace, ents, res, get selected(){ return selected; }, foe, camTarget};
+</script>
+</body>
+</html>
