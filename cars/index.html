@@ -79,9 +79,11 @@ h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:
 #garage { position:fixed; inset:0; background:#000; display:none; z-index:10; }
 #garage.open { display:block; }
 #gcanvas, #gframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
-.ghud { position:absolute; left:0; right:0; top:0; padding:16px; display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none;
+.ghud { position:absolute; left:0; right:0; top:0; padding:16px; display:grid; grid-template-columns:1fr auto 1fr; align-items:start; gap:12px; pointer-events:none;
   background:linear-gradient(#000a,transparent); }
 .ghud > * { pointer-events:auto; }
+.gtitle { text-align:center; }
+#gclose { justify-self:start; }
 .gtitle .m { font:800 13px Inter; letter-spacing:2px; color:var(--dim); text-transform:uppercase; }
 .gtitle .n { font-family:'Russo One'; font-size:clamp(22px,4vw,36px); }
 .gbtn { background:#ffffff1a; backdrop-filter:blur(8px); border:1px solid #ffffff30; color:#fff; border-radius:99px; padding:10px 16px; font:700 15px Inter; cursor:pointer; }
@@ -106,8 +108,9 @@ h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:
   <iframe id="gframe" allow="autoplay; fullscreen; xr-spatial-tracking" style="display:none"></iframe>
   <div id="gload">Auto fährt in die Garage …</div>
   <div class="ghud">
+    <button class="gbtn" id="gclose">← Zurück</button>
     <div class="gtitle"><div class="m" id="gm"></div><div class="n" id="gn"></div></div>
-    <button class="gbtn" id="gclose">✕ Zurück</button>
+    <span></span>
   </div>
   <div id="gcredit"></div>
   <div class="gbar" id="gbar">
@@ -138,7 +141,20 @@ function renderFilter() {
   const marken = ['Alle', ...new Set(CARS.map(c => c.marke))];
   document.getElementById('filter').innerHTML = marken.map(m => `<button class="${m===filter?'on':''}">${m}</button>`).join('');
   document.querySelectorAll('#filter button').forEach(b => b.onclick = () => { filter = b.textContent; // Debug-Zugriff für Tests (Radanzahl, Achse)
-window.__garage = { get drive() { return drive; }, open: openGarage };
+window.__garage = { get drive() { return drive; }, open: openGarage,
+  cam(x, y, z, tx, ty, tz) { spin = false; camera.position.set(x, y, z); controls.target.set(tx, ty, tz); },
+  // Prüfansicht: Radteile grün, Lack pink, Seitenansicht
+  pruef() {
+    const grün = new THREE.MeshBasicMaterial({ color: 0x00ff66 }), pink = new THREE.MeshBasicMaterial({ color: 0xff00cc }), blau = new THREE.MeshBasicMaterial({ color: 0x00aaff });
+    current.traverse(o => {
+      if (!o.isMesh) return;
+      let p = o, rad = false;
+      while (p) { if (/^wheel_..(_spin)?$/.test(p.name)) rad = true; p = p.parent; }
+      if (rad) o.material = grün; else if (/^paint_/.test(o.material.name)) o.material = pink; else if (/^accent_/.test(o.material.name)) o.material = blau;
+    });
+    drive = null; current.position.set(0, 0, 0); current.rotation.set(0, 0, 0);
+    spin = false; camera.position.set(7, 1.2, 0); controls.target.set(0, 0.5, 0);
+  } };
 renderFilter(); renderGrid(); });
 }
 
@@ -219,7 +235,7 @@ let reflector, blur, envBase = new Map();
 const BUEHNE = 4.5;                                    // Radius des Lichtkegels am Boden (m)
 function initThree() {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.VSMShadowMap;
@@ -343,17 +359,19 @@ function kontaktSchatten(laenge, breite) {
 }
 
 // Außerhalb des Lichtkegels bleibt das Auto dunkel: die Umgebungsspiegelung wird mit der Entfernung ausgeblendet
+let autoMats = [];
 function lichtAufAuto() {
   if (!current) return;
   const dist = Math.hypot(current.position.x, current.position.z);
   const f = 1 - THREE.MathUtils.smoothstep(dist, BUEHNE * 0.6, BUEHNE * 1.8);
-  current.traverse(o => {
-    if (!o.isMesh) return;
-    for (const m of [].concat(o.material)) {
-      if (!envBase.has(m)) envBase.set(m, m.envMapIntensity ?? 1);
-      m.envMapIntensity = envBase.get(m) * (0.03 + 0.97 * f);
-    }
-  });
+  for (const m of autoMats) m.envMapIntensity = envBase.get(m) * (0.03 + 0.97 * f);
+}
+function sammleMats(root) {
+  // einmal beim Laden: alle Materialien des Autos mit ihrer Ausgangs-Spiegelstärke merken
+  const set = new Set();
+  root.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => set.add(m)); });
+  autoMats = [...set];
+  autoMats.forEach(m => { if (!envBase.has(m)) envBase.set(m, m.envMapIntensity ?? 1); });
 }
 
 function resize() {
@@ -372,7 +390,7 @@ function loop() {
 }
 
 // Modellversion: bei jedem Neubau der GLBs hochzählen, sonst liefern Browser-Caches alte Dateien
-const MODEL_V = 5;
+const MODEL_V = 9;
 const loader = new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
 
@@ -420,6 +438,7 @@ async function openGarage(c) {
     radius: info.radius || 0.33, radstand: info.radstand || 2.6 };
   animateDrive(drive.t0);
   setupPaint(gltf.scene);
+  sammleMats(gltf.scene);
   camera.position.set(4.2, 1.8, 7); controls.target.set(0, 0.6, 0);
   gload.style.display = 'none';
 }
@@ -475,38 +494,42 @@ const FINISH = {
   'Chrom':     { roughness: 0.04, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0 },
   'Perleffekt': { roughness: 0.2, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.05, iridescence: 1 },
 };
-let paint = null;
+// Lackflächen heißen paint_1, paint_2 … (pipeline/rig_car.py); jede behält ihre Originaltextur
+let paints = [];
 function setupPaint(root) {
-  paint = null;
+  paints = [];
+  const neu = new Map();
   root.traverse(o => {
-    if (!o.isMesh || o.material.name !== 'paint') return;
-    if (!paint) {
-      const alt = o.material;
-      paint = new THREE.MeshPhysicalMaterial({ name: 'paint', color: alt.color, map: alt.map, normalMap: alt.normalMap, envMapIntensity: 1.2 });
-      Object.assign(paint, FINISH['Hochglanz']);
+    if (!o.isMesh || !/^paint_\d+$/.test(o.material.name)) return;
+    const alt = o.material;
+    if (!neu.has(alt)) {
+      const m = new THREE.MeshPhysicalMaterial({ name: alt.name, color: alt.color, map: alt.map, normalMap: alt.normalMap, envMapIntensity: 1.2 });
+      Object.assign(m, FINISH['Hochglanz']);
+      m.userData.orig = { color: alt.color.clone(), map: alt.map };
+      neu.set(alt, m); paints.push(m);
     }
-    o.material = paint;
+    o.material = neu.get(alt);
   });
   const bar = document.getElementById('gbar');
   bar.querySelectorAll('.swatch, .finish').forEach(s => s.remove());
-  if (!paint) return;
-  // erster Knopf = Originallack (inkl. Textur, z. B. Streifen), die anderen färben einfarbig
-  const origColor = paint.color.clone(), origMap = paint.map;
-  const orig = origMap ? 'conic-gradient(#e10600,#ffb300,#2a7fff,#e10600)' : '#' + origColor.getHexString();
+  if (!paints.length) return;
+  // erster Knopf = Originallack (inkl. Texturen, z. B. Streifen), die anderen färben einfarbig
+  const p0 = paints[0].userData.orig;
+  const orig = p0.map ? 'conic-gradient(#e10600,#ffb300,#2a7fff,#e10600)' : '#' + p0.color.getHexString();
   [orig, '#e10600', '#ffb300', '#2a7fff', '#18c964', '#111111', '#f4f4f4', '#ff4fd8'].forEach((col, i) => {
     const s = document.createElement('div');
     s.className = 'swatch'; s.style.background = col; s.title = i ? '' : 'Original';
-    s.onclick = () => {
-      if (i) { paint.color.set(col); paint.map = null; } else { paint.color.copy(origColor); paint.map = origMap; }
-      paint.needsUpdate = true;
-    };
+    s.onclick = () => paints.forEach(m => {
+      if (i) { m.color.set(col); m.map = null; } else { m.color.copy(m.userData.orig.color); m.map = m.userData.orig.map; }
+      m.needsUpdate = true;
+    });
     bar.appendChild(s);
   });
   Object.keys(FINISH).forEach((name, i) => {
     const b = document.createElement('button');
     b.className = 'gbtn finish' + (i === 0 ? ' on' : ''); b.textContent = name;
     b.onclick = () => {
-      Object.assign(paint, FINISH[name]); paint.needsUpdate = true;
+      paints.forEach(m => { Object.assign(m, FINISH[name]); m.needsUpdate = true; });
       bar.querySelectorAll('.finish').forEach(x => x.classList.toggle('on', x === b));
     };
     bar.appendChild(b);
@@ -519,7 +542,20 @@ document.getElementById('gclose').onclick = () => {
 document.getElementById('gspin').onclick = () => spin = !spin;
 
 // Debug-Zugriff für Tests (Radanzahl, Achse)
-window.__garage = { get drive() { return drive; }, open: openGarage };
+window.__garage = { get drive() { return drive; }, open: openGarage,
+  cam(x, y, z, tx, ty, tz) { spin = false; camera.position.set(x, y, z); controls.target.set(tx, ty, tz); },
+  // Prüfansicht: Radteile grün, Lack pink, Seitenansicht
+  pruef() {
+    const grün = new THREE.MeshBasicMaterial({ color: 0x00ff66 }), pink = new THREE.MeshBasicMaterial({ color: 0xff00cc }), blau = new THREE.MeshBasicMaterial({ color: 0x00aaff });
+    current.traverse(o => {
+      if (!o.isMesh) return;
+      let p = o, rad = false;
+      while (p) { if (/^wheel_..(_spin)?$/.test(p.name)) rad = true; p = p.parent; }
+      if (rad) o.material = grün; else if (/^paint_/.test(o.material.name)) o.material = pink; else if (/^accent_/.test(o.material.name)) o.material = blau;
+    });
+    drive = null; current.position.set(0, 0, 0); current.rotation.set(0, 0, 0);
+    spin = false; camera.position.set(7, 1.2, 0); controls.target.set(0, 0.5, 0);
+  } };
 renderFilter(); renderGrid();
 </script>
 </body>

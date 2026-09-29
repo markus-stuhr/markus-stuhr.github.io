@@ -12,6 +12,9 @@ from mathutils import Vector, Matrix
 args = sys.argv[sys.argv.index('--') + 1:]
 SRC, DST, LAENGE, FLIP = args[0], args[1], float(args[2]), args[3]
 MAXTEX = int(args[4]) if len(args) > 4 else 1024
+# optional: Materialnamen (Regex) für Lack und Akzent (Sekundärfarbe) von Hand, '-' = automatisch/keiner
+PAINT_OVR = args[5] if len(args) > 5 and args[5] != '-' else None
+ACCENT_OVR = args[6] if len(args) > 6 and args[6] != '-' else None
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 bpy.ops.import_scene.gltf(filepath=SRC)
@@ -64,7 +67,8 @@ def remove(o):
     meshes.remove(o); bpy.data.objects.remove(o)
 for o in list(meshes):
     b = bbox([o])
-    raus = any(b[0][i] < rlo[i] - 0.15 * rs[i] or b[1][i] > rhi[i] + 0.15 * rs[i] for i in range(3))
+    # nur kleine Objekte (Bodenplatten, Hilfsgeometrie) nach Größe aussortieren, nie echte Karosserieteile
+    raus = len(o.data.vertices) < 1500 and any(b[0][i] < rlo[i] - 0.15 * rs[i] or b[1][i] > rhi[i] + 0.15 * rs[i] for i in range(3))
     if JUNK.search(o.name) or (o.material_slots and any(s.material and JUNK.search(s.material.name) for s in o.material_slots)) or raus:
         print('JUNK', o.name, len(o.data.vertices))
         remove(o)
@@ -81,12 +85,12 @@ transform_all(Matrix.Scale(f, 4))
 lo, hi = bbox(meshes)
 transform_all(Matrix.Translation(Vector((-(lo.x + hi.x) / 2, -(lo.y + hi.y) / 2, -lo.z))))
 
-# 3b. Teile am Boden, die über mehrere Ecken reichen (z. B. alle Reifen in einem Mesh), in lose Stücke trennen
+# 3b. Teile in der unteren Hälfte, die über mehrere Ecken reichen (z. B. alle Reifen oder Radkappen+Chrom in einem Mesh), in lose Stücke trennen
 lo, hi = bbox(meshes)
 H = hi.z - lo.z
 for o in list(meshes):
     b = bbox([o])
-    if b[0].z < 0.08 * H and (b[0].x < 0 < b[1].x or b[0].y < -0.1 * (hi.y - lo.y) and b[1].y > 0.1 * (hi.y - lo.y)):
+    if b[0].z < 0.5 * H and (b[0].x < 0 < b[1].x or b[0].y < -0.1 * (hi.y - lo.y) and b[1].y > 0.1 * (hi.y - lo.y)):
         bpy.ops.object.select_all(action='DESELECT')
         o.select_set(True); bpy.context.view_layer.objects.active = o
         bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT')
@@ -105,6 +109,17 @@ lo, hi = bbox(meshes)
 H, L = hi.z - lo.z, hi.y - lo.y
 boxes = {o: bbox([o]) for o in meshes}
 
+def symmetrisch(o, b):
+    # Reifen/Felgen sind ringförmig: der Punkt-Schwerpunkt liegt in der Box-Mitte.
+    # Radhausschalen oder Schmutzfänger sind ähnlich groß, aber einseitig.
+    vs = o.data.vertices
+    step = max(1, len(vs) // 3000)
+    n = sy_ = sz_ = 0.0
+    for k in range(0, len(vs), step):
+        sy_ += vs[k].co.y; sz_ += vs[k].co.z; n += 1
+    m = (b[0] + b[1]) / 2; h = b[1].z - b[0].z
+    return abs(sy_ / n - m.y) < 0.06 * h and abs(sz_ / n - m.z) < 0.06 * h
+
 def find_wheels():
     found = {}
     for sy in (-1, 1):
@@ -114,14 +129,34 @@ def find_wheels():
             tyres = []
             for o, b in boxes.items():
                 sz = b[1] - b[0]
-                if in_q(b) and b[0].z < 0.08 * H and 0.12 * H < sz.z < 0.8 * H and 0.75 < sz.y / sz.z < 1.35:
+                if in_q(b) and b[0].z < 0.08 * H and 0.12 * H < sz.z < 0.8 * H and 0.75 < sz.y / sz.z < 1.35 and symmetrisch(o, b):
                     tyres.append(o)
             if not tyres:
                 continue
+            # Referenz = größter Reifen; weitere Kandidaten nur, wenn ihre Mitte auf derselben Achse liegt
+            # (sonst rutschen z. B. dunkle Schwellerteile am Boden mit ins Rad und verschieben die Achse)
+            def mitte(o):
+                return (boxes[o][0] + boxes[o][1]) / 2
+            # Referenz = das Teil, das am tiefsten liegt (der Reifen berührt den Boden; Radhausschalen enden höher)
+            ref = min(tyres, key=lambda o: (boxes[o][0].z, -(boxes[o][1] - boxes[o][0]).z))
+            rc, rh = mitte(ref), (boxes[ref][1] - boxes[ref][0]).z
+            tyres = [o for o in tyres if abs(mitte(o).y - rc.y) < 0.06 * rh and abs(mitte(o).z - rc.z) < 0.06 * rh]
             ulo, uhi = bbox(tyres)
-            e = 0.02
-            parts = [o for o, b in boxes.items()
-                     if all(ulo[i] - e <= b[0][i] and b[1][i] <= uhi[i] + e for i in range(3))]
+            # zum Rad gehört alles, was in der Seitenansicht (y/z) im Reifen liegt und in der Breite (x)
+            # nah dran ist — so kommt auch eine breite Lauffläche mit, wenn nur die Flanken als Reifen erkannt wurden
+            e, xr = 0.02, 0.35 * rh
+            wmax = max(0.6 * rh, max(boxes[o][1].x - boxes[o][0].x for o in tyres) * 1.05)
+            def im_rad(b):
+                mx = (b[0].x + b[1].x) / 2
+                return (all(ulo[i] - e <= b[0][i] and b[1][i] <= uhi[i] + e for i in (1, 2))
+                        and ulo.x - xr <= mx <= uhi.x + xr and (b[1].x - b[0].x) < wmax)
+            # zusätzlich muss jeder Punkt im Reifenkreis liegen (in den Ecken der Box sitzen oft Karosserieteile)
+            ac = (ulo + uhi) / 2; r = (uhi.z - ulo.z) / 2 * 1.03
+            def im_kreis(o):
+                vs = o.data.vertices
+                step = max(1, len(vs) // 2000)
+                return all((vs[k].co.y - ac.y) ** 2 + (vs[k].co.z - ac.z) ** 2 <= r * r for k in range(0, len(vs), step))
+            parts = list(dict.fromkeys(tyres + [o for o, b in boxes.items() if im_rad(b) and im_kreis(o)]))
             found[(sx, sy)] = (ulo, uhi, parts)
     return found
 
@@ -150,6 +185,38 @@ if len(wheels) == 4:
     transform_all(Matrix.Translation(Vector((0, -mid, 0))))
     boxes = {o: bbox([o]) for o in meshes}
     wheels = find_wheels()
+
+# 6b. Eingelenkte Räder geradestellen: Achsrichtung = Richtung mit der kleinsten Ausdehnung der Radscheibe (PCA);
+# Räder, die im Originalmodell eingeschlagen sind, werden um die Hochachse zurückgedreht
+import numpy as np
+for key, (ulo, uhi, parts) in list(wheels.items()):
+    pts = []
+    for o in parts:
+        vs = o.data.vertices
+        step = max(1, len(vs) // 3000)
+        pts += [tuple(vs[k].co) for k in range(0, len(vs), step)]
+    P = np.array(pts); P -= P.mean(axis=0)
+    w, v = np.linalg.eigh(np.cov(P.T))
+    n = v[:, 0]                                   # kleinster Eigenwert = Achse
+    yaw = math.atan2(n[1], n[0])                  # Winkel der Achse zur x-Achse (Draufsicht)
+    if yaw > math.pi / 2: yaw -= math.pi
+    if yaw < -math.pi / 2: yaw += math.pi
+    # Sturz (Radneigung nach innen/außen): Winkel der Achse zur Waagerechten, nach dem Geradestellen
+    horiz = math.hypot(n[0], n[1])
+    sturz = math.atan2(n[2], horiz) * (1 if (n[0] * math.cos(yaw) + n[1] * math.sin(yaw)) >= 0 else -1)
+    if abs(yaw) > math.radians(0.7) or abs(sturz) > math.radians(0.7):
+        c = (ulo + uhi) / 2
+        # erst Lenkeinschlag (um z) aufheben, dann Sturz (um die Längsachse y)
+        m = (Matrix.Translation(c) @ Matrix.Rotation(sturz, 4, 'Y') @ Matrix.Rotation(-yaw, 4, 'Z')
+             @ Matrix.Translation(-c))
+        for o in parts:
+            o.data.transform(m); o.data.update()
+        nlo, nhi = bbox(parts)
+        wheels[key] = (nlo, nhi, parts)
+        Q = np.array([tuple(o.data.vertices[k].co) for o in parts for k in range(0, len(o.data.vertices), max(1, len(o.data.vertices) // 3000))])
+        Q -= Q.mean(axis=0); n2 = np.linalg.eigh(np.cov(Q.T))[1][:, 0]
+        print('REST', key, 'achse %.3f %.3f %.3f' % tuple(n2 / (n2[0] if abs(n2[0]) > 1e-6 else 1)))
+        print('GERADE', key, 'lenk %.1f° sturz %.1f°' % (math.degrees(yaw), math.degrees(sturz)))
 
 # 7. Hierarchie aufbauen
 def empty(name, loc, parent=None):
@@ -212,21 +279,66 @@ def bunt(m):
     r, g, bl = b.inputs['Base Color'].default_value[:3]
     h, l, sat = colorsys.rgb_to_hls(r, g, bl)
     return sat > 0.35 and l > 0.03
-kand = [m for m in area if PAINT.search(m.name) and not NOPAINT.search(m.name)]
-if not kand:
-    kand = [m for m in area if bunt(m) and not NOPAINT.search(m.name)]
+if PAINT_OVR:
+    kand = [m for m in area if re.search(PAINT_OVR, m.name)]
+else:
+    kand = [m for m in area if PAINT.search(m.name) and not NOPAINT.search(m.name)]
+    if not kand:
+        kand = [m for m in area if bunt(m) and not NOPAINT.search(m.name)]
 paint = []
 if kand:
     top = max(area[m] for m in kand)
-    paint = [m for m in kand if area[m] > 0.15 * top]
-print('PAINT', [m.name for m in paint])
-if paint:
-    haupt = max(paint, key=lambda m: area[m])
-    haupt.name = 'paint'
+    paint = kand if PAINT_OVR else [m for m in kand if area[m] > 0.15 * top]
+accent = [m for m in area if ACCENT_OVR and re.search(ACCENT_OVR, m.name) and m not in paint]
+print('PAINT', [m.name for m in paint], 'ACCENT', [m.name for m in accent])
+# Materialien nicht zusammenlegen (jedes behält seine Textur), nur einheitlich benennen: paint_1.., accent_1..
+for pre, ms in (('paint', paint), ('accent', accent)):
+    for i, m in enumerate(sorted(ms, key=lambda m: -area[m]), 1):
+        m.name = '%s_%d' % (pre, i)
+
+# 7c. Vereinfachen (gegen Ruckeln): pro Gruppe (body, jedes Rad) alle Teile mit gleichem Material zu einem Mesh
+# zusammenfügen (weniger Zeichenaufrufe), dann auf ein Dreiecksbudget dezimieren
+BUDGET = 150000
+def tris(o):
+    return sum(len(p.vertices) - 2 for p in o.data.polygons)
+
+def merge_group(parent):
+    kids = [o for o in parent.children if o.type == 'MESH']
+    # Objekte mit mehreren Materialien erst nach Material trennen
+    for o in list(kids):
+        if len([s for s in o.material_slots if s.material]) > 1:
+            bpy.ops.object.select_all(action='DESELECT')
+            o.select_set(True); bpy.context.view_layer.objects.active = o
+            bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.mesh.separate(type='MATERIAL'); bpy.ops.object.mode_set(mode='OBJECT')
+    kids = [o for o in parent.children if o.type == 'MESH' and len(o.data.polygons)]
+    nach_mat = {}
+    for o in kids:
+        m = next((s.material for s in o.material_slots if s.material), None)
+        nach_mat.setdefault(m, []).append(o)
+    for m, objs in nach_mat.items():
+        if len(objs) < 2:
+            continue
+        bpy.ops.object.select_all(action='DESELECT')
+        for o in objs:
+            o.select_set(True)
+        bpy.context.view_layer.objects.active = objs[0]
+        bpy.ops.object.join()
+
+gruppen = [body] + [o for o in bpy.data.objects if o.name.endswith('_spin')]
+for g in gruppen:
+    merge_group(g)
+meshes = [o for o in bpy.data.objects if o.type == 'MESH']
+vorher = sum(tris(o) for o in meshes)
+ratio = min(1.0, BUDGET / max(vorher, 1))
+if ratio < 0.98:
     for o in meshes:
-        for sl in o.material_slots:
-            if sl.material in paint:
-                sl.material = haupt
+        if tris(o) < 300:
+            continue
+        mod = o.modifiers.new('dec', 'DECIMATE'); mod.ratio = ratio; mod.use_collapse_triangulate = True
+        with bpy.context.temp_override(object=o, active_object=o, selected_objects=[o]):
+            bpy.ops.object.modifier_apply(modifier='dec')
+print('SIMPLIFY meshes %d dreiecke %d -> %d' % (len(meshes), vorher, sum(tris(o) for o in meshes)))
 
 # 8. Texturen verkleinern und exportieren
 for img in bpy.data.images:
