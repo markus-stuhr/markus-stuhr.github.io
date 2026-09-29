@@ -411,10 +411,12 @@ function updateCamera(dt){
   if(keys.KeyA && !aMode && !selected.length || keys.ArrowLeft) dx -= 1;
   if(keys.KeyD || keys.ArrowRight) dx += 1;
   if(mouse.in && !dragging){
-    const m = 30;
-    if(mouse.x < m) dx -= 1; if(mouse.x > innerWidth-m) dx += 1;
-    if(mouse.y < m) dz -= 1; if(mouse.y > innerHeight-m) dz += 1;
+    // 50 px Randzone: ganz sanft am inneren Rand, volle Geschwindigkeit direkt an der Kante
+    const m = 50, ramp = d => d >= m ? 0 : Math.pow(1 - Math.max(d, 0)/m, 2);
+    dx += ramp(innerWidth-1 - mouse.x) - ramp(mouse.x);
+    dz += ramp(innerHeight-1 - mouse.y) - ramp(mouse.y);
   }
+  dx = THREE.MathUtils.clamp(dx, -1, 1); dz = THREE.MathUtils.clamp(dz, -1, 1);
   camTarget.x = THREE.MathUtils.clamp(camTarget.x + dx*sp, -MAP, MAP);
   camTarget.z = THREE.MathUtils.clamp(camTarget.z + dz*sp, -MAP, MAP);
   camera.position.set(camTarget.x, zoom, camTarget.z + zoom*0.72);
