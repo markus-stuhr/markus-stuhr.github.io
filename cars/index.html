@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Supercar Sammelalbum</title>
+<script defer src="/analytics.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#0b0d12; --panel:#151923; --txt:#eef1f6; --dim:#8b93a5; --r1:#9aa3b2; --r2:#3d8bfd; --r3:#b14dff; --r4:#ffb300; }
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html,body { margin:0; background:var(--bg); color:var(--txt); font-family:Inter,system-ui,sans-serif; }
+body { background:radial-gradient(ellipse at top,#1b2233 0%,var(--bg) 60%) fixed; min-height:100vh; }
+header { padding:28px 16px 8px; text-align:center; }
+h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:0; letter-spacing:1px;
+  background:linear-gradient(90deg,#ff3d3d,#ffb300,#3d8bfd); -webkit-background-clip:text; background-clip:text; color:transparent; }
+.sub { color:var(--dim); margin-top:6px; }
+.filter { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; padding:14px 16px; }
+.filter button { background:var(--panel); color:var(--txt); border:1px solid #262c3a; border-radius:99px; padding:8px 14px; font:600 14px Inter; cursor:pointer; }
+.filter button.on { background:#fff; color:#000; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:22px; padding:10px 16px 60px; max-width:1300px; margin:0 auto; }
+
+/* Karte */
+.card { perspective:1200px; aspect-ratio:5/7.4; cursor:pointer; }
+.inner { position:relative; width:100%; height:100%; transition:transform .6s cubic-bezier(.3,1.4,.5,1); transform-style:preserve-3d; }
+.card.flip .inner { transform:rotateY(180deg); }
+.face { position:absolute; inset:0; backface-visibility:hidden; -webkit-backface-visibility:hidden; border-radius:16px; overflow:hidden;
+  border:3px solid var(--rc); background:linear-gradient(160deg,var(--panel),#0d1018); box-shadow:0 10px 30px #0008, 0 0 0 1px #0006 inset; display:flex; flex-direction:column; }
+.back { transform:rotateY(180deg); padding:14px; }
+.card:hover .inner:not(.x) { transform:translateY(-4px) rotateX(4deg); }
+.card.flip:hover .inner { transform:rotateY(180deg); }
+.top { display:flex; justify-content:space-between; align-items:center; padding:10px 12px 6px; }
+.nr { font:800 13px Inter; color:var(--dim); }
+.rar { font:800 11px Inter; letter-spacing:1px; padding:3px 8px; border-radius:99px; background:var(--rc); color:#000; }
+.pic { position:relative; margin:0 10px; border-radius:10px; overflow:hidden; aspect-ratio:16/10; background:#000; }
+.pic img { width:100%; height:100%; object-fit:cover; display:block; transform:scale(1.25); }
+.marke { font:800 12px Inter; letter-spacing:2px; text-transform:uppercase; color:var(--mc); padding:10px 12px 0; }
+.name { font-family:'Russo One'; font-size:20px; padding:2px 12px 8px; line-height:1.1; }
+.stats { display:grid; grid-template-columns:1fr 1fr; gap:6px; padding:0 10px 10px; margin-top:auto; }
+.st { background:#0006; border-radius:8px; padding:6px 8px; }
+.st b { display:block; font-size:17px; } .st span { font-size:11px; color:var(--dim); text-transform:uppercase; letter-spacing:1px; }
+/* Glitzer für Epic/Legendary */
+.shine::after { content:''; position:absolute; inset:0; pointer-events:none; border-radius:13px;
+  background:linear-gradient(115deg,transparent 30%,#ffffff40 45%,#ffe9a060 50%,transparent 65%); background-size:250% 100%; animation:sh 3.5s linear infinite; mix-blend-mode:screen; }
+@keyframes sh { from{background-position:150% 0} to{background-position:-100% 0} }
+.back h3 { font-family:'Russo One'; margin:4px 0 8px; font-size:20px; }
+.back p { font-size:15px; line-height:1.45; margin:0 0 10px; }
+.back .zeile { display:flex; justify-content:space-between; border-bottom:1px solid #ffffff14; padding:6px 0; font-size:14px; }
+.back .zeile span { color:var(--dim); }
+.btn3d { margin-top:auto; background:linear-gradient(90deg,#ff3d3d,#ffb300); color:#000; border:0; border-radius:12px; padding:14px; font:800 17px Inter; cursor:pointer; }
+.credit { font-size:10px; color:var(--dim); margin-top:8px; line-height:1.3; }
+.credit a { color:var(--dim); }
+
+/* Garage */
+#garage { position:fixed; inset:0; background:#000; display:none; z-index:10; }
+#garage.open { display:block; }
+#gcanvas, #gframe { position:absolute; inset:0; width:100%; height:100%; border:0; }
+.ghud { position:absolute; left:0; right:0; top:0; padding:16px; display:flex; justify-content:space-between; align-items:flex-start; pointer-events:none;
+  background:linear-gradient(#000a,transparent); }
+.ghud > * { pointer-events:auto; }
+.gtitle .m { font:800 13px Inter; letter-spacing:2px; color:var(--dim); text-transform:uppercase; }
+.gtitle .n { font-family:'Russo One'; font-size:clamp(22px,4vw,36px); }
+.gbtn { background:#ffffff1a; backdrop-filter:blur(8px); border:1px solid #ffffff30; color:#fff; border-radius:99px; padding:10px 16px; font:700 15px Inter; cursor:pointer; }
+.gbar { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; width:calc(100% - 32px); }
+.swatch { width:36px; height:36px; border-radius:50%; border:3px solid #fff8; cursor:pointer; }
+#gload { position:absolute; inset:0; display:grid; place-items:center; font:700 18px Inter; color:var(--dim); pointer-events:none; }
+#gcredit { position:absolute; right:12px; bottom:70px; font-size:11px; color:#fff8; }
+#gcredit a { color:#fff8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SUPERCAR SAMMELALBUM</h1>
+  <div class="sub" id="count"></div>
+</header>
+<div class="filter" id="filter"></div>
+<div class="grid" id="grid"></div>
+
+<div id="garage">
+  <canvas id="gcanvas"></canvas>
+  <iframe id="gframe" allow="autoplay; fullscreen; xr-spatial-tracking" style="display:none"></iframe>
+  <div id="gload">Auto fährt in die Garage …</div>
+  <div class="ghud">
+    <div class="gtitle"><div class="m" id="gm"></div><div class="n" id="gn"></div></div>
+    <button class="gbtn" id="gclose">✕ Zurück</button>
+  </div>
+  <div id="gcredit"></div>
+  <div class="gbar" id="gbar">
+    <button class="gbtn" id="gspin">⟳ Drehen</button>
+    <button class="gbtn" id="ghorn">📯 Hupen</button>
+  </div>
+</div>
+
+<script src="cars.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const RAR = { 1:['COMMON','var(--r1)'], 2:['RARE','var(--r2)'], 3:['EPIC','var(--r3)'], 4:['LEGENDARY','var(--r4)'] };
+const grid = document.getElementById('grid');
+let filter = 'Alle';
+
+function renderFilter() {
+  const marken = ['Alle', ...new Set(CARS.map(c => c.marke))];
+  document.getElementById('filter').innerHTML = marken.map(m => `<button class="${m===filter?'on':''}">${m}</button>`).join('');
+  document.querySelectorAll('#filter button').forEach(b => b.onclick = () => { filter = b.textContent; renderFilter(); renderGrid(); });
+}
+
+function renderGrid() {
+  document.getElementById('count').textContent = `${CARS.length} von ${CARS.length} Autos gesammelt`;
+  grid.innerHTML = '';
+  CARS.forEach((c, i) => {
+    if (filter !== 'Alle' && c.marke !== filter) return;
+    const [rn, rc] = RAR[c.rar];
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.style.setProperty('--rc', rc);
+    el.style.setProperty('--mc', c.farbe);
+    el.innerHTML = `<div class="inner">
+      <div class="face front ${c.rar>=3?'shine':''}">
+        <div class="top"><span class="nr">#${String(i+1).padStart(3,'0')} ${c.land}</span><span class="rar">${rn}</span></div>
+        <div class="pic"><img src="thumbs/${c.uid}.jpg" alt="${c.marke} ${c.name}" loading="lazy"></div>
+        <div class="marke">${c.marke}</div>
+        <div class="name">${c.name}</div>
+        <div class="stats">
+          <div class="st"><b>${c.ps}</b><span>PS</span></div>
+          <div class="st"><b>${c.kmh}</b><span>km/h</span></div>
+          <div class="st"><b>${c.null100.toFixed(1).replace('.',',')} s</b><span>0–100</span></div>
+          <div class="st"><b>${c.jahr}</b><span>Baujahr</span></div>
+        </div>
+      </div>
+      <div class="face back">
+        <div class="marke" style="padding:0">${c.marke}</div>
+        <h3>${c.name}</h3>
+        <p>💡 ${c.fakt}</p>
+        <div class="zeile"><span>Motor</span><b>${c.zyl}</b></div>
+        <div class="zeile"><span>Leistung</span><b>${c.ps} PS</b></div>
+        <div class="zeile"><span>Spitze</span><b>${c.kmh} km/h</b></div>
+        <button class="btn3d">🔍 In 3D ansehen</button>
+        <div class="credit">3D-Modell: <a href="https://sketchfab.com/3d-models/${c.uid}" target="_blank" rel="noopener">„${c.marke} ${c.name}“</a>
+          von <a href="https://sketchfab.com/${c.user}" target="_blank" rel="noopener">${c.autor}</a>, CC BY 4.0</div>
+      </div></div>`;
+    el.onclick = e => {
+      if (e.target.closest('a')) return;
+      if (e.target.closest('.btn3d')) { openGarage(c); return; }
+      el.classList.toggle('flip');
+    };
+    grid.appendChild(el);
+  });
+}
+
+// ---------- 3D-Garage ----------
+const gar = document.getElementById('garage'), canvas = document.getElementById('gcanvas'), frame = document.getElementById('gframe');
+const gload = document.getElementById('gload');
+let renderer, scene, camera, controls, current, running = false, spin = true, bodyMats = [];
+
+function initThree() {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.shadowMap.enabled = true;
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x14161c);
+  scene.fog = new THREE.Fog(0x14161c, 12, 30);
+  scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+  camera = new THREE.PerspectiveCamera(40, 1, 0.05, 100);
+  controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.maxPolarAngle = Math.PI / 2 - 0.03;
+  controls.minDistance = 2.5; controls.maxDistance = 14;
+  controls.addEventListener('start', () => spin = false);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(12, 64), new THREE.MeshStandardMaterial({ color: 0x0c0e13, roughness: 0.5, metalness: 0.1 }));
+  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+  const sun = new THREE.DirectionalLight(0xffffff, 2);
+  sun.position.set(4, 8, 3); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5 });
+  scene.add(sun, new THREE.HemisphereLight(0xffffff, 0x222222, 0.6));
+  addEventListener('resize', resize);
+}
+function resize() {
+  if (!renderer) return;
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+}
+function loop() {
+  if (!running) return;
+  requestAnimationFrame(loop);
+  if (spin) controls.autoRotate = true, controls.autoRotateSpeed = 1.5; else controls.autoRotate = false;
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+const loader = new GLTFLoader();
+loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
+
+async function hasLocal(uid) {
+  try { return (await fetch(`models/${uid}.glb`, { method: 'HEAD' })).ok; } catch { return false; }
+}
+
+async function openGarage(c) {
+  document.getElementById('gm').textContent = c.marke;
+  document.getElementById('gn').textContent = c.name;
+  document.getElementById('gcredit').innerHTML = `Modell: <a href="https://sketchfab.com/3d-models/${c.uid}" target="_blank" rel="noopener">${c.autor}</a> · CC BY 4.0`;
+  gar.classList.add('open');
+  gload.style.display = 'grid';
+  if (!(await hasLocal(c.uid))) {
+    // Fallback: offizieller Sketchfab-Viewer, bis die GLB lokal liegt
+    canvas.style.display = 'none'; frame.style.display = 'block';
+    document.getElementById('gbar').style.display = 'none';
+    frame.src = `https://sketchfab.com/models/${c.uid}/embed?autostart=1&autospin=0.3&ui_theme=dark&ui_infos=0&ui_watermark=0&ui_controls=1&ui_stop=0`;
+    frame.onload = () => gload.style.display = 'none';
+    return;
+  }
+  frame.style.display = 'none'; canvas.style.display = 'block';
+  document.getElementById('gbar').style.display = 'flex';
+  if (!renderer) initThree();
+  resize();
+  if (current) { scene.remove(current); current = null; }
+  running = true; spin = true; loop();
+  const gltf = await loader.loadAsync(`models/${c.uid}.glb`);
+  const car = gltf.scene;
+  // auf ca. 4,5 m Länge normieren und auf den Boden stellen
+  let box = new THREE.Box3().setFromObject(car), size = box.getSize(new THREE.Vector3());
+  car.scale.setScalar(4.5 / Math.max(size.x, size.z));
+  box.setFromObject(car);
+  const ctr = box.getCenter(new THREE.Vector3());
+  car.position.x -= ctr.x; car.position.z -= ctr.z; car.position.y -= box.min.y;
+  car.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(car); current = car;
+  bodyMats = findBodyMats(car);
+  buildSwatches(c);
+  camera.position.set(5, 2.2, 6); controls.target.set(0, 0.6, 0);
+  gload.style.display = 'none';
+}
+
+// Lack = größtes nicht-transparentes, farbiges Material
+function findBodyMats(root) {
+  const area = new Map();
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    for (const m of [].concat(o.material)) {
+      if (m.transparent || !m.color) continue;
+      const hsl = {}; m.color.getHSL(hsl);
+      if (hsl.s < 0.25 && !/paint|body|lack|carpaint/i.test(m.name)) continue;
+      area.set(m, (area.get(m) || 0) + (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count));
+    }
+  });
+  const named = [...area.keys()].filter(m => /paint|body|carpaint/i.test(m.name));
+  if (named.length) return named;
+  const best = [...area.entries()].sort((a, b) => b[1] - a[1])[0];
+  return best ? [best[0]] : [];
+}
+function buildSwatches(c) {
+  document.querySelectorAll('.swatch').forEach(s => s.remove());
+  if (!bodyMats.length) return;
+  const orig = bodyMats[0].color.getStyle();
+  const bar = document.getElementById('gbar');
+  [orig, '#e10600', '#ffb300', '#2a7fff', '#18c964', '#111111', '#f4f4f4', '#ff4fd8'].forEach(col => {
+    const s = document.createElement('div');
+    s.className = 'swatch'; s.style.background = col;
+    s.onclick = () => bodyMats.forEach(m => m.color.set(col));
+    bar.appendChild(s);
+  });
+}
+
+document.getElementById('gclose').onclick = () => {
+  gar.classList.remove('open'); running = false; frame.src = 'about:blank';
+};
+document.getElementById('gspin').onclick = () => spin = !spin;
+document.getElementById('ghorn').onclick = () => {
+  const ac = new AudioContext(), t = ac.currentTime;
+  [440, 554].forEach(f => {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sawtooth'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.12, t); g.gain.setValueAtTime(0.12, t + 0.5); g.gain.linearRampToValueAtTime(0, t + 0.6);
+    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.6);
+  });
+};
+
+renderFilter(); renderGrid();
+</script>
+</body>
+</html>
