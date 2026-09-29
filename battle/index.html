@@ -660,11 +660,14 @@ function popInfo(team){
 }
 
 // ---------------------------------------------------------------- Kampf
-const shots = [];
+const shots = [], pops = [];
 function damage(t, dmg, from){
   if(!t.alive) return;
   const armor = t.kind === 'unit' ? (UNIT[t.type].armor || 0) : 0;
-  t.hp -= Math.max(1, dmg - armor);
+  const lost = Math.max(1, dmg - armor);
+  t.hp -= lost;
+  pops.push({x:t.pos.x + rnd(-.3,.3), z:t.pos.z, h:t.kind === 'unit' ? 2.4 : t.obj.userData.h + 0.8,
+             v:Math.round(lost), t0:time, foe:t.team === 1});
   t.hitT = time;
   if(t.kind === 'unit' && from && from.alive){
     // Angegriffene wehren sich, wenn sie gerade nichts Wichtigeres tun
@@ -1048,7 +1051,8 @@ function drawOverlay(){
   octx.clearRect(0,0,innerWidth,innerHeight);
   for(const e of ents){
     if(!e.alive || e.kind === 'resource') continue;
-    const show = e.ring.visible || e.hp < e.maxHp && (time - (e.hitT||-99) < 4 || e.kind === 'building');
+    // jeder, der verletzt ist, zeigt seinen Balken – Freund wie Feind
+    const show = e.ring.visible || e.hp < e.maxHp;
     if(!show) continue;
     const h = e.kind === 'unit' ? 2.3 : e.obj.userData.h + 0.5;
     const s = screenOf(e.pos, h); if(!s.ok) continue;
@@ -1057,6 +1061,17 @@ function drawOverlay(){
     octx.fillStyle = e.team === 1 ? '#e2574c' : f > .5 ? '#7fd36b' : f > .25 ? '#e8c14a' : '#e2574c';
     octx.fillRect(s.x-w/2, s.y, w*f, 4);
   }
+  // Schadenszahlen steigen auf und verblassen
+  octx.font = 'bold 13px Trebuchet MS, sans-serif'; octx.textAlign = 'center';
+  for(let i=pops.length-1;i>=0;i--){
+    const p = pops[i], a = time - p.t0;
+    if(a > 1.2){ pops.splice(i,1); continue; }
+    const s = screenOf(p, p.h + a*1.2); if(!s.ok) continue;
+    octx.globalAlpha = 1 - a/1.2;
+    octx.fillStyle = '#000'; octx.fillText('-'+p.v, s.x+1, s.y+1);
+    octx.fillStyle = p.foe ? '#ffd24a' : '#ff6a5a'; octx.fillText('-'+p.v, s.x, s.y);
+  }
+  octx.globalAlpha = 1;
 }
 const mini = document.getElementById('mini'), mctx = mini.getContext('2d');
 function drawMini(){
