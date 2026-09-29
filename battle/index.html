@@ -1440,12 +1440,12 @@ function updateFish(dt){
     f.lane += (Math.random() - 0.5)*dt*0.8; f.lane = Math.max(-2, Math.min(2, f.lane));
     const prev = riverXZ(f.u, f.lane);
     f.u = nu;
-    let y = WATER - 0.22;
+    let y = WATER - 0.75;                 // ganz unter der Oberfläche (Modell steht auf y = 0)
     f.jumpIn -= dt;
     if(f.jt < 0 && f.jumpIn <= 0){ f.jt = 0; flag(p, 0xffffff); }
     if(f.jt >= 0){
       f.jt += dt/0.9;
-      y = WATER - 0.2 + Math.sin(Math.min(1, f.jt)*Math.PI)*1.4;
+      y = WATER - 0.75 + Math.sin(Math.min(1, f.jt)*Math.PI)*2.0;
       if(f.jt >= 1){ f.jt = -1; f.jumpIn = rnd(5, 16); flag(p, 0xffffff); }
     }
     f.g.position.set(p.x, y, p.z);
