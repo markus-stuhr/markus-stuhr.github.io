@@ -88,7 +88,6 @@ h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:
   <div id="gcredit"></div>
   <div class="gbar" id="gbar">
     <button class="gbtn" id="gspin">⟳ Drehen</button>
-    <button class="gbtn" id="ghorn">📯 Hupen</button>
   </div>
 </div>
 
@@ -277,15 +276,6 @@ document.getElementById('gclose').onclick = () => {
   gar.classList.remove('open'); running = false; frame.src = 'about:blank';
 };
 document.getElementById('gspin').onclick = () => spin = !spin;
-document.getElementById('ghorn').onclick = () => {
-  const ac = new AudioContext(), t = ac.currentTime;
-  [440, 554].forEach(f => {
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.type = 'sawtooth'; o.frequency.value = f;
-    g.gain.setValueAtTime(0.12, t); g.gain.setValueAtTime(0.12, t + 0.5); g.gain.linearRampToValueAtTime(0, t + 0.6);
-    o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.6);
-  });
-};
 
 renderFilter(); renderGrid();
 </script>
