@@ -265,12 +265,39 @@ async function openGarage(c) {
   const rig = new THREE.Group(); rig.add(car);
   scene.add(rig); current = rig;
   const alongX = size.x >= size.z;
-  drive = { rig, alongX, dir: c.rueck ? -1 : 1, t0: performance.now(), dist: 16, dur: 2600 };
+  drive = { rig, alongX, dir: c.rueck ? -1 : 1, t0: performance.now(), dist: 16, dur: 2600, wheels: findWheels(rig) };
   animateDrive(drive.t0);
   bodyMats = findBodyMats(car);
   buildSwatches(c);
-  camera.position.set(5, 2.2, 6); controls.target.set(0, 0.6, 0);
+  // Kamera schräg vor die Front: das Auto fährt auf den Betrachter zu
+  const f = drive.dir * 6.5;
+  if (alongX) camera.position.set(f, 2.2, 4.5); else camera.position.set(4.5, 2.2, f);
+  controls.target.set(0, 0.6, 0);
   gload.style.display = 'none';
+}
+
+// Räder finden (oberste Knoten mit passendem Namen) und je in einen Drehpunkt in Radmitte hängen,
+// weil der Ursprung der Radknoten in vielen Modellen nicht in der Achse liegt
+function findWheels(rig) {
+  rig.updateMatrixWorld(true);
+  const re = /(^|[_\s.-])(wheels?|tires?|tyres?|rims?|felgen?|reifen|rad|räder)([_\s.\d-]|$)/i, found = [];
+  rig.traverse(o => {
+    if (!re.test(o.name) || /steer|lenk/i.test(o.name)) return;
+    for (let p = o.parent; p; p = p.parent) if (found.includes(p)) return;
+    found.push(o);
+  });
+  const wheels = [];
+  for (const o of found) {
+    const b = new THREE.Box3().setFromObject(o);
+    if (b.isEmpty()) continue;
+    const sz = b.getSize(new THREE.Vector3());
+    if (sz.y > 1.2 || sz.y < 0.2) continue;
+    const p = new THREE.Object3D();
+    p.position.copy(b.getCenter(new THREE.Vector3()));
+    rig.add(p); p.attach(o);
+    wheels.push({ p, r: sz.y / 2 });
+  }
+  return wheels;
 }
 
 // Einfahrt: abbremsen (ease-out), beim Stehenbleiben nickt die Front kurz ein und federt nach
@@ -286,6 +313,12 @@ function animateDrive(now) {
   pitch += 0.004 * Math.sin(now / 45) * (1 - k);
   if (d.alongX) { d.rig.position.set(pos, 0, 0); d.rig.rotation.z = -pitch * d.dir; }
   else { d.rig.position.set(0, 0, pos); d.rig.rotation.x = pitch * d.dir; }
+  // Räder abrollen: Winkel = gefahrene Strecke / Radius
+  const weg = pos + d.dir * d.dist;
+  for (const w of d.wheels) {
+    const a = weg / w.r;
+    if (d.alongX) w.p.rotation.z = -a; else w.p.rotation.x = a;
+  }
   if (t > 1 && now - d.t0 > d.dur + 1500) { d.rig.rotation.set(0, 0, 0); drive = null; }
 }
 
