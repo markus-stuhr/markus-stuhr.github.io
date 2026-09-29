@@ -19,6 +19,10 @@ canvas#ov{position:fixed;inset:0;pointer-events:none}
   padding:0 16px;background:linear-gradient(#000a,#0000);font-weight:bold;text-shadow:0 1px 2px #000}
 #top .res{display:flex;gap:6px;align-items:center}
 #top .dot{width:12px;height:12px;border-radius:50%}
+.ico{display:inline-block;width:20px;height:20px;vertical-align:-5px}
+.ico svg{width:100%;height:100%;display:block}
+#cmds .ico{width:13px;height:13px;vertical-align:-2px}
+#info .ico{width:15px;height:15px;vertical-align:-3px}
 #top .wave{margin-left:auto;color:var(--muted);font-weight:normal}
 #msg{position:fixed;top:46px;left:50%;transform:translateX(-50%);text-align:center;
   text-shadow:0 1px 3px #000;font-weight:bold;pointer-events:none}
@@ -68,8 +72,8 @@ button.big{background:var(--gold);color:#221;border:0;border-radius:6px;padding:
 <canvas id="gl"></canvas>
 <canvas id="ov"></canvas>
 <div id="top">
-  <div class="res"><span class="dot" style="background:var(--wood)"></span>Holz <span id="rWood">0</span></div>
-  <div class="res"><span class="dot" style="background:var(--gold)"></span>Gold <span id="rGold">0</span></div>
+  <div class="res" title="Holz"><span class="ico" data-ico="wood"></span><span id="rWood">0</span></div>
+  <div class="res" title="Gold"><span class="ico" data-ico="gold"></span><span id="rGold">0</span></div>
   <div class="res">👥 <span id="rPop">0/0</span></div>
   <div class="wave" id="wave"></div>
 </div>
@@ -196,6 +200,158 @@ Object.assign(sun.shadow.camera, {left:-55, right:55, top:55, bottom:-55, near:1
 sun.shadow.bias = -0.0005;
 scene.add(sun, sun.target);
 
+// ---------------------------------------------------------------- Gelände
+// Zwei Basisplateaus mit Steilklippen und je zwei Rampen, ein Fluss mit drei Furten
+// quer über die Karte, sanfte Hügel und ein paar unpassierbare Felsspitzen.
+const WATER = -0.9;
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x-a)/(b-a))); return t*t*(3-2*t); };
+const PLATEAUS = [
+  {x:-55, z:55, ramps:[-Math.PI/4, -Math.PI/4 - 1.25]},
+  {x:55, z:-55, ramps:[Math.PI*3/4, Math.PI*3/4 - 1.25]},
+];
+const HILLS = [[-38,2,3,10],[38,-2,3,10],[-8,-44,2.6,9],[8,44,2.6,9],[-70,-30,3.5,12],[70,30,3.5,12],
+               [30,70,2.5,10],[-30,-70,2.5,10]];
+const CRAGS = [[-22,-8,6,3.6],[22,8,6,3.6],[-58,4,6,3.2],[58,-4,6,3.2],[6,-68,6,3.4],[-6,68,6,3.4]];
+const FORDS = [-52, 0, 52];
+function plateauK(x, z){
+  let k = 0;
+  for(const p of PLATEAUS){
+    const dx = x-p.x, dz = z-p.z, d = Math.hypot(dx, dz), a = Math.atan2(dz, dx);
+    let ramp = 0;
+    for(const r of p.ramps){
+      const da = Math.abs(Math.atan2(Math.sin(a-r), Math.cos(a-r)));
+      ramp = Math.max(ramp, 1 - sstep(0.14, 0.28, da));
+    }
+    k = Math.max(k, 1 - sstep(29.5, 33.5 + 15*ramp, d));
+  }
+  return k;
+}
+function H(x, z){
+  const pk = plateauK(x, z);
+  let h = (0.35*Math.sin(x*0.13)*Math.cos(z*0.11) + 0.25*Math.sin((x+z)*0.07)) * (1 - pk);
+  for(const [hx,hz,hh,hr] of HILLS) h += hh*Math.exp(-((x-hx)**2 + (z-hz)**2)/(hr*hr));
+  for(const [hx,hz,hh,hr] of CRAGS) h += hh*Math.exp(-((x-hx)**2 + (z-hz)**2)/(hr*hr));
+  h = Math.max(h, 4*pk);
+  // Fluss entlang der Diagonale x = z
+  const sv = (x - z)/Math.SQRT2 + 5*Math.sin((x + z)*0.045), uv = (x + z)/Math.SQRT2;
+  const rk = 1 - sstep(3.5, 7, Math.abs(sv));
+  if(rk > 0){
+    let ford = 0; for(const f of FORDS) ford = Math.max(ford, 1 - sstep(3, 6, Math.abs(uv - f)));
+    const bed = -2.2 + 1.8*ford;
+    h = h + (bed - h)*rk;
+  }
+  return h;
+}
+function slope(x, z){
+  const e = 0.5;
+  return Math.hypot(H(x+e,z) - H(x-e,z), H(x,z+e) - H(x,z-e)) / (2*e);
+}
+// Laufraster: eine Zelle pro Welteinheit
+const GN = MAP*2, terrainOK = new Uint8Array(GN*GN), blocked = new Uint8Array(GN*GN);
+const cellX = v => Math.min(GN-1, Math.max(0, Math.floor(v + MAP)));
+for(let j=0;j<GN;j++) for(let i=0;i<GN;i++){
+  const x = i - MAP + 0.5, z = j - MAP + 0.5;
+  terrainOK[j*GN+i] = H(x, z) > WATER + 0.2 && slope(x, z) < 0.75 ? 1 : 0;
+}
+// Nur Zellen behalten, die von der Spielerbasis aus erreichbar sind (Felsspitzen sind oben flach)
+{
+  const seen = new Uint8Array(GN*GN), q = [cellX(55)*GN + cellX(-55)];
+  seen[q[0]] = 1;
+  while(q.length){
+    const k = q.pop(), x = k % GN, z = (k/GN)|0;
+    for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx = x+dx, nz = z+dz; if(nx<0||nz<0||nx>=GN||nz>=GN) continue;
+      const nk = nz*GN+nx; if(seen[nk] || !terrainOK[nk]) continue;
+      seen[nk] = 1; q.push(nk);
+    }
+  }
+  for(let k=0;k<terrainOK.length;k++) if(!seen[k]) terrainOK[k] = 0;
+}
+let gridDirty = true;
+function rebuildGrid(){
+  for(let k=0;k<blocked.length;k++) blocked[k] = terrainOK[k] ? 0 : 1;
+  for(const e of ents){
+    if(!e.alive || e.kind === 'unit') continue;
+    const r = e.r + 0.3, i0 = cellX(e.pos.x - r), i1 = cellX(e.pos.x + r), j0 = cellX(e.pos.z - r), j1 = cellX(e.pos.z + r);
+    for(let j=j0;j<=j1;j++) for(let i=i0;i<=i1;i++)
+      if(Math.hypot(i - MAP + 0.5 - e.pos.x, j - MAP + 0.5 - e.pos.z) < r) blocked[j*GN+i] = 1;
+  }
+  gridDirty = false;
+}
+const walkTerrain = (x, z) => terrainOK[cellX(z)*GN + cellX(x)] === 1;
+const free = (x, z) => { if(gridDirty) rebuildGrid(); return blocked[cellX(z)*GN + cellX(x)] === 0; };
+// Nächste freie Stelle (für Ziele in Gebäuden, Wasser oder Felsen)
+function freeNear(x, z, maxR = 14){
+  if(free(x, z)) return {x, z};
+  for(let r=1;r<=maxR;r++){
+    let best = null, bd = 1e9;
+    for(let a=0;a<16;a++){
+      const px = x + Math.cos(a/16*Math.PI*2)*r, pz = z + Math.sin(a/16*Math.PI*2)*r;
+      if(Math.abs(px) < MAP && Math.abs(pz) < MAP && free(px, pz)){
+        const d = Math.hypot(px-x, pz-z); if(d < bd){ bd = d; best = {x:px, z:pz}; } }
+    }
+    if(best) return best;
+  }
+  return {x, z};
+}
+function los(ax, az, bx, bz, skipStart, skipEnd = 0){
+  // Anfang nur überspringen, wenn die Einheit selbst in einer gesperrten Zelle steht
+  if(skipStart === undefined || free(ax, az)) skipStart = free(ax, az) ? 0 : 0.6;
+  const d = Math.hypot(bx-ax, bz-az), n = Math.ceil(d/0.3);
+  for(let k=1;k<n;k++){
+    const t = k/n, dd = t*d;
+    if(dd < skipStart || dd > d - skipEnd) continue;
+    if(!free(ax + (bx-ax)*t, az + (bz-az)*t)) return false;
+  }
+  return true;
+}
+// A* auf dem Raster, 8 Nachbarn, keine abgeschnittenen Ecken
+const gCost = new Float32Array(GN*GN), parent = new Int32Array(GN*GN), stamp = new Uint32Array(GN*GN);
+let searchId = 0;
+function findPath(sx, sz, gx, gz){
+  if(gridDirty) rebuildGrid();
+  const g = freeNear(gx, gz);
+  const s0 = cellX(sz)*GN + cellX(sx), goal = cellX(g.z)*GN + cellX(g.x);
+  if(s0 === goal) return [];
+  searchId++;
+  const heap = [], push = (k, f)=>{ heap.push([f,k]); let i = heap.length-1;
+    while(i > 0){ const p = (i-1)>>1; if(heap[p][0] <= heap[i][0]) break; [heap[p],heap[i]] = [heap[i],heap[p]]; i = p; } };
+  const pop = ()=>{ const top = heap[0], last = heap.pop();
+    if(heap.length){ heap[0] = last; let i = 0; for(;;){ const l = 2*i+1, r = l+1; let m = i;
+      if(l < heap.length && heap[l][0] < heap[m][0]) m = l; if(r < heap.length && heap[r][0] < heap[m][0]) m = r;
+      if(m === i) break; [heap[m],heap[i]] = [heap[i],heap[m]]; i = m; } } return top; };
+  const gxC = goal % GN, gzC = (goal/GN)|0;
+  const hEst = k => { const dx = Math.abs(k%GN - gxC), dz = Math.abs(((k/GN)|0) - gzC); return Math.max(dx,dz) + 0.414*Math.min(dx,dz); };
+  stamp[s0] = searchId; gCost[s0] = 0; parent[s0] = -1; push(s0, hEst(s0));
+  let it = 0, found = false;
+  while(heap.length && it++ < 40000){
+    const [, k] = pop();
+    if(k === goal){ found = true; break; }
+    const cx = k % GN, cz = (k/GN)|0;
+    for(let dz=-1;dz<=1;dz++) for(let dx=-1;dx<=1;dx++){
+      if(!dx && !dz) continue;
+      const nx = cx+dx, nz = cz+dz; if(nx<0||nz<0||nx>=GN||nz>=GN) continue;
+      const nk = nz*GN+nx; if(blocked[nk]) continue;
+      if(dx && dz && (blocked[cz*GN+nx] || blocked[nz*GN+cx])) continue;
+      const ng = gCost[k] + (dx && dz ? 1.414 : 1);
+      if(stamp[nk] === searchId && gCost[nk] <= ng) continue;
+      stamp[nk] = searchId; gCost[nk] = ng; parent[nk] = k; push(nk, ng + hEst(nk));
+    }
+  }
+  if(!found) return null;
+  const pts = [];
+  for(let k=goal; k!==-1 && k!==s0; k=parent[k]) pts.push({x:k%GN - MAP + 0.5, z:((k/GN)|0) - MAP + 0.5});
+  pts.reverse();
+  // glätten: jeweils den am weitesten sichtbaren Wegpunkt nehmen
+  const out = []; let cur = {x:sx, z:sz}, i = 0;
+  while(i < pts.length){
+    let j = pts.length-1;
+    while(j > i && !los(cur.x, cur.z, pts[j].x, pts[j].z, 0.6)) j--;
+    out.push(pts[j]); cur = pts[j]; i = j+1;
+  }
+  return out;
+}
+
 // Boden mit Rauschtextur
 {
   const c = document.createElement('canvas'); c.width = c.height = 512;
@@ -208,12 +364,30 @@ scene.add(sun, sun.target);
     g.fillRect(Math.random()*512, Math.random()*512, s, s);
   }
   const t = new THREE.CanvasTexture(c);
-  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(14,14);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(40,40);
   t.colorSpace = THREE.SRGBColorSpace;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(MAP*2+120, MAP*2+120),
-    new THREE.MeshStandardMaterial({map:t, roughness:1}));
-  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true;
+  // Höhenfeld: Vertexfarben färben Klippen felsig, Ufer schlammig, Plateaus heller
+  const SZ = 300, SEG = 300;
+  const geo = new THREE.PlaneGeometry(SZ, SZ, SEG, SEG).rotateX(-Math.PI/2);
+  const pos = geo.attributes.position, col = new Float32Array(pos.count*3);
+  const grass = new THREE.Color(0xffffff), rock = new THREE.Color(0x8a8278), mud = new THREE.Color(0xb59a6a),
+        high = new THREE.Color(0xe6f0c8), c3 = new THREE.Color();
+  for(let i=0;i<pos.count;i++){
+    const x = pos.getX(i), z = pos.getZ(i), h = H(x, z), sl = slope(x, z);
+    pos.setY(i, h);
+    c3.copy(grass).lerp(high, THREE.MathUtils.clamp(h/4, 0, 1)*0.5);
+    if(h < -0.3) c3.lerp(mud, THREE.MathUtils.clamp((-0.3-h)/0.6, 0, 1));
+    c3.lerp(rock, THREE.MathUtils.smoothstep(sl, 0.45, 0.9));
+    col.set([c3.r, c3.g, c3.b], i*3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({map:t, vertexColors:true, roughness:1}));
+  ground.receiveShadow = true;
   scene.add(ground);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(SZ, SZ).rotateX(-Math.PI/2),
+    new THREE.MeshStandardMaterial({color:0x3f86b8, transparent:true, opacity:.78, roughness:.25, metalness:.1}));
+  water.position.y = WATER; scene.add(water);
 }
 
 // ---------------------------------------------------------------- Hilfen
@@ -246,7 +420,22 @@ const rnd = (a,b)=> a + Math.random()*(b-a);
 const d2 = (a,b)=> Math.hypot(a.x-b.x, a.z-b.z);
 const canPay = c => !c || ((c.wood||0) <= res.wood && (c.gold||0) <= res.gold);
 const pay = c => { res.wood -= c.wood||0; res.gold -= c.gold||0; };
-const costTxt = c => [c.gold ? c.gold+' G' : '', c.wood ? c.wood+' H' : ''].filter(Boolean).join(' · ');
+// Material-Icons: Holzscheit und Goldnugget, als SVG für HTML und als Bild für die Zeichenebene
+const ICON = {
+  wood:`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g stroke='#3b2413' stroke-width='1.3'>
+    <rect x='2' y='10' width='17' height='8' rx='4' fill='#a8703d' transform='rotate(-18 11 14)'/>
+    <ellipse cx='19.2' cy='11.2' rx='2.6' ry='4' fill='#e9c48e' transform='rotate(-18 19.2 11.2)'/>
+    <ellipse cx='19.2' cy='11.2' rx='1' ry='1.7' fill='none' transform='rotate(-18 19.2 11.2)'/></g>
+    <path d='M5 13.5l6-2M6 16.5l7-2.3' stroke='#6e4524' stroke-width='1'/></svg>`,
+  gold:`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><g stroke='#6b4a05' stroke-width='1.3' stroke-linejoin='round'>
+    <path d='M3 17l4-7 6-1 5 4 3 5-8 2z' fill='#f2c230'/><path d='M7 10l3 5 3-6M10 15l-7 2M10 15l8-2' fill='none' stroke='#c08f12'/></g>
+    <path d='M8 11.5l1.5-1' stroke='#fff6c8' stroke-width='1.4' stroke-linecap='round'/></svg>`,
+};
+const icoHtml = k => `<span class="ico">${ICON[k]}</span>`;
+const ICON_IMG = {};
+for(const k in ICON){ const im = new Image(); im.src = 'data:image/svg+xml,' + encodeURIComponent(ICON[k]); ICON_IMG[k] = im; }
+document.querySelectorAll('[data-ico]').forEach(e=> e.innerHTML = ICON[e.dataset.ico]);
+const costTxt = c => [c.gold ? icoHtml('gold')+c.gold : '', c.wood ? icoHtml('wood')+c.wood : ''].filter(Boolean).join(' ');
 function msg(t, col){
   const d = document.createElement('div'); d.textContent = t; if(col) d.style.color = col;
   const m = document.getElementById('msg'); m.prepend(d);
@@ -264,12 +453,21 @@ const ringGeo = new THREE.RingGeometry(0.85, 1, 40).rotateX(-Math.PI/2);
 const ringMat = [new THREE.MeshBasicMaterial({color:0x7fff6b, transparent:true, opacity:.9, depthWrite:false}),
                  new THREE.MeshBasicMaterial({color:0xff5a4a, transparent:true, opacity:.9, depthWrite:false})];
 
+// tiefster Punkt unter der Grundfläche, damit nichts schwebt
+function footY(x, z, r){
+  let m = H(x, z);
+  for(let a=0;a<8;a++) m = Math.min(m, H(x + Math.cos(a*0.785)*r*0.8, z + Math.sin(a*0.785)*r*0.8));
+  return m - 0.05;
+}
 function addEnt(e){
   e.id = nextId++; e.alive = true;
   e.ring = new THREE.Mesh(ringGeo, ringMat[e.team === 1 ? 1 : 0]);
   e.ring.scale.setScalar(e.r + 0.25); e.ring.position.y = 0.06; e.ring.visible = false;
   e.obj.add(e.ring);
   e.obj.position.copy(e.pos);
+  e.obj.position.y = e.kind === 'unit' ? H(e.pos.x, e.pos.z) : footY(e.pos.x, e.pos.z, e.r);
+  e.y0 = e.obj.position.y;
+  if(e.kind !== 'unit') gridDirty = true;
   scene.add(e.obj);
   ents.push(e);
   return e;
@@ -354,13 +552,17 @@ async function buildWorld(){
   }
   for(const [x,z] of ring){
     const g = prop(await load(DECOR[Math.floor(rnd(0,3))]), rnd(14, 24));
-    g.position.set(x,0,z); g.rotation.y = rnd(0,7); scene.add(g);
+    g.position.set(x,H(x,z)-0.5,z); g.rotation.y = rnd(0,7); scene.add(g);
   }
   for(let i=0;i<40;i++){
     const x = rnd(-MAP,MAP), z = rnd(-MAP,MAP);
-    if(d2({x,z},HOME) < 26 || d2({x,z},FOE) < 26) continue;
+    if(d2({x,z},HOME) < 26 || d2({x,z},FOE) < 26 || H(x,z) < WATER+0.3) continue;
     const g = prop(await load(DECOR[3+Math.floor(rnd(0,4))]), rnd(1.5,3.5));
-    g.position.set(x,0,z); g.rotation.y = rnd(0,7); scene.add(g);
+    g.position.set(x,H(x,z)-0.1,z); g.rotation.y = rnd(0,7); scene.add(g);
+  }
+  for(const [x,z,,r] of CRAGS){
+    const g = prop(await load(DECOR[2]), r*2.2);
+    g.position.set(x, H(x,z) - 3.5, z); g.rotation.y = rnd(0,7); scene.add(g);
   }
 
   // Wälder: Streifen hinter den Basen, verstreute Gruppen in der Mitte
@@ -368,6 +570,7 @@ async function buildWorld(){
     for(let i=0;i<n;i++){
       const x = cx + rnd(-spread, spread), z = cz + rnd(-spread, spread);
       if(ents.some(e=> e.kind !== 'unit' && d2(e.pos,{x,z}) < e.r + 3.2)) continue;
+      if(!walkTerrain(x, z) || slope(x, z) > 0.35 || H(x, z) < WATER + 0.5) continue;
       await spawnResource('tree', x, z);
     }
   };
@@ -422,7 +625,8 @@ function updateCamera(dt){
   dx = THREE.MathUtils.clamp(dx, -1, 1); dz = THREE.MathUtils.clamp(dz, -1, 1);
   camTarget.x = THREE.MathUtils.clamp(camTarget.x + dx*sp, -MAP, MAP);
   camTarget.z = THREE.MathUtils.clamp(camTarget.z + dz*sp, -MAP, MAP);
-  camera.position.set(camTarget.x, zoom, camTarget.z + zoom*0.72);
+  camTarget.y += (Math.max(0, H(camTarget.x, camTarget.z)) - camTarget.y) * Math.min(1, dt*4);
+  camera.position.set(camTarget.x, camTarget.y + zoom, camTarget.z + zoom*0.72);
   camera.lookAt(camTarget);
   sun.position.set(camTarget.x + 30, 70, camTarget.z + 20);
   sun.target.position.copy(camTarget);
@@ -440,12 +644,24 @@ addEventListener('resize', resize);
 const ray = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
 function groundAt(x, y){
   ray.setFromCamera(new THREE.Vector2(x/innerWidth*2-1, -(y/innerHeight)*2+1), camera);
-  const p = new THREE.Vector3();
-  return ray.ray.intersectPlane(plane, p) ? p : null;
+  const o = ray.ray.origin, d = ray.ray.direction;
+  if(d.y >= 0) return null;
+  const at = t => [o.x + d.x*t, o.y + d.y*t, o.z + d.z*t];
+  const under = t => { const [px,py,pz] = at(t); return py <= Math.max(H(px,pz), WATER); };
+  let t = Math.max(0, (9 - o.y)/d.y);
+  for(let n=0; n<1200; n++, t+=0.5){
+    if(under(t)){
+      let a = t - 0.5, b = t;
+      for(let k=0;k<10;k++){ const m = (a+b)/2; if(under(m)) b = m; else a = m; }
+      const [px,,pz] = at(b);
+      return new THREE.Vector3(px, 0, pz);
+    }
+  }
+  return null;
 }
 const tmpV = new THREE.Vector3();
 function screenOf(p, h=0.9){
-  tmpV.set(p.x, h, p.z).project(camera);
+  tmpV.set(p.x, h + H(p.x, p.z), p.z).project(camera);
   return {x:(tmpV.x+1)/2*innerWidth, y:(1-tmpV.y)/2*innerHeight, ok:tmpV.z < 1};
 }
 function pick(x, y){
@@ -573,7 +789,8 @@ function stop(u){ u.state = 'idle'; u.target = u.goal = u.amove = u.gatherNode =
 function formation(center, n, i){
   const cols = Math.ceil(Math.sqrt(n)), sp = 1.4;
   const cx = (i % cols) - (cols-1)/2, cz = Math.floor(i/cols) - (Math.ceil(n/cols)-1)/2;
-  return new THREE.Vector3(center.x + cx*sp, 0, center.z + cz*sp);
+  const f = freeNear(center.x + cx*sp, center.z + cz*sp);
+  return new THREE.Vector3(f.x, 0, f.z);
 }
 function order(t, g){
   const units = selected.filter(s=>s.kind==='unit' && s.team===0);
@@ -609,7 +826,7 @@ function attackMove(g){
 const flags = [];
 function flag(p, col){
   const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({color:col, transparent:true, depthWrite:false}));
-  m.position.set(p.x, 0.08, p.z); scene.add(m); flags.push({m, t:0});
+  m.position.set(p.x, Math.max(H(p.x, p.z), WATER) + 0.08, p.z); scene.add(m); flags.push({m, t:0});
 }
 
 // ---------------------------------------------------------------- Hover
@@ -656,7 +873,7 @@ function updateHover(){
   cv.style.cursor = h ? h.cur : '';
   if(t && h && h.col !== null){
     hoverRing.visible = true;
-    hoverRing.position.x = t.pos.x; hoverRing.position.z = t.pos.z;
+    hoverRing.position.set(t.pos.x, t.obj.position.y + 0.1, t.pos.z);
     hoverRing.scale.setScalar((t.r + 0.35) * (1 + Math.sin(performance.now()/150)*0.06));
     hoverRing.material.color.setHex(h.col);
   } else hoverRing.visible = false;
@@ -680,19 +897,27 @@ function cancelPlace(){ if(ghost) scene.remove(ghost); ghost = null; placing = n
 function placeOk(p){
   const r = BUILD[placing].size*0.46;
   if(Math.abs(p.x) > MAP-r || Math.abs(p.z) > MAP-r) return false;
+  let lo = 1e9, hi = -1e9;
+  for(let a=0;a<12;a++) for(const k of [0.4, 0.95]){
+    const x = p.x + Math.cos(a*0.5236)*r*k, z = p.z + Math.sin(a*0.5236)*r*k;
+    if(!walkTerrain(x, z)) return false;
+    const h = H(x, z); lo = Math.min(lo, h); hi = Math.max(hi, h);
+  }
+  if(hi - lo > 1.1) return false;
   return !ents.some(e=> e.alive && (e.kind !== 'unit' || e.team === 1) && d2(e.pos, p) < e.r + r + 0.6);
 }
 function updateGhost(){
   if(!ghost) return;
   const g = groundAt(mouse.x, mouse.y); if(!g) return;
   ghost.position.set(Math.round(g.x), 0, Math.round(g.z));
+  ghost.position.y = footY(ghost.position.x, ghost.position.z, BUILD[placing].size*0.46);
   const ok = placeOk(ghost.position);
   ghost.traverse(m=>{ if(m.isMesh) m.material.color.setHex(ok ? 0xaaffaa : 0xff7777); });
 }
 async function tryPlace(){
   if(!ghost) return;
-  const p = ghost.position.clone(), type = placing, cost = BUILD[type].cost;
-  if(!placeOk(p)){ msg('Hier kann nicht gebaut werden', '#e2574c'); return; }
+  const p = ghost.position.clone().setY(0), type = placing, cost = BUILD[type].cost;
+  if(!placeOk(p)){ msg('Hier kann nicht gebaut werden – zu steil, Wasser oder belegt', '#e2574c'); return; }
   if(!canPay(cost)){ msg('Nicht genug Rohstoffe', '#e2574c'); cancelPlace(); return; }
   pay(cost);
   const builders = selected.filter(s=>s.type==='worker');
@@ -760,7 +985,7 @@ function kill(e){
 }
 function fire(u, t){
   const d = UNIT[u.type];
-  const from = u.pos.clone().setY(1.3), to = t.pos.clone().setY(t.kind === 'unit' ? 1 : 2);
+  const from = u.pos.clone().setY(u.obj.position.y + 1.3), to = t.pos.clone().setY(t.obj.position.y + (t.kind === 'unit' ? 1 : 2));
   let m;
   if(d.shot === 'arrow'){
     m = new THREE.Group(); const a = arrowProto.clone(true); a.scale.setScalar(1.4); m.add(a);
@@ -772,11 +997,13 @@ function fire(u, t){
   }
   scene.add(m);
   const dist = from.distanceTo(to);
-  shots.push({m, from, to, t:0, dur:dist/(d.shot==='arrow'?26:14), target:t, dmg:d.dmg, splash:d.splash, src:u, arc:d.shot==='arrow'?dist*0.12:0.4});
+  // Höhenvorteil: wer von oben schießt, trifft härter
+  const dmg = d.dmg * (u.obj.position.y > t.obj.position.y + 1.2 ? 1.3 : 1);
+  shots.push({m, from, to, t:0, dur:dist/(d.shot==='arrow'?26:14), target:t, dmg, splash:d.splash, src:u, arc:d.shot==='arrow'?dist*0.12:0.4});
 }
 function towerFire(b, t){
   const s = BUILD[b.type].shoot;
-  const from = b.pos.clone().setY(b.obj.userData.h*0.8), to = t.pos.clone().setY(1);
+  const from = b.pos.clone().setY(b.obj.position.y + b.obj.userData.h*0.8), to = t.pos.clone().setY(t.obj.position.y + 1);
   const m = new THREE.Group(); const a = arrowProto.clone(true); a.scale.setScalar(1.4); a.rotation.x = Math.PI/2; m.add(a);
   scene.add(m);
   shots.push({m, from, to, t:0, dur:from.distanceTo(to)/28, target:t, dmg:s.dmg, src:b, arc:1});
@@ -784,7 +1011,7 @@ function towerFire(b, t){
 function updateShots(dt){
   for(let i=shots.length-1;i>=0;i--){
     const s = shots[i]; s.t += dt/s.dur;
-    if(s.target.alive) s.to.set(s.target.pos.x, s.to.y, s.target.pos.z);
+    if(s.target.alive) s.to.set(s.target.pos.x, s.target.obj.position.y + 1, s.target.pos.z);
     const k = Math.min(s.t, 1);
     const p = s.from.clone().lerp(s.to, k); p.y += Math.sin(k*Math.PI)*s.arc;
     const prev = s.m.position.clone();
@@ -825,9 +1052,38 @@ function nearestNode(p, type, max=30){
 
 // ---------------------------------------------------------------- Einheiten-KI
 function moveTo(u, target, stopDist, dt){
-  const dx = target.x - u.pos.x, dz = target.z - u.pos.z, d = Math.hypot(dx, dz);
-  if(d <= stopDist) return true;
-  const sp = UNIT[u.type].speed * dt, k = Math.min(sp, d - stopDist) / d;
+  let dx = target.x - u.pos.x, dz = target.z - u.pos.z, d = Math.hypot(dx, dz);
+  if(d <= stopDist){ u.path = null; return true; }
+  // Weg planen: direkt, wenn frei; sonst A* – neu, wenn das Ziel wandert
+  u.pathT = (u.pathT || 0) - dt;
+  const moved = !u.pathGoal || Math.hypot(u.pathGoal.x - target.x, u.pathGoal.z - target.z) > 1.5;
+  if(moved) u.unreach = false;
+  else if(u.unreach) return true;
+  // Notbremse: kommt die Einheit nicht voran, erst A* erzwingen, dann aufgeben
+  if(moved || u.bestD === undefined){ u.bestD = d; u.stuckT = 0; u.forced = false; }
+  else if(d < u.bestD - 0.3){ u.bestD = d; u.stuckT = 0; }
+  else if(!u.working && (u.stuckT += dt) > 1.5){
+    if(!u.forced){ u.forced = true; u.stuckT = 0; u.path = findPath(u.pos.x, u.pos.z, target.x, target.z) || null; u.pathT = 3; }
+    else { u.stuckT = 0; u.bestD = undefined; u.unreach = true; u.pathGoal = {x:target.x, z:target.z}; return true; }
+  }
+  if(moved || u.pathT <= 0){
+    u.pathT = 0.5 + Math.random()*0.2;
+    if(los(u.pos.x, u.pos.z, target.x, target.z, 0.6, stopDist + 1.2)) u.path = null;
+    else if(moved || !u.path){
+      u.path = findPath(u.pos.x, u.pos.z, target.x, target.z);
+      if(u.path === null){ u.pathGoal = {x:target.x, z:target.z}; u.unreach = true; return true; }   // unerreichbar: stehen bleiben
+    }
+    u.pathGoal = {x:target.x, z:target.z};
+  }
+  let aim = target, lim = d - stopDist;
+  if(u.path && u.path.length){
+    while(u.path.length > 1 && Math.hypot(u.path[0].x - u.pos.x, u.path[0].z - u.pos.z) < 0.6) u.path.shift();
+    const w = u.path[0];
+    if(Math.hypot(w.x - u.pos.x, w.z - u.pos.z) < 0.6) u.path.shift();
+    else { aim = w; lim = 1e9; }
+  }
+  dx = aim.x - u.pos.x; dz = aim.z - u.pos.z; d = Math.hypot(dx, dz) || 1;
+  const sp = UNIT[u.type].speed * dt, k = Math.min(sp, lim) / d;
   u.pos.x += dx*k; u.pos.z += dz*k; u.moving = true;
   u.facing = Math.atan2(dx, dz);
   play(u, u.carry ? 'Walking_A' : 'Running_A', 0.2, u.carry ? 1.1 : 0.9);
@@ -839,6 +1095,8 @@ function slotPos(n, i){
   return {x:n.pos.x + Math.cos(a)*(n.r + 0.55), z:n.pos.z + Math.sin(a)*(n.r + 0.55)};
 }
 function slotTaken(n, i, me){
+  const p = slotPos(n, i);
+  if(!walkTerrain(p.x, p.z)) return true;
   return ents.some(o=> o !== me && o.alive && o.kind === 'unit' && o.state === 'gather'
     && o.slotNode === n && o.slot === i);
 }
@@ -864,6 +1122,7 @@ function updateUnit(u, dt){
   u.cd -= dt;
   const busy = u.anim && ONCE.test(u.anim) && u.actions[u.anim]?.isRunning();
   u.working = false; u.moving = false;
+  u.prevX = u.pos.x; u.prevZ = u.pos.z;
 
   // Automatisch angreifen, was in der Nähe ist
   if(u.state === 'idle' || u.state === 'amove'){
@@ -940,8 +1199,11 @@ function updateUnit(u, dt){
       u.atSlot = false;
       const b = (u.dropAt && u.dropAt.alive) ? u.dropAt : dropSite(u);
       if(!b){ u.state = 'idle'; break; }
-      if(moveTo(u, b.pos, b.r + 0.7, dt)){
-        if(u.team === 0){ res[u.carryKind] += u.carry; uiDirty = true; }
+      if(moveTo(u, b.pos, b.r + 0.7, dt) && d2(u.pos, b.pos) < b.r + 2.5){
+        if(u.team === 0){
+          res[u.carryKind] += u.carry; uiDirty = true;
+          pops.push({x:b.pos.x + rnd(-1,1), z:b.pos.z, h:b.obj.userData.h + 0.6, v:u.carry, t0:time, icon:u.carryKind});
+        }
         u.carry = 0; u.dropAt = null;
         u.state = 'gather';
       }
@@ -969,6 +1231,7 @@ function updateUnit(u, dt){
     }
   }
   u.obj.position.copy(u.pos);
+  u.obj.position.y = H(u.pos.x, u.pos.z);
   // weich drehen
   const cur = u.obj.rotation.y, diff = Math.atan2(Math.sin(u.facing-cur), Math.cos(u.facing-cur));
   u.obj.rotation.y = cur + diff*Math.min(1, dt*12);
@@ -1010,8 +1273,14 @@ function separate(){
         a.pos.x = s.pos.x + nx*m - nz*side; a.pos.z = s.pos.z + nz*m + nx*side;
       }
     }
-    a.pos.x = THREE.MathUtils.clamp(a.pos.x, -MAP, MAP);
-    a.pos.z = THREE.MathUtils.clamp(a.pos.z, -MAP, MAP);
+    a.pos.x = THREE.MathUtils.clamp(a.pos.x, -MAP+0.5, MAP-0.5);
+    a.pos.z = THREE.MathUtils.clamp(a.pos.z, -MAP+0.5, MAP-0.5);
+    if(!walkTerrain(a.pos.x, a.pos.z) && a.prevX !== undefined && walkTerrain(a.prevX, a.prevZ)){
+      // an der Kante entlanggleiten statt stehenzubleiben
+      if(walkTerrain(a.pos.x, a.prevZ)) a.pos.z = a.prevZ;
+      else if(walkTerrain(a.prevX, a.pos.z)) a.pos.x = a.prevX;
+      else { a.pos.x = a.prevX; a.pos.z = a.prevZ; }
+    }
   }
 }
 
@@ -1027,7 +1296,8 @@ function updateBuilding(b, dt){
       if(b.qt >= (ud.time || 16)){
         b.qt = 0; b.queue.shift(); uiDirty = true;
         const a = Math.atan2(-b.pos.z, -b.pos.x);
-        const out = new THREE.Vector3(b.pos.x + Math.cos(a)*(b.r+1.2), 0, b.pos.z + Math.sin(a)*(b.r+1.2));
+        const o = freeNear(b.pos.x + Math.cos(a)*(b.r+1.2), b.pos.z + Math.sin(a)*(b.r+1.2));
+        const out = new THREE.Vector3(o.x, 0, o.z);
         spawnUnit(type, b.team, out.x, out.z).then(u=>{
           if(b.team === 1){ u.state = 'amove'; u.amove = foe.gather.clone().add(new THREE.Vector3(rnd(-4,4),0,rnd(-4,4))); return; }
           const rp = b.rally;
@@ -1121,7 +1391,7 @@ function renderUI(){
     infoEl.innerHTML = `<h3>${selected.length} Einheiten</h3><div class="icons">${Object.entries(c).map(([k,v])=>`<span>${v}× ${k}</span>`).join('')}</div>`;
   } else if(q.kind === 'unit'){
     const d = UNIT[q.type];
-    infoEl.innerHTML = `<h3>${d.name}</h3><div class="sub">❤ ${Math.ceil(q.hp)}/${q.maxHp} · ⚔ ${d.dmg} · Reichweite ${d.range}${q.carry ? ` · trägt ${q.carry} ${q.carryKind==='wood'?'Holz':'Gold'}` : ''}</div>`;
+    infoEl.innerHTML = `<h3>${d.name}</h3><div class="sub">❤ ${Math.ceil(q.hp)}/${q.maxHp} · ⚔ ${d.dmg} · Reichweite ${d.range}${q.carry ? ` · trägt ${q.carry} ${icoHtml(q.carryKind)}` : ''}</div>`;
   } else if(q.kind === 'building'){
     const d = BUILD[q.type];
     infoEl.innerHTML = `<h3>${d.name}${q.team===1?' (Feind)':''}</h3><div class="sub">❤ ${Math.ceil(q.hp)}/${q.maxHp}${!q.done ? ` · im Bau ${Math.floor(q.progress*100)} %` : ''}${d.pop ? ` · +${d.pop} Bevölkerung` : ''}${d.drop ? ' · Rohstofflager' : ''}</div>`;
@@ -1129,7 +1399,7 @@ function renderUI(){
       infoEl.innerHTML += `<div id="queue"><div class="bar"><i style="width:${100*q.qt/UNIT[q.queue[0]].time}%"></i></div>${q.queue.map(t=>`<span>${UNIT[t].name}</span>`).join('')}</div>`;
     }
   } else {
-    infoEl.innerHTML = `<h3>${q.type === 'tree' ? 'Wald' : 'Goldader'}</h3><div class="sub">Noch ${q.amount} ${q.type==='tree'?'Holz':'Gold'}</div>`;
+    infoEl.innerHTML = `<h3>${q.type === 'tree' ? 'Wald' : 'Goldader'}</h3><div class="sub">Noch ${q.amount} ${icoHtml(q.type==='tree'?'wood':'gold')}</div>`;
   }
   // Befehle
   if(selected.some(s=>s.type==='worker' && s.team===0)){
@@ -1169,6 +1439,19 @@ function drawOverlay(){
   octx.font = 'bold 13px Trebuchet MS, sans-serif'; octx.textAlign = 'center';
   for(let i=pops.length-1;i>=0;i--){
     const p = pops[i], a = time - p.t0;
+    if(p.icon){
+      // Abgeliefertes: Icon + Menge steigen über dem Lager auf
+      if(a > 1.8){ pops.splice(i,1); continue; }
+      const s = screenOf(p, p.h + a*1.6); if(!s.ok) continue;
+      octx.globalAlpha = Math.min(1, (1.8 - a)/0.8);
+      octx.font = 'bold 15px Trebuchet MS, sans-serif'; octx.textAlign = 'left';
+      const txt = '+' + p.v, w = octx.measureText(txt).width + 22;
+      octx.drawImage(ICON_IMG[p.icon], s.x - w/2, s.y - 14, 19, 19);
+      octx.fillStyle = '#000'; octx.fillText(txt, s.x - w/2 + 23, s.y + 1);
+      octx.fillStyle = p.icon === 'gold' ? '#ffd84a' : '#f0d2a0'; octx.fillText(txt, s.x - w/2 + 22, s.y);
+      octx.font = 'bold 13px Trebuchet MS, sans-serif'; octx.textAlign = 'center';
+      continue;
+    }
     if(a > 1.2){ pops.splice(i,1); continue; }
     const s = screenOf(p, p.h + a*1.2); if(!s.ok) continue;
     octx.globalAlpha = 1 - a/1.2;
@@ -1178,9 +1461,20 @@ function drawOverlay(){
   octx.globalAlpha = 1;
 }
 const mini = document.getElementById('mini'), mctx = mini.getContext('2d');
+const miniBg = document.createElement('canvas'); miniBg.width = miniBg.height = GN;
+{
+  const g = miniBg.getContext('2d'), img = g.createImageData(GN, GN);
+  for(let j=0;j<GN;j++) for(let i=0;i<GN;i++){
+    const x = i - MAP + 0.5, z = j - MAP + 0.5, h = H(x, z), k = (j*GN+i)*4;
+    let c = h < WATER ? [63,134,184] : !terrainOK[j*GN+i] ? [120,112,100]
+      : [70 + h*14, 105 + h*14, 45 + h*8];
+    img.data.set([...c.map(v=>Math.max(0, Math.min(255, v))), 255], k);
+  }
+  g.putImageData(img, 0, 0);
+}
 function drawMini(){
   const S = mini.width, k = S/(MAP*2), P = p => [(p.x+MAP)*k, (p.z+MAP)*k];
-  mctx.fillStyle = '#4c6b2c'; mctx.fillRect(0,0,S,S);
+  mctx.drawImage(miniBg, 0, 0, S, S);
   for(const e of ents){
     if(!e.alive) continue;
     const [x,y] = P(e.pos);
@@ -1241,9 +1535,10 @@ function step(dt){
     const e = ents[i];
     if(e.alive || e.deadT === undefined){ if(!e.alive && e.kind === 'resource') ents.splice(i,1); continue; }
     const t = time - e.deadT;
-    if(e.kind === 'unit'){ e.mixer.update(dt); if(t > 2.5) e.obj.position.y = -(t-2.5)*0.8; }
-    else e.obj.position.y = -t*1.2;
-    if(t > 5 || (gameOver && t > 1.5 && e.kind === 'building' && e.obj.position.y < -e.obj.userData.h)){ scene.remove(e.obj); ents.splice(i,1); }
+    if(e.kind === 'unit'){ e.mixer.update(dt); e.obj.position.y = H(e.pos.x, e.pos.z) - Math.max(0, t-2.5)*0.8; }
+    else e.obj.position.y = e.y0 - t*1.2;
+    if(e.kind === 'building' && !e.gridFreed){ e.gridFreed = true; gridDirty = true; }
+    if(t > 5 || (gameOver && t > 1.5 && e.kind === 'building' && e.obj.position.y < e.y0 - e.obj.userData.h)){ scene.remove(e.obj); ents.splice(i,1); }
   }
   for(let i=flags.length-1;i>=0;i--){
     const f = flags[i]; f.t += dt; f.m.scale.setScalar(0.4 + f.t*1.4); f.m.material.opacity = 1 - f.t/0.6;
@@ -1260,7 +1555,7 @@ buildWorld().then(()=>{
   console.error(err);
   document.getElementById('ltext').textContent = 'Fehler beim Laden: ' + err.message;
 });
-window.__battle = {step, select, order, attackMove, produce, startPlace, tryPlace, ents, res, get selected(){ return selected; }, foe, camTarget};
+window.__battle = {setZoom:z=>zoom=z, H, findPath, step, select, order, attackMove, produce, startPlace, tryPlace, ents, res, get selected(){ return selected; }, foe, camTarget};
 </script>
 </body>
 </html>
