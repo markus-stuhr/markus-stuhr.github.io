@@ -43,6 +43,8 @@ canvas#ov{position:fixed;inset:0;pointer-events:none}
 #cmds button:disabled{opacity:.4;cursor:default}
 #cmds button small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
 #cmds button kbd{float:right;font-size:10px;color:var(--muted)}
+#tip{position:fixed;pointer-events:none;padding:2px 7px;border-radius:4px;background:#000b;color:#fff;
+  font-size:12px;font-weight:bold;white-space:nowrap;display:none;z-index:5}
 #box{position:fixed;border:1px solid #9f9;background:#9f92;display:none;pointer-events:none}
 #load,#end{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:#1a1712;gap:12px;z-index:10;text-align:center;padding:16px}
@@ -75,6 +77,7 @@ button.big{background:var(--gold);color:#221;border:0;border-radius:6px;padding:
 <div id="help">Rahmen ziehen: auswählen · Klick: hinlaufen/angreifen/sammeln · Esc: abwählen<br>
 WASD/Pfeile/Rand: Kamera · Mausrad: Zoom · A+Klick: Angriffsmarsch · S: Stopp · H: Burg</div>
 <div id="box"></div>
+<div id="tip"></div>
 <div id="bottom">
   <canvas id="mini" width="260" height="260"></canvas>
   <div id="info"></div>
@@ -462,7 +465,7 @@ let dragging = false, dragStart = null, aMode = false, placing = null, ghost = n
 const boxEl = document.getElementById('box');
 cv.addEventListener('contextmenu', e=>e.preventDefault());
 addEventListener('mousemove', e=>{
-  mouse.x = e.clientX; mouse.y = e.clientY; mouse.in = true;
+  mouse.x = e.clientX; mouse.y = e.clientY; mouse.in = true; mouse.onMap = e.target === cv;
   if(dragStart && !dragging && Math.hypot(e.clientX-dragStart.x, e.clientY-dragStart.y) > 6) dragging = true;
   if(dragging){
     const x = Math.min(dragStart.x, e.clientX), y = Math.min(dragStart.y, e.clientY);
@@ -607,6 +610,61 @@ const flags = [];
 function flag(p, col){
   const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({color:col, transparent:true, depthWrite:false}));
   m.position.set(p.x, 0.08, p.z); scene.add(m); flags.push({m, t:0});
+}
+
+// ---------------------------------------------------------------- Hover
+// Zeigt vor dem Klick, was passieren wird: Cursor, Ring um das Ziel, kurzer Text
+const cursorOf = (emoji) => `url("data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><text x='4' y='24' font-size='22'>${emoji}</text></svg>`)}") 6 6, pointer`;
+const HOVER = {
+  attack:{cur:cursorOf('⚔️'), col:0xff4a3a},
+  wood:{cur:cursorOf('🪓'), col:0xe8c14a},
+  gold:{cur:cursorOf('⛏️'), col:0xe8c14a},
+  build:{cur:cursorOf('🔨'), col:0x7fd8ff},
+  select:{cur:'pointer', col:0xffffff},
+  move:{cur:'crosshair', col:null},
+};
+const hoverRing = new THREE.Mesh(new THREE.RingGeometry(0.8, 1, 48).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({transparent:true, depthWrite:false}));
+hoverRing.position.y = 0.09; hoverRing.visible = false; scene.add(hoverRing);
+const tipEl = document.getElementById('tip');
+function hoverAction(t){
+  const units = selected.filter(s=>s.kind==='unit' && s.team===0);
+  const workers = units.some(u=>u.type==='worker');
+  if(aMode) return t && t.team === 1 ? ['attack', 'Angreifen: '+nameOf(t)] : ['attack', 'Angriffsmarsch'];
+  if(!units.length) return t ? ['select', nameOf(t) + (t.kind==='resource' ? ` (${t.amount})` : '')] : null;
+  if(!t) return ['move', null];
+  if(t.team === 1) return ['attack', 'Angreifen: '+nameOf(t)];
+  if(t.kind === 'resource'){
+    if(!workers) return ['move', 'Hinlaufen'];
+    return t.type === 'tree' ? ['wood', `Holz fällen (${t.amount})`] : ['gold', `Gold abbauen (${t.amount})`];
+  }
+  if(t.kind === 'building' && !t.done && workers) return ['build', `Weiterbauen (${Math.floor(t.progress*100)} %)`];
+  return ['select', nameOf(t)];
+}
+function nameOf(t){
+  return t.kind === 'unit' ? UNIT[t.type].name : t.kind === 'building' ? BUILD[t.type].name
+    : t.type === 'tree' ? 'Wald' : 'Goldader';
+}
+function updateHover(){
+  let act = null, t = null;
+  if(mouse.in && mouse.onMap && !dragging && !placing && !gameOver){
+    t = pick(mouse.x, mouse.y);
+    act = hoverAction(t);
+  }
+  const h = act && HOVER[act[0]];
+  cv.style.cursor = h ? h.cur : '';
+  if(t && h && h.col !== null){
+    hoverRing.visible = true;
+    hoverRing.position.x = t.pos.x; hoverRing.position.z = t.pos.z;
+    hoverRing.scale.setScalar((t.r + 0.35) * (1 + Math.sin(performance.now()/150)*0.06));
+    hoverRing.material.color.setHex(h.col);
+  } else hoverRing.visible = false;
+  if(act && act[1]){
+    tipEl.textContent = act[1]; tipEl.style.display = 'block';
+    tipEl.style.left = (mouse.x + 18) + 'px'; tipEl.style.top = (mouse.y + 14) + 'px';
+    tipEl.style.color = h.col ? '#' + h.col.toString(16).padStart(6,'0') : '#fff';
+  } else tipEl.style.display = 'none';
 }
 
 // ---------------------------------------------------------------- Bauen
@@ -1115,6 +1173,7 @@ function loop(){
   const dt = Math.min(clock.getDelta(), 0.05);
   updateCamera(dt);
   updateGhost();
+  updateHover();
   step(dt);
   renderer.render(scene, camera);
   drawOverlay();
