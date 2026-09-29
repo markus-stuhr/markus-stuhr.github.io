@@ -720,8 +720,9 @@ async function buildWorld(){
     if(gl.animations[0]) mixer.clipAction(gl.animations[0]).play();
     mixer.update(rnd(0, 2));
     scene.add(g);
-    fishes.push({g, mixer, u:rnd(-80, 80), lane:rnd(-1.5, 1.5), dir:Math.random() < .5 ? -1 : 1,
-      sp:rnd(1.2, 2.6), jumpIn:rnd(3, 14), jt:-1});
+    const start = riverXZ(rnd(-80, 80), rnd(-1, 1));
+    fishes.push({g, mixer, x:start.x, z:start.z, head:rnd(0, 7), ph:rnd(0, 7), t:0,
+      sp:rnd(1.2, 2.4), jumpIn:rnd(3, 14), jt:-1});
   }
   for(const {x, z, r} of CRAGS){
     const g = prop(await load(DECOR[2]), r*2.2);
@@ -1432,24 +1433,34 @@ async function depleteNode(n){
 const falling = [], fading = [], fishes = [];
 const riverXZ = (u, lane) => { const v = RIVER_OFF(u) + lane; return {x:(u + v)/Math.SQRT2, z:(u - v)/Math.SQRT2}; };
 function updateFish(dt){
+  // Jeder Fisch hat einen Kurs: sanftes Schlängeln, vor dem Ufer vorausschauend zur Flussmitte abdrehen
+  const deep = (x, z) => Math.abs(x) < MAP - 6 && Math.abs(z) < MAP - 6 && HG(x, z) < WATER - 0.6;
   for(const f of fishes){
     f.mixer.update(dt*1.5);
-    const nu = f.u + f.dir*f.sp*dt;
-    const p = riverXZ(nu, f.lane);
-    if(Math.abs(p.x) > MAP - 6 || Math.abs(p.z) > MAP - 6 || HG(p.x, p.z) > WATER - 0.35){ f.dir *= -1; f.lane *= 0.5; continue; }
-    f.lane += (Math.random() - 0.5)*dt*0.8; f.lane = Math.max(-2, Math.min(2, f.lane));
-    const prev = riverXZ(f.u, f.lane);
-    f.u = nu;
+    f.t += dt;
+    let turn = (Math.sin(f.t*0.6 + f.ph)*0.5 + Math.sin(f.t*1.7 + f.ph*3)*0.25);   // Schlängeln
+    const ax = f.x + Math.sin(f.head)*3, az = f.z + Math.cos(f.head)*3;
+    if(!deep(ax, az)){
+      // Ziel: ein Punkt auf der Flussmitte ein Stück in Schwimmrichtung
+      const {u} = riverCoords(f.x, f.z);
+      const along = Math.sin(f.head)*(1/Math.SQRT2) + Math.cos(f.head)*(1/Math.SQRT2) >= 0 ? 1 : -1;
+      const c = riverXZ(u + along*6, 0);
+      const want = Math.atan2(c.x - f.x, c.z - f.z);
+      turn = Math.atan2(Math.sin(want - f.head), Math.cos(want - f.head)) * 2.5;
+    }
+    f.head += Math.max(-2.2, Math.min(2.2, turn)) * dt;
+    const nx = f.x + Math.sin(f.head)*f.sp*dt, nz = f.z + Math.cos(f.head)*f.sp*dt;
+    if(deep(nx, nz)){ f.x = nx; f.z = nz; } else f.head += 2.2*dt;   // notfalls auf der Stelle wenden
     let y = WATER - 0.75;                 // ganz unter der Oberfläche (Modell steht auf y = 0)
     f.jumpIn -= dt;
-    if(f.jt < 0 && f.jumpIn <= 0){ f.jt = 0; flag(p, 0xffffff); }
+    if(f.jt < 0 && f.jumpIn <= 0){ f.jt = 0; flag({x:f.x, z:f.z}, 0xffffff); }
     if(f.jt >= 0){
       f.jt += dt/0.9;
       y = WATER - 0.75 + Math.sin(Math.min(1, f.jt)*Math.PI)*2.0;
-      if(f.jt >= 1){ f.jt = -1; f.jumpIn = rnd(5, 16); flag(p, 0xffffff); }
+      if(f.jt >= 1){ f.jt = -1; f.jumpIn = rnd(5, 16); flag({x:f.x, z:f.z}, 0xffffff); }
     }
-    f.g.position.set(p.x, y, p.z);
-    f.g.rotation.y = Math.atan2(p.x - prev.x, p.z - prev.z);
+    f.g.position.set(f.x, y, f.z);
+    f.g.rotation.y = f.head;
     // beim Sprung Nase hoch, dann runter
     f.g.rotation.x = f.jt >= 0 ? -Math.cos(f.jt*Math.PI)*0.8 : 0;
   }
