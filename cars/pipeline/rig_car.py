@@ -667,7 +667,9 @@ if os.environ.get('RAD') == 'zyl':
         # Nachschneiden: Flächen mit Rad-Material (Reifen, Felge), die knapp außerhalb geblieben sind
         # (z. B. Laufflächenmantel mit größerem Radius), erweitern den Zylinder -> zweiter Schnitt
         radmats0 = {m for m in gesamt if m not in karosse and m and not STATISCH.search(m.name)}
-        r_start = r
+        # Wachstumsgrenze nach dem größeren Startradius derselben Achse (ein schlecht erkanntes Rad,
+        # z. B. nur Nabe, bekommt die Grenze seines Partners)
+        r_start = max(r, max(z[1] for k2, z in zyl.items() if k2[1] == key[1]))
         for runde in range(3):
             rmax, xa, xb = r * 1.015, x0, x1
             dl = []; wl = []
