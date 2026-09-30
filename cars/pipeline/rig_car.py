@@ -410,7 +410,8 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
 # Reifenpunkten; dann gehört jede FLÄCHE im Zylinder zum Rad, egal zu welchem Teil sie gehört.
 # Bremssättel (Name) bleiben stehen. Am Ende Prüfwerte: Reste (Karosserieflächen im Reifen) und Unrundheit (mm).
 import os, bmesh
-STATISCH = re.compile(r'cal+ip|claip|brake|bremse|sattel', re.I)
+# Bremssättel stehen still; Bremsscheiben (disc/disk/rotor/scheibe) drehen mit, auch wenn sie „brake…“ heißen
+STATISCH = re.compile(r'cal+ip|claip|sattel|(brake|bremse)(?!.*(dis[ck]|rotor|scheibe))', re.I)
 
 def verts_np(o, key=None):
     a = np.empty(len(o.data.vertices) * 3); o.data.vertices.foreach_get('co', a)
@@ -555,7 +556,9 @@ def halbe_teile(key, teile, cz_, r, x0, x1):
             # Bremssattel-artig: nicht rundherum, beginnt erst ab 35 % des Radius (auch wenn nicht weit innen)
             sattel = dmin > 0.35 * r and dmax < 0.85 * r
             # innen liegende Halbteile ebenfalls nur, wenn sie nicht bis zur Nabe reichen (tief gewölbte Speichen tun das)
-            if len(ang) * 10 < 300 and innen and dmin > 0.35 * r and dmax < 0.95 * r:
+            mn = o.material_slots[insel[0].material_index].material if insel[0].material_index < len(o.material_slots) else None
+            scheibe = mn is not None and re.search(r'dis[ck]|rotor|scheibe', mn.name, re.I)
+            if len(ang) * 10 < 300 and innen and dmin > 0.35 * r and dmax < 0.95 * r and not scheibe:
                 if os.environ.get('HALBDBG'):
                     ms = [sl.material.name if sl.material else '-' for sl in o.material_slots]
                     print('HALBDBG %s %s faces %d winkel %d d %.2f..%.2f r innen %s sattel %s x %.3f..%.3f aussen %.3f' % (key, ms[insel[0].material_index] if insel[0].material_index < len(ms) else '-', len(insel), len(ang) * 10, dmin / r, dmax / r, innen, sattel, P[:, 0].min(), P[:, 0].max(), aussen))
@@ -575,12 +578,12 @@ def halbe_teile(key, teile, cz_, r, x0, x1):
             bm.free()
     # zweite Runde: Materialien, von denen ein Stück stillsteht und die insgesamt nicht rundherum gehen
     # (z. B. Bremssattel aus mehreren Stücken), stehen komplett still
-    stat_mats = {sl.material for o in neu for sl in o.material_slots if sl.material}
+    stat_mats = {sl.material for o in neu for sl in o.material_slots if sl.material and not re.search(r'dis[ck]|rotor|scheibe', sl.material.name, re.I)}
     # Sattel-Materialien: gehen insgesamt nicht rundherum und liegen komplett zwischen 35 und 85 % des Radius
     for o in teile:
         V = verts_np(o); mats = [sl.material for sl in o.material_slots]
         for i, m in enumerate(mats):
-            if m is None or m in stat_mats: continue
+            if m is None or m in stat_mats or re.search(r'dis[ck]|rotor|scheibe', m.name, re.I): continue
             fl = [pg for pg in o.data.polygons if pg.material_index == i]
             if not fl: continue
             idx = sorted({v for pg in fl for v in pg.vertices})
@@ -677,7 +680,7 @@ def achse_optimieren(key, teile, c, r):
     # Nabe (Zentralverschluss/Radmuttern, inneres Fünftel) ist der zuverlässigste Achspunkt: Schwerpunkt der
     # Punkte im Nabenbereich, iterativ nachgeführt; hat Vorrang vor Felgenring und Lauffläche
     ny, nz = ky, kz
-    for _ in range(5):
+    for _ in range(0 if os.environ.get('NONABE') else 5):
         nb = Q[np.hypot(Q[:, 1] - ny, Q[:, 2] - nz) < 0.2 * rt]
         if len(nb) < 50:
             break
@@ -686,9 +689,21 @@ def achse_optimieren(key, teile, c, r):
         if math.hypot(ny - ky, nz - kz) > 0.012:
             print('NABE %s Abweichung %.1f mm unplausibel -> verworfen' % (key, math.hypot(ny - ky, nz - kz) * 1000))
         else:
-            if math.hypot(ny - ky, nz - kz) > 0.001:
-                print('NABE %s Mitte nach Nabe: %+.1f %+.1f mm gegenüber Kreisfit' % (key, (ny - ky) * 1000, (nz - kz) * 1000))
-            ky, kz = ny, nz
+            # nur übernehmen, wenn das Rad damit runder läuft (Grundschwingung des Außenradius, obere Hälfte)
+            def schlag(cy, cz):
+                dd = np.hypot(Q[:, 1] - cy, Q[:, 2] - cz); ww = np.arctan2(Q[:, 2] - cz, Q[:, 1] - cy)
+                ks = np.floor(np.degrees(ww) / 15).astype(int); mx = []; wm = []
+                for kk in np.unique(ks):
+                    sel = ks == kk
+                    if np.degrees(ww[sel]).mean() < -130 or np.degrees(ww[sel]).mean() > -50:
+                        mx.append(dd[sel].max()); wm.append(ww[sel].mean())
+                return float(np.std(mx))            # Streuung des Außenradius: je kleiner, desto runder
+            s_nabe, s_kreis = schlag(ny, nz), schlag(ky, kz)
+            if s_nabe < s_kreis and math.hypot(ny - ky, nz - kz) > 0.001:
+                print('NABE %s Mitte nach Nabe: %+.1f %+.1f mm (Schlag %.1f statt %.1f mm)' % (key, (ny - ky) * 1000, (nz - kz) * 1000, s_nabe * 1000, s_kreis * 1000))
+                ky, kz = ny, nz
+            elif math.hypot(ny - ky, nz - kz) > 0.001:
+                print('NABE %s verworfen (Schlag %.1f statt %.1f mm)' % (key, s_nabe * 1000, s_kreis * 1000))
     S = Matrix.Translation(Vector((0, c.y - ky, c.z - kz)))
     for o in teile:
         o.data.transform(S); o.data.update()
