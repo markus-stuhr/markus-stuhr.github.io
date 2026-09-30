@@ -218,6 +218,100 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
         print('REST', key, 'achse %.3f %.3f %.3f' % tuple(n2 / (n2[0] if abs(n2[0]) > 1e-6 else 1)))
         print('GERADE', key, 'lenk %.1f° sturz %.1f°' % (math.degrees(yaw), math.degrees(sturz)))
 
+# 6c. Räder als Zylinder (RAD=zyl): Mitte/Radius per Kreisanpassung an die Reifenlauffläche, Breite aus den
+# Reifenpunkten; dann gehört jede FLÄCHE im Zylinder zum Rad, egal zu welchem Teil sie gehört.
+# Bremssättel (Name) bleiben stehen. Am Ende Prüfwerte: Reste (Karosserieflächen im Reifen) und Unrundheit (mm).
+import os, bmesh
+STATISCH = re.compile(r'calip|brake|bremse|sattel|caliper', re.I)
+
+def verts_np(o):
+    a = np.empty(len(o.data.vertices) * 3); o.data.vertices.foreach_get('co', a)
+    return a.reshape(-1, 3)
+
+def kreis_fit(y, z):
+    # algebraischer Kreisfit (Kasa): y² + z² + D y + E z + F = 0
+    A = np.c_[y, z, np.ones_like(y)]; b = -(y * y + z * z)
+    D, E, F = np.linalg.lstsq(A, b, rcond=None)[0]
+    cy, cz = -D / 2, -E / 2
+    return cy, cz, math.sqrt(max(cy * cy + cz * cz - F, 1e-9))
+
+def zylinder(key, ulo, uhi, parts):
+    sx, sy = key
+    c = (ulo + uhi) / 2; r = (uhi.z - ulo.z) / 2
+    # nur Punkte der erkannten Radteile (ohne Bremssättel) — Karosserie daneben verfälscht Kreis und Breite
+    nah = np.concatenate([verts_np(o) for o in parts if not STATISCH.search(o.name)])
+    cy, cz = c.y, c.z
+    for _ in range(4):
+        d = np.hypot(nah[:, 1] - cy, nah[:, 2] - cz)
+        # Lauffläche: Punkte nahe am äußeren Radius, im Breitenbereich der ursprünglichen Reifenbox
+        lauf = nah[(d > 0.88 * r) & (d < 1.08 * r) & (nah[:, 0] > ulo.x - 0.05) & (nah[:, 0] < uhi.x + 0.05)]
+        if len(lauf) < 20:
+            break
+        cy, cz, r = kreis_fit(lauf[:, 1], lauf[:, 2])
+    d = np.hypot(nah[:, 1] - cy, nah[:, 2] - cz)
+    reifen = nah[(d > 0.8 * r) & (d < 1.01 * r)]
+    x0, x1 = np.percentile(reifen[:, 0], 0.5), np.percentile(reifen[:, 0], 99.5)
+    return Vector((0, cy, cz)), r, x0, x1
+
+def schneide_rad(key, cz_, r, x0, x1):
+    # alle Flächen im Zylinder (Radius r·1.015, Breite x0..x1 ± 1 cm) in eigene Objekte abtrennen
+    rr = r * 1.015; teile = []
+    for o in list(meshes):
+        if o.type != 'MESH' or STATISCH.search(o.name) or any(sl.material and STATISCH.search(sl.material.name) for sl in o.material_slots):
+            continue
+        V = verts_np(o)
+        drin_v = (np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z) <= rr) & (V[:, 0] >= x0 - 0.01) & (V[:, 0] <= x1 + 0.01)
+        if not drin_v.any():
+            continue
+        bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table()
+        sel = [f for f in bm.faces if all(drin_v[v.index] for v in f.verts)]
+        if not sel:
+            bm.free(); continue
+        if len(sel) == len(bm.faces):
+            bm.free(); teile.append(o); continue
+        for f in bm.faces: f.select_set(False)
+        for f in sel: f.select_set(True)
+        bm.to_mesh(o.data); bm.free()
+        bpy.ops.object.select_all(action='DESELECT')
+        o.select_set(True); bpy.context.view_layer.objects.active = o
+        bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.separate(type='SELECTED'); bpy.ops.object.mode_set(mode='OBJECT')
+        neu = [x for x in bpy.context.selected_objects if x is not o]
+        meshes.extend(neu); teile.extend(neu)
+    return teile
+
+def pruefe(key, cz_, r, x0, x1, teile):
+    # Reste: Flächen außerhalb des Rads, deren Mitte deutlich im Reifenbereich liegt
+    reste = 0
+    for o in meshes:
+        if o in teile or STATISCH.search(o.name):
+            continue
+        V = verts_np(o)
+        for p in o.data.polygons:
+            m = V[list(p.vertices)].mean(axis=0)
+            if math.hypot(m[1] - cz_.y, m[2] - cz_.z) < 0.97 * r and x0 + 0.01 < m[0] < x1 - 0.01 and math.hypot(m[1] - cz_.y, m[2] - cz_.z) > 0.75 * r:
+                reste += 1
+    # Unrundheit: größter Radius je 10°-Sektor der Radteile, Spannweite in mm
+    Q = np.concatenate([verts_np(o) for o in teile])
+    a = np.degrees(np.arctan2(Q[:, 2] - cz_.z, Q[:, 1] - cz_.y)) // 10
+    d = np.hypot(Q[:, 1] - cz_.y, Q[:, 2] - cz_.z)
+    ks = np.unique(a); maxi = np.array([d[a == k].max() for k in ks])
+    # Eiern = Achsversatz: Grundschwingung (1× pro Umdrehung) des Außenradius; Facetten der Polygonreifen
+    # (mehrere Wellen pro Umdrehung) zählen nicht
+    w = np.radians(ks * 10 + 5)
+    unrund = math.hypot((maxi * np.cos(w)).mean() * 2, (maxi * np.sin(w)).mean() * 2) * 1000
+    if os.environ.get('PROFIL'):
+        print('PROFIL', key, ' '.join('%d:%.0f' % (k * 10, (m - r) * 1000) for k, m in zip(ks, maxi)))
+    print('PRUEF %s reste %d versatz %.1fmm r %.3f breite %.3f teile %d' % (key, reste, unrund, r, x1 - x0, len(teile)))
+
+if os.environ.get('RAD') == 'zyl':
+    neu = {}
+    for key, (ulo, uhi, parts) in wheels.items():
+        cz_, r, x0, x1 = zylinder(key, ulo, uhi, parts)
+        teile = schneide_rad(key, cz_, r, x0, x1)
+        pruefe(key, cz_, r, x0, x1, teile)
+        neu[key] = (Vector((x0, cz_.y - r, cz_.z - r)), Vector((x1, cz_.y + r, cz_.z + r)), teile)
+    wheels = neu
+
 # 7. Hierarchie aufbauen
 def empty(name, loc, parent=None):
     e = bpy.data.objects.new(name, None)

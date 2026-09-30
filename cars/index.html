@@ -142,6 +142,15 @@ function renderFilter() {
   document.getElementById('filter').innerHTML = marken.map(m => `<button class="${m===filter?'on':''}">${m}</button>`).join('');
   document.querySelectorAll('#filter button').forEach(b => b.onclick = () => { filter = b.textContent; // Debug-Zugriff für Tests (Radanzahl, Achse)
 window.__garage = { get drive() { return drive; }, open: openGarage,
+  // Radtest: Räder drehen dauerhaft, Kamera seitlich vor Rad n (0=VL 1=VR 2=HL 3=HR)
+  radtest(n = 0) {
+    const w = drive ? drive.wheels : radtestWheels;
+    radtestWheels = w; drive = null; current.position.set(0, 0, 0); current.rotation.set(0, 0, 0);
+    const p = new THREE.Vector3(); w[n].steer.getWorldPosition(p);
+    const seite = Math.sign(p.x) || 1;
+    spin = false; camera.position.set(p.x + seite * 1.6, p.y + 0.15, p.z); controls.target.copy(p);
+    radtestAn = true;
+  },
   cam(x, y, z, tx, ty, tz) { spin = false; camera.position.set(x, y, z); controls.target.set(tx, ty, tz); },
   // Prüfansicht: Radteile grün, Lack pink, Seitenansicht
   pruef() {
@@ -228,6 +237,7 @@ function tilt(el) {
 const gar = document.getElementById('garage'), canvas = document.getElementById('gcanvas'), frame = document.getElementById('gframe');
 const gload = document.getElementById('gload');
 let renderer, scene, camera, controls, current, running = false, spin = true, drive = null;
+let radtestAn = false, radtestWheels = [];
 
 // Garage: dunkle Halle, nur die Bühne in der Mitte ist ausgeleuchtet.
 // Boden = Spiegel (Reflector, weichgezeichnet) unter einer zu 80 % deckenden Betonfläche -> 20 % Reflexion.
@@ -383,6 +393,7 @@ function loop() {
   if (!running) return;
   requestAnimationFrame(loop);
   if (drive) animateDrive(performance.now());
+  if (radtestAn) radtestWheels.forEach(w => w.spin.rotation.x += 0.03);
   lichtAufAuto();
   controls.autoRotate = spin && !drive; controls.autoRotateSpeed = 1.5;
   controls.update();
@@ -390,7 +401,7 @@ function loop() {
 }
 
 // Modellversion: bei jedem Neubau der GLBs hochzählen, sonst liefern Browser-Caches alte Dateien
-const MODEL_V = 9;
+const MODEL_V = 10;
 const loader = new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
 
@@ -417,7 +428,7 @@ async function openGarage(c) {
   if (!renderer) initThree();
   resize();
   if (current) { scene.remove(current); current = null; }
-  drive = null;
+  drive = null; radtestAn = false;
   running = true; spin = true; loop();
   const gltf = await loader.loadAsync(`models/${c.uid}.glb?v=${MODEL_V}`);
   // Modelle sind vorbereitet (pipeline/rig_car.py): Meter, Front +Z, links +X, Boden y=0,
@@ -563,6 +574,15 @@ document.getElementById('gspin').onclick = () => spin = !spin;
 
 // Debug-Zugriff für Tests (Radanzahl, Achse)
 window.__garage = { get drive() { return drive; }, open: openGarage,
+  // Radtest: Räder drehen dauerhaft, Kamera seitlich vor Rad n (0=VL 1=VR 2=HL 3=HR)
+  radtest(n = 0) {
+    const w = drive ? drive.wheels : radtestWheels;
+    radtestWheels = w; drive = null; current.position.set(0, 0, 0); current.rotation.set(0, 0, 0);
+    const p = new THREE.Vector3(); w[n].steer.getWorldPosition(p);
+    const seite = Math.sign(p.x) || 1;
+    spin = false; camera.position.set(p.x + seite * 1.6, p.y + 0.15, p.z); controls.target.copy(p);
+    radtestAn = true;
+  },
   cam(x, y, z, tx, ty, tz) { spin = false; camera.position.set(x, y, z); controls.target.set(tx, ty, tz); },
   // Prüfansicht: Radteile grün, Lack pink, Seitenansicht
   pruef() {
