@@ -188,7 +188,8 @@ if len(wheels) == 4:
 
 # 6b. Eingelenkte Räder geradestellen: Achsrichtung = Richtung mit der kleinsten Ausdehnung der Radscheibe (PCA);
 # Räder, die im Originalmodell eingeschlagen sind, werden um die Hochachse zurückgedreht
-import numpy as np
+import numpy as np, os
+rad_lenk = {}
 for key, (ulo, uhi, parts) in list(wheels.items()):
     pts = []
     for o in parts:
@@ -206,7 +207,12 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
     sturz = math.atan2(n[2], horiz) * (1 if (n[0] * math.cos(yaw) + n[1] * math.sin(yaw)) >= 0 else -1)
     # nur echten Lenkeinschlag grob geradestellen; die Feinausrichtung macht der Dreh-Test (achse_optimieren),
     # PCA wird von Bremssätteln u. Ä. verfälscht und hat sonst gerade Räder schief gemacht
-    if abs(yaw) > math.radians(5):
+    if abs(yaw) > math.radians(5) and os.environ.get('RAD') == 'zyl':
+        # Zylinder-Modus: nicht hier drehen (sonst bleiben unerkannte Reifenteile im alten Winkel stehen),
+        # sondern das Rad im Originalwinkel ausschneiden und danach komplett geradestellen (6c)
+        rad_lenk[key] = (yaw, (ulo + uhi) / 2)
+        print('GERADE', key, 'lenk %.1f° (nach dem Ausschneiden)' % math.degrees(yaw))
+    elif abs(yaw) > math.radians(5):
         sturz = 0.0
         c = (ulo + uhi) / 2
         # erst Lenkeinschlag (um z) aufheben, dann Sturz (um die Längsachse y)
@@ -227,9 +233,15 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
 import os, bmesh
 STATISCH = re.compile(r'calip|brake|bremse|sattel|caliper', re.I)
 
-def verts_np(o):
+def verts_np(o, key=None):
     a = np.empty(len(o.data.vertices) * 3); o.data.vertices.foreach_get('co', a)
-    return a.reshape(-1, 3)
+    V = a.reshape(-1, 3)
+    if key is not None and key in rad_lenk:
+        # in das gerade gestellte Radsystem umrechnen: um die Hochachse durch die Radmitte zurückdrehen
+        yaw, c = rad_lenk[key]; co, si = math.cos(-yaw), math.sin(-yaw)
+        x, y = V[:, 0] - c.x, V[:, 1] - c.y
+        V = np.c_[co * x - si * y + c.x, si * x + co * y + c.y, V[:, 2]]
+    return V
 
 def kreis_fit(y, z):
     # algebraischer Kreisfit (Kasa): y² + z² + D y + E z + F = 0
@@ -242,7 +254,7 @@ def zylinder(key, ulo, uhi, parts):
     sx, sy = key
     c = (ulo + uhi) / 2; r = (uhi.z - ulo.z) / 2
     # nur Punkte der erkannten Radteile (ohne Bremssättel) — Karosserie daneben verfälscht Kreis und Breite
-    nah = np.concatenate([verts_np(o) for o in parts if not STATISCH.search(o.name)])
+    nah = np.concatenate([verts_np(o, key) for o in parts if not STATISCH.search(o.name)])
     cy, cz = c.y, c.z
     for _ in range(4):
         d = np.hypot(nah[:, 1] - cy, nah[:, 2] - cz)
@@ -263,7 +275,7 @@ def schneide_rad(key, cz_, r, x0, x1, karosse):
     for o in list(meshes):
         if o.type != 'MESH' or STATISCH.search(o.name) or any(sl.material and STATISCH.search(sl.material.name) for sl in o.material_slots):
             continue
-        V = verts_np(o)
+        V = verts_np(o, key)
         drin_v = (np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z) <= rr) & (V[:, 0] >= x0 - 0.01) & (V[:, 0] <= x1 + 0.01)
         if not drin_v.any():
             continue
@@ -291,7 +303,7 @@ def pruefe(key, cz_, r, x0, x1, teile):
     for o in meshes:
         if o in teile or STATISCH.search(o.name):
             continue
-        V = verts_np(o)
+        V = verts_np(o, key)
         for p in o.data.polygons:
             m = V[list(p.vertices)].mean(axis=0)
             if math.hypot(m[1] - cz_.y, m[2] - cz_.z) < 0.97 * r and x0 + 0.01 < m[0] < x1 - 0.01 and math.hypot(m[1] - cz_.y, m[2] - cz_.z) > 0.75 * r:
@@ -336,6 +348,12 @@ def achse_optimieren(key, teile, c, r):
         Q = Q[np.random.default_rng(1).choice(len(Q), 2500, replace=False)]
     pts = [tuple(p) for p in Q]
     best = (0.0, 0.0, 0.0, 0.0); cost = taumel(pts, c, *best); vorher = cost
+    # grobe Rastersuche über Lenkwinkel/Sturz, damit die Feinsuche nicht in einem Nebenminimum hängen bleibt
+    for ga in range(-6, 7):
+        for gb in range(-4, 5):
+            k = taumel(pts, c, math.radians(ga), math.radians(gb), 0.0, 0.0)
+            if k < cost:
+                cost, best = k, (math.radians(ga), math.radians(gb), 0.0, 0.0)
     for schritt_w, schritt_m in ((math.radians(1.5), 0.004), (math.radians(0.5), 0.0015), (math.radians(0.15), 0.0005)):
         besser = True
         while besser:
@@ -361,11 +379,15 @@ if os.environ.get('RAD') == 'zyl':
     # Materialien, deren Flächen überwiegend außerhalb aller Radzylinder liegen, sind Karosserie
     innen, gesamt = {}, {}
     for o in meshes:
-        V = verts_np(o); mats = [sl.material for sl in o.material_slots]
+        Vs = {k: verts_np(o, k) for k in zyl}; mats = [sl.material for sl in o.material_slots]
         for p in o.data.polygons:
             m = mats[p.material_index] if p.material_index < len(mats) else None
-            c = V[list(p.vertices)].mean(axis=0)
-            drin = any(math.hypot(c[1] - z[0].y, c[2] - z[0].z) <= z[1] * 1.1 and z[2] - 0.03 <= c[0] <= z[3] + 0.03 for z in zyl.values())
+            idx = list(p.vertices)
+            drin = False
+            for k, z in zyl.items():
+                c = Vs[k][idx].mean(axis=0)
+                if math.hypot(c[1] - z[0].y, c[2] - z[0].z) <= z[1] * 1.1 and z[2] - 0.03 <= c[0] <= z[3] + 0.03:
+                    drin = True; break
             gesamt[m] = gesamt.get(m, 0) + p.area
             if drin: innen[m] = innen.get(m, 0) + p.area
     karosse = {m for m in gesamt if innen.get(m, 0) < 0.25 * gesamt[m]}
@@ -373,10 +395,60 @@ if os.environ.get('RAD') == 'zyl':
     for key, (ulo, uhi, parts) in wheels.items():
         cz_, r, x0, x1 = zyl[key]
         teile = schneide_rad(key, cz_, r, x0, x1, karosse)
+        # Nachschneiden: Flächen mit Rad-Material (Reifen, Felge), die knapp außerhalb geblieben sind
+        # (z. B. Laufflächenmantel mit größerem Radius), erweitern den Zylinder -> zweiter Schnitt
+        radmats0 = {m for m in gesamt if m not in karosse and m and not STATISCH.search(m.name)}
+        rmax, xa, xb = r, x0, x1
+        for o in meshes:
+            if o in teile: continue
+            mats = [sl.material for sl in o.material_slots]
+            if not any(m in radmats0 for m in mats): continue
+            V = verts_np(o, key)
+            for p in o.data.polygons:
+                if p.material_index >= len(mats) or mats[p.material_index] not in radmats0: continue
+                P = V[list(p.vertices)]
+                d = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z)
+                if d.max() < 1.3 * r and P[:, 0].min() > x0 - 0.08 and P[:, 0].max() < x1 + 0.08:
+                    rmax = max(rmax, d.max()); xa = min(xa, P[:, 0].min()); xb = max(xb, P[:, 0].max())
+        if rmax > r * 1.01 or xa < x0 - 0.005 or xb > x1 + 0.005:
+            print('NACHSCHNITT %s radius %.3f -> %.3f  breite %.3f -> %.3f' % (key, r, rmax, x1 - x0, xb - xa))
+            r, x0, x1 = rmax / 1.015 * 1.002, xa, xb
+            # Teile aus dem ersten Schnitt nicht doppelt aufnehmen (sonst würden sie zweimal geradegestellt)
+            teile = list(dict.fromkeys(teile + schneide_rad(key, cz_, r, x0, x1, karosse)))
+        if key in rad_lenk:
+            yaw, c0 = rad_lenk[key]
+            M = Matrix.Translation(c0) @ Matrix.Rotation(-yaw, 4, 'Z') @ Matrix.Translation(-c0)
+            for o in teile:
+                o.data.transform(M); o.data.update()
+            del rad_lenk[key]
+        if os.environ.get('TEILE'):
+            for o in teile:
+                V = verts_np(o); d = np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z)
+                aussen = V[d > 0.85 * d.max()]
+                if len(aussen) > 10:
+                    ky, kz, kr = kreis_fit(aussen[:, 1], aussen[:, 2])
+                    Pc = V - V.mean(axis=0); ax = np.linalg.eigh(np.cov(Pc.T))[1][:, 0]
+                    print('TEIL %s %-28s v %5d  mitte dy %+.1f dz %+.1f mm  r %.3f  x %.3f..%.3f  achse-yaw %.1f°' % (key, o.name[:28], len(V), (ky - cz_.y) * 1000, (kz - cz_.z) * 1000, kr, V[:, 0].min(), V[:, 0].max(), math.degrees(math.atan2(ax[1], ax[0])) % 180))
         achse_optimieren(key, teile, Vector(((x0 + x1) / 2, cz_.y, cz_.z)), r)
         pruefe(key, cz_, r, x0, x1, teile)
         neu[key] = (Vector((x0, cz_.y - r, cz_.z - r)), Vector((x1, cz_.y + r, cz_.z + r)), teile)
     wheels = neu
+    # Vergessen-Test: jede Fläche eines Rad-Materials (Reifen, Felge …) muss in einem Rad gelandet sein
+    radteile = {o for (_, _, t) in wheels.values() for o in t}
+    radmats = {m for m in gesamt if m not in karosse and m and not STATISCH.search(m.name)}
+    vergessen = 0; fl = 0.0; je_mat = {}
+    for o in meshes:
+        if o in radteile: continue
+        mats = [sl.material for sl in o.material_slots]
+        V = verts_np(o)
+        for p in o.data.polygons:
+            if p.material_index < len(mats) and mats[p.material_index] in radmats:
+                m = mats[p.material_index]; c = V[list(p.vertices)].mean(axis=0)
+                vergessen += 1; fl += p.area
+                e = je_mat.setdefault(m.name, [0, 0.0, c]); e[0] += 1; e[1] += p.area
+    print('VERGESSEN %d Flächen (%.4f m²) mit Rad-Material außerhalb der Räder' % (vergessen, fl))
+    for n, (k, a, c) in sorted(je_mat.items(), key=lambda x: -x[1][1])[:6]:
+        print('VERGESSEN   %-30s %5d Flächen %.4f m²  z.B. bei x %.2f y %.2f z %.2f' % (n, k, a, c[0], c[1], c[2]))
 
 # 7. Hierarchie aufbauen
 def empty(name, loc, parent=None):
