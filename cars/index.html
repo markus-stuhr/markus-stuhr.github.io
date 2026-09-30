@@ -403,7 +403,7 @@ function loop() {
 }
 
 // Modellversion: bei jedem Neubau der GLBs hochzählen, sonst liefern Browser-Caches alte Dateien
-const MODEL_V = 21;
+const MODEL_V = 22;
 const loader = new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
 
@@ -517,7 +517,19 @@ function glasFix(root) {
   root.traverse(o => {
     if (!o.isMesh) return;
     const m = o.material;
-    if (!(m.transmission > 0.3 || /glass|window|glas/i.test(m.name))) return;
+    // Glas nur nach Name (ohne „opaque/mirror“) oder Transmission ohne Textur — Innenraum, Embleme, Spiegel
+    // tragen in manchen Modellen auch Transmission und wurden sonst halbdurchsichtig ohne Tiefe gezeichnet
+    const nachName = /glass|window|glas|scheibe/i.test(m.name) && !/opaque|mirror|spiegel/i.test(m.name);
+    const istGlas = nachName || (m.transmission > 0.3 && !m.map);
+    if (!istGlas) {
+      if (m.transparent && m.opacity >= 0.99) {
+        // voll deckend, nur als durchsichtig markiert: deckend zeichnen, ausgestanzte Texturen per alphaTest
+        m.transparent = false; m.depthWrite = true; m.transmission = 0;
+        if (m.map) m.alphaTest = 0.5;
+        m.needsUpdate = true;
+      } else if (m.transmission > 0) { m.transmission = 0; m.needsUpdate = true; }
+      return;
+    }
     if (!fertig.has(m)) {
       const hsl = {}; m.color.getHSL(hsl);
       const bunt = hsl.s > 0.4 && hsl.l > 0.1;

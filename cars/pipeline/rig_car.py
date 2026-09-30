@@ -215,7 +215,10 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
     sturz = math.atan2(n[2], horiz) * (1 if (n[0] * math.cos(yaw) + n[1] * math.sin(yaw)) >= 0 else -1)
     # nur echten Lenkeinschlag grob geradestellen; die Feinausrichtung macht der Dreh-Test (achse_optimieren),
     # PCA wird von Bremssätteln u. Ä. verfälscht und hat sonst gerade Räder schief gemacht
-    if abs(yaw) > math.radians(5) and os.environ.get('RAD') == 'zyl':
+    if abs(yaw) > math.radians(35):
+        # unplausibel (echte Lenkeinschläge in Modellen < 35°): Schätzung verworfen
+        print('GERADE', key, 'lenk %.1f° unplausibel, ignoriert' % math.degrees(yaw))
+    elif abs(yaw) > math.radians(5) and os.environ.get('RAD') == 'zyl':
         # Zylinder-Modus: nicht hier drehen (sonst bleiben unerkannte Reifenteile im alten Winkel stehen),
         # sondern das Rad im Originalwinkel ausschneiden und danach komplett geradestellen (6c)
         rad_lenk[key] = (yaw, (ulo + uhi) / 2)
@@ -452,7 +455,8 @@ if os.environ.get('RAD') == 'zyl':
             drin = False
             for k, z in zyl.items():
                 c = Vs[k][idx].mean(axis=0)
-                if math.hypot(c[1] - z[0].y, c[2] - z[0].z) <= z[1] * 1.1 and z[2] - 0.03 <= c[0] <= z[3] + 0.03:
+                # großzügig: der erste Zylinder kann nur die Felge umfassen (Reifen breiter)
+                if math.hypot(c[1] - z[0].y, c[2] - z[0].z) <= z[1] * 1.15 and z[2] - 0.15 <= c[0] <= z[3] + 0.15:
                     drin = True; break
             gesamt[m] = gesamt.get(m, 0) + p.area
             if drin: innen[m] = innen.get(m, 0) + p.area
