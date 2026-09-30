@@ -305,7 +305,7 @@ def pruefe(key, cz_, r, x0, x1, teile):
     # Reste: Flächen außerhalb des Rads, deren Mitte deutlich im Reifenbereich liegt
     reste = 0
     for o in meshes:
-        if o in teile or STATISCH.search(o.name):
+        if o in teile or STATISCH.search(o.name) or o in rad_bremsen.get(key, []):
             continue
         V = verts_np(o, key)
         for p in o.data.polygons:
@@ -324,6 +324,49 @@ def pruefe(key, cz_, r, x0, x1, teile):
     if os.environ.get('PROFIL'):
         print('PROFIL', key, ' '.join('%d:%.0f' % (k * 10, (m - r) * 1000) for k, m in zip(ks, maxi)))
     print('PRUEF %s reste %d versatz %.1fmm r %.3f breite %.3f teile %d' % (key, reste, unrund, r, x1 - x0, len(teile)))
+
+
+def halbe_teile(key, teile, cz_, r, x0, x1):
+    # Einzelteile (zusammenhängende Inseln) im Rad, die nicht rundherum gehen und hinter der Speichenebene liegen
+    # (z. B. nur halb modellierte innere Felgenringe): dürfen sich nicht drehen -> werden abgetrennt
+    sx = key[0]
+    aussen = x0 if sx < 0 else x1                 # Außenseite des Rads
+    breite = x1 - x0; neu = []
+    for o in list(teile):
+        bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table(); bm.faces.ensure_lookup_table()
+        gesehen = set(); weg = []
+        for f0 in bm.faces:
+            if f0.index in gesehen: continue
+            stapel = [f0]; insel = []; gesehen.add(f0.index)
+            while stapel:
+                f = stapel.pop(); insel.append(f)
+                for e in f.edges:
+                    for g in e.link_faces:
+                        if g.index not in gesehen:
+                            gesehen.add(g.index); stapel.append(g)
+            P = np.array([tuple(v.co) for f in insel for v in f.verts])
+            ang = set((np.degrees(np.arctan2(P[:, 2] - cz_.z, P[:, 1] - cz_.y)) // 10).astype(int).tolist())
+            innen = abs(P[:, 0].mean() - aussen) > 0.4 * breite
+            dmax = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z).max()
+            # Reifenstücke reichen bis zur Lauffläche und bleiben am Rad
+            if len(ang) * 10 < 300 and innen and dmax < 0.95 * r:
+                weg += insel
+        if weg:
+            for f in bm.faces: f.select_set(False)
+            for f in weg: f.select_set(True)
+            bm.to_mesh(o.data); bm.free()
+            if len(weg) == len(o.data.polygons):
+                teile.remove(o); neu.append(o); continue
+            bpy.ops.object.select_all(action='DESELECT')
+            o.select_set(True); bpy.context.view_layer.objects.active = o
+            bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.separate(type='SELECTED'); bpy.ops.object.mode_set(mode='OBJECT')
+            ab = [x for x in bpy.context.selected_objects if x is not o]
+            meshes.extend(ab); neu += ab
+        else:
+            bm.free()
+    if neu:
+        print('HALB %s %d Teile stehen still (nicht rundherum, innen)' % (key, len(neu)))
+    return neu
 
 from mathutils.kdtree import KDTree
 
@@ -425,6 +468,7 @@ if os.environ.get('RAD') == 'zyl':
             teile = list(dict.fromkeys(teile + schneide_rad(key, cz_, r, x0, x1, karosse)))
         # Bremssättel: lenken mit, drehen aber nicht (hängen später am Lenk-Drehpunkt)
         bremsen = schneide_rad(key, cz_, r, x0, x1, karosse, bremse=True)
+        bremsen += halbe_teile(key, teile, cz_, r, x0, x1)
         rad_bremsen[key] = bremsen
         if bremsen:
             print('BREMSE %s %d Teile' % (key, len(bremsen)))
@@ -443,6 +487,29 @@ if os.environ.get('RAD') == 'zyl':
                     Pc = V - V.mean(axis=0); ax = np.linalg.eigh(np.cov(Pc.T))[1][:, 0]
                     print('TEIL %s %-28s v %5d  mitte dy %+.1f dz %+.1f mm  r %.3f  x %.3f..%.3f  achse-yaw %.1f°' % (key, o.name[:28], len(V), (ky - cz_.y) * 1000, (kz - cz_.z) * 1000, kr, V[:, 0].min(), V[:, 0].max(), math.degrees(math.atan2(ax[1], ax[0])) % 180))
         T = achse_optimieren(key, teile, Vector(((x0 + x1) / 2, cz_.y, cz_.z)), r)
+        if os.environ.get('INSELN') and key == eval(os.environ['INSELN']):
+            # zusammenhängende Einzelteile des Rads: Winkelabdeckung um die Achse, Radiusbereich, Material
+            for o in teile:
+                bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table()
+                gesehen = set(); mats = [sl.material.name if sl.material else '-' for sl in o.material_slots]
+                for v0 in bm.verts:
+                    if v0.index in gesehen: continue
+                    stapel = [v0]; insel = []
+                    gesehen.add(v0.index)
+                    while stapel:
+                        v = stapel.pop(); insel.append(v)
+                        for e in v.link_edges:
+                            w = e.other_vert(v)
+                            if w.index not in gesehen:
+                                gesehen.add(w.index); stapel.append(w)
+                    if len(insel) < 30: continue
+                    P = np.array([tuple(v.co) for v in insel])
+                    d = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z)
+                    ang = (np.degrees(np.arctan2(P[:, 2] - cz_.z, P[:, 1] - cz_.y)) // 10).astype(int)
+                    abdeckung = len(set(ang.tolist())) * 10
+                    mf = insel[0].link_faces[0].material_index if insel[0].link_faces else 0
+                    print('INSEL v %5d  radius %.2f..%.2f r  winkel %3d°  x %.3f..%.3f  %s' % (len(insel), d.min() / r, d.max() / r, abdeckung, P[:, 0].min(), P[:, 0].max(), mats[mf][-30:] if mf < len(mats) else '-'))
+                bm.free()
         for o in bremsen:
             o.data.transform(T); o.data.update()
         pruefe(key, cz_, r, x0, x1, teile)
@@ -462,7 +529,7 @@ if os.environ.get('RAD') == 'zyl':
         neu[key] = (Vector((x0, cz_.y - r, cz_.z - r)), Vector((x1, cz_.y + r, cz_.z + r)), teile)
     wheels = neu
     # Vergessen-Test: jede Fläche eines Rad-Materials (Reifen, Felge …) muss in einem Rad gelandet sein
-    radteile = {o for (_, _, t) in wheels.values() for o in t}
+    radteile = {o for (_, _, t) in wheels.values() for o in t} | {o for b in rad_bremsen.values() for o in b}
     radmats = {m for m in gesamt if m not in karosse and m and not STATISCH.search(m.name)}
     vergessen = 0; fl = 0.0; je_mat = {}
     for o in meshes:
