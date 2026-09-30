@@ -143,12 +143,14 @@ function renderFilter() {
   document.querySelectorAll('#filter button').forEach(b => b.onclick = () => { filter = b.textContent; // Debug-Zugriff für Tests (Radanzahl, Achse)
 window.__garage = { get drive() { return drive; }, open: openGarage,
   // Radtest: Räder drehen dauerhaft, Kamera seitlich vor Rad n (0=VL 1=VR 2=HL 3=HR)
-  radtest(n = 0) {
+  radtest(n = 0, vonVorn = false) {
     const w = drive ? drive.wheels : radtestWheels;
     radtestWheels = w; drive = null; current.position.set(0, 0, 0); current.rotation.set(0, 0, 0);
     const p = new THREE.Vector3(); w[n].steer.getWorldPosition(p);
     const seite = Math.sign(p.x) || 1;
-    spin = false; camera.position.set(p.x + seite * 1.6, p.y + 0.15, p.z); controls.target.copy(p);
+    spin = false; controls.target.copy(p);
+    if (vonVorn) camera.position.set(p.x + seite * 0.25, p.y + 0.05, p.z + Math.sign(p.z || 1) * 1.6);
+    else camera.position.set(p.x + seite * 1.6, p.y + 0.15, p.z);
     radtestAn = true;
   },
   cam(x, y, z, tx, ty, tz) { spin = false; camera.position.set(x, y, z); controls.target.set(tx, ty, tz); },
@@ -401,7 +403,7 @@ function loop() {
 }
 
 // Modellversion: bei jedem Neubau der GLBs hochzählen, sonst liefern Browser-Caches alte Dateien
-const MODEL_V = 10;
+const MODEL_V = 11;
 const loader = new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
 
@@ -575,12 +577,14 @@ document.getElementById('gspin').onclick = () => spin = !spin;
 // Debug-Zugriff für Tests (Radanzahl, Achse)
 window.__garage = { get drive() { return drive; }, open: openGarage,
   // Radtest: Räder drehen dauerhaft, Kamera seitlich vor Rad n (0=VL 1=VR 2=HL 3=HR)
-  radtest(n = 0) {
+  radtest(n = 0, vonVorn = false) {
     const w = drive ? drive.wheels : radtestWheels;
     radtestWheels = w; drive = null; current.position.set(0, 0, 0); current.rotation.set(0, 0, 0);
     const p = new THREE.Vector3(); w[n].steer.getWorldPosition(p);
     const seite = Math.sign(p.x) || 1;
-    spin = false; camera.position.set(p.x + seite * 1.6, p.y + 0.15, p.z); controls.target.copy(p);
+    spin = false; controls.target.copy(p);
+    if (vonVorn) camera.position.set(p.x + seite * 0.25, p.y + 0.05, p.z + Math.sign(p.z || 1) * 1.6);
+    else camera.position.set(p.x + seite * 1.6, p.y + 0.15, p.z);
     radtestAn = true;
   },
   cam(x, y, z, tx, ty, tz) { spin = false; camera.position.set(x, y, z); controls.target.set(tx, ty, tz); },

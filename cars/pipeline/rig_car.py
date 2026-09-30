@@ -204,7 +204,10 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
     # Sturz (Radneigung nach innen/außen): Winkel der Achse zur Waagerechten, nach dem Geradestellen
     horiz = math.hypot(n[0], n[1])
     sturz = math.atan2(n[2], horiz) * (1 if (n[0] * math.cos(yaw) + n[1] * math.sin(yaw)) >= 0 else -1)
-    if abs(yaw) > math.radians(0.7) or abs(sturz) > math.radians(0.7):
+    # nur echten Lenkeinschlag grob geradestellen; die Feinausrichtung macht der Dreh-Test (achse_optimieren),
+    # PCA wird von Bremssätteln u. Ä. verfälscht und hat sonst gerade Räder schief gemacht
+    if abs(yaw) > math.radians(5):
+        sturz = 0.0
         c = (ulo + uhi) / 2
         # erst Lenkeinschlag (um z) aufheben, dann Sturz (um die Längsachse y)
         m = (Matrix.Translation(c) @ Matrix.Rotation(sturz, 4, 'Y') @ Matrix.Rotation(-yaw, 4, 'Z')
@@ -303,11 +306,58 @@ def pruefe(key, cz_, r, x0, x1, teile):
         print('PROFIL', key, ' '.join('%d:%.0f' % (k * 10, (m - r) * 1000) for k, m in zip(ks, maxi)))
     print('PRUEF %s reste %d versatz %.1fmm r %.3f breite %.3f teile %d' % (key, reste, unrund, r, x1 - x0, len(teile)))
 
+from mathutils.kdtree import KDTree
+
+def taumel(pts, c, a, b, dy, dz, winkel=(45, 135, 225)):
+    # Achse um a (Hochachse) und b (Längsachse) gekippt, Mitte um dy/dz verschoben: Punkte so drehen, dass diese
+    # Achse zur x-Achse wird, dann um x drehen und mittleren Abstand zur Originalform messen (mm)
+    R = (Matrix.Rotation(-b, 3, 'Y') @ Matrix.Rotation(-a, 3, 'Z')).to_4x4()
+    m = Vector((c.x, c.y + dy, c.z + dz))
+    P = [R @ (Vector(p) - m) for p in pts]
+    kd = KDTree(len(P))
+    for i, p in enumerate(P): kd.insert(p, i)
+    kd.balance()
+    summe = 0.0; n = 0
+    for w in winkel:
+        Rx = Matrix.Rotation(math.radians(w), 3, 'X')
+        for p in P[::2]:
+            summe += kd.find(Rx @ p)[2]; n += 1
+    return summe / n * 1000
+
+def achse_optimieren(key, teile, c, r):
+    # Reifenpunkte (äußerer Ring) sind eine Rotationsfläche: bei der richtigen Achse ändert Drehen nichts
+    Q = np.concatenate([verts_np(o) for o in teile])
+    d = np.hypot(Q[:, 1] - c.y, Q[:, 2] - c.z)
+    Q = Q[d > 0.8 * r]
+    if len(Q) > 2500:
+        Q = Q[np.random.default_rng(1).choice(len(Q), 2500, replace=False)]
+    pts = [tuple(p) for p in Q]
+    best = (0.0, 0.0, 0.0, 0.0); cost = taumel(pts, c, *best); vorher = cost
+    for schritt_w, schritt_m in ((math.radians(1.5), 0.004), (math.radians(0.5), 0.0015), (math.radians(0.15), 0.0005)):
+        besser = True
+        while besser:
+            besser = False
+            for i in range(4):
+                for sgn in (-1, 1):
+                    kand = list(best); kand[i] += sgn * (schritt_w if i < 2 else schritt_m)
+                    k = taumel(pts, c, *kand)
+                    if k < cost - 1e-4:
+                        cost, best, besser = k, tuple(kand), True
+    a, b, dy, dz = best
+    print('TAUMEL %s vorher %.2fmm nachher %.2fmm  achse %.2f° %.2f°  mitte %+.1f %+.1f mm' % (key, vorher, cost, math.degrees(a), math.degrees(b), dy * 1000, dz * 1000))
+    # Radteile so drehen/verschieben, dass die gefundene Achse exakt die x-Achse durch die Radmitte ist
+    m = Vector((c.x, c.y + dy, c.z + dz))
+    T = (Matrix.Translation(Vector((c.x, c.y, c.z))) @ (Matrix.Rotation(-b, 4, 'Y') @ Matrix.Rotation(-a, 4, 'Z'))
+         @ Matrix.Translation(-m))
+    for o in teile:
+        o.data.transform(T); o.data.update()
+
 if os.environ.get('RAD') == 'zyl':
     neu = {}
     for key, (ulo, uhi, parts) in wheels.items():
         cz_, r, x0, x1 = zylinder(key, ulo, uhi, parts)
         teile = schneide_rad(key, cz_, r, x0, x1)
+        achse_optimieren(key, teile, Vector(((x0 + x1) / 2, cz_.y, cz_.z)), r)
         pruefe(key, cz_, r, x0, x1, teile)
         neu[key] = (Vector((x0, cz_.y - r, cz_.z - r)), Vector((x1, cz_.y + r, cz_.z + r)), teile)
     wheels = neu
