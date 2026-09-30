@@ -231,7 +231,7 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
 # Reifenpunkten; dann gehört jede FLÄCHE im Zylinder zum Rad, egal zu welchem Teil sie gehört.
 # Bremssättel (Name) bleiben stehen. Am Ende Prüfwerte: Reste (Karosserieflächen im Reifen) und Unrundheit (mm).
 import os, bmesh
-STATISCH = re.compile(r'calip|brake|bremse|sattel|caliper', re.I)
+STATISCH = re.compile(r'cal+ip|brake|bremse|sattel', re.I)
 
 def verts_np(o, key=None):
     a = np.empty(len(o.data.vertices) * 3); o.data.vertices.foreach_get('co', a)
@@ -398,22 +398,24 @@ if os.environ.get('RAD') == 'zyl':
         # Nachschneiden: Flächen mit Rad-Material (Reifen, Felge), die knapp außerhalb geblieben sind
         # (z. B. Laufflächenmantel mit größerem Radius), erweitern den Zylinder -> zweiter Schnitt
         radmats0 = {m for m in gesamt if m not in karosse and m and not STATISCH.search(m.name)}
-        rmax, xa, xb = r, x0, x1
-        for o in meshes:
-            if o in teile: continue
-            mats = [sl.material for sl in o.material_slots]
-            if not any(m in radmats0 for m in mats): continue
-            V = verts_np(o, key)
-            for p in o.data.polygons:
-                if p.material_index >= len(mats) or mats[p.material_index] not in radmats0: continue
-                P = V[list(p.vertices)]
-                d = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z)
-                if d.max() < 1.3 * r and P[:, 0].min() > x0 - 0.08 and P[:, 0].max() < x1 + 0.08:
-                    rmax = max(rmax, d.max()); xa = min(xa, P[:, 0].min()); xb = max(xb, P[:, 0].max())
-        if rmax > r * 1.01 or xa < x0 - 0.005 or xb > x1 + 0.005:
-            print('NACHSCHNITT %s radius %.3f -> %.3f  breite %.3f -> %.3f' % (key, r, rmax, x1 - x0, xb - xa))
+        for runde in range(3):
+            rmax, xa, xb = r * 1.015, x0, x1
+            for o in meshes:
+                if o in teile: continue
+                mats = [sl.material for sl in o.material_slots]
+                if not any(m in radmats0 for m in mats): continue
+                V = verts_np(o, key)
+                for p in o.data.polygons:
+                    if p.material_index >= len(mats) or mats[p.material_index] not in radmats0: continue
+                    P = V[list(p.vertices)]
+                    d = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z)
+                    if d.max() < 1.3 * r and P[:, 0].min() > x0 - 0.08 and P[:, 0].max() < x1 + 0.08:
+                        rmax = max(rmax, d.max()); xa = min(xa, P[:, 0].min()); xb = max(xb, P[:, 0].max())
+            if rmax <= r * 1.015 + 1e-4 and xa >= x0 - 0.001 and xb <= x1 + 0.001:
+                break
+            print('NACHSCHNITT %s radius %.3f -> %.3f  breite %.3f -> %.3f' % (key, r, rmax / 1.015, x1 - x0, xb - xa))
             r, x0, x1 = rmax / 1.015 * 1.002, xa, xb
-            # Teile aus dem ersten Schnitt nicht doppelt aufnehmen (sonst würden sie zweimal geradegestellt)
+            # Teile aus früheren Schnitten nicht doppelt aufnehmen (sonst würden sie zweimal geradegestellt)
             teile = list(dict.fromkeys(teile + schneide_rad(key, cz_, r, x0, x1, karosse)))
         if key in rad_lenk:
             yaw, c0 = rad_lenk[key]
@@ -431,6 +433,19 @@ if os.environ.get('RAD') == 'zyl':
                     print('TEIL %s %-28s v %5d  mitte dy %+.1f dz %+.1f mm  r %.3f  x %.3f..%.3f  achse-yaw %.1f°' % (key, o.name[:28], len(V), (ky - cz_.y) * 1000, (kz - cz_.z) * 1000, kr, V[:, 0].min(), V[:, 0].max(), math.degrees(math.atan2(ax[1], ax[0])) % 180))
         achse_optimieren(key, teile, Vector(((x0 + x1) / 2, cz_.y, cz_.z)), r)
         pruefe(key, cz_, r, x0, x1, teile)
+        if os.environ.get('TEILE'):
+            # Kreismitte je Material (äußerer Rand) relativ zur Drehachse
+            jm = {}
+            for o in teile:
+                V = verts_np(o); mats = [sl.material for sl in o.material_slots]
+                for pg in o.data.polygons:
+                    mn = mats[pg.material_index].name if pg.material_index < len(mats) and mats[pg.material_index] else '-'
+                    jm.setdefault(mn, []).extend(pg.vertices[:] and [tuple(V[i]) for i in pg.vertices])
+            for mn, pts in jm.items():
+                A = np.array(pts); d = np.hypot(A[:, 1] - cz_.y, A[:, 2] - cz_.z); A = A[d > 0.9 * d.max()]
+                if len(A) > 12:
+                    ky, kz, kr = kreis_fit(A[:, 1], A[:, 2])
+                    print('MAT %s %-40s mitte dy %+.1f dz %+.1f mm r %.3f' % (key, mn[-40:], (ky - cz_.y) * 1000, (kz - cz_.z) * 1000, kr))
         neu[key] = (Vector((x0, cz_.y - r, cz_.z - r)), Vector((x1, cz_.y + r, cz_.z + r)), teile)
     wheels = neu
     # Vergessen-Test: jede Fläche eines Rad-Materials (Reifen, Felge …) muss in einem Rad gelandet sein
