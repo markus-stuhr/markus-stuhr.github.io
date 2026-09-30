@@ -196,7 +196,15 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
         vs = o.data.vertices
         step = max(1, len(vs) // 3000)
         pts += [tuple(vs[k].co) for k in range(0, len(vs), step)]
-    P = np.array(pts); P -= P.mean(axis=0)
+    P = np.array(pts)
+    # nur der äußere Ring (Reifen) zählt: Bremssättel/Naben sind unsymmetrisch und verfälschen die Achse
+    cc = (ulo + uhi) / 2; rr = (uhi.z - ulo.z) / 2
+    # 3D-Abstand zur Mitte: bei eingelenkten Rädern ist die Seitenansicht (y/z) eine Ellipse, dort würde der
+    # Ring nur oben/unten Punkte behalten und die Achse falsch schätzen
+    ring = P[np.linalg.norm(P - np.array(cc), axis=1) > 0.8 * rr]
+    if len(ring) > 50:
+        P = ring
+    P = P - P.mean(axis=0)
     w, v = np.linalg.eigh(np.cov(P.T))
     n = v[:, 0]                                   # kleinster Eigenwert = Achse
     yaw = math.atan2(n[1], n[0])                  # Winkel der Achse zur x-Achse (Draufsicht)
@@ -405,7 +413,7 @@ def achse_optimieren(key, teile, c, r):
         besser = True
         while besser:
             besser = False
-            for i in range(4):
+            for i in range(2):                    # nur Achsrichtung; die Mitte kommt aus dem Kreisfit
                 for sgn in (-1, 1):
                     kand = list(best); kand[i] += sgn * (schritt_w if i < 2 else schritt_m)
                     k = taumel(pts, c, *kand)
@@ -419,7 +427,16 @@ def achse_optimieren(key, teile, c, r):
          @ Matrix.Translation(-m))
     for o in teile:
         o.data.transform(T); o.data.update()
-    return T
+    # Mitte: Kreisfit an die äußerste Lauffläche (was man als Eiern sieht), Radteile dorthin verschieben
+    Q = np.concatenate([verts_np(o) for o in teile])
+    d = np.hypot(Q[:, 1] - c.y, Q[:, 2] - c.z)
+    lauf = Q[d > 0.93 * d.max()]
+    ky, kz, kr = kreis_fit(lauf[:, 1], lauf[:, 2])
+    S = Matrix.Translation(Vector((0, c.y - ky, c.z - kz)))
+    for o in teile:
+        o.data.transform(S); o.data.update()
+    print('MITTE %s Lauffläche lag %+.1f %+.1f mm neben der Achse -> korrigiert' % (key, (ky - c.y) * 1000, (kz - c.z) * 1000))
+    return S @ T
 
 rad_bremsen = {}
 if os.environ.get('RAD') == 'zyl':

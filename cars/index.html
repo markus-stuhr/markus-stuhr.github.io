@@ -403,7 +403,7 @@ function loop() {
 }
 
 // Modellversion: bei jedem Neubau der GLBs hochzählen, sonst liefern Browser-Caches alte Dateien
-const MODEL_V = 19;
+const MODEL_V = 21;
 const loader = new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
 
@@ -479,18 +479,20 @@ function animateDrive(now) {
   const k = Math.min(t, 1), TC = 0.55, v = 1 / (TC + (1 - TC) / 2);
   const e = k < TC ? v * k : v * TC + v * (k - TC) * (1 - (k - TC) / (1 - TC) / 2);
   const rest = d.dist * (1 - Math.min(e, 1));
-  d.rig.position.copy(d.curve[Math.round(rest / d.dist * (d.curve.length - 1))]);
+  // zwischen zwei Kurvenpunkten interpolieren (sonst springt die Position in 5-cm-Stufen)
+  const fi = rest / d.dist * (d.curve.length - 1), i0 = Math.floor(fi), i1 = Math.min(i0 + 1, d.curve.length - 1);
+  d.rig.position.lerpVectors(d.curve[i0], d.curve[i1], fi - i0);
   d.rig.rotation.y = psiAt(rest);
   // Krümmung pro gefahrenem Meter (rest nimmt beim Fahren ab, daher das Minus); positiv = links
   const kappa = -(psiAt(rest + 0.05) - psiAt(rest - 0.05)) / 0.1;
   const lenk = Math.atan(d.radstand * kappa);
   let pitch = 0;
-  if (k > TC && k < 1) pitch = 0.02;                         // beim Bremsen taucht die Front ein
+  if (k > TC && k < 1) pitch = 0.02 * THREE.MathUtils.smoothstep(k, TC, TC + 0.1);   // beim Bremsen taucht die Front weich ein
   if (t >= 1) {
     const u = (now - d.t0 - d.dur) / 1000;
     pitch = 0.02 * Math.cos(u * 9) * Math.exp(-u * 4);        // nach dem Stillstand federt sie nach
   }
-  d.rig.rotation.x = pitch + 0.004 * Math.sin(now / 45) * (1 - k);
+  d.rig.rotation.x = pitch;
   // Räder abrollen (Winkel = Strecke / Radius), Vorderräder lenken
   const weg = d.dist - rest;
   for (const w of d.wheels) {
