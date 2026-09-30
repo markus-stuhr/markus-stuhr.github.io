@@ -540,7 +540,8 @@ function glasFix(root) {
     // Glas nur nach Name (ohne „opaque/mirror“) oder Transmission ohne Textur — Innenraum, Embleme, Spiegel
     // tragen in manchen Modellen auch Transmission und wurden sonst halbdurchsichtig ohne Tiefe gezeichnet
     const nachName = /glass|window|glas|scheibe/i.test(m.name) && !/opaque|mirror|spiegel/i.test(m.name);
-    const istGlas = nachName || (m.transmission > 0.3 && !m.map);
+    // auch halbdurchsichtige Materialien ohne Textur (z. B. weiße Reflexions-/Tönungsebenen aus Spielmodellen)
+    const istGlas = nachName || (m.transmission > 0.3 && !m.map) || (m.transparent && m.opacity < 0.99 && !m.map);
     if (!istGlas) {
       if (m.transparent && m.opacity >= 0.99) {
         // voll deckend, nur als durchsichtig markiert: deckend zeichnen, ausgestanzte Texturen per alphaTest
