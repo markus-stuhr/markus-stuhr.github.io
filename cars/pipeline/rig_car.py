@@ -239,12 +239,14 @@ def neuer_reifen(key, teile, cz_, x0, x1):
     d = np.hypot(Q[:, 1] - cz_.y, Q[:, 2] - cz_.z); w = np.degrees(np.arctan2(Q[:, 2] - cz_.z, Q[:, 1] - cz_.y))
     oben = np.abs(w + 90) > 40
     rt = float(np.percentile(d[oben], 99.5))           # Laufflächen-Radius (obere Hälfte, unverformt)
+    einsinken.append(rt - cz_.z)                        # so weit steckt der runde Reifen im Boden -> Auto anheben
     rf = 0.76 * rt                                      # Felgenhorn: alles außerhalb gehört zum Reifen
     geloescht = 0
     for o in list(teile):
         V = verts_np(o); dv = np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z)
         bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table()
-        weg = [f for f in bm.faces if all(dv[v.index] > rf for v in f.verts)]
+        # jede Fläche, die über das Felgenhorn hinausragt (der Originalreifen wird komplett ersetzt)
+        weg = [f for f in bm.faces if max(dv[v.index] for v in f.verts) > rf + 0.003]
         if weg:
             geloescht += len(weg)
             bmesh.ops.delete(bm, geom=weg, context='FACES')
@@ -263,11 +265,19 @@ def neuer_reifen(key, teile, cz_, x0, x1):
         a = math.pi/2 * i / 6
         prof.append((b/2 - sh + sh*math.sin(a), rt - sh*(1 - math.cos(a))))
     prof += [(b/2, rt - sh), (b/2, rf + 0.3*(rt - rf)), (b/2 - 0.02*b, rf)]
-    N = 72
+    # Profil: drei umlaufende Rillen in der Lauffläche, Schulterblöcke (jedes zweite Segment 4 mm tiefer)
+    lauf = [(-b/2 + sh + (b - 2*sh) * i / 16, rt) for i in range(17)]
+    rillen = {4, 8, 12}
+    lauf = [(ax, rt - 0.005 if i in rillen else rt) for i, (ax, _) in enumerate(lauf)]
+    prof = prof[:prof.index((-b/2 + sh, rt))] + lauf + prof[prof.index((b/2 - sh, rt)) + 1:]
+    schulter = {i for i, (ax, rad) in enumerate(prof) if abs(abs(ax) - (b/2 - sh/2)) < sh * 0.6 and rad > rt - sh}
+    N = 96
     bm = bmesh.new(); ringe = []
     for k in range(N):
         t = 2 * math.pi * k / N
-        ringe.append([bm.verts.new((xm + ax, cz_.y + rad * math.cos(t), cz_.z + rad * math.sin(t))) for ax, rad in prof])
+        ringe.append([bm.verts.new((xm + ax, cz_.y + (rad - (0.004 if (k % 2 and j in schulter) else 0)) * math.cos(t),
+                                    cz_.z + (rad - (0.004 if (k % 2 and j in schulter) else 0)) * math.sin(t)))
+                      for j, (ax, rad) in enumerate(prof)])
     for k in range(N):
         A, B = ringe[k], ringe[(k + 1) % N]
         for j in range(len(prof) - 1):
@@ -597,6 +607,18 @@ def achse_optimieren(key, teile, c, r):
             print('VERFORMT %s Reifen-Mitte weicht %.1f mm von der Felge ab -> Achse nach Felge, Reifen dreht nicht' % (key, math.hypot(fy - ky, fz - kz) * 1000))
             ky, kz = fy, fz
             verformt.add(key)
+    # Nabe (Zentralverschluss/Radmuttern, inneres Fünftel) ist der zuverlässigste Achspunkt: Schwerpunkt der
+    # Punkte im Nabenbereich, iterativ nachgeführt; hat Vorrang vor Felgenring und Lauffläche
+    ny, nz = ky, kz
+    for _ in range(5):
+        nb = Q[np.hypot(Q[:, 1] - ny, Q[:, 2] - nz) < 0.2 * rt]
+        if len(nb) < 50:
+            break
+        ny, nz = nb[:, 1].mean(), nb[:, 2].mean()
+    else:
+        if math.hypot(ny - ky, nz - kz) > 0.001:
+            print('NABE %s Mitte nach Nabe: %+.1f %+.1f mm gegenüber Kreisfit' % (key, (ny - ky) * 1000, (nz - kz) * 1000))
+        ky, kz = ny, nz
     S = Matrix.Translation(Vector((0, c.y - ky, c.z - kz)))
     for o in teile:
         o.data.transform(S); o.data.update()
@@ -606,6 +628,7 @@ def achse_optimieren(key, teile, c, r):
 rad_bremsen = {}
 ueber_raus = []
 verformt = set()
+einsinken = []
 if os.environ.get('RAD') == 'zyl':
     neu = {}
     zyl = {key: zylinder(key, ulo, uhi, parts) for key, (ulo, uhi, parts) in wheels.items()}
@@ -728,6 +751,14 @@ if os.environ.get('RAD') == 'zyl':
                     print('MAT %s %-40s mitte dy %+.1f dz %+.1f mm r %.3f' % (key, mn[-40:], (ky - cz_.y) * 1000, (kz - cz_.z) * 1000, kr))
         neu[key] = (Vector((x0, cz_.y - r, cz_.z - r)), Vector((x1, cz_.y + r, cz_.z + r)), teile)
     wheels = neu
+    # generierte runde Reifen würden im Boden stecken (Modell war „in die Reifen gedrückt“): ganzes Auto anheben
+    hub = max(einsinken, default=0)
+    if hub > 0.001:
+        H = Matrix.Translation(Vector((0, 0, hub)))
+        for o in meshes:
+            o.data.transform(H); o.data.update()
+        wheels = {k: (lo + Vector((0, 0, hub)), hi + Vector((0, 0, hub)), t) for k, (lo, hi, t) in wheels.items()}
+        print('ANHEBEN Auto um %.1f mm, damit die neuen Reifen auf dem Boden stehen' % (hub * 1000))
     # Vergessen-Test: jede Fläche eines Rad-Materials (Reifen, Felge …) muss in einem Rad gelandet sein
     radteile = {o for (_, _, t) in wheels.values() for o in t} | {o for b in rad_bremsen.values() for o in b} | set(ueber_raus)
     radmats = {m for m in gesamt if m not in karosse and m and not STATISCH.search(m.name)}
