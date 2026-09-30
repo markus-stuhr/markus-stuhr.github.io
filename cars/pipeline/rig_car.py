@@ -231,7 +231,7 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
 # Reifenpunkten; dann gehört jede FLÄCHE im Zylinder zum Rad, egal zu welchem Teil sie gehört.
 # Bremssättel (Name) bleiben stehen. Am Ende Prüfwerte: Reste (Karosserieflächen im Reifen) und Unrundheit (mm).
 import os, bmesh
-STATISCH = re.compile(r'cal+ip|brake|bremse|sattel', re.I)
+STATISCH = re.compile(r'cal+ip|claip|brake|bremse|sattel', re.I)
 
 def verts_np(o, key=None):
     a = np.empty(len(o.data.vertices) * 3); o.data.vertices.foreach_get('co', a)
