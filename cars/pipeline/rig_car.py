@@ -472,8 +472,22 @@ def schneide_rad(key, cz_, r, x0, x1, karosse, bremse=False):
             continue
         bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table()
         mats = [sl.material for sl in o.material_slots]
+        # Einzelteile (Inseln), die komplett im Zylinder liegen, gehören zum Rad, auch mit Karosserie-Material
+        # (z. B. Carbon-Speichen, wenn Carbon auch an der Karosserie vorkommt)
+        bm.faces.ensure_lookup_table(); ganz = set(); gesehen = set()
+        for f0 in bm.faces:
+            if f0.index in gesehen: continue
+            stapel = [f0]; insel = []; gesehen.add(f0.index)
+            while stapel:
+                f = stapel.pop(); insel.append(f)
+                for e in f.edges:
+                    for g in e.link_faces:
+                        if g.index not in gesehen:
+                            gesehen.add(g.index); stapel.append(g)
+            if all(drin_v[v.index] for f in insel for v in f.verts):
+                ganz.update(f.index for f in insel)
         sel = [f for f in bm.faces if all(drin_v[v.index] for v in f.verts)
-               and (bremse or not (f.material_index < len(mats) and mats[f.material_index] in karosse))
+               and (bremse or f.index in ganz or not (f.material_index < len(mats) and mats[f.material_index] in karosse))
                and (not bremse or (f.material_index < len(mats) and mats[f.material_index] and STATISCH.search(mats[f.material_index].name)) or STATISCH.search(o.name))]
         if not sel:
             bm.free(); continue
@@ -530,14 +544,21 @@ def halbe_teile(key, teile, cz_, r, x0, x1):
                 f = stapel.pop(); insel.append(f)
                 for e in f.edges:
                     for g in e.link_faces:
-                        if g.index not in gesehen:
+                        # nur über Flächen gleichen Materials verbinden: ein Sattel, der an der Bremsscheibe hängt, ist ein eigenes Teil
+                        if g.index not in gesehen and g.material_index == f.material_index:
                             gesehen.add(g.index); stapel.append(g)
             P = np.array([tuple(v.co) for f in insel for v in f.verts])
             ang = set((np.degrees(np.arctan2(P[:, 2] - cz_.z, P[:, 1] - cz_.y)) // 10).astype(int).tolist())
             innen = abs(P[:, 0].mean() - aussen) > 0.4 * breite
-            dmax = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z).max()
-            # Reifenstücke reichen bis zur Lauffläche und bleiben am Rad
-            if len(ang) * 10 < 300 and innen and dmax < 0.95 * r:
+            dd = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z); dmax = dd.max(); dmin = dd.min()
+            # Reifenstücke reichen bis zur Lauffläche und bleiben am Rad; Speichen reichen bis zur Nabe.
+            # Bremssattel-artig: nicht rundherum, beginnt erst ab 35 % des Radius (auch wenn nicht weit innen)
+            sattel = dmin > 0.35 * r and dmax < 0.85 * r
+            # innen liegende Halbteile ebenfalls nur, wenn sie nicht bis zur Nabe reichen (tief gewölbte Speichen tun das)
+            if len(ang) * 10 < 300 and innen and dmin > 0.35 * r and dmax < 0.95 * r:
+                if os.environ.get('HALBDBG'):
+                    ms = [sl.material.name if sl.material else '-' for sl in o.material_slots]
+                    print('HALBDBG %s %s faces %d winkel %d d %.2f..%.2f r innen %s sattel %s x %.3f..%.3f aussen %.3f' % (key, ms[insel[0].material_index] if insel[0].material_index < len(ms) else '-', len(insel), len(ang) * 10, dmin / r, dmax / r, innen, sattel, P[:, 0].min(), P[:, 0].max(), aussen))
                 weg += insel
         if weg:
             for f in bm.faces: f.select_set(False)
@@ -552,6 +573,48 @@ def halbe_teile(key, teile, cz_, r, x0, x1):
             meshes.extend(ab); neu += ab
         else:
             bm.free()
+    # zweite Runde: Materialien, von denen ein Stück stillsteht und die insgesamt nicht rundherum gehen
+    # (z. B. Bremssattel aus mehreren Stücken), stehen komplett still
+    stat_mats = {sl.material for o in neu for sl in o.material_slots if sl.material}
+    # Sattel-Materialien: gehen insgesamt nicht rundherum und liegen komplett zwischen 35 und 85 % des Radius
+    for o in teile:
+        V = verts_np(o); mats = [sl.material for sl in o.material_slots]
+        for i, m in enumerate(mats):
+            if m is None or m in stat_mats: continue
+            fl = [pg for pg in o.data.polygons if pg.material_index == i]
+            if not fl: continue
+            idx = sorted({v for pg in fl for v in pg.vertices})
+            dd = np.hypot(V[idx, 1] - cz_.y, V[idx, 2] - cz_.z)
+            if dd.min() > 0.35 * r and dd.max() < 0.85 * r:
+                stat_mats.add(m)
+    for m in stat_mats:
+        Pm = []
+        for o in teile:
+            mats = [sl.material for sl in o.material_slots]
+            V = verts_np(o)
+            for pg in o.data.polygons:
+                if pg.material_index < len(mats) and mats[pg.material_index] is m:
+                    Pm.append(V[list(pg.vertices)].mean(axis=0))
+        if not Pm: continue
+        Pm = np.array(Pm)
+        cov = len(set((np.degrees(np.arctan2(Pm[:, 2] - cz_.z, Pm[:, 1] - cz_.y)) // 10).astype(int).tolist())) * 10
+        if cov >= 300: continue
+        for o in list(teile):
+            mats = [sl.material for sl in o.material_slots]
+            idx = [i for i, sl in enumerate(mats) if sl is m]
+            if not idx: continue
+            bm = bmesh.new(); bm.from_mesh(o.data)
+            weg = [f for f in bm.faces if f.material_index in idx]
+            for f in bm.faces: f.select_set(False)
+            for f in weg: f.select_set(True)
+            bm.to_mesh(o.data); bm.free()
+            if len(weg) == len(o.data.polygons):
+                teile.remove(o); neu.append(o); continue
+            bpy.ops.object.select_all(action='DESELECT')
+            o.select_set(True); bpy.context.view_layer.objects.active = o
+            bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.separate(type='SELECTED'); bpy.ops.object.mode_set(mode='OBJECT')
+            ab = [x for x in bpy.context.selected_objects if x is not o]
+            meshes.extend(ab); neu += ab
     if neu:
         print('HALB %s %d Teile stehen still (nicht rundherum, innen)' % (key, len(neu)))
     return neu
@@ -697,7 +760,6 @@ if os.environ.get('RAD') == 'zyl':
         # teile = ueberstand(key, teile, cz_)   # abgeschaltet: hat bei manchen Modellen ganze Reifen entfernt
         # Bremssättel: lenken mit, drehen aber nicht (hängen später am Lenk-Drehpunkt)
         bremsen = schneide_rad(key, cz_, r, x0, x1, karosse, bremse=True)
-        bremsen += halbe_teile(key, teile, cz_, r, x0, x1)
         rad_bremsen[key] = bremsen
         if bremsen:
             print('BREMSE %s %d Teile' % (key, len(bremsen)))
@@ -707,6 +769,8 @@ if os.environ.get('RAD') == 'zyl':
             for o in teile + bremsen:
                 o.data.transform(M); o.data.update()
             del rad_lenk[key]
+        # Halbteile/Sättel erst nach dem Geradestellen prüfen (sonst schräge Koordinaten bei eingelenkten Rädern)
+        bremsen += halbe_teile(key, teile, cz_, r, x0, x1)
         if os.environ.get('TEILE'):
             for o in teile:
                 V = verts_np(o); d = np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z)
