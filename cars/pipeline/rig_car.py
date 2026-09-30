@@ -268,21 +268,25 @@ def zylinder(key, ulo, uhi, parts):
     x0, x1 = np.percentile(reifen[:, 0], 0.5), np.percentile(reifen[:, 0], 99.5)
     return Vector((0, cy, cz)), r, x0, x1
 
-def schneide_rad(key, cz_, r, x0, x1, karosse):
+def schneide_rad(key, cz_, r, x0, x1, karosse, bremse=False):
     # alle Flächen im Zylinder (Radius r·1.015, Breite x0..x1 ± 1 cm) in eigene Objekte abtrennen,
     # außer Flächen mit Karosserie-Material (Lack, Radhausschale …), auch wenn sie in den Zylinder ragen
     rr = r * 1.015; teile = []
     for o in list(meshes):
-        if o.type != 'MESH' or STATISCH.search(o.name) or any(sl.material and STATISCH.search(sl.material.name) for sl in o.material_slots):
+        ist_bremse = STATISCH.search(o.name) or any(sl.material and STATISCH.search(sl.material.name) for sl in o.material_slots)
+        if o.type != 'MESH' or bool(ist_bremse) != bremse:
             continue
         V = verts_np(o, key)
-        drin_v = (np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z) <= rr) & (V[:, 0] >= x0 - 0.01) & (V[:, 0] <= x1 + 0.01)
+        # Bremssättel sitzen innen hinter der Felge: nach innen (zur Wagenmitte) großzügiger
+        xa, xb = (x0 - 0.01, x1 + 0.01) if not bremse else ((x0 - 0.15, x1 + 0.01) if x0 > 0 else (x0 - 0.01, x1 + 0.15))
+        drin_v = (np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z) <= rr) & (V[:, 0] >= xa) & (V[:, 0] <= xb)
         if not drin_v.any():
             continue
         bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table()
         mats = [sl.material for sl in o.material_slots]
         sel = [f for f in bm.faces if all(drin_v[v.index] for v in f.verts)
-               and not (f.material_index < len(mats) and mats[f.material_index] in karosse)]
+               and (bremse or not (f.material_index < len(mats) and mats[f.material_index] in karosse))
+               and (not bremse or (f.material_index < len(mats) and mats[f.material_index] and STATISCH.search(mats[f.material_index].name)) or STATISCH.search(o.name))]
         if not sel:
             bm.free(); continue
         if len(sel) == len(bm.faces):
@@ -372,7 +376,9 @@ def achse_optimieren(key, teile, c, r):
          @ Matrix.Translation(-m))
     for o in teile:
         o.data.transform(T); o.data.update()
+    return T
 
+rad_bremsen = {}
 if os.environ.get('RAD') == 'zyl':
     neu = {}
     zyl = {key: zylinder(key, ulo, uhi, parts) for key, (ulo, uhi, parts) in wheels.items()}
@@ -417,10 +423,15 @@ if os.environ.get('RAD') == 'zyl':
             r, x0, x1 = rmax / 1.015 * 1.002, xa, xb
             # Teile aus früheren Schnitten nicht doppelt aufnehmen (sonst würden sie zweimal geradegestellt)
             teile = list(dict.fromkeys(teile + schneide_rad(key, cz_, r, x0, x1, karosse)))
+        # Bremssättel: lenken mit, drehen aber nicht (hängen später am Lenk-Drehpunkt)
+        bremsen = schneide_rad(key, cz_, r, x0, x1, karosse, bremse=True)
+        rad_bremsen[key] = bremsen
+        if bremsen:
+            print('BREMSE %s %d Teile' % (key, len(bremsen)))
         if key in rad_lenk:
             yaw, c0 = rad_lenk[key]
             M = Matrix.Translation(c0) @ Matrix.Rotation(-yaw, 4, 'Z') @ Matrix.Translation(-c0)
-            for o in teile:
+            for o in teile + bremsen:
                 o.data.transform(M); o.data.update()
             del rad_lenk[key]
         if os.environ.get('TEILE'):
@@ -431,7 +442,9 @@ if os.environ.get('RAD') == 'zyl':
                     ky, kz, kr = kreis_fit(aussen[:, 1], aussen[:, 2])
                     Pc = V - V.mean(axis=0); ax = np.linalg.eigh(np.cov(Pc.T))[1][:, 0]
                     print('TEIL %s %-28s v %5d  mitte dy %+.1f dz %+.1f mm  r %.3f  x %.3f..%.3f  achse-yaw %.1f°' % (key, o.name[:28], len(V), (ky - cz_.y) * 1000, (kz - cz_.z) * 1000, kr, V[:, 0].min(), V[:, 0].max(), math.degrees(math.atan2(ax[1], ax[0])) % 180))
-        achse_optimieren(key, teile, Vector(((x0 + x1) / 2, cz_.y, cz_.z)), r)
+        T = achse_optimieren(key, teile, Vector(((x0 + x1) / 2, cz_.y, cz_.z)), r)
+        for o in bremsen:
+            o.data.transform(T); o.data.update()
         pruefe(key, cz_, r, x0, x1, teile)
         if os.environ.get('TEILE'):
             # Kreismitte je Material (äußerer Rand) relativ zur Drehachse
@@ -489,6 +502,10 @@ for (sx, sy), (ulo, uhi, parts) in wheels.items():
         in_wheel.add(o)
         o.parent = spin
         o.matrix_parent_inverse = spin.matrix_world.inverted()
+    for o in rad_bremsen.get((sx, sy), []):
+        in_wheel.add(o)
+        o.parent = steer
+        o.matrix_parent_inverse = steer.matrix_world.inverted()
     radien.append((uhi.z - ulo.z) / 2)
     achsen.setdefault(sy, []).append(c.y)
     spuren.setdefault(sy, []).append(c.x)
@@ -572,7 +589,7 @@ def merge_group(parent):
         bpy.context.view_layer.objects.active = objs[0]
         bpy.ops.object.join()
 
-gruppen = [body] + [o for o in bpy.data.objects if o.name.endswith('_spin')]
+gruppen = [body] + [o for o in bpy.data.objects if o.name.startswith('wheel_')]
 for g in gruppen:
     merge_group(g)
 meshes = [o for o in bpy.data.objects if o.type == 'MESH']
