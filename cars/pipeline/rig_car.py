@@ -256,8 +256,9 @@ def zylinder(key, ulo, uhi, parts):
     x0, x1 = np.percentile(reifen[:, 0], 0.5), np.percentile(reifen[:, 0], 99.5)
     return Vector((0, cy, cz)), r, x0, x1
 
-def schneide_rad(key, cz_, r, x0, x1):
-    # alle Flächen im Zylinder (Radius r·1.015, Breite x0..x1 ± 1 cm) in eigene Objekte abtrennen
+def schneide_rad(key, cz_, r, x0, x1, karosse):
+    # alle Flächen im Zylinder (Radius r·1.015, Breite x0..x1 ± 1 cm) in eigene Objekte abtrennen,
+    # außer Flächen mit Karosserie-Material (Lack, Radhausschale …), auch wenn sie in den Zylinder ragen
     rr = r * 1.015; teile = []
     for o in list(meshes):
         if o.type != 'MESH' or STATISCH.search(o.name) or any(sl.material and STATISCH.search(sl.material.name) for sl in o.material_slots):
@@ -267,7 +268,9 @@ def schneide_rad(key, cz_, r, x0, x1):
         if not drin_v.any():
             continue
         bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table()
-        sel = [f for f in bm.faces if all(drin_v[v.index] for v in f.verts)]
+        mats = [sl.material for sl in o.material_slots]
+        sel = [f for f in bm.faces if all(drin_v[v.index] for v in f.verts)
+               and not (f.material_index < len(mats) and mats[f.material_index] in karosse)]
         if not sel:
             bm.free(); continue
         if len(sel) == len(bm.faces):
@@ -354,9 +357,22 @@ def achse_optimieren(key, teile, c, r):
 
 if os.environ.get('RAD') == 'zyl':
     neu = {}
+    zyl = {key: zylinder(key, ulo, uhi, parts) for key, (ulo, uhi, parts) in wheels.items()}
+    # Materialien, deren Flächen überwiegend außerhalb aller Radzylinder liegen, sind Karosserie
+    innen, gesamt = {}, {}
+    for o in meshes:
+        V = verts_np(o); mats = [sl.material for sl in o.material_slots]
+        for p in o.data.polygons:
+            m = mats[p.material_index] if p.material_index < len(mats) else None
+            c = V[list(p.vertices)].mean(axis=0)
+            drin = any(math.hypot(c[1] - z[0].y, c[2] - z[0].z) <= z[1] * 1.1 and z[2] - 0.03 <= c[0] <= z[3] + 0.03 for z in zyl.values())
+            gesamt[m] = gesamt.get(m, 0) + p.area
+            if drin: innen[m] = innen.get(m, 0) + p.area
+    karosse = {m for m in gesamt if innen.get(m, 0) < 0.25 * gesamt[m]}
+    print('KAROSSE-MATS im Rad ausgeschlossen:', sorted(m.name for m in karosse if m and innen.get(m, 0) > 0))
     for key, (ulo, uhi, parts) in wheels.items():
-        cz_, r, x0, x1 = zylinder(key, ulo, uhi, parts)
-        teile = schneide_rad(key, cz_, r, x0, x1)
+        cz_, r, x0, x1 = zyl[key]
+        teile = schneide_rad(key, cz_, r, x0, x1, karosse)
         achse_optimieren(key, teile, Vector(((x0 + x1) / 2, cz_.y, cz_.z)), r)
         pruefe(key, cz_, r, x0, x1, teile)
         neu[key] = (Vector((x0, cz_.y - r, cz_.z - r)), Vector((x1, cz_.y + r, cz_.z + r)), teile)
