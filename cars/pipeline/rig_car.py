@@ -949,7 +949,7 @@ for pre, ms in (('paint', paint), ('accent', accent)):
 
 # 7c. Vereinfachen (gegen Ruckeln): pro Gruppe (body, jedes Rad) alle Teile mit gleichem Material zu einem Mesh
 # zusammenfügen (weniger Zeichenaufrufe), dann auf ein Dreiecksbudget dezimieren
-BUDGET = 150000
+BUDGET = int(args[7]) if len(args) > 7 and args[7] not in ('', '-') else 150000   # pro Auto überschreibbar (autos.tsv, Spalte 8)
 def tris(o):
     return sum(len(p.vertices) - 2 for p in o.data.polygons)
 

@@ -47,7 +47,7 @@ window.CARS = [
   { uid: 'b4e5a4c5fa5d4d45acd6715d3325254f', marke: 'Koenigsegg', name: 'One:1', jahr: 2014, ps: 1360, kmh: 440, null100: 2.8, zyl: 'V8 Biturbo', land: '🇸🇪', rar: 4, farbe: '#f2c200',
     fakt: 'Ein PS pro Kilogramm Gewicht – daher der Name „One:1“.',
     autor: 'iSteven', user: 'OneSteven' },
-  { uid: '35bd007e1bc549d580ccc208a6038ec1', marke: 'Mazda', name: 'MX-5', jahr: 2015, ps: 184, kmh: 219, null100: 6.5, zyl: 'R4', land: '🇯🇵', rar: 1, farbe: '#b3001b',
+  { uid: '922ff6fec90340ed8cf5aabe38dd1ad2', marke: 'Mazda', name: 'MX-5', jahr: 2016, ps: 184, kmh: 219, null100: 6.5, zyl: 'R4', land: '🇯🇵', rar: 1, farbe: '#b3001b',
     fakt: 'Das meistverkaufte zweisitzige Cabrio der Welt – über eine Million Stück.',
-    autor: 'Res1n', user: 'Res1n' },
+    autor: 'Galaxy Car Showroom', user: 'adrianaflak09' },
 ];

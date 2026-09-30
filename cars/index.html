@@ -118,7 +118,7 @@ h1 { font-family:'Russo One',sans-serif; font-size:clamp(28px,6vw,52px); margin:
   </div>
 </div>
 
-<script src="cars.js"></script>
+<script src="cars.js?v=2"></script>  <!-- bei Änderungen an cars.js hochzählen (Browser-Cache) -->
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
@@ -403,7 +403,7 @@ function loop() {
 }
 
 // Modellversion: bei jedem Neubau der GLBs hochzählen, sonst liefern Browser-Caches alte Dateien
-const MODEL_V = 44;
+const MODEL_V = 46;
 const loader = new GLTFLoader();
 loader.setDRACOLoader(new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/'));
 
