@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Baut alle Modelle aus ~/cars-raw nach ../models (Originale per Sketchfab-API, siehe Vault-Notiz)
 cd "${0:A:h}"
+export RAD=zyl   # Rad-Verfahren: Zylinder + Flächenschnitt + Prüfwerte
 grep -v '^#' autos.tsv | while IFS=$'\t' read uid len flip tex name paint accent; do
   [[ -n "$1" && "$1" != "$uid" ]] && continue
   echo "== $name"

@@ -311,7 +311,7 @@ def taumel(pts, c, a, b, dy, dz, winkel=(45, 135, 225)):
         Rx = Matrix.Rotation(math.radians(w), 3, 'X')
         for p in P[::2]:
             summe += kd.find(Rx @ p)[2]; n += 1
-    return summe / n * 1000
+    return summe / n * 1000 if n else 0.0
 
 # 6b. Eingelenkte Räder geradestellen: Achsrichtung = Richtung mit der kleinsten Ausdehnung der Radscheibe (PCA);
 # Räder, die im Originalmodell eingeschlagen sind, werden um die Hochachse zurückgedreht
@@ -603,7 +603,11 @@ def achse_optimieren(key, teile, c, r):
     lippe = Q[(d > 0.6 * rt) & (d < 0.85 * rt) & oben]
     if len(lippe) > 50:
         fy, fz, fr = kreis_fit(lippe[:, 1], lippe[:, 2])
-        if math.hypot(fy - ky, fz - kz) > 0.005:
+        # verformt = unten deutlich flacher als oben (Lastverformung modelliert), nicht nur Mitten-Abweichung
+        wq = np.degrees(np.arctan2(Q[:, 2] - kz, Q[:, 1] - ky)); dq = np.hypot(Q[:, 1] - ky, Q[:, 2] - kz)
+        unten = dq[np.abs(wq + 90) < 25]; obenr = dq[np.abs(wq - 90) < 60]
+        platt = (len(unten) and len(obenr)) and (np.percentile(obenr, 99) - unten.max() > 0.012)
+        if platt and math.hypot(fy - ky, fz - kz) > 0.005:
             print('VERFORMT %s Reifen-Mitte weicht %.1f mm von der Felge ab -> Achse nach Felge, Reifen dreht nicht' % (key, math.hypot(fy - ky, fz - kz) * 1000))
             ky, kz = fy, fz
             verformt.add(key)
@@ -616,9 +620,12 @@ def achse_optimieren(key, teile, c, r):
             break
         ny, nz = nb[:, 1].mean(), nb[:, 2].mean()
     else:
-        if math.hypot(ny - ky, nz - kz) > 0.001:
-            print('NABE %s Mitte nach Nabe: %+.1f %+.1f mm gegenüber Kreisfit' % (key, (ny - ky) * 1000, (nz - kz) * 1000))
-        ky, kz = ny, nz
+        if math.hypot(ny - ky, nz - kz) > 0.012:
+            print('NABE %s Abweichung %.1f mm unplausibel -> verworfen' % (key, math.hypot(ny - ky, nz - kz) * 1000))
+        else:
+            if math.hypot(ny - ky, nz - kz) > 0.001:
+                print('NABE %s Mitte nach Nabe: %+.1f %+.1f mm gegenüber Kreisfit' % (key, (ny - ky) * 1000, (nz - kz) * 1000))
+            ky, kz = ny, nz
     S = Matrix.Translation(Vector((0, c.y - ky, c.z - kz)))
     for o in teile:
         o.data.transform(S); o.data.update()
@@ -648,7 +655,8 @@ if os.environ.get('RAD') == 'zyl':
             gesamt[m] = gesamt.get(m, 0) + p.area
             if drin: innen[m] = innen.get(m, 0) + p.area
     REIFEN = re.compile(r'tire|tyre|pneu|reifen|gomme|rubber', re.I)
-    karosse = {m for m in gesamt if innen.get(m, 0) < 0.25 * gesamt[m] and not (m and REIFEN.search(m.name))}
+    # Radmaterialien liegen zu ~90–100 % in den Rädern, Karosserie-Kunststoff an Radhäusern z. B. nur 40 %
+    karosse = {m for m in gesamt if innen.get(m, 0) < 0.6 * gesamt[m] and not (m and REIFEN.search(m.name))}
     if os.environ.get('MATS'):
         for m in sorted(gesamt, key=lambda m: -gesamt[m])[:25]:
             print('MATANTEIL %-35s innen %.3f / gesamt %.3f m²  = %.0f %%' % ((m.name if m else '-')[-35:], innen.get(m, 0), gesamt[m], 100 * innen.get(m, 0) / max(gesamt[m], 1e-9)))
@@ -684,7 +692,7 @@ if os.environ.get('RAD') == 'zyl':
             r, x0, x1 = rmax / 1.015 * 1.002, xa, xb
             # Teile aus früheren Schnitten nicht doppelt aufnehmen (sonst würden sie zweimal geradegestellt)
             teile = list(dict.fromkeys(teile + schneide_rad(key, cz_, r, x0, x1, karosse)))
-        teile = ueberstand(key, teile, cz_)
+        # teile = ueberstand(key, teile, cz_)   # abgeschaltet: hat bei manchen Modellen ganze Reifen entfernt
         # Bremssättel: lenken mit, drehen aber nicht (hängen später am Lenk-Drehpunkt)
         bremsen = schneide_rad(key, cz_, r, x0, x1, karosse, bremse=True)
         bremsen += halbe_teile(key, teile, cz_, r, x0, x1)
