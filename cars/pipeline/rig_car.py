@@ -186,10 +186,48 @@ if len(wheels) == 4:
     boxes = {o: bbox([o]) for o in meshes}
     wheels = find_wheels()
 
+from mathutils.kdtree import KDTree
+
+def taumel(pts, c, a, b, dy, dz, winkel=(45, 135, 225)):
+    # Achse um a (Hochachse) und b (Längsachse) gekippt, Mitte um dy/dz verschoben: Punkte so drehen, dass diese
+    # Achse zur x-Achse wird, dann um x drehen und mittleren Abstand zur Originalform messen (mm)
+    R = (Matrix.Rotation(-b, 3, 'Y') @ Matrix.Rotation(-a, 3, 'Z')).to_4x4()
+    m = Vector((c.x, c.y + dy, c.z + dz))
+    P = [R @ (Vector(p) - m) for p in pts]
+    kd = KDTree(len(P))
+    for i, p in enumerate(P): kd.insert(p, i)
+    kd.balance()
+    summe = 0.0; n = 0
+    for w in winkel:
+        Rx = Matrix.Rotation(math.radians(w), 3, 'X')
+        for p in P[::2]:
+            summe += kd.find(Rx @ p)[2]; n += 1
+    return summe / n * 1000
+
 # 6b. Eingelenkte Räder geradestellen: Achsrichtung = Richtung mit der kleinsten Ausdehnung der Radscheibe (PCA);
 # Räder, die im Originalmodell eingeschlagen sind, werden um die Hochachse zurückgedreht
 import numpy as np, os
 rad_lenk = {}
+# „reine Rad-Materialien“: liegen zu ≥90 % in großzügigen Bereichen um die vier Räder (Originalwinkel, ohne Lenkkorrektur)
+def _rein():
+    zb = []
+    for (ulo, uhi, parts) in wheels.values():
+        cc = (ulo + uhi) / 2; rr = (uhi.z - ulo.z) / 2
+        zb.append((np.array(cc), rr))
+    drin, ges = {}, {}
+    for o in meshes:
+        a = np.empty(len(o.data.vertices) * 3); o.data.vertices.foreach_get('co', a); V = a.reshape(-1, 3)
+        mats = [sl.material for sl in o.material_slots]
+        for p in o.data.polygons:
+            m = mats[p.material_index] if p.material_index < len(mats) else None
+            c = V[list(p.vertices)].mean(axis=0)
+            ges[m] = ges.get(m, 0) + p.area
+            if any(np.linalg.norm(c - cc) < 1.5 * rr for cc, rr in zb):
+                drin[m] = drin.get(m, 0) + p.area
+    return {m for m in ges if m and drin.get(m, 0) >= 0.9 * ges[m]}
+REIN = _rein() if os.environ.get('RAD') == 'zyl' else set()
+if REIN:
+    print('REIN', sorted(m.name for m in REIN))
 for key, (ulo, uhi, parts) in list(wheels.items()):
     pts = []
     for o in parts:
@@ -197,6 +235,17 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
         step = max(1, len(vs) // 3000)
         pts += [tuple(vs[k].co) for k in range(0, len(vs), step)]
     P = np.array(pts)
+    if REIN:
+        # Punkte aller reinen Rad-Materialien in der Nähe dieses Rads (auch Teile, die vorab nicht erkannt wurden)
+        cc0 = np.array((ulo + uhi) / 2); rr0 = (uhi.z - ulo.z) / 2; Q = []
+        for o in meshes:
+            mats = [sl.material for sl in o.material_slots]
+            if not any(m in REIN for m in mats): continue
+            a = np.empty(len(o.data.vertices) * 3); o.data.vertices.foreach_get('co', a); V = a.reshape(-1, 3)
+            V = V[np.linalg.norm(V - cc0, axis=1) < 1.5 * rr0]
+            if len(V): Q.append(V)
+        if Q:
+            P = np.concatenate(Q)
     # nur der äußere Ring (Reifen) zählt: Bremssättel/Naben sind unsymmetrisch und verfälschen die Achse
     cc = (ulo + uhi) / 2; rr = (uhi.z - ulo.z) / 2
     # 3D-Abstand zur Mitte: bei eingelenkten Rädern ist die Seitenansicht (y/z) eine Ellipse, dort würde der
@@ -204,12 +253,22 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
     ring = P[np.linalg.norm(P - np.array(cc), axis=1) > 0.8 * rr]
     if len(ring) > 50:
         P = ring
+    P0 = P
     P = P - P.mean(axis=0)
     w, v = np.linalg.eigh(np.cov(P.T))
     n = v[:, 0]                                   # kleinster Eigenwert = Achse
     yaw = math.atan2(n[1], n[0])                  # Winkel der Achse zur x-Achse (Draufsicht)
+
     if yaw > math.pi / 2: yaw -= math.pi
     if yaw < -math.pi / 2: yaw += math.pi
+    if os.environ.get('RAD') == 'zyl' and abs(yaw) < math.radians(35):
+        # Feinsuche per Dreh-Test ±8° um die PCA-Schätzung (nur Reifenring)
+        R0 = P0 if len(P0) <= 2000 else P0[np.random.default_rng(2).choice(len(P0), 2000, replace=False)]
+        pts = [tuple(q) for q in R0]; mitte = Vector(R0.mean(axis=0))
+        kand = [(taumel(pts, mitte, yaw + math.radians(g), 0.0, 0.0, 0.0), g) for g in np.arange(-8, 8.01, 1.0)]
+        g0 = min(kand)[1]
+        kand = [(taumel(pts, mitte, yaw + math.radians(g), 0.0, 0.0, 0.0), g) for g in np.arange(g0 - 1, g0 + 1.01, 0.25)]
+        yaw += math.radians(min(kand)[1])
     # Sturz (Radneigung nach innen/außen): Winkel der Achse zur Waagerechten, nach dem Geradestellen
     horiz = math.hypot(n[0], n[1])
     sturz = math.atan2(n[2], horiz) * (1 if (n[0] * math.cos(yaw) + n[1] * math.sin(yaw)) >= 0 else -1)
@@ -218,7 +277,7 @@ for key, (ulo, uhi, parts) in list(wheels.items()):
     if abs(yaw) > math.radians(35):
         # unplausibel (echte Lenkeinschläge in Modellen < 35°): Schätzung verworfen
         print('GERADE', key, 'lenk %.1f° unplausibel, ignoriert' % math.degrees(yaw))
-    elif abs(yaw) > math.radians(5) and os.environ.get('RAD') == 'zyl':
+    elif abs(yaw) > math.radians(1.5) and os.environ.get('RAD') == 'zyl':
         # Zylinder-Modus: nicht hier drehen (sonst bleiben unerkannte Reifenteile im alten Winkel stehen),
         # sondern das Rad im Originalwinkel ausschneiden und danach komplett geradestellen (6c)
         rad_lenk[key] = (yaw, (ulo + uhi) / 2)
@@ -276,6 +335,15 @@ def zylinder(key, ulo, uhi, parts):
         cy, cz, r = kreis_fit(lauf[:, 1], lauf[:, 2])
     d = np.hypot(nah[:, 1] - cy, nah[:, 2] - cz)
     reifen = nah[(d > 0.8 * r) & (d < 1.01 * r)]
+    if REIN:
+        # Breite nur am Reifenring der reinen Rad-Materialien messen (Innenleben wie Achsteile nicht mitzählen)
+        Qr = [verts_np(o, key) for o in meshes if any(sl.material in REIN for sl in o.material_slots)]
+        if Qr:
+            Qr = np.concatenate(Qr)
+            dq = np.hypot(Qr[:, 1] - cy, Qr[:, 2] - cz)
+            ring = Qr[(dq > 0.8 * r) & (dq < 1.3 * r) & (np.abs(Qr[:, 0] - (ulo.x + uhi.x) / 2) < 0.4)]
+            if len(ring) > 50:
+                reifen = ring
     x0, x1 = np.percentile(reifen[:, 0], 0.5), np.percentile(reifen[:, 0], 99.5)
     return Vector((0, cy, cz)), r, x0, x1
 
@@ -379,24 +447,6 @@ def halbe_teile(key, teile, cz_, r, x0, x1):
         print('HALB %s %d Teile stehen still (nicht rundherum, innen)' % (key, len(neu)))
     return neu
 
-from mathutils.kdtree import KDTree
-
-def taumel(pts, c, a, b, dy, dz, winkel=(45, 135, 225)):
-    # Achse um a (Hochachse) und b (Längsachse) gekippt, Mitte um dy/dz verschoben: Punkte so drehen, dass diese
-    # Achse zur x-Achse wird, dann um x drehen und mittleren Abstand zur Originalform messen (mm)
-    R = (Matrix.Rotation(-b, 3, 'Y') @ Matrix.Rotation(-a, 3, 'Z')).to_4x4()
-    m = Vector((c.x, c.y + dy, c.z + dz))
-    P = [R @ (Vector(p) - m) for p in pts]
-    kd = KDTree(len(P))
-    for i, p in enumerate(P): kd.insert(p, i)
-    kd.balance()
-    summe = 0.0; n = 0
-    for w in winkel:
-        Rx = Matrix.Rotation(math.radians(w), 3, 'X')
-        for p in P[::2]:
-            summe += kd.find(Rx @ p)[2]; n += 1
-    return summe / n * 1000
-
 def achse_optimieren(key, teile, c, r):
     # Reifenpunkte (äußerer Ring) sind eine Rotationsfläche: bei der richtigen Achse ändert Drehen nichts
     Q = np.concatenate([verts_np(o) for o in teile])
@@ -460,7 +510,11 @@ if os.environ.get('RAD') == 'zyl':
                     drin = True; break
             gesamt[m] = gesamt.get(m, 0) + p.area
             if drin: innen[m] = innen.get(m, 0) + p.area
-    karosse = {m for m in gesamt if innen.get(m, 0) < 0.25 * gesamt[m]}
+    REIFEN = re.compile(r'tire|tyre|pneu|reifen|gomme|rubber', re.I)
+    karosse = {m for m in gesamt if innen.get(m, 0) < 0.25 * gesamt[m] and not (m and REIFEN.search(m.name))}
+    if os.environ.get('MATS'):
+        for m in sorted(gesamt, key=lambda m: -gesamt[m])[:25]:
+            print('MATANTEIL %-35s innen %.3f / gesamt %.3f m²  = %.0f %%' % ((m.name if m else '-')[-35:], innen.get(m, 0), gesamt[m], 100 * innen.get(m, 0) / max(gesamt[m], 1e-9)))
     print('KAROSSE-MATS im Rad ausgeschlossen:', sorted(m.name for m in karosse if m and innen.get(m, 0) > 0))
     for key, (ulo, uhi, parts) in wheels.items():
         cz_, r, x0, x1 = zyl[key]
@@ -468,8 +522,10 @@ if os.environ.get('RAD') == 'zyl':
         # Nachschneiden: Flächen mit Rad-Material (Reifen, Felge), die knapp außerhalb geblieben sind
         # (z. B. Laufflächenmantel mit größerem Radius), erweitern den Zylinder -> zweiter Schnitt
         radmats0 = {m for m in gesamt if m not in karosse and m and not STATISCH.search(m.name)}
+        r_start = r
         for runde in range(3):
             rmax, xa, xb = r * 1.015, x0, x1
+            dl = []
             for o in meshes:
                 if o in teile: continue
                 mats = [sl.material for sl in o.material_slots]
@@ -480,7 +536,10 @@ if os.environ.get('RAD') == 'zyl':
                     P = V[list(p.vertices)]
                     d = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z)
                     if d.max() < 1.3 * r and P[:, 0].min() > x0 - 0.08 and P[:, 0].max() < x1 + 0.08:
-                        rmax = max(rmax, d.max()); xa = min(xa, P[:, 0].min()); xb = max(xb, P[:, 0].max())
+                        dl.append(d.max()); xa = min(xa, P[:, 0].min()); xb = max(xb, P[:, 0].max())
+            if dl:
+                # robust (einzelne Ausreißer wie Gummi-Radhausteile ignorieren) und höchstens +25 % gegenüber dem Start
+                rmax = min(max(rmax, float(np.percentile(dl, 99.5))), 1.25 * r_start * 1.015)
             if rmax <= r * 1.015 + 1e-4 and xa >= x0 - 0.001 and xb <= x1 + 0.001:
                 break
             print('NACHSCHNITT %s radius %.3f -> %.3f  breite %.3f -> %.3f' % (key, r, rmax / 1.015, x1 - x0, xb - xa))
