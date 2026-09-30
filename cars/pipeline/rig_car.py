@@ -231,6 +231,60 @@ def ueberstand(key, teile, cz_):
         ueber_raus.extend(raus)
     return teile
 
+
+REIFEN_MAT = None
+def neuer_reifen(key, teile, cz_, x0, x1):
+    global REIFEN_MAT
+    Q = np.concatenate([verts_np(o) for o in teile])
+    d = np.hypot(Q[:, 1] - cz_.y, Q[:, 2] - cz_.z); w = np.degrees(np.arctan2(Q[:, 2] - cz_.z, Q[:, 1] - cz_.y))
+    oben = np.abs(w + 90) > 40
+    rt = float(np.percentile(d[oben], 99.5))           # Laufflächen-Radius (obere Hälfte, unverformt)
+    rf = 0.76 * rt                                      # Felgenhorn: alles außerhalb gehört zum Reifen
+    geloescht = 0
+    for o in list(teile):
+        V = verts_np(o); dv = np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z)
+        bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table()
+        weg = [f for f in bm.faces if all(dv[v.index] > rf for v in f.verts)]
+        if weg:
+            geloescht += len(weg)
+            bmesh.ops.delete(bm, geom=weg, context='FACES')
+            bm.to_mesh(o.data)
+        bm.free()
+        if len(o.data.polygons) == 0:
+            teile.remove(o)
+    # Reifen erzeugen: Profil im (axial, radial)-Schnitt, um die x-Achse gedreht
+    b = x1 - x0; xm = (x0 + x1) / 2; sh = 0.18 * b          # Schulterrundung
+    prof = [(-b/2 + 0.02*b, rf), (-b/2, rf + 0.3*(rt - rf)), (-b/2, rt - sh)]
+    for i in range(1, 6):
+        a = math.pi/2 * i / 6
+        prof.append((-b/2 + sh - sh*math.cos(a), rt - sh + sh*math.sin(a)))
+    prof += [(-b/2 + sh, rt), (b/2 - sh, rt)]
+    for i in range(1, 6):
+        a = math.pi/2 * i / 6
+        prof.append((b/2 - sh + sh*math.sin(a), rt - sh*(1 - math.cos(a))))
+    prof += [(b/2, rt - sh), (b/2, rf + 0.3*(rt - rf)), (b/2 - 0.02*b, rf)]
+    N = 72
+    bm = bmesh.new(); ringe = []
+    for k in range(N):
+        t = 2 * math.pi * k / N
+        ringe.append([bm.verts.new((xm + ax, cz_.y + rad * math.cos(t), cz_.z + rad * math.sin(t))) for ax, rad in prof])
+    for k in range(N):
+        A, B = ringe[k], ringe[(k + 1) % N]
+        for j in range(len(prof) - 1):
+            bm.faces.new((A[j], A[j+1], B[j+1], B[j]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    me = bpy.data.meshes.new('reifen_neu'); bm.to_mesh(me); bm.free()
+    for pg in me.polygons: pg.use_smooth = True
+    if REIFEN_MAT is None:
+        REIFEN_MAT = bpy.data.materials.new('tyre_neu'); REIFEN_MAT.use_nodes = True
+        bs = REIFEN_MAT.node_tree.nodes.get('Principled BSDF')
+        bs.inputs['Base Color'].default_value = (0.018, 0.018, 0.02, 1); bs.inputs['Roughness'].default_value = 0.85
+    me.materials.append(REIFEN_MAT)
+    ob = bpy.data.objects.new('reifen_neu', me); bpy.context.scene.collection.objects.link(ob)
+    meshes.append(ob); teile.append(ob)
+    print('NEUER-REIFEN %s r %.3f felgenhorn %.3f breite %.3f (%d Originalflächen entfernt)' % (key, rt, rf, b, geloescht))
+    return teile
+
 from mathutils.kdtree import KDTree
 
 def taumel(pts, c, a, b, dy, dz, winkel=(45, 135, 225)):
@@ -655,16 +709,9 @@ if os.environ.get('RAD') == 'zyl':
         for o in bremsen:
             o.data.transform(T); o.data.update()
         if key in verformt:
-            # verformt modellierter Reifen (Lastverformung) würde beim Drehen hüpfen: Reifen-Inseln
-            # (komplett außerhalb 80 % des Radius) drehen nicht mit, nur die Felge
-            reifen_st = []
-            for o in list(teile):
-                V = verts_np(o); dd = np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z)
-                if dd.min() > 0.8 * dd.max() and dd.max() > 0.9 * r:
-                    teile.remove(o); reifen_st.append(o)
-            bremsen += reifen_st
-            rad_bremsen[key] = bremsen
-            print('REIFEN-STEHT %s %d Teile' % (key, len(reifen_st)))
+            # verformt modellierter Reifen (Lastverformung) hüpft beim Drehen: Originalreifen entfernen
+            # (alle Flächen außerhalb des Felgenhorns) und durch einen generierten runden Reifen ersetzen
+            teile = neuer_reifen(key, teile, cz_, x0, x1)
         pruefe(key, cz_, r, x0, x1, teile)
         if os.environ.get('TEILE'):
             # Kreismitte je Material (äußerer Rand) relativ zur Drehachse
