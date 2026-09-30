@@ -438,6 +438,7 @@ async function openGarage(c) {
     radius: info.radius || 0.33, radstand: info.radstand || 2.6 };
   animateDrive(drive.t0);
   setupPaint(gltf.scene);
+  glasFix(gltf.scene);
   sammleMats(gltf.scene);
   camera.position.set(4.2, 1.8, 7); controls.target.set(0, 0.6, 0);
   gload.style.display = 'none';
@@ -494,6 +495,25 @@ const FINISH = {
   'Chrom':     { roughness: 0.04, metalness: 1, clearcoat: 0, clearcoatRoughness: 0, iridescence: 0 },
   'Perleffekt': { roughness: 0.2, metalness: 0.5, clearcoat: 1, clearcoatRoughness: 0.05, iridescence: 1 },
 };
+// Glas: Transmission-Materialien (fast unsichtbar bei geringer Deckkraft, kosten einen extra Renderdurchgang)
+// werden zu einfachem getöntem, spiegelndem Glas; farbige Lichtgläser behalten ihre Farbe
+function glasFix(root) {
+  const fertig = new Map();
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    const m = o.material;
+    if (!(m.transmission > 0.3 || /glass|window|glas/i.test(m.name))) return;
+    if (!fertig.has(m)) {
+      const hsl = {}; m.color.getHSL(hsl);
+      const bunt = hsl.s > 0.4 && hsl.l > 0.1;
+      fertig.set(m, new THREE.MeshPhysicalMaterial({
+        name: m.name, color: bunt ? m.color : new THREE.Color(0x1a1f24), transparent: true,
+        opacity: bunt ? 0.65 : 0.45, roughness: 0.03, metalness: 0, envMapIntensity: 1.6, depthWrite: false }));
+    }
+    o.material = fertig.get(m);
+  });
+}
+
 // Lackflächen heißen paint_1, paint_2 … (pipeline/rig_car.py); jede behält ihre Originaltextur
 let paints = [];
 function setupPaint(root) {
