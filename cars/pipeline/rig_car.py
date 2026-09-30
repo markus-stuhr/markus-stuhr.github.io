@@ -186,6 +186,47 @@ if len(wheels) == 4:
     boxes = {o: bbox([o]) for o in meshes}
     wheels = find_wheels()
 
+
+def ueberstand(key, teile, cz_):
+    # Laufflächen-Radius = Median der Sektor-Höchstwerte (obere Hälfte, Aufstandsfläche ist oft abgeplattet);
+    # Einzelteile, die >3 % darüber hinausragen (z. B. Radhausteile mit demselben Material), gehören nicht zum Rad
+    Q = np.concatenate([verts_np(o, key) for o in teile])
+    d = np.hypot(Q[:, 1] - cz_.y, Q[:, 2] - cz_.z); w = np.degrees(np.arctan2(Q[:, 2] - cz_.z, Q[:, 1] - cz_.y))
+    sek = [d[(w >= a) & (w < a + 30)].max() for a in list(range(-180, -150, 30)) + list(range(-30, 180, 30)) if ((w >= a) & (w < a + 30)).any()]
+    rt = float(np.median(sek)); grenze = rt * 1.03; raus = []
+    for o in list(teile):
+        V = verts_np(o, key)
+        bm = bmesh.new(); bm.from_mesh(o.data); bm.faces.ensure_lookup_table()
+        gesehen = set(); weg = []
+        for f0 in bm.faces:
+            if f0.index in gesehen: continue
+            stapel = [f0]; insel = []; gesehen.add(f0.index)
+            while stapel:
+                f = stapel.pop(); insel.append(f)
+                for e in f.edges:
+                    for g in e.link_faces:
+                        if g.index not in gesehen:
+                            gesehen.add(g.index); stapel.append(g)
+            idx = [v.index for f in insel for v in f.verts]
+            if np.hypot(V[idx, 1] - cz_.y, V[idx, 2] - cz_.z).max() > grenze:
+                weg += insel
+        if not weg:
+            bm.free(); continue
+        for f in bm.faces: f.select_set(False)
+        for f in weg: f.select_set(True)
+        bm.to_mesh(o.data); bm.free()
+        if len(weg) == len(o.data.polygons):
+            teile.remove(o); raus.append(o); continue
+        bpy.ops.object.select_all(action='DESELECT')
+        o.select_set(True); bpy.context.view_layer.objects.active = o
+        bpy.ops.object.mode_set(mode='EDIT'); bpy.ops.mesh.separate(type='SELECTED'); bpy.ops.object.mode_set(mode='OBJECT')
+        ab = [x for x in bpy.context.selected_objects if x is not o]
+        meshes.extend(ab); raus += ab
+    if raus:
+        print('UEBERSTAND %s Lauffläche %.3f, %d Teile ragen darüber hinaus -> Karosserie' % (key, rt, len(raus)))
+        ueber_raus.extend(raus)
+    return teile
+
 from mathutils.kdtree import KDTree
 
 def taumel(pts, c, a, b, dy, dz, winkel=(45, 135, 225)):
@@ -483,8 +524,20 @@ def achse_optimieren(key, teile, c, r):
     # Mitte: Kreisfit an die äußerste Lauffläche (was man als Eiern sieht), Radteile dorthin verschieben
     Q = np.concatenate([verts_np(o) for o in teile])
     d = np.hypot(Q[:, 1] - c.y, Q[:, 2] - c.z)
-    lauf = Q[d > 0.93 * d.max()]
+    # untere ±40° um den Aufstandspunkt auslassen (manche Modelle haben eine abgeplattete Aufstandsfläche)
+    w = np.degrees(np.arctan2(Q[:, 2] - c.z, Q[:, 1] - c.y))
+    oben = np.abs(w + 90) > 40
+    lauf = Q[(d > 0.93 * d[oben].max()) & oben]
     ky, kz, kr = kreis_fit(lauf[:, 1], lauf[:, 2])
+    # Felgenring (60–85 % des Radius, ohne unteren Bereich) als zweite Meinung: ist der Reifen verformt modelliert
+    # (Lastverformung), weichen die Mitten ab -> nach der Felge richten, deren Eiern sieht man deutlicher
+    rt = d[oben].max()
+    lippe = Q[(d > 0.6 * rt) & (d < 0.85 * rt) & oben]
+    if len(lippe) > 50:
+        fy, fz, fr = kreis_fit(lippe[:, 1], lippe[:, 2])
+        if math.hypot(fy - ky, fz - kz) > 0.005:
+            print('VERFORMT %s Reifen-Mitte weicht %.1f mm von der Felge ab -> Achse nach Felge' % (key, math.hypot(fy - ky, fz - kz) * 1000))
+            ky, kz = fy, fz
     S = Matrix.Translation(Vector((0, c.y - ky, c.z - kz)))
     for o in teile:
         o.data.transform(S); o.data.update()
@@ -492,6 +545,7 @@ def achse_optimieren(key, teile, c, r):
     return S @ T
 
 rad_bremsen = {}
+ueber_raus = []
 if os.environ.get('RAD') == 'zyl':
     neu = {}
     zyl = {key: zylinder(key, ulo, uhi, parts) for key, (ulo, uhi, parts) in wheels.items()}
@@ -525,7 +579,7 @@ if os.environ.get('RAD') == 'zyl':
         r_start = r
         for runde in range(3):
             rmax, xa, xb = r * 1.015, x0, x1
-            dl = []
+            dl = []; wl = []
             for o in meshes:
                 if o in teile: continue
                 mats = [sl.material for sl in o.material_slots]
@@ -537,15 +591,17 @@ if os.environ.get('RAD') == 'zyl':
                     d = np.hypot(P[:, 1] - cz_.y, P[:, 2] - cz_.z)
                     if d.max() < 1.3 * r and P[:, 0].min() > x0 - 0.08 and P[:, 0].max() < x1 + 0.08:
                         dl.append(d.max()); xa = min(xa, P[:, 0].min()); xb = max(xb, P[:, 0].max())
+                        wl.append(np.degrees(np.arctan2(P[:, 2] - cz_.z, P[:, 1] - cz_.y)).mean())
             if dl:
-                # robust (einzelne Ausreißer wie Gummi-Radhausteile ignorieren) und höchstens +25 % gegenüber dem Start
-                rmax = min(max(rmax, float(np.percentile(dl, 99.5))), 1.25 * r_start * 1.015)
+                # robust (einzelne Ausreißer ignorieren) und höchstens +40 % gegenüber dem Start (Reifen ≈ 1,3× Felge)
+                rmax = min(max(rmax, float(np.percentile(dl, 99.5))), 1.4 * r_start * 1.015)
             if rmax <= r * 1.015 + 1e-4 and xa >= x0 - 0.001 and xb <= x1 + 0.001:
                 break
             print('NACHSCHNITT %s radius %.3f -> %.3f  breite %.3f -> %.3f' % (key, r, rmax / 1.015, x1 - x0, xb - xa))
             r, x0, x1 = rmax / 1.015 * 1.002, xa, xb
             # Teile aus früheren Schnitten nicht doppelt aufnehmen (sonst würden sie zweimal geradegestellt)
             teile = list(dict.fromkeys(teile + schneide_rad(key, cz_, r, x0, x1, karosse)))
+        teile = ueberstand(key, teile, cz_)
         # Bremssättel: lenken mit, drehen aber nicht (hängen später am Lenk-Drehpunkt)
         bremsen = schneide_rad(key, cz_, r, x0, x1, karosse, bremse=True)
         bremsen += halbe_teile(key, teile, cz_, r, x0, x1)
@@ -609,7 +665,7 @@ if os.environ.get('RAD') == 'zyl':
         neu[key] = (Vector((x0, cz_.y - r, cz_.z - r)), Vector((x1, cz_.y + r, cz_.z + r)), teile)
     wheels = neu
     # Vergessen-Test: jede Fläche eines Rad-Materials (Reifen, Felge …) muss in einem Rad gelandet sein
-    radteile = {o for (_, _, t) in wheels.values() for o in t} | {o for b in rad_bremsen.values() for o in b}
+    radteile = {o for (_, _, t) in wheels.values() for o in t} | {o for b in rad_bremsen.values() for o in b} | set(ueber_raus)
     radmats = {m for m in gesamt if m not in karosse and m and not STATISCH.search(m.name)}
     vergessen = 0; fl = 0.0; je_mat = {}
     for o in meshes:
