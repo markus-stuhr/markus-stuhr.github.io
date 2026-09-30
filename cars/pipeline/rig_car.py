@@ -189,11 +189,11 @@ if len(wheels) == 4:
 
 def ueberstand(key, teile, cz_):
     # Laufflächen-Radius = Median der Sektor-Höchstwerte (obere Hälfte, Aufstandsfläche ist oft abgeplattet);
-    # Einzelteile, die >3 % darüber hinausragen (z. B. Radhausteile mit demselben Material), gehören nicht zum Rad
+    # Einzelteile, die >10 % darüber hinausragen (Laufflächen-Stücke liegen bis ~4 % darüber) (z. B. Radhausteile mit demselben Material), gehören nicht zum Rad
     Q = np.concatenate([verts_np(o, key) for o in teile])
     d = np.hypot(Q[:, 1] - cz_.y, Q[:, 2] - cz_.z); w = np.degrees(np.arctan2(Q[:, 2] - cz_.z, Q[:, 1] - cz_.y))
     sek = [d[(w >= a) & (w < a + 30)].max() for a in list(range(-180, -150, 30)) + list(range(-30, 180, 30)) if ((w >= a) & (w < a + 30)).any()]
-    rt = float(np.median(sek)); grenze = rt * 1.03; raus = []
+    rt = float(np.median(sek)); grenze = rt * 1.10; raus = []
     for o in list(teile):
         V = verts_np(o, key)
         bm = bmesh.new(); bm.from_mesh(o.data); bm.faces.ensure_lookup_table()
@@ -208,7 +208,11 @@ def ueberstand(key, teile, cz_):
                         if g.index not in gesehen:
                             gesehen.add(g.index); stapel.append(g)
             idx = [v.index for f in insel for v in f.verts]
-            if np.hypot(V[idx, 1] - cz_.y, V[idx, 2] - cz_.z).max() > grenze:
+            dd = np.hypot(V[idx, 1] - cz_.y, V[idx, 2] - cz_.z)
+            if dd.max() > grenze:
+                if os.environ.get('UEB'):
+                    mi = insel[0].material_index; ms = [sl.material.name if sl.material else '-' for sl in o.material_slots]
+                    print('UEB %s max %.3f min %.3f (x rt) faces %d %s' % (key, dd.max() / rt, dd.min() / rt, len(insel), ms[mi][-30:] if mi < len(ms) else '-'))
                 weg += insel
         if not weg:
             bm.free(); continue
@@ -536,8 +540,9 @@ def achse_optimieren(key, teile, c, r):
     if len(lippe) > 50:
         fy, fz, fr = kreis_fit(lippe[:, 1], lippe[:, 2])
         if math.hypot(fy - ky, fz - kz) > 0.005:
-            print('VERFORMT %s Reifen-Mitte weicht %.1f mm von der Felge ab -> Achse nach Felge' % (key, math.hypot(fy - ky, fz - kz) * 1000))
+            print('VERFORMT %s Reifen-Mitte weicht %.1f mm von der Felge ab -> Achse nach Felge, Reifen dreht nicht' % (key, math.hypot(fy - ky, fz - kz) * 1000))
             ky, kz = fy, fz
+            verformt.add(key)
     S = Matrix.Translation(Vector((0, c.y - ky, c.z - kz)))
     for o in teile:
         o.data.transform(S); o.data.update()
@@ -546,6 +551,7 @@ def achse_optimieren(key, teile, c, r):
 
 rad_bremsen = {}
 ueber_raus = []
+verformt = set()
 if os.environ.get('RAD') == 'zyl':
     neu = {}
     zyl = {key: zylinder(key, ulo, uhi, parts) for key, (ulo, uhi, parts) in wheels.items()}
@@ -648,6 +654,17 @@ if os.environ.get('RAD') == 'zyl':
                 bm.free()
         for o in bremsen:
             o.data.transform(T); o.data.update()
+        if key in verformt:
+            # verformt modellierter Reifen (Lastverformung) würde beim Drehen hüpfen: Reifen-Inseln
+            # (komplett außerhalb 80 % des Radius) drehen nicht mit, nur die Felge
+            reifen_st = []
+            for o in list(teile):
+                V = verts_np(o); dd = np.hypot(V[:, 1] - cz_.y, V[:, 2] - cz_.z)
+                if dd.min() > 0.8 * dd.max() and dd.max() > 0.9 * r:
+                    teile.remove(o); reifen_st.append(o)
+            bremsen += reifen_st
+            rad_bremsen[key] = bremsen
+            print('REIFEN-STEHT %s %d Teile' % (key, len(reifen_st)))
         pruefe(key, cz_, r, x0, x1, teile)
         if os.environ.get('TEILE'):
             # Kreismitte je Material (äußerer Rand) relativ zur Drehachse
