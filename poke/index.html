@@ -336,6 +336,21 @@
   .sheet .rar{color:var(--tx2);font-size:13.5px;margin-bottom:14px}
   .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:13.5px;margin-bottom:14px}
   .kv dt{color:var(--tx3)}
+  .kv dd a{color:var(--tx);text-decoration:underline;text-decoration-color:var(--line2);text-underline-offset:3px;cursor:pointer}
+  .kv dd a:hover{text-decoration-color:var(--acc)}
+
+  /* ---------- Illustratoren ---------- */
+  #ill{display:none}
+  #ill.on{display:block}
+  .ills{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px}
+  .ill{
+    display:flex;justify-content:space-between;gap:10px;align-items:baseline;text-align:left;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:8px 12px;font-size:13px;color:var(--tx2);transition:.15s;min-width:0;
+  }
+  .ill:hover{background:var(--panel2);border-color:var(--line2);color:var(--tx)}
+  .ill .n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600}
+  .ill .c{color:var(--tx3);font-size:11.5px;font-variant-numeric:tabular-nums;flex:none}
   .kv dd{color:var(--tx)}
   .vars{display:flex;flex-direction:column;gap:6px}
   .var{
@@ -408,6 +423,7 @@
   <nav class="tabs">
     <button class="tab on" data-view="sets">Sets</button>
     <button class="tab" data-view="dex">Pokémon</button>
+    <button class="tab" data-view="ill">Illustratoren</button>
   </nav>
 
   <div class="spacer"></div>
@@ -421,7 +437,7 @@
 
 </header>
 
-<main id="stage"><div id="tree"></div><div id="dex"></div><div id="results"></div></main>
+<main id="stage"><div id="tree"></div><div id="dex"></div><div id="ill"></div><div id="results"></div></main>
 
 <footer>
   <div class="pill"><span class="led" id="led"></span><span id="status">bereit</span></div>
@@ -768,10 +784,20 @@ async function detail(id, serieId, idxRef){
 
   const kv = el('dl','kv');
   const row = (k,v) => { if(v==null||v==='') return; kv.append(el('dt',null,k), el('dd',null,String(v))); };
-  row('Set', c.set && c.set.name);
+  const link = (k, v, fn) => {
+    if (v == null || v === '') return;
+    const a = el('a', null, String(v));
+    a.href = '#'; a.onclick = ev => { ev.preventDefault(); close(); fn(); };
+    const dd = el('dd'); dd.append(a);
+    kv.append(el('dt', null, k), dd);
+  };
+  if (c.set) link('Set', c.set.name, () => { setView('sets'); jumpToSet(c.set.id, serieId); });
+  const monsDd = el('dd');
+  kv.append(el('dt', null, 'Pokémon'), monsDd);
+  pokemonLinks(c, idxRef, monsDd);
   row('Nummer', c.localId + (c.set && c.set.cardCount ? ' / ' + c.set.cardCount.official : ''));
   row('ID', c.id);
-  row('Illustrator', c.illustrator);
+  link('Illustrator', c.illustrator, () => showIllustrator(c.illustrator));
   if (c.hp) row('KP', c.hp);
   if (c.types) row('Typ', c.types.join(', '));
   if (c.stage) row('Stufe', c.stage);
@@ -1665,6 +1691,145 @@ async function showSpecies(dexId, scrollTo){
   });
 }
 
+/* ---------- Pokémon einer Karte (für die Verlinkung im Detail) ----------
+   Dieselbe Zuordnung wie im Pokédex: über den Kartennamen. Trainer- und
+   Energiekarten bekommen keinen Eintrag. */
+async function pokemonLinks(c, idxRef, dd){
+  const dt = dd.previousSibling;
+  const weg = () => { dd.remove(); dt.remove(); };
+  if (c.category && !/pok/i.test(c.category)) return weg();
+  let ci;
+  try { [ci] = await Promise.all([loadIndex(), loadDex()]); } catch(e){ return weg(); }
+  let i = idxRef ? idxRef.i : null;
+  if (i == null && c.set) i = rowFor(c.set.id, c.localId);
+  const m = buildOwners(ci, dex);
+  const ids = [];
+  if (i != null) for (const [d, rows] of m) if (rows.includes(i)) ids.push(d);
+  if (!ids.length) return weg();
+  ids.forEach((d, k) => {
+    const s = dex.byDex.get(d);
+    if (!s) return;
+    if (k) dd.append(document.createTextNode(', '));
+    const a = el('a', null, s[1]);
+    a.href = '#';
+    a.onclick = ev => { ev.preventDefault(); close(); $('#q').value = ''; showSpecies(d); };
+    dd.append(a);
+  });
+}
+
+/* ================= Illustratoren =================
+ *
+ * Zuordnung vorgebacken von tools/build-illustrators.py: je Sprache eine Liste
+ * [name, [indexzeile, …]]. Die Zeilen zeigen in den Kartenindex derselben
+ * Sprache, die Karten kommen also wie überall aus cardGrid().
+ */
+let ill = null, illLang = null, illPromise = null;
+let illRoute = { art: 'uebersicht' };
+let illScroll = 0, illToken = 0;
+
+function loadIll(){
+  if (ill && illLang === lang) return Promise.resolve(ill);
+  if (illPromise && illPromise.lang === lang) return illPromise.p;
+  const want = lang;
+  const p = fetch(`index/ill-${want}.json`)
+    .then(r => { if(!r.ok) throw new Error(r.status); return r.json(); })
+    .then(rows => {
+      const d = { rows, by: new Map(rows.map(r => [norm(r[0]).replace(/\s+/g,' ').trim(), r])) };
+      if (lang === want){ ill = d; illLang = want; }
+      return d;
+    });
+  illPromise = { lang: want, p };
+  return p;
+}
+
+function illOverview(zurueck){
+  const my = ++illToken;
+  illRoute = { art: 'uebersicht' };
+  setView('ill');
+  $('#ill').innerHTML = '<div class="empty">Illustratoren werden geladen…</div>';
+  return loadIll()
+    .then(() => {
+      if (my !== illToken) return;
+      renderIll($('#q').value.trim());
+      if (zurueck && illScroll) requestAnimationFrame(() => {
+        if (my === illToken) $('#stage').scrollTop = illScroll;
+      });
+    })
+    .catch(() => { if (my === illToken) $('#ill').innerHTML = '<div class="empty">Für diese Sprache liegen keine Illustratoren vor.</div>'; });
+}
+
+let illSort = localStorage.getItem('poke.illsort') || 'name';
+
+function renderIll(filter){
+  const box = $('#ill');
+  box.innerHTML = '';
+  const nq = norm(filter || '');
+  let rows = ill.rows.filter(r => !nq || norm(r[0]).includes(nq));
+  if (illSort === 'anzahl') rows = rows.slice().sort((a,b) => b[1].length - a[1].length);
+
+  const bar = el('div','rbar');
+  bar.append(el('b', null, rows.length.toLocaleString('de-DE')));
+  bar.append(el('span', null, rows.length === 1 ? 'Illustrator' : 'Illustratoren'));
+  const sb = el('div','chips');
+  sb.style.margin = '0';
+  for (const [k, t] of [['name','A–Z'], ['anzahl','meiste Karten']]){
+    const c = chip('Sortierung', t, () => {
+      illSort = k; localStorage.setItem('poke.illsort', k); renderIll(filter);
+    });
+    if (illSort === k) c.style.borderColor = 'var(--acc)';
+    sb.append(c);
+  }
+  bar.append(sb);
+  box.append(bar);
+
+  if (!rows.length){ box.append(el('div','empty','Kein Illustrator mit diesem Namen.')); return; }
+  const wrap = el('div','ills');
+  for (const [name, z] of rows){
+    const b = el('button','ill');
+    b.append(el('span','n', name), el('span','c', z.length.toLocaleString('de-DE')));
+    b.title = name;
+    b.onclick = () => showIllustrator(name);
+    wrap.append(b);
+  }
+  box.append(wrap);
+}
+
+async function showIllustrator(name){
+  const my = ++illToken;
+  if (view === 'ill' && illRoute.art === 'uebersicht') illScroll = $('#stage').scrollTop;
+  illRoute = { art: 'name', name };
+  $('#q').value = '';
+  setView('ill');
+  const box = $('#ill');
+  box.innerHTML = '<div class="empty">lädt…</div>';
+  $('#stage').scrollTop = 0;
+
+  let ci, il;
+  try { [ci, il] = await Promise.all([loadIndex(), loadIll()]); }
+  catch(e){ if (my === illToken) box.innerHTML = '<div class="empty">Daten nicht ladbar.</div>'; return; }
+  if (my !== illToken) return;
+
+  box.innerHTML = '';
+  const back = el('button','back','← Alle Illustratoren');
+  back.onclick = () => { $('#q').value = ''; illOverview(true); };
+  box.append(back);
+
+  const r = il.by.get(norm(name).replace(/\s+/g,' ').trim());
+  const rows = r ? r[1].slice() : [];
+  rows.sort((a,b) => (ci.sets[ci.cards[b][0]][3]||'').localeCompare(ci.sets[ci.cards[a][0]][3]||''));
+
+  const bar = el('div','sbar');
+  const t = el('div');
+  t.append(el('h2', null, r ? r[0] : name));
+  t.append(el('div','d', `Illustrator · ${rows.length} ${rows.length === 1 ? 'Karte' : 'Karten'}`));
+  bar.append(t);
+  box.append(bar);
+
+  if (!rows.length){ box.append(el('div','empty','Keine Karte dieses Illustrators im Index.')); return; }
+  box.append(cardGrid(ci, rows.slice(0, 600)));
+  if (rows.length > 600) box.append(el('div','empty', `… und ${rows.length-600} weitere.`));
+}
+
 /* ---------- Ansichtswechsel ---------- */
 let view = localStorage.getItem('poke.view') || 'sets';
 
@@ -1675,8 +1840,9 @@ function setView(v){
   const searching = $('#q').value.trim().length >= 2 && v === 'sets';
   $('#tree').classList.toggle('hide', v !== 'sets' || searching);
   $('#dex').classList.toggle('on', v === 'dex');
+  $('#ill').classList.toggle('on', v === 'ill');
   $('#results').classList.toggle('on', searching);
-  $('#q').placeholder = v === 'dex' ? 'Pokémon…' : 'Karte, Serie oder Set…';
+  $('#q').placeholder = v === 'dex' ? 'Pokémon…' : v === 'ill' ? 'Illustrator…' : 'Karte, Serie oder Set…';
 }
 
 for (const t of document.querySelectorAll('.tab')){
@@ -1685,6 +1851,7 @@ for (const t of document.querySelectorAll('.tab')){
     $('#q').value = '';
     setView(v);
     if (v === 'dex') dexOverview();
+    else if (v === 'ill') illOverview();
     else onSearch();
   };
 }
@@ -1698,6 +1865,11 @@ function onSearch(){
     /* Im Pokédex filtert das Feld die Entwicklungsreihen, nicht die Karten */
     if (view === 'dex'){
       if (dex) renderDex(raw);
+      return;
+    }
+    if (view === 'ill'){
+      if (ill && illRoute.art === 'uebersicht') renderIll(raw);
+      else if (raw) illOverview();
       return;
     }
 
@@ -1757,9 +1929,28 @@ function jumpToSet(setId, serieId){
     const look = setInterval(() => {
       const n = document.querySelector(`[data-key="t:${CSS.escape(setId)}"]`);
       if (n){ clearInterval(look); n.scrollIntoView({ block:'center', behavior:'smooth' }); }
-      else if (++tries > 25) clearInterval(look);
+      else if (++tries > 25){ clearInterval(look); setOhneBaum(setId); }
     }, 120);
   });
+}
+
+/* Waisen-Sets (POP, Trainer Kits …) stehen im Index, aber nicht im Baum
+   dieser Sprache — dann ihre Karten als Liste zeigen statt ins Leere zu springen. */
+async function setOhneBaum(setId){
+  let d;
+  try { d = await loadIndex(); } catch(e){ return; }
+  const rows = rowsForSet(setId);
+  if (!rows || !rows.length || view !== 'sets') return;
+  const box = $('#results');
+  box.innerHTML = '';
+  const info = d.sets.find(x => x[0] === setId);
+  const bar = el('div','rbar');
+  bar.append(el('b', null, info ? info[1] : setId));
+  bar.append(el('span', null, `${rows.length} Karten · Set ohne eigenen Platz im Baum`));
+  box.append(bar, cardGrid(d, rows));
+  $('#tree').classList.add('hide');
+  box.classList.add('on');
+  $('#stage').scrollTop = 0;
 }
 
 /* Sprache */
@@ -1803,6 +1994,10 @@ sel.onchange = () => {
   if (view === 'dex'){
     if (dexRoute.art === 'species') showSpecies(dexRoute.dex, stand);
     else { dexScroll = stand; dexOverview(true); }
+  } else if (view === 'ill'){
+    ill = illLang = illPromise = null;
+    if (illRoute.art === 'name') showIllustrator(illRoute.name);
+    else illOverview();
   } else {
     if ($('#q').value.trim().length >= 2) onSearch();
     /* Der Baum klappt sich erst nach und nach wieder auf, deshalb mehrfach
@@ -1845,6 +2040,7 @@ document.documentElement.lang = lang;
 setView(view);
 build();
 if (view === 'dex') dexOverview();
+if (view === 'ill') illOverview();
 </script>
 </body>
 </html>
