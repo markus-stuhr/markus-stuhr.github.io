@@ -30,6 +30,9 @@ small{color:#999;display:block;margin-top:8px}
 <div class="key"><i></i>ebenerdig / Einschnitt</div>
 <div class="key"><i style="border-top:6px double #ccc"></i>Hochbahn / Viadukt</div>
 <div class="key"><i style="border-top-color:#8a8a8a;border-top-width:2px"></i>Betriebs- &amp; Abstellgleise</div>
+<div class="key"><i style="border-top:3px dotted #e8e0c8"></i>stillgelegt / Rohbau</div>
+<div class="key"><i style="width:10px;height:10px;border:2px solid #e8e0c8;background:#5a4a2a;border-radius:50%"></i>Geisterorte</div>
+<label><input type="checkbox" id="dis" checked> Stillgelegtes &amp; Geisterorte</label>
 <label><input type="checkbox" id="svc" checked> Betriebsgleise</label>
 <label><input type="checkbox" id="ent" checked> Eingänge (ab Zoom 15)</label>
 <label><input type="checkbox" id="dark" checked> dunkle Karte</label>
@@ -56,6 +59,8 @@ function apply(){
   map.setFilter('ground',['any',trackFilter('ground'),trackFilter('cut')]);
   map.setFilter('bridge-casing',trackFilter('bridge'));
   map.setFilter('bridge',trackFilter('bridge'));
+  const dv=document.getElementById('dis').checked?'visible':'none';
+  for(const l of['dis','poi','poi-labels'])map.setLayoutProperty(l,'visibility',dv);
   map.setLayoutProperty('entrances','visibility',document.getElementById('ent').checked?'visible':'none');
 }
 function addLayers(){
@@ -66,6 +71,9 @@ function addLayers(){
   map.addLayer({id:'ground',type:'line',source:'u',layout:{'line-cap':'round'},paint:{'line-color':['get','c'],'line-width':W()}});
   map.addLayer({id:'bridge-casing',type:'line',source:'u',paint:{'line-color':'#fff','line-width':W(3)}});
   map.addLayer({id:'bridge',type:'line',source:'u',paint:{'line-color':['get','c'],'line-width':W()}});
+  map.addLayer({id:'dis',type:'line',source:'u',filter:['==',['get','k'],'dis'],layout:{'line-cap':'round'},paint:{'line-color':'#e8e0c8','line-width':['interpolate',['linear'],['zoom'],10,1.5,16,4],'line-dasharray':[0.3,1.6],'line-opacity':.85}});
+  map.addLayer({id:'poi',type:'circle',source:'u',filter:['==',['get','k'],'poi'],paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,4,15,8],'circle-color':'#5a4a2a','circle-stroke-color':'#e8e0c8','circle-stroke-width':2}});
+  map.addLayer({id:'poi-labels',type:'symbol',source:'u',minzoom:12,filter:['==',['get','k'],'poi'],layout:{'text-field':['get','name'],'text-size':11,'text-offset':[0,1.2],'text-anchor':'top','text-font':['Noto Sans Italic'],'text-optional':true},paint:{'text-color':'#e8e0c8','text-halo-color':'#000','text-halo-width':1.4}});
   map.addLayer({id:'entrances',type:'circle',source:'u',minzoom:15,filter:['==',['get','k'],'entrance'],paint:{'circle-radius':3.5,'circle-color':'#1a5fb4','circle-stroke-color':'#fff','circle-stroke-width':1}});
   map.addLayer({id:'stations',type:'circle',source:'u',filter:['==',['get','k'],'station'],paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,1.6,13,3.5,16,6],'circle-color':'#fff','circle-stroke-color':'#1a5fb4','circle-stroke-width':['interpolate',['linear'],['zoom'],10,1,14,2]}});
   map.addLayer({id:'labels',type:'symbol',source:'u',minzoom:12.5,filter:['==',['get','k'],'station'],layout:{'text-field':['get','name'],'text-size':12,'text-offset':[0,1.1],'text-anchor':'top','text-font':['Noto Sans Regular']},paint:{'text-color':'#fff','text-halo-color':'#000','text-halo-width':1.4}});
@@ -81,17 +89,21 @@ for(const l in COL){const b=document.createElement('button');b.textContent=l;b.s
   b.onclick=()=>{off.has(l)?off.delete(l):off.add(l);b.classList.toggle('off');apply();};box.appendChild(b);}
 document.getElementById('svc').onchange=apply;
 document.getElementById('ent').onchange=apply;
+document.getElementById('dis').onchange=apply;
 darkCb.onchange=()=>map.setStyle(style(darkCb.checked));
 const lvlName={tunnel:'Tunnel',ground:'ebenerdig',cut:'Einschnitt',bridge:'Hochbahn/Viadukt'};
 map.on('click',e=>{
-  const fs=map.queryRenderedFeatures([[e.point.x-6,e.point.y-6],[e.point.x+6,e.point.y+6]],{layers:['stations','entrances','tunnel','ground','bridge']});
+  const fs=map.queryRenderedFeatures([[e.point.x-6,e.point.y-6],[e.point.x+6,e.point.y+6]],{layers:['poi','stations','entrances','dis','tunnel','ground','bridge']});
   if(!fs.length)return;const p=fs[0].properties;let h;
-  if(p.k==='station')h=`<b>${p.name}</b>${p.lines?'<br>'+p.lines:''}`;
+  const typN={subway:'U-Bahn',tram:'Straßenbahn',rail:'Eisenbahn',light_rail:'S-Bahn',narrow_gauge:'Schmalspur'};
+  if(p.k==='poi')h=`<b>${p.name}</b><br>${p.desc}<br><i style="color:#888">Lage ungefähr</i>`;
+  else if(p.k==='dis')h=`<b>${p.name||'ohne Namen'}</b><br>${p.ab?'aufgegeben':'stillgelegt'} · ${typN[p.typ]||p.typ}${p.tun?' · Tunnel':''}${p.desc?'<br>'+p.desc:''}`;
+  else if(p.k==='station')h=`<b>${p.name}</b>${p.lines?'<br>'+p.lines:''}`;
   else if(p.k==='entrance')h=`Eingang${p.name?': '+p.name:''}`;
   else h=`<b>${p.lines||'Betriebsgleis'}</b><br>${lvlName[p.lvl]}${p.name?'<br>'+p.name:''}`;
   new maplibregl.Popup().setLngLat(e.lngLat).setHTML(h).addTo(map);
 });
-for(const l of['stations','tunnel','ground','bridge'])map.on('mouseenter',l,()=>map.getCanvas().style.cursor='pointer'),map.on('mouseleave',l,()=>map.getCanvas().style.cursor='');
+for(const l of['poi','dis','stations','tunnel','ground','bridge'])map.on('mouseenter',l,()=>map.getCanvas().style.cursor='pointer'),map.on('mouseleave',l,()=>map.getCanvas().style.cursor='');
 </script>
 </body>
 </html>
