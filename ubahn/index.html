@@ -17,6 +17,9 @@ html,body{margin:0;height:100%;font:14px/1.4 system-ui,sans-serif;background:#11
 .lines button.off{opacity:.25}
 .key{display:flex;align-items:center;gap:8px;margin:2px 0;font-size:12px}
 .key i{display:inline-block;width:28px;height:0;border-top:4px solid #ccc}
+.card img{width:100%;max-height:170px;object-fit:cover;border-radius:6px;margin-bottom:6px;display:block}
+.card p{margin:4px 0}.card i,.card .meta{color:#777;font-size:12px}
+.card .src{font-size:11px;color:#777;margin-top:6px}.card a{color:#1a5fb4}
 small{color:#999;display:block;margin-top:8px}
 @media(max-width:600px){#panel{max-width:calc(100% - 52px);font-size:12px}}
 </style>
@@ -96,12 +99,14 @@ map.on('click',e=>{
   const fs=map.queryRenderedFeatures([[e.point.x-6,e.point.y-6],[e.point.x+6,e.point.y+6]],{layers:['poi','stations','entrances','dis','tunnel','ground','bridge']});
   if(!fs.length)return;const p=fs[0].properties;let h;
   const typN={subway:'U-Bahn',tram:'Straßenbahn',rail:'Eisenbahn',light_rail:'S-Bahn',narrow_gauge:'Schmalspur'};
-  if(p.k==='poi')h=`<b>${p.name}</b><br>${p.desc}<br><i style="color:#888">Lage ungefähr</i>`;
-  else if(p.k==='dis')h=`<b>${p.name||'ohne Namen'}</b><br>${p.ab?'aufgegeben':'stillgelegt'} · ${typN[p.typ]||p.typ}${p.tun?' · Tunnel':''}${p.desc?'<br>'+p.desc:''}`;
+  const pic=p=>p.img?`<img src="${p.img}" alt="">`:'';
+  const src=p=>p.wiki?`<div class="src"><a href="${p.wiki}" target="_blank" rel="noopener">Wikipedia</a>${p.file?` · Bild: <a href="https://commons.wikimedia.org/wiki/File:${encodeURIComponent(p.file)}" target="_blank" rel="noopener">Wikimedia Commons</a>`:''}</div>`:'';
+  if(p.k==='poi')h=`<div class="card">${pic(p)}<b>${p.name}</b><p>${p.desc}</p><i>Lage ungefähr</i>${src(p)}</div>`;
+  else if(p.k==='dis')h=`<div class="card">${pic(p)}<b>${p.name||'ohne Namen'}</b><div class="meta">${p.ab?'aufgegeben':'stillgelegt'} · ${typN[p.typ]||p.typ}${p.tun?' · Tunnel':''}</div>${p.desc?`<p>${p.desc}</p>`:''}${src(p)}</div>`;
   else if(p.k==='station')h=`<b>${p.name}</b>${p.lines?'<br>'+p.lines:''}`;
   else if(p.k==='entrance')h=`Eingang${p.name?': '+p.name:''}`;
   else h=`<b>${p.lines||'Betriebsgleis'}</b><br>${lvlName[p.lvl]}${p.name?'<br>'+p.name:''}`;
-  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(h).addTo(map);
+  new maplibregl.Popup({maxWidth:'300px'}).setLngLat(e.lngLat).setHTML(h).addTo(map);
 });
 for(const l of['poi','dis','stations','tunnel','ground','bridge'])map.on('mouseenter',l,()=>map.getCanvas().style.cursor='pointer'),map.on('mouseleave',l,()=>map.getCanvas().style.cursor='');
 </script>
