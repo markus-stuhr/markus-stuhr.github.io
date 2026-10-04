@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Berliner U-Bahn – Tunnel & Stationen</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+html,body{margin:0;height:100%;font:14px/1.4 system-ui,sans-serif;background:#111}
+#map{position:absolute;inset:0}
+#panel{position:absolute;top:12px;left:12px;background:rgba(20,20,24,.92);color:#eee;padding:12px 14px;border-radius:10px;max-width:260px;z-index:2}
+#panel h1{font-size:16px;margin:0 0 6px}
+#panel label{display:block;margin:3px 0;cursor:pointer}
+.lines{display:flex;flex-wrap:wrap;gap:4px;margin:8px 0}
+.lines button{border:0;border-radius:4px;color:#fff;font-weight:700;padding:3px 7px;cursor:pointer;opacity:1}
+.lines button.off{opacity:.25}
+.key{display:flex;align-items:center;gap:8px;margin:2px 0;font-size:12px}
+.key i{display:inline-block;width:28px;height:0;border-top:4px solid #ccc}
+small{color:#999;display:block;margin-top:8px}
+@media(max-width:600px){#panel{max-width:calc(100% - 52px);font-size:12px}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+<h1>Berliner U-Bahn – echte Lage</h1>
+<div class="lines" id="lines"></div>
+<div class="key"><i style="border-top-style:dashed"></i>Tunnel</div>
+<div class="key"><i></i>ebenerdig / Einschnitt</div>
+<div class="key"><i style="border-top:6px double #ccc"></i>Hochbahn / Viadukt</div>
+<div class="key"><i style="border-top-color:#8a8a8a;border-top-width:2px"></i>Betriebs- &amp; Abstellgleise</div>
+<label><input type="checkbox" id="svc" checked> Betriebsgleise</label>
+<label><input type="checkbox" id="ent" checked> Eingänge (ab Zoom 15)</label>
+<label><input type="checkbox" id="dark" checked> dunkle Karte</label>
+<small>Daten © OpenStreetMap-Mitwirkende · Karte © MapTiler</small>
+</div>
+<script src="/analytics.js"></script>
+<script>
+const KEY='lT9jK8r0OXrZinP9JSOT';
+const COL={U1:'#7DAD4C',U2:'#DA421E',U3:'#16683D',U4:'#F0D722',U5:'#7E5330',U6:'#8C6DAB',U7:'#528DBA',U8:'#224F86',U9:'#F3791D'};
+const style=d=>`https://api.maptiler.com/maps/${d?'dataviz-dark':'dataviz'}/style.json?key=${KEY}`;
+const map=new maplibregl.Map({container:'map',style:style(true),center:[13.405,52.515],zoom:11.3,maxZoom:19});
+map.addControl(new maplibregl.NavigationControl(),'top-right');
+map.addControl(new maplibregl.GeolocateControl(),'top-right');
+const off=new Set();let data;
+function trackFilter(lvl){
+  const f=['all',['==',['get','k'],'track'],['==',['get','lvl'],lvl]];
+  if(!document.getElementById('svc').checked)f.push(['!=',['get','lines'],'']);
+  for(const l of off)f.push(['!',['in',l,['get','lines']]]);
+  return f;
+}
+function apply(){
+  if(!map.getLayer('tunnel'))return;
+  map.setFilter('tunnel',trackFilter('tunnel'));
+  map.setFilter('ground',['any',trackFilter('ground'),trackFilter('cut')]);
+  map.setFilter('bridge-casing',trackFilter('bridge'));
+  map.setFilter('bridge',trackFilter('bridge'));
+  map.setLayoutProperty('entrances','visibility',document.getElementById('ent').checked?'visible':'none');
+}
+function addLayers(){
+  map.addSource('u',{type:'geojson',data});
+  const W=(add=0)=>['interpolate',['linear'],['zoom'],...[[10,2.6],[14,4],[17,7]].flatMap(([z,v])=>[z,['+',['case',['==',['get','lines'],''],v*0.5,v],add]])];
+  map.addLayer({id:'platforms',type:'fill',source:'u',minzoom:14,filter:['all',['==',['get','k'],'platform'],['==',['geometry-type'],'Polygon']],paint:{'fill-color':'#bbb','fill-opacity':.45}});
+  map.addLayer({id:'tunnel',type:'line',source:'u',paint:{'line-color':['get','c'],'line-width':W(),'line-dasharray':[2,1.2],'line-opacity':.95}});
+  map.addLayer({id:'ground',type:'line',source:'u',layout:{'line-cap':'round'},paint:{'line-color':['get','c'],'line-width':W()}});
+  map.addLayer({id:'bridge-casing',type:'line',source:'u',paint:{'line-color':'#fff','line-width':W(3)}});
+  map.addLayer({id:'bridge',type:'line',source:'u',paint:{'line-color':['get','c'],'line-width':W()}});
+  map.addLayer({id:'entrances',type:'circle',source:'u',minzoom:15,filter:['==',['get','k'],'entrance'],paint:{'circle-radius':3.5,'circle-color':'#1a5fb4','circle-stroke-color':'#fff','circle-stroke-width':1}});
+  map.addLayer({id:'stations',type:'circle',source:'u',filter:['==',['get','k'],'station'],paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,1.6,13,3.5,16,6],'circle-color':'#fff','circle-stroke-color':'#1a5fb4','circle-stroke-width':['interpolate',['linear'],['zoom'],10,1,14,2]}});
+  map.addLayer({id:'labels',type:'symbol',source:'u',minzoom:12.5,filter:['==',['get','k'],'station'],layout:{'text-field':['get','name'],'text-size':12,'text-offset':[0,1.1],'text-anchor':'top','text-font':['Noto Sans Regular']},paint:{'text-color':'#fff','text-halo-color':'#000','text-halo-width':1.4}});
+  apply();
+}
+const darkCb=document.getElementById('dark');
+function setLabelColors(){ if(map.getLayer('labels')){const d=darkCb.checked;map.setPaintProperty('labels','text-color',d?'#fff':'#111');map.setPaintProperty('labels','text-halo-color',d?'#000':'#fff');}}
+function ensure(){if(data&&map.isStyleLoaded()&&!map.getSource('u')){addLayers();setLabelColors();}}
+map.on('styledata',ensure);map.on('idle',ensure);
+fetch('ubahn.geojson').then(r=>r.json()).then(j=>{data=j;ensure();});
+const box=document.getElementById('lines');
+for(const l in COL){const b=document.createElement('button');b.textContent=l;b.style.background=COL[l];if(l==='U4')b.style.color='#000';
+  b.onclick=()=>{off.has(l)?off.delete(l):off.add(l);b.classList.toggle('off');apply();};box.appendChild(b);}
+document.getElementById('svc').onchange=apply;
+document.getElementById('ent').onchange=apply;
+darkCb.onchange=()=>map.setStyle(style(darkCb.checked));
+const lvlName={tunnel:'Tunnel',ground:'ebenerdig',cut:'Einschnitt',bridge:'Hochbahn/Viadukt'};
+map.on('click',e=>{
+  const fs=map.queryRenderedFeatures([[e.point.x-6,e.point.y-6],[e.point.x+6,e.point.y+6]],{layers:['stations','entrances','tunnel','ground','bridge']});
+  if(!fs.length)return;const p=fs[0].properties;let h;
+  if(p.k==='station')h=`<b>${p.name}</b>${p.lines?'<br>'+p.lines:''}`;
+  else if(p.k==='entrance')h=`Eingang${p.name?': '+p.name:''}`;
+  else h=`<b>${p.lines||'Betriebsgleis'}</b><br>${lvlName[p.lvl]}${p.name?'<br>'+p.name:''}`;
+  new maplibregl.Popup().setLngLat(e.lngLat).setHTML(h).addTo(map);
+});
+for(const l of['stations','tunnel','ground','bridge'])map.on('mouseenter',l,()=>map.getCanvas().style.cursor='pointer'),map.on('mouseleave',l,()=>map.getCanvas().style.cursor='');
+</script>
+</body>
+</html>
