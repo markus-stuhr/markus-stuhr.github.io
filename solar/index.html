@@ -18,6 +18,8 @@
   #credit { position: fixed; left: 12px; bottom: 8px; font-size: 10px; color: #778; }
   #credit a { color: #99a; }
   .label { position: fixed; left: 0; top: 0; font-size: 12px; color: #cfd6ff; pointer-events: auto; cursor: pointer; white-space: nowrap; text-shadow: 0 0 4px #000; user-select: none; }
+  .label.craft { font-size: 10px; color: #9ff0b0; cursor: help; }
+  .label.craft::before { border-radius: 1px; transform: translate(-3px, 0) rotate(45deg); }
   .label.comet { font-size: 10px; color: #9fc3e8; pointer-events: none; }
   .label.moon { font-size: 10px; color: #a8aec8; pointer-events: none; }
   .label.moon::before { width: 4px; height: 4px; transform: translate(-2px, 0); }
@@ -31,7 +33,7 @@
   <h1>☀️ Sonnensystem</h1>
   <div id="date"></div>
   <div class="row" id="speeds"></div>
-  <div class="row"><button id="now">Jetzt</button><button id="labels" class="on">Namen</button><button id="orbits" class="on">Bahnen</button></div>
+  <div class="row"><button id="now">Jetzt</button><button id="labels" class="on">Namen</button><button id="orbits" class="on">Bahnen</button><button id="craft" class="on">Raumfahrt</button></div>
   <div class="row"><button id="solecl">🌑 Sonnenfinsternis</button><button id="lunecl">🌕 Mondfinsternis</button></div>
   <div id="eclinfo" style="font-size:11px;color:#aab;display:none"></div>
   <div class="row">Maßstab:
@@ -643,6 +645,91 @@ function updateComets(orbitsDirty) {
   }
 }
 
+// Raumfahrt: Satelliten, Teleskope und Sonden. Positionen genähert (Kreisbahnen, Lagrange-Punkte,
+// Fluchtsonden als Richtung + Abstand zum 1.1.2026 + Radialgeschwindigkeit)
+const EPS = 23.4393 * D2R;
+const raDecDir = (raH, decD) => {
+  const ra = raH * 15 * D2R, dec = decD * D2R;
+  const x = Math.cos(dec) * Math.cos(ra), y = Math.cos(dec) * Math.sin(ra), z = Math.sin(dec);
+  const ye = y * Math.cos(EPS) + z * Math.sin(EPS), ze = -y * Math.sin(EPS) + z * Math.cos(EPS);
+  return new THREE.Vector3(x, ze, -ye).normalize();
+};
+const P = n => PLANETS.find(p => p.name === n);
+const CRAFT = [
+  { name: 'ISS', info: 'Internationale Raumstation, ~420 km', kind: 'orbit', parent: P('Erde'), a: 6371 + 420, P: 92.7 / 1440, inc: 51.6, node: 40 },
+  { name: 'Tiangong', info: 'Chinesische Raumstation, ~390 km', kind: 'orbit', parent: P('Erde'), a: 6371 + 390, P: 92.2 / 1440, inc: 41.5, node: 200 },
+  { name: 'Hubble', info: 'Weltraumteleskop seit 1990, ~530 km', kind: 'orbit', parent: P('Erde'), a: 6371 + 530, P: 95.2 / 1440, inc: 28.5, node: 120 },
+  { name: 'James Webb', info: 'Infrarot-Weltraumteleskop am Lagrange-Punkt L2, 1,5 Mio. km', kind: 'L2', parent: P('Erde'), a: 1.5e6, off: 0.25 },
+  { name: 'Euclid', info: 'ESA-Teleskop für Dunkle Materie/Energie, L2', kind: 'L2', parent: P('Erde'), a: 1.5e6, off: -0.3 },
+  { name: 'SOHO', info: 'Sonnenobservatorium am Lagrange-Punkt L1 seit 1995', kind: 'L1', parent: P('Erde'), a: 1.5e6, off: 0.2 },
+  { name: 'Mars Reconnaissance Orbiter', info: 'NASA-Marsorbiter seit 2006', kind: 'orbit', parent: P('Mars'), a: 3390 + 280, P: 112 / 1440, inc: 93, node: 0 },
+  { name: 'BepiColombo', info: 'ESA/JAXA-Merkursonde, Ankunft Ende 2026', kind: 'near', parent: P('Merkur'), a: 2e5 },
+  { name: 'Parker Solar Probe', info: 'Sonnensonde, fliegt bis 6 Mio. km an die Sonne (Bahn genähert)', kind: 'helio', el: { a: 0.388, e: 0.8817, I: 3.4 * D2R, O: 76.7 * D2R, w: 300 * D2R }, T: 2460668.9 },
+  { name: 'Voyager 1', info: 'Seit 1977 unterwegs, fernstes Objekt der Menschheit, im interstellaren Raum', kind: 'escape', dir: raDecDir(17.22, 12.0), r0: 169.6, v: 3.57 },
+  { name: 'Voyager 2', info: 'Seit 1977, einzige Sonde an Uranus und Neptun', kind: 'escape', dir: raDecDir(20.12, -58.5), r0: 142.0, v: 3.25 },
+  { name: 'New Horizons', info: 'Pluto-Vorbeiflug 2015, Arrokoth 2019', kind: 'escape', dir: raDecDir(19.33, -20.0), r0: 63.8, v: 2.91 },
+  { name: 'Pioneer 10', info: 'Start 1972, Kontakt 2003 verloren', kind: 'escape', dir: raDecDir(5.2, 26.0), r0: 139.0, v: 2.53 },
+  { name: 'Pioneer 11', info: 'Start 1973, Kontakt 1995 verloren', kind: 'escape', dir: raDecDir(18.87, -8.5), r0: 117.7, v: 2.34 },
+];
+let showCraft = true;
+const craftGroup = new THREE.Group(); scene.add(craftGroup);
+const satDist = (parent, aKm) => {
+  const R = parent.r, illus = 0.045 * Math.sqrt(R / 1000) * (1.8 + 0.9 * Math.log(aKm / R));
+  return lerpLog(aKm / AU_KM, illus, mix);
+};
+for (const c of CRAFT) {
+  c.spos = new THREE.Vector3();
+  c.marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex, color: 0x9ff0b0, sizeAttenuation: false, depthWrite: false, transparent: true }));
+  c.marker.scale.setScalar(0.012);
+  craftGroup.add(c.marker);
+  if (c.kind === 'orbit') {
+    c.frame = new THREE.Object3D();
+    c.frame.rotation.order = 'ZYX';
+    craftGroup.add(c.frame);
+    c.orbit = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({ color: 0x9ff0b0, transparent: true, opacity: 0.25 }));
+    c.frame.add(c.orbit);
+  }
+  if (c.kind === 'escape') {
+    c.line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: 0x9ff0b0, transparent: true, opacity: 0.25, dashSize: 0.6, gapSize: 0.4 }));
+    craftGroup.add(c.line);
+  }
+  const l = document.createElement('div'); l.className = 'label craft'; l.textContent = c.name; l.title = c.info;
+  document.body.appendChild(l); c.label = l;
+}
+const craftTmp = new THREE.Vector3();
+function updateCraft() {
+  craftGroup.visible = showCraft;
+  if (!showCraft) return;
+  for (const c of CRAFT) {
+    if (c.kind === 'orbit') {
+      const d = satDist(c.parent, c.a), th = 2 * Math.PI * (jd / c.P % 1);
+      c.frame.position.copy(c.parent.spos);
+      c.frame.rotation.set(c.inc * D2R, c.node * D2R, c.parent.tilt * D2R);
+      c.frame.updateMatrixWorld();
+      c.orbit.scale.setScalar(d); c.orbit.visible = showOrbits;
+      c.spos.set(Math.cos(th) * d, 0, -Math.sin(th) * d).applyMatrix4(c.frame.matrixWorld);
+    } else if (c.kind === 'L1' || c.kind === 'L2') {
+      // Lagrange-Punkte liegen auf der Linie Sonne–Erde; kleine seitliche Versetzung für die Halo-Bahn
+      const out = c.parent.spos.clone().normalize().multiplyScalar(c.kind === 'L2' ? 1 : -1);
+      const side = new THREE.Vector3(0, 1, 0).cross(out).normalize();
+      const d = satDist(c.parent, c.a);
+      c.spos.copy(c.parent.spos).addScaledVector(out, d).addScaledVector(side, d * c.off * Math.sin(jd / 90 + c.off * 10));
+    } else if (c.kind === 'near') {
+      c.spos.copy(c.parent.spos).add(new THREE.Vector3(1, 0.3, 0).normalize().multiplyScalar(satDist(c.parent, c.a)));
+    } else if (c.kind === 'helio') {
+      const n = 0.01720209895 / Math.pow(c.el.a, 1.5);
+      posFromE(c.el, kepler(n * (jd - c.T), c.el.e), craftTmp);
+      mapPos(craftTmp, c.spos);
+    } else if (c.kind === 'escape') {
+      const r = c.r0 + c.v * (jd - 2461041.5) / 365.25;
+      mapPos(craftTmp.copy(c.dir).multiplyScalar(Math.max(r, 1)), c.spos);
+      const a = c.line.geometry.attributes.position; a.setXYZ(1, c.spos.x, c.spos.y, c.spos.z); a.needsUpdate = true;
+      c.line.computeLineDistances(); c.line.visible = showOrbits;
+    }
+    c.marker.position.copy(c.spos);
+  }
+}
+
 // God Rays: Sonne hell + Planeten/Monde schwarz in ein kleines Bild rendern,
 // radial von der Sonne aus verwischen und additiv über die Szene legen
 const occRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
@@ -742,6 +829,7 @@ document.getElementById('lunecl').onclick = () => gotoEclipse('lun');
 document.getElementById('now').onclick = () => { jd = jdNow(); speedsEl.children[1].click(); };
 let showLabels = true, showOrbits = true;
 document.getElementById('labels').onclick = e => { showLabels = !showLabels; e.target.classList.toggle('on', showLabels); };
+document.getElementById('craft').onclick = e => { showCraft = !showCraft; e.target.classList.toggle('on', showCraft); };
 document.getElementById('orbits').onclick = e => { showOrbits = !showOrbits; e.target.classList.toggle('on', showOrbits); };
 
 // Maßstab
@@ -809,6 +897,7 @@ function frame(now) {
   }
   astMat.uniforms.days.value = jd - 2451545; astMat.uniforms.mixv.value = mix; astMat.uniforms.px.value = 1.6 * renderer.getPixelRatio();
   updateComets(mix !== lastMix || lastMix < 0);
+  updateCraft();
   if (flight) {
     // Kamerafahrt: Kamera und Blickziel fahren auf gerader Linie zur Endposition
     flight.k = Math.min(1, flight.k + dt / 2.2);
@@ -867,6 +956,15 @@ function frame(now) {
   for (const c of COMETS) {
     tmp.copy(c.spos).project(camera);
     const vis = showLabels && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+    c.label.style.display = vis ? 'block' : 'none';
+    if (vis) c.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
+  }
+  for (const c of CRAFT) {
+    tmp.copy(c.spos).project(camera);
+    // Raumfahrzeuge bei Planeten nur zeigen, wenn dieser Planet im Fokus ist (und weit genug vom Planeten entfernt)
+    let near = true;
+    if (c.parent) near = focus === c.parent && c.spos.distanceTo(c.parent.spos) / (camera.position.distanceTo(c.spos) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2 > 18;
+    const vis = showCraft && showLabels && near && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
     c.label.style.display = vis ? 'block' : 'none';
     if (vis) c.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
   }
