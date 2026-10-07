@@ -14,7 +14,8 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 Inte
 a { color: var(--accent); }
 header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 20; flex-wrap: wrap; }
 header h1 { font: 800 20px var(--num); margin: 0; }
-header a.back { font-size: 13px; text-decoration: none; font-weight: 600; }
+header a.back { width: 36px; height: 36px; flex: none; border-radius: 50%; background: var(--ink); color: var(--bg); display: grid; place-items: center; text-decoration: none; font: 700 18px Inter, sans-serif; margin-right: -4px; }
+header a.back:hover { background: var(--accent); }
 .search { position: relative; flex: 1; min-width: 220px; max-width: 520px; margin-left: auto; }
 .search input { width: 100%; padding: 9px 14px; border: 1.5px solid var(--line); border-radius: 99px; font: inherit; background: var(--bg); }
 .search input:focus { outline: none; border-color: var(--ink); }
@@ -78,8 +79,8 @@ td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
 </head>
 <body>
 <header>
+  <a class="back" href="./" title="Zurück zur Story">←</a>
   <h1>Haushalts-Explorer</h1>
-  <a class="back" href="./">← Zur Story</a>
   <div class="search"><input id="q" placeholder="Titel suchen, z. B. Bahn, Kita, Elterngeld, 1101 681…" autocomplete="off"><div class="results" id="res"></div></div>
 </header>
 <div class="controls">
