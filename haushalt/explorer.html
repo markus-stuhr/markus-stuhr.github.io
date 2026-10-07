@@ -62,7 +62,7 @@ tr:hover td { background: var(--bg); }
 tr.sel td { background: #f3e3d9; }
 td .soll { display: block; font-size: 11.5px; color: var(--muted); }
 td .nr { color: var(--muted); font-size: 11.5px; display: block; }
-td .share { display: block; height: 3px; background: var(--blue); border-radius: 2px; margin-top: 3px; opacity: .6; }
+td .share { display: block; height: 4px; background: var(--blue); border-radius: 2px; margin-top: 4px; }
 td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
 .up { color: var(--up); } .down { color: var(--down); }
 .tablebar { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 4px; gap: 10px; flex-wrap: wrap; }
@@ -221,7 +221,9 @@ function shade(base, i, n) {
   const t = n < 2 ? 0 : Math.min(1, i / Math.max(n - 1, 4));
   return d3.interpolateLab(base, d3.color(base).brighter(2.6))(t);
 }
+const colorById = new Map();  // gleiche Farben in Treemap und Tabellenbalken
 function renderTreemap(node) {
+  colorById.clear();
   const box = document.getElementById('tm'), W = box.clientWidth, H = box.clientHeight;
   const kids = node.children.filter(c => c.value > 0);
   const lay = d3.treemap().size([W, H]).paddingInner(2).round(true)(d3.hierarchy({ k: kids }, d => d.k).sum(d => d.k ? 0 : d.value).sort((a, b) => b.value - a.value));
@@ -229,6 +231,7 @@ function renderTreemap(node) {
   const els = lay.leaves().map((l, i) => {
     const n = l.data, el = document.createElement('div'), w = l.x1 - l.x0, h = l.y1 - l.y0;
     el.className = 'c'; Object.assign(el.style, { left: l.x0 + 'px', top: l.y0 + 'px', width: w + 'px', height: h + 'px', background: node.parent ? shade(topColor(node), i, lay.leaves().length) : topColor(n) });
+    colorById.set(n.id, el.style.background);
     if (w * h > 3500) el.innerHTML = `<b>${money(n.value)}</b>${n.name}`; else if (w * h > 900) el.innerHTML = `<b>${de(n.value / 1e9, 1)}</b>`;
     el.onmousemove = e => showTip(e, `<b>${n.name}</b><br>${money(n.value)} · ${de(n.value / node.value * 100, 1)} %${n.children ? '<br><i>Klick: reinzoomen</i>' : ''}`);
     el.onmouseleave = hideTip;
@@ -245,7 +248,7 @@ function renderTable() {
     .sort((a, b) => { const x = a[st.sort], y = b[st.sort]; const s = typeof x === 'string' ? x.localeCompare(y) : (x ?? -Infinity) - (y ?? -Infinity); return st.asc ? s : -s; });
   const max = d3.max(rows, r => r.value) || 1;
   document.getElementById('rows').innerHTML = list.map(r => `<tr data-id="${r.nr}" class="${st.sel === r.nr ? 'sel' : ''}">
-    <td class="${r.n.children ? 'drill' : ''}"><span class="nm">${r.name}</span>${r.n.children ? ' ›' : ''}<span class="nr">${fmtNr(r.nr)}</span><span class="share" style="width:${Math.max(0, r.value / max * 100)}%"></span></td>
+    <td class="${r.n.children ? 'drill' : ''}"><span class="nm">${r.name}</span>${r.n.children ? ' ›' : ''}<span class="nr">${fmtNr(r.nr)}</span><span class="share" style="width:${Math.max(0, r.value / max * 100)}%;background:${colorById.get(r.nr) || 'var(--line)'}"></span></td>
     <td>${money(r.value)}${r.soll != null ? `<small class="soll">Soll ${money(r.soll)}</small>` : ''}</td><td class="hide-m">${de(r.share * 100, 1)} %</td><td class="hide-m">${de(r.perHead, r.perHead < 10 ? 2 : 0)} €</td>
     <td class="${r.cmp > 0 ? 'up' : r.cmp < 0 ? 'down' : ''}">${r.isNew ? '<i>neu</i>' : r.cmp == null ? '–' : (r.cmp > 0 ? '+' : '') + money(r.cmp) + (r.cmpPct != null && isFinite(r.cmpPct) ? `<br><small>${r.cmp > 0 ? '+' : ''}${de(r.cmpPct * 100, 1)} %</small>` : '')}</td></tr>`).join('');
   document.querySelectorAll('#rows tr').forEach(tr => tr.onclick = e => {
