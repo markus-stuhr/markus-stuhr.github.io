@@ -291,14 +291,21 @@ function drawTS(series) {
   const unit = max >= 1e9 ? [1e9, 'Mrd.'] : max >= 1e6 ? [1e6, 'Mio.'] : [1e3, 'Tsd.'];
   svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues(YEARS.filter(y => y % 3 === 0)).tickFormat(d => "'" + String(d).slice(2)));
   svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickFormat(v => de(v / unit[0], 1) + ' ' + unit[1]));
-  svg.append('g').selectAll('rect').data(series.filter(s => s.soll != null)).join('rect').attr('x', s => x(s.year)).attr('width', x.bandwidth())
-    .attr('y', y(0)).attr('height', 0).attr('fill', s => s.year === st.year ? '#c8452c' : '#9cc0de')
-    .on('mousemove', (e, s) => showTip(e, `<b>${s.year}</b><br>Soll: ${money(s.soll)}<br>Ist: ${money(s.ist)}`)).on('mouseleave', hideTip)
-    .transition().duration(500).delay((s, i) => i * 25).attr('y', s => y(Math.max(0, s.soll))).attr('height', s => Math.abs(y(s.soll) - y(0)));
-  const ist = series.filter(s => s.ist != null);
-  svg.append('path').datum(ist).attr('fill', 'none').attr('stroke', '#1d1b18').attr('stroke-width', 2).attr('d', d3.line().x(s => x(s.year) + x.bandwidth() / 2).y(s => y(s.ist)));
-  svg.append('g').selectAll('circle').data(ist).join('circle').attr('cx', s => x(s.year) + x.bandwidth() / 2).attr('cy', s => y(s.ist)).attr('r', 3).attr('fill', '#1d1b18');
-  svg.append('text').attr('x', W - m.r).attr('y', 10).attr('text-anchor', 'end').attr('class', 'axis').style('font-size', '11px').style('fill', '#6f685d').text('Balken = Soll · Linie = Ist');
+  // Balken = Ist (bzw. Soll in Plan-Jahren, hell + gestrichelt), Soll als feiner Querstrich
+  const data = series.filter(s => s.ist != null || s.soll != null).map(s => ({ ...s, v: s.ist ?? s.soll, plan: s.ist == null }));
+  const tipFn = (e, s) => showTip(e, `<b>${s.year}${s.plan ? ' (Plan)' : ''}</b><br>${s.plan ? '' : `Ist: ${money(s.ist)}<br>`}Soll: ${money(s.soll)}${!s.plan && s.soll != null ? `<br>Abweichung: ${s.ist >= s.soll ? '+' : ''}${money(s.ist - s.soll)}` : ''}`);
+  const base = s => s.year === st.year ? '#c8452c' : '#5b8fc0';
+  svg.append('g').selectAll('rect').data(data).join('rect').attr('x', s => x(s.year)).attr('width', x.bandwidth()).attr('rx', 2)
+    .attr('y', y(0)).attr('height', 0)
+    .attr('fill', s => s.plan ? d3.color(base(s)).copy({ opacity: .28 }) : base(s))
+    .attr('stroke', s => s.plan ? base(s) : 'none').attr('stroke-dasharray', '3 2').attr('stroke-width', 1.2)
+    .on('mousemove', tipFn).on('mouseleave', hideTip)
+    .transition().duration(500).delay((s, i) => i * 25).attr('y', s => y(Math.max(0, s.v))).attr('height', s => Math.abs(y(s.v) - y(0)));
+  svg.append('g').selectAll('line').data(data.filter(s => !s.plan && s.soll != null)).join('line')
+    .attr('x1', s => x(s.year) - 2).attr('x2', s => x(s.year) + x.bandwidth() + 2).attr('y1', s => y(s.soll)).attr('y2', s => y(s.soll))
+    .attr('stroke', '#1d1b18').attr('stroke-width', 1.5).attr('opacity', 0).style('pointer-events', 'none')
+    .transition().delay(600).duration(300).attr('opacity', .75);
+  svg.append('text').attr('x', W - m.r).attr('y', 10).attr('text-anchor', 'end').attr('class', 'axis').style('font-size', '11px').style('fill', '#6f685d').text('Balken = Ist · Strich = Soll · gestrichelt = Plan');
 }
 
 // CSV + Link
