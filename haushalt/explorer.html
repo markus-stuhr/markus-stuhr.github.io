@@ -60,6 +60,7 @@ td { text-align: right; padding: 7px 8px; border-bottom: 1px solid #eee6d8; whit
 td:first-child { white-space: normal; }
 tr:hover td { background: var(--bg); }
 tr.sel td { background: #f3e3d9; }
+td .soll { display: block; font-size: 11.5px; color: var(--muted); }
 td .nr { color: var(--muted); font-size: 11.5px; display: block; }
 td .share { display: block; height: 3px; background: var(--blue); border-radius: 2px; margin-top: 3px; opacity: .6; }
 td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
@@ -93,7 +94,6 @@ td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
 </header>
 <div class="controls">
   <select id="year"></select>
-  <div class="seg" id="quota"><button data-v="target">Soll</button><button data-v="actual">Ist</button></div>
   <div class="seg" id="account"><button data-v="expenses">Ausgaben</button><button data-v="income">Einnahmen</button></div>
   <div class="seg" id="unit"><button data-v="single">Ministerien</button><button data-v="function">Zweck</button><button data-v="group">Ausgabenart</button></div>
   <div class="seg" id="cmp" title="Vergleichsspalte"><button data-v="prev">vs. Vorjahr</button><button data-v="quota">Soll vs. Ist</button></div>
@@ -151,8 +151,8 @@ async function tree(y, a, q, u) {
 // UI-Grundgerüst
 const ysel = document.getElementById('year');
 YEARS.forEach(y => ysel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}${y > LAST_IST ? ' (Plan)' : ''}</option>`));
-ysel.onchange = () => { st.year = +ysel.value; if (!hasData(st.year, st.quota)) st.quota = 'target'; render(); };
-const segs = ['quota', 'account', 'unit', 'cmp'];
+ysel.onchange = () => { st.year = +ysel.value; render(); };
+const segs = ['account', 'unit', 'cmp'];
 segs.forEach(s => document.querySelectorAll(`#${s} button`).forEach(b => b.onclick = () => { st[s] = b.dataset.v; if (s === 'account' || s === 'unit') st.path = ''; render(); }));
 document.querySelectorAll('th').forEach(th => th.onclick = () => { if (st.sort === th.dataset.k) st.asc = !st.asc; else { st.sort = th.dataset.k; st.asc = th.dataset.k === 'name'; } renderTable(); });
 document.getElementById('filter').oninput = () => renderTable();
@@ -161,11 +161,13 @@ let cur, rows = [];
 async function render() {
   ysel.value = st.year;
   segs.forEach(s => document.querySelectorAll(`#${s} button`).forEach(b => b.classList.toggle('on', st[s] === b.dataset.v)));
-  document.querySelector('#quota [data-v=actual]').disabled = st.year > LAST_IST;
+  // Kein Soll/Ist-Schalter: Ist, wo vorhanden, sonst Plan (Soll); Soll steht klein daneben
+  st.quota = st.year > LAST_IST ? 'target' : 'actual';
   document.querySelector('#cmp [data-v=quota]').disabled = st.year > LAST_IST;
   if (st.cmp === 'quota' && st.year > LAST_IST) st.cmp = 'prev';
   saveHash();
   const T = await tree(st.year, st.account, st.quota, st.unit);
+  const SOLL = st.quota === 'actual' ? await tree(st.year, st.account, 'target', st.unit) : null;
   let node = T.ix.get(st.path);
   if (!node || !node.children) { node = T.root; st.path = ''; }
   // Vergleichsbaum
@@ -179,7 +181,7 @@ async function render() {
     let cmp = null;
     if (o) cmp = st.cmp === 'prev' ? c.value - o.value : (st.quota === 'actual' ? c.value - o.value : o.value - c.value);
     const ref = st.cmp === 'prev' ? o?.value : (st.quota === 'actual' ? o?.value : c.value);
-    return { n: c, name: c.name, nr: c.id, value: c.value, share: c.value / node.value, perHead: c.value / pop, cmp, cmpPct: o && ref ? cmp / Math.abs(ref) : null, isNew: !o && !!other };
+    return { n: c, soll: SOLL?.ix.get(c.id)?.value ?? null, name: c.name, nr: c.id, value: c.value, share: c.value / node.value, perHead: c.value / pop, cmp, cmpPct: o && ref ? cmp / Math.abs(ref) : null, isNew: !o && !!other };
   });
   // Kopf
   // kleiner Pfad über der Überschrift (nur Vorfahren, klickbar)
@@ -188,7 +190,7 @@ async function render() {
   anc.forEach((n, i) => {
     if (i) pm.insertAdjacentHTML('beforeend', '<span>›</span>');
     const b = document.createElement('button');
-    b.textContent = n.parent ? n.name : `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} ${st.year} (${st.quota === 'target' ? 'Soll' : 'Ist'})`;
+    b.textContent = n.parent ? n.name : `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} ${st.year}${st.quota === 'target' ? ' (Plan)' : ''}`;
     b.onclick = () => { st.path = n.id; render(); };
     pm.appendChild(b);
   });
@@ -196,9 +198,10 @@ async function render() {
   const up = document.getElementById('up');
   up.style.visibility = node.parent ? 'visible' : 'hidden';
   up.onclick = node.parent ? () => { st.path = node.parent.id; render(); } : null;
-  document.getElementById('nodeName').textContent = node === T.root ? `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} ${st.year} (${st.quota === 'target' ? 'Soll' : 'Ist'})` : node.name;
+  document.getElementById('nodeName').textContent = node === T.root ? `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} ${st.year}${st.quota === 'target' ? ' (Plan)' : ''}` : node.name;
   document.getElementById('nodeTot').textContent = money(node.value);
-  document.getElementById('nodeSub').textContent = `${de(node.value / total * 100, 1)} % · ${de(node.value / pop)} € pro Kopf · ${node.children.length} Positionen · Stand ${T.root.modified}`;
+  const nodeSoll = SOLL?.ix.get(node.id)?.value;
+  document.getElementById('nodeSub').textContent = `${nodeSoll != null ? `Soll ${money(nodeSoll)} · ` : ''}${de(node.value / total * 100, 1)} % · ${de(node.value / pop)} € pro Kopf · ${node.children.length} Positionen · Stand ${T.root.modified}`;
   renderTreemap(node);
   renderTable();
   // rechts: gewählte Zeile, sonst die aktuelle Ebene („Ordner“) selbst
@@ -243,7 +246,7 @@ function renderTable() {
   const max = d3.max(rows, r => r.value) || 1;
   document.getElementById('rows').innerHTML = list.map(r => `<tr data-id="${r.nr}" class="${st.sel === r.nr ? 'sel' : ''}">
     <td class="${r.n.children ? 'drill' : ''}"><span class="nm">${r.name}</span>${r.n.children ? ' ›' : ''}<span class="nr">${fmtNr(r.nr)}</span><span class="share" style="width:${Math.max(0, r.value / max * 100)}%"></span></td>
-    <td>${money(r.value)}</td><td class="hide-m">${de(r.share * 100, 1)} %</td><td class="hide-m">${de(r.perHead, r.perHead < 10 ? 2 : 0)} €</td>
+    <td>${money(r.value)}${r.soll != null ? `<small class="soll">Soll ${money(r.soll)}</small>` : ''}</td><td class="hide-m">${de(r.share * 100, 1)} %</td><td class="hide-m">${de(r.perHead, r.perHead < 10 ? 2 : 0)} €</td>
     <td class="${r.cmp > 0 ? 'up' : r.cmp < 0 ? 'down' : ''}">${r.isNew ? '<i>neu</i>' : r.cmp == null ? '–' : (r.cmp > 0 ? '+' : '') + money(r.cmp) + (r.cmpPct != null && isFinite(r.cmpPct) ? `<br><small>${r.cmp > 0 ? '+' : ''}${de(r.cmpPct * 100, 1)} %</small>` : '')}</td></tr>`).join('');
   document.querySelectorAll('#rows tr').forEach(tr => tr.onclick = e => {
     const r = rows.find(r => r.nr === tr.dataset.id);
@@ -271,7 +274,7 @@ async function showDetail(id) {
   const firstV = first.ist ?? first.soll, lastV = last.ist ?? last.soll;
   const names = [...new Set(series.filter(s => s.name).map(s => s.name))];
   box.innerHTML = (id === cur.id ? `<h3>Entwicklung seit 2012</h3>` : `<h3>${last.name}</h3><div class="path">${fmtNr(id)}${path.length ? ' · ' + path.join(' › ') : ''}</div>`) + `
-    <div class="kv"><div><small>${st.year} ${st.quota === 'target' ? 'Soll' : 'Ist'}</small><b>${money(st.quota === 'target' ? cy?.soll : cy?.ist)}</b></div>
+    <div class="kv"><div><small>${st.year} ${st.quota === 'target' ? 'Plan' : 'Ist'}</small><b>${money(st.quota === 'target' ? cy?.soll : cy?.ist)}</b></div>
     <div><small>pro Kopf ${st.year}</small><b>${cy && (cy.soll ?? cy.ist) != null ? de((st.quota === 'target' ? cy.soll : cy.ist) / POP[st.year] / 1e6, 2) + ' €' : '–'}</b></div>
     <div><small>${first.year} → ${last.year}</small><b class="${lastV >= firstV ? 'up' : 'down'}">${firstV ? (lastV >= firstV ? '+' : '') + de((lastV / firstV - 1) * 100, 0) + ' %' : '–'}</b></div>
     <div><small>Summe Ist ${first.year}–${LAST_IST}</small><b>${money(d3.sum(series, s => s.ist))}</b></div></div>
@@ -291,21 +294,14 @@ function drawTS(series) {
   const unit = max >= 1e9 ? [1e9, 'Mrd.'] : max >= 1e6 ? [1e6, 'Mio.'] : [1e3, 'Tsd.'];
   svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues(YEARS.filter(y => y % 3 === 0)).tickFormat(d => "'" + String(d).slice(2)));
   svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickFormat(v => de(v / unit[0], 1) + ' ' + unit[1]));
-  // Balken = Ist (bzw. Soll in Plan-Jahren, hell + gestrichelt), Soll als feiner Querstrich
-  const data = series.filter(s => s.ist != null || s.soll != null).map(s => ({ ...s, v: s.ist ?? s.soll, plan: s.ist == null }));
-  const tipFn = (e, s) => showTip(e, `<b>${s.year}${s.plan ? ' (Plan)' : ''}</b><br>${s.plan ? '' : `Ist: ${money(s.ist)}<br>`}Soll: ${money(s.soll)}${!s.plan && s.soll != null ? `<br>Abweichung: ${s.ist >= s.soll ? '+' : ''}${money(s.ist - s.soll)}` : ''}`);
-  const base = s => s.year === st.year ? '#c8452c' : '#5b8fc0';
-  svg.append('g').selectAll('rect').data(data).join('rect').attr('x', s => x(s.year)).attr('width', x.bandwidth()).attr('rx', 2)
-    .attr('y', y(0)).attr('height', 0)
-    .attr('fill', s => s.plan ? d3.color(base(s)).copy({ opacity: .28 }) : base(s))
-    .attr('stroke', s => s.plan ? base(s) : 'none').attr('stroke-dasharray', '3 2').attr('stroke-width', 1.2)
-    .on('mousemove', tipFn).on('mouseleave', hideTip)
-    .transition().duration(500).delay((s, i) => i * 25).attr('y', s => y(Math.max(0, s.v))).attr('height', s => Math.abs(y(s.v) - y(0)));
-  svg.append('g').selectAll('line').data(data.filter(s => !s.plan && s.soll != null)).join('line')
-    .attr('x1', s => x(s.year) - 2).attr('x2', s => x(s.year) + x.bandwidth() + 2).attr('y1', s => y(s.soll)).attr('y2', s => y(s.soll))
-    .attr('stroke', '#1d1b18').attr('stroke-width', 1.5).attr('opacity', 0).style('pointer-events', 'none')
-    .transition().delay(600).duration(300).attr('opacity', .75);
-  svg.append('text').attr('x', W - m.r).attr('y', 10).attr('text-anchor', 'end').attr('class', 'axis').style('font-size', '11px').style('fill', '#6f685d').text('Balken = Ist · Strich = Soll · gestrichelt = Plan');
+  svg.append('g').selectAll('rect').data(series.filter(s => s.soll != null)).join('rect').attr('x', s => x(s.year)).attr('width', x.bandwidth())
+    .attr('y', y(0)).attr('height', 0).attr('fill', s => s.year === st.year ? '#c8452c' : '#9cc0de')
+    .on('mousemove', (e, s) => showTip(e, `<b>${s.year}</b><br>Soll: ${money(s.soll)}<br>Ist: ${money(s.ist)}`)).on('mouseleave', hideTip)
+    .transition().duration(500).delay((s, i) => i * 25).attr('y', s => y(Math.max(0, s.soll))).attr('height', s => Math.abs(y(s.soll) - y(0)));
+  const ist = series.filter(s => s.ist != null);
+  svg.append('path').datum(ist).attr('fill', 'none').attr('stroke', '#1d1b18').attr('stroke-width', 2).attr('d', d3.line().x(s => x(s.year) + x.bandwidth() / 2).y(s => y(s.ist)));
+  svg.append('g').selectAll('circle').data(ist).join('circle').attr('cx', s => x(s.year) + x.bandwidth() / 2).attr('cy', s => y(s.ist)).attr('r', 3).attr('fill', '#1d1b18');
+  svg.append('text').attr('x', W - m.r).attr('y', 10).attr('text-anchor', 'end').attr('class', 'axis').style('font-size', '11px').style('fill', '#6f685d').text('Balken = Soll · Linie = Ist');
 }
 
 // CSV + Link
