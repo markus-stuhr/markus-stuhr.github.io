@@ -825,9 +825,9 @@ function frame(now) {
   }
   // beim Maßstabswechsel Kameraabstand im Verhältnis der Systemgröße mitskalieren
   if (!flight && lastMix >= 0 && mix !== lastMix) {
-    // Bezugsgröße ist das ganze System (Neptunbahn), damit sich die Zoomstufe aufs Ganze nicht ändert
-    const ref = distMap(30.07);
-    const old = (() => { const m = mix; mix = lastMix; const r = distMap(30.07); mix = m; return r; })();
+    // Bezugsgröße ist der Asteroidengürtel (2,7 AE), damit sich die Zoomstufe aufs Ganze nicht ändert
+    const ref = distMap(2.7);
+    const old = (() => { const m = mix; mix = lastMix; const r = distMap(2.7); mix = m; return r; })();
     const off = camera.position.clone().sub(controls.target).multiplyScalar(ref / old);
     camera.position.copy(controls.target).add(off);
   }
