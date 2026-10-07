@@ -37,8 +37,6 @@ p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 #hero h1 { font-size: clamp(44px, 8.5vw, 112px); line-height: .95; margin: 0; font-weight: 900; letter-spacing: -.03em; }
 #hero h1 .big { color: var(--accent); display: block; }
 #hero .sub { font-size: clamp(18px, 2.2vw, 24px); max-width: 640px; margin: 28px 0 0; color: #3a362f; }
-.ticker { margin-top: 44px; display: inline-block; padding: 14px 20px; border: 1.5px solid var(--ink); border-radius: 12px; font-size: 15px; background: var(--card); }
-.ticker b { font-family: Fraunces, serif; font-size: 26px; color: var(--accent); font-variant-numeric: tabular-nums; }
 .scrollhint { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); font-size: 13px; color: var(--muted); }
 
 /* Kennzahlen */
@@ -121,7 +119,6 @@ footer a { color: #d6cdbd; }
   <div class="wrap">
     <h1>Der Bund gibt 2026 <span class="big"><span id="heroNum">0</span> Mrd. €</span> aus.</h1>
     <p class="sub">Wofür eigentlich? Woher kommt das Geld? Und was hat sich seit 2012 verändert? Eine Reise durch 16 Jahre Bundeshaushalt.</p>
-    <div class="ticker">Seit du diese Seite geöffnet hast, hat der Bund <b id="tick">0 €</b> ausgegeben.</div>
   </div>
   <div class="scrollhint">↓ scrollen</div>
 </section>
@@ -259,9 +256,8 @@ gsap.utils.toArray('.reveal').forEach(el => gsap.to(el, { opacity: 1, y: 0, dura
 // Hero
 const heroO = { v: 0 };
 gsap.to(heroO, { v: D.total, duration: 2.2, ease: 'power3.out', delay: .3, onUpdate: () => heroNum.textContent = de(heroO.v) });
-gsap.from('#hero h1, #hero .sub, .ticker', { y: 40, opacity: 0, duration: 1, stagger: .15, ease: 'power3.out' });
-const perSec = D.total * 1e9 / (365 * 86400), t0 = performance.now();
-(function tick() { document.getElementById('tick').textContent = de((performance.now() - t0) / 1000 * perSec) + ' €'; requestAnimationFrame(tick); })();
+gsap.from('#hero h1, #hero .sub', { y: 40, opacity: 0, duration: 1, stagger: .15, ease: 'power3.out' });
+const perSec = D.total * 1e9 / (365 * 86400);
 
 // Kennzahlen hochzählen
 const vals = { perHead: D.total * 1e9 / POP, perDay: D.total * 1e9 / POP / 365, perSec };
