@@ -18,6 +18,7 @@
   #credit { position: fixed; left: 12px; bottom: 8px; font-size: 10px; color: #778; }
   #credit a { color: #99a; }
   .label { position: fixed; left: 0; top: 0; font-size: 12px; color: #cfd6ff; pointer-events: auto; cursor: pointer; white-space: nowrap; text-shadow: 0 0 4px #000; user-select: none; }
+  .label.comet { font-size: 10px; color: #9fc3e8; pointer-events: none; }
   .label.moon { font-size: 10px; color: #a8aec8; pointer-events: none; }
   .label.moon::before { width: 4px; height: 4px; transform: translate(-2px, 0); }
   .label.big::before { visibility: hidden; }
@@ -66,8 +67,10 @@ const PLANETS = [
 const SUN_R = 696000;
 
 function kepler(M, e) {
-  let E = M + e * Math.sin(M);
-  for (let i = 0; i < 8; i++) E -= (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+  // bei fast parabolischen Kometenbahnen mit π starten und länger iterieren
+  M = Math.atan2(Math.sin(M), Math.cos(M));
+  let E = e < 0.8 ? M + e * Math.sin(M) : (M < 0 ? -Math.PI : Math.PI);
+  for (let i = 0; i < 40; i++) { const d = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); E -= d; if (Math.abs(d) < 1e-12) break; }
   return E;
 }
 function elementsAt(p, T) {
@@ -446,6 +449,149 @@ function updateOrbit(p, jd) {
   arr.needsUpdate = true;
 }
 
+// Asteroidengürtel: 5000 Brocken auf Keplerbahnen, Bahn im Vertex-Shader gelöst (Kirkwood-Lücken ausgespart)
+const AST_N = 5000;
+const astGeo = new THREE.BufferGeometry();
+{
+  const el1 = new Float32Array(AST_N * 4), el2 = new Float32Array(AST_N * 3);
+  const gaps = [2.502, 2.825, 2.958];
+  for (let i = 0; i < AST_N; i++) {
+    let a;
+    do { a = 2.1 + Math.random() * 1.2; } while (gaps.some(g => Math.abs(a - g) < 0.03 * Math.random() + 0.01));
+    const e = Math.random() ** 2 * 0.25, inc = Math.abs((Math.random() + Math.random() - 1) * 18) * D2R;
+    el1.set([a, e, inc, Math.random() * 2 * Math.PI], i * 4);
+    el2.set([Math.random() * 2 * Math.PI, Math.random() * 2 * Math.PI, 0.5 + Math.random() * 0.5], i * 3);
+  }
+  astGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(AST_N * 3), 3));
+  astGeo.setAttribute('el1', new THREE.BufferAttribute(el1, 4));
+  astGeo.setAttribute('el2', new THREE.BufferAttribute(el2, 3));
+}
+const astMat = new THREE.ShaderMaterial({
+  uniforms: { days: { value: 0 }, mixv: { value: 1 }, px: { value: 1.6 } },
+  transparent: true, depthWrite: false,
+  vertexShader: `attribute vec4 el1; attribute vec3 el2; uniform float days, mixv, px; varying float vB;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() {
+      float a = el1.x, e = el1.y, I = el1.z;
+      float M = el1.w + 0.01720209895 / (a * sqrt(a)) * days;
+      float E = M + e * sin(M);
+      for (int k = 0; k < 5; k++) E -= (E - e * sin(E) - M) / (1.0 - e * cos(E));
+      float xp = a * (cos(E) - e), yp = a * sqrt(1.0 - e * e) * sin(E);
+      float w = el2.x, O = el2.y;
+      vec3 q = vec3(cos(w) * xp - sin(w) * yp, sin(w) * xp + cos(w) * yp, 0.0);
+      q = vec3(q.x, q.y * cos(I), q.y * sin(I));
+      vec3 ecl = vec3(cos(O) * q.x - sin(O) * q.y, sin(O) * q.x + cos(O) * q.y, q.z);
+      vec3 p = vec3(ecl.x, ecl.z, -ecl.y);
+      float r = length(p);
+      p *= exp(mix(log(r), log(4.0 * sqrt(r)), mixv)) / r;
+      vB = el2.z;
+      vec4 mv = modelViewMatrix * vec4(p, 1.0);
+      gl_Position = projectionMatrix * mv;
+      gl_PointSize = px;
+      #include <logdepthbuf_vertex>
+    }`,
+  fragmentShader: `varying float vB;
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      if (length(gl_PointCoord - 0.5) > 0.5) discard;
+      gl_FragColor = vec4(vec3(0.62, 0.56, 0.5) * vB, 0.75);
+    }`
+});
+const asteroids = new THREE.Points(astGeo, astMat);
+asteroids.frustumCulled = false;
+scene.add(asteroids);
+
+// Kometen: Bahnelemente (q, e, i, Ω, ω, Periheldurchgang als JD); Schweif zeigt von der Sonne weg
+const COMETS = [
+  { name: '1P/Halley', q: 0.58598, e: 0.96714, i: 162.262, O: 58.42, w: 111.33, T: 2446467.4 },
+  { name: '2P/Encke', q: 0.3359, e: 0.8483, i: 11.78, O: 334.57, w: 186.55, T: 2460239.5 },
+  { name: '67P/Tschurjumow-Gerassimenko', q: 1.2107, e: 0.6497, i: 3.87, O: 36.33, w: 22.15, T: 2459519.5 },
+  { name: '109P/Swift-Tuttle', q: 0.9595, e: 0.9632, i: 113.45, O: 139.38, w: 152.98, T: 2448968.5 },
+  { name: 'C/1995 O1 Hale-Bopp', q: 0.914, e: 0.9951, i: 89.43, O: 282.47, w: 130.59, T: 2450539.6 },
+];
+const tailMat = (color) => new THREE.ShaderMaterial({
+  uniforms: { head: { value: new THREE.Vector3() }, tip: { value: new THREE.Vector3() }, width: { value: 0.1 }, alpha: { value: 0 }, color: { value: new THREE.Color(color) } },
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  vertexShader: `attribute float side, along; uniform vec3 head, tip; uniform float width; varying float vA, vS;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() {
+      vec4 h = viewMatrix * vec4(head, 1.0), t = viewMatrix * vec4(tip, 1.0);
+      vec4 mv = mix(h, t, along);
+      vec3 dv = normalize(t.xyz - h.xyz + 1e-9);
+      vec3 wv = normalize(cross(dv, normalize(mv.xyz)));
+      mv.xyz += wv * side * width * mix(0.15, 1.0, sqrt(along));
+      vA = along; vS = side;
+      gl_Position = projectionMatrix * mv;
+      #include <logdepthbuf_vertex>
+    }`,
+  fragmentShader: `uniform float alpha; uniform vec3 color; varying float vA, vS;
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      float f = (1.0 - vA) * (1.0 - vS * vS) * smoothstep(0.0, 0.05, vA);
+      gl_FragColor = vec4(color, alpha * f);
+    }`
+});
+const tailGeo = new THREE.BufferGeometry();
+{
+  const side = [], along = [], idx = [], N = 24;
+  for (let k = 0; k <= N; k++) for (const sd of [-1, 0, 1]) { side.push(sd); along.push(k / N); }
+  for (let k = 0; k < N; k++) for (let j = 0; j < 2; j++) { const o = k * 3 + j; idx.push(o, o + 1, o + 3, o + 1, o + 4, o + 3); }
+  tailGeo.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(side.length * 3), 3));
+  tailGeo.setAttribute('side', new THREE.Float32BufferAttribute(side, 1));
+  tailGeo.setAttribute('along', new THREE.Float32BufferAttribute(along, 1));
+  tailGeo.setIndex(idx);
+}
+for (const c of COMETS) {
+  c.k = { a: c.q / (1 - c.e), e: c.e, I: c.i * D2R, O: c.O * D2R, w: (c.w + c.O) * D2R };
+  c.n = 0.01720209895 / Math.pow(c.k.a, 1.5);
+  c.pos = new THREE.Vector3(); c.spos = new THREE.Vector3();
+  c.head = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xcfe8ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  scene.add(c.head);
+  c.ion = new THREE.Mesh(tailGeo, tailMat(0x7fb0ff)); c.dust = new THREE.Mesh(tailGeo, tailMat(0xffe0b0));
+  for (const m of [c.ion, c.dust]) { m.frustumCulled = false; scene.add(m); }
+  const pts = [], v = new THREE.Vector3();
+  for (let i = 0; i <= 720; i++) pts.push(posFromE(c.k, (i / 720) * 2 * Math.PI, v).clone());
+  c.orbitPts = pts;
+  c.orbit = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x6f8fb0, transparent: true, opacity: 0.25 }));
+  scene.add(c.orbit);
+  const l = document.createElement('div'); l.className = 'label comet'; l.textContent = c.name;
+  document.body.appendChild(l); c.label = l;
+}
+const cometVel = new THREE.Vector3(), cometTmp = new THREE.Vector3();
+function updateComets(orbitsDirty) {
+  for (const c of COMETS) {
+    const M = c.n * (jd - c.T);
+    posFromE(c.k, kepler(M, c.k.e), c.pos);
+    mapPos(c.pos, c.spos);
+    // Bewegungsrichtung (für den gekrümmten Staubschweif) aus einem Schritt einen Tag später
+    posFromE(c.k, kepler(c.n * (jd + 1 - c.T), c.k.e), cometVel).sub(c.pos).normalize();
+    const r = c.pos.length(), act = THREE.MathUtils.clamp((4.5 - r) / 3, 0, 1);
+    const L = Math.min(1.2, 0.35 / (r * r)) * act;
+    const anti = c.pos.clone().normalize();
+    const size = lerpLog(2e-6, 0.06, mix) * (0.4 + act);
+    c.head.position.copy(c.spos); c.head.scale.setScalar(size);
+    const set = (m, dir, len, alpha) => {
+      const u = m.material.uniforms;
+      u.head.value.copy(c.spos);
+      mapPos(cometTmp.copy(c.pos).addScaledVector(dir, len), u.tip.value);
+      u.width.value = u.head.value.distanceTo(u.tip.value) * 0.12 + size * 0.2;
+      u.alpha.value = alpha * act; m.visible = act > 0;
+    };
+    set(c.ion, anti, L, 0.55);
+    set(c.dust, anti.clone().addScaledVector(cometVel, -0.45).normalize(), L * 0.7, 0.4);
+    c.orbit.visible = showOrbits;
+    if (orbitsDirty) {
+      const a = c.orbit.geometry.attributes.position;
+      c.orbitPts.forEach((v, i) => { mapPos(v, cometTmp); a.setXYZ(i, cometTmp.x, cometTmp.y, cometTmp.z); });
+      a.needsUpdate = true;
+    }
+  }
+}
+
 // Zeit
 const jdNow = () => Date.now() / 86400000 + 2440587.5;
 let jd = jdNow(), speed = 1; // Tage pro Sekunde Echtzeit-Faktor in Tagen/s
@@ -515,6 +661,8 @@ function frame(now) {
     if (p.clouds) p.clouds.rotation.y = jd * 0.15;
   }
   updateMoons();
+  astMat.uniforms.days.value = jd - 2451545; astMat.uniforms.mixv.value = mix; astMat.uniforms.px.value = 1.6 * renderer.getPixelRatio();
+  updateComets(mix !== lastMix || lastMix < 0);
   if (flight) {
     // Kamerafahrt: Kamera und Blickziel fahren auf gerader Linie zur Endposition
     flight.k = Math.min(1, flight.k + dt / 2.2);
@@ -568,6 +716,12 @@ function frame(now) {
       m.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth + (big ? px - 4 : 0)}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
     }
   }
+  for (const c of COMETS) {
+    tmp.copy(c.spos).project(camera);
+    const vis = showLabels && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+    c.label.style.display = vis ? 'block' : 'none';
+    if (vis) c.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
+  }
   dateEl.textContent = fmt.format(new Date((jd - 2440587.5) * 86400000));
   if (focus) {
     planetPos(PLANETS[2], jd, earthPos);
@@ -578,7 +732,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__solar = { camera, controls };
+window.__solar = { camera, controls, setJd: v => { jd = v; }, setFocus };
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
