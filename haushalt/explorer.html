@@ -195,7 +195,9 @@ async function render() {
   document.getElementById('nodeSub').textContent = `${de(node.value / total * 100, 1)} % · ${de(node.value / pop)} € pro Kopf · ${node.children.length} Positionen · Stand ${T.root.modified}`;
   renderTreemap(node);
   renderTable();
-  if (st.sel) showDetail(st.sel);
+  // rechts: gewählte Zeile, sonst die aktuelle Ebene („Ordner“) selbst
+  if (!st.sel || !rows.some(r => r.nr === st.sel)) st.sel = '';
+  showDetail(st.sel || node.id);
 }
 
 const COLORS = ['#2f5d8a', '#c8452c', '#7a9e5a', '#d9a13b', '#8d6aa8', '#3f9c94', '#8a7f70', '#b0806a', '#5b8fc0', '#4a5a3a', '#a85a7a', '#6c8f6f'];
@@ -240,7 +242,7 @@ function renderTable() {
   document.querySelectorAll('#rows tr').forEach(tr => tr.onclick = e => {
     const r = rows.find(r => r.nr === tr.dataset.id);
     if (r.n.children && e.target.closest('td.drill')) { st.path = r.nr; st.sel = r.nr; render(); }
-    else { st.sel = r.nr; saveHash(); renderTable(); showDetail(r.nr); }
+    else { st.sel = st.sel === r.nr ? '' : r.nr; saveHash(); renderTable(); showDetail(st.sel || cur.id); }  // erneuter Klick = zurück zur Ebene
   });
 }
 const fmtNr = id => /^\d{9}$/.test(id) ? `${id.slice(0, 4)} ${id.slice(4, 7)} ${id.slice(7)}` : /^[FG]-/.test(id) ? (id[0] === 'F' ? 'Funktion ' : 'Gruppe ') + id.slice(2) : /^\d+$/.test(id) ? (id.length === 2 ? 'Einzelplan ' : 'Kapitel ') + id : id;
@@ -262,7 +264,7 @@ async function showDetail(id) {
   const cy = series.find(s => s.year === st.year), first = series.find(s => (s.ist ?? s.soll) != null);
   const firstV = first.ist ?? first.soll, lastV = last.ist ?? last.soll;
   const names = [...new Set(series.filter(s => s.name).map(s => s.name))];
-  box.innerHTML = `<h3>${last.name}</h3><div class="path">${fmtNr(id)}${path.length ? ' · ' + path.join(' › ') : ''}</div>
+  box.innerHTML = `<h3>${id ? last.name : `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} gesamt`}</h3><div class="path">${fmtNr(id)}${path.length ? ' · ' + path.join(' › ') : ''}</div>
     <div class="kv"><div><small>${st.year} ${st.quota === 'target' ? 'Soll' : 'Ist'}</small><b>${money(st.quota === 'target' ? cy?.soll : cy?.ist)}</b></div>
     <div><small>pro Kopf ${st.year}</small><b>${cy && (cy.soll ?? cy.ist) != null ? de((st.quota === 'target' ? cy.soll : cy.ist) / POP[st.year] / 1e6, 2) + ' €' : '–'}</b></div>
     <div><small>${first.year} → ${last.year}</small><b class="${lastV >= firstV ? 'up' : 'down'}">${firstV ? (lastV >= firstV ? '+' : '') + de((lastV / firstV - 1) * 100, 0) + ' %' : '–'}</b></div>
