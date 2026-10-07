@@ -31,14 +31,6 @@ header a.back { font-size: 13px; text-decoration: none; font-weight: 600; }
 select { font: 600 13px Inter, sans-serif; padding: 6px 10px; border: 1.5px solid var(--ink); border-radius: 99px; background: var(--card); }
 .main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 18px; padding: 0 20px 30px; }
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
-.crumbs { margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; }
-.crumbs button, .crumbs .cur { font: 600 13px Inter, sans-serif; border-radius: 99px; padding: 6px 13px; line-height: 1.25; text-align: left; }
-.crumbs .back { background: var(--ink); color: var(--bg); border: 1.5px solid var(--ink); cursor: pointer; font-weight: 700; margin-right: 6px; }
-.crumbs .back:hover { background: var(--accent); border-color: var(--accent); }
-.crumbs .lvl { background: var(--card); color: var(--ink); border: 1.5px solid var(--line); cursor: pointer; }
-.crumbs .lvl:hover { border-color: var(--ink); }
-.crumbs .cur { background: #e9e1d2; color: var(--ink); }
-.crumbs .sep { color: var(--muted); }
 .headline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .headline { flex-wrap: nowrap; align-items: flex-start; }
 .hl { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; min-width: 0; }
@@ -99,7 +91,6 @@ td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
 </div>
 <div class="main">
   <div class="panel">
-    <div class="crumbs" id="crumbs"></div>
     <div class="headline"><button id="up" class="up-btn" title="Eine Ebene zurück (Esc)">←</button><div class="hl"><h2 id="nodeName"></h2><span class="tot" id="nodeTot"></span><span class="sub" id="nodeSub"></span></div></div>
     <div id="tm"></div>
     <div class="tablebar"><input id="filter" placeholder="In dieser Ebene filtern…"><span><button class="btn-s" id="csv">CSV exportieren</button> <button class="btn-s" id="link">Link kopieren</button></span></div>
@@ -145,22 +136,6 @@ async function tree(y, a, q, u) {
   return cache.get(k);
 }
 
-function drawCrumbs(box, items, withBack = true) {
-  // items: [{ label, go }] – letzter Eintrag = aktuelle Ebene
-  box.innerHTML = '';
-  if (withBack && items.length > 1) {
-    const b = document.createElement('button'); b.className = 'back'; b.textContent = '← Zurück'; b.title = 'Eine Ebene nach oben';
-    b.onclick = items.at(-2).go; box.appendChild(b);
-  }
-  items.forEach((it, i) => {
-    if (i) box.insertAdjacentHTML('beforeend', '<span class="sep">›</span>');
-    const last = i === items.length - 1, el = document.createElement(last ? 'span' : 'button');
-    el.className = last ? 'cur' : 'lvl'; el.textContent = it.label;
-    if (!last) { el.onclick = it.go; el.title = 'Zurück zu dieser Ebene'; }
-    box.appendChild(el);
-  });
-}
-
 // UI-Grundgerüst
 const ysel = document.getElementById('year');
 YEARS.forEach(y => ysel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}${y > LAST_IST ? ' (Plan)' : ''}</option>`));
@@ -195,14 +170,10 @@ async function render() {
     return { n: c, name: c.name, nr: c.id, value: c.value, share: c.value / node.value, perHead: c.value / pop, cmp, cmpPct: o && ref ? cmp / Math.abs(ref) : null, isNew: !o && !!other };
   });
   // Kopf
-  const chain = []; for (let n = node; n; n = n.parent) chain.unshift(n);
-  drawCrumbs(document.getElementById('crumbs'), chain.map((n, i) => ({
-    label: i ? n.name : `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} ${st.year} (${st.quota === 'target' ? 'Soll' : 'Ist'})`,
-    go: () => { st.path = n.id; render(); } })), false);
   const up = document.getElementById('up');
   up.style.display = node.parent ? 'block' : 'none';
   up.onclick = node.parent ? () => { st.path = node.parent.id; render(); } : null;
-  document.getElementById('nodeName').textContent = node === T.root ? 'Gesamthaushalt' : node.name;
+  document.getElementById('nodeName').textContent = node === T.root ? `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} ${st.year} (${st.quota === 'target' ? 'Soll' : 'Ist'})` : node.name;
   document.getElementById('nodeTot').textContent = money(node.value);
   document.getElementById('nodeSub').textContent = `${de(node.value / total * 100, 1)} % · ${de(node.value / pop)} € pro Kopf · ${node.children.length} Positionen · Stand ${T.root.modified}`;
   renderTreemap(node);
