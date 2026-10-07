@@ -18,6 +18,8 @@
   #credit { position: fixed; left: 12px; bottom: 8px; font-size: 10px; color: #778; }
   #credit a { color: #99a; }
   .label { position: fixed; left: 0; top: 0; font-size: 12px; color: #cfd6ff; pointer-events: auto; cursor: pointer; white-space: nowrap; text-shadow: 0 0 4px #000; user-select: none; }
+  .label.moon { font-size: 10px; color: #a8aec8; pointer-events: none; }
+  .label.moon::before { width: 4px; height: 4px; transform: translate(-2px, 0); }
   .label.big::before { visibility: hidden; }
   .label::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; border: 1px solid currentColor; margin-right: 4px; vertical-align: 0; transform: translate(-3px, 0); }
 </style>
@@ -35,7 +37,7 @@
   <div class="row" id="focus"></div>
 </div>
 <div id="info"></div>
-<div id="credit">Texturen: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a>, CC BY 4.0</div>
+<div id="credit">Texturen: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a> (CC BY 4.0), Monde: <a href="https://stevealbers.net/albers/sos/sos.html" target="_blank" rel="noopener">Steve Albers</a>/NASA, Kallisto: Björn Jónsson</div>
 
 <script type="importmap">
 { "imports": {
@@ -111,19 +113,61 @@ controls.maxDistance = 2000;
 scene.add(new THREE.AmbientLight(0xffffff, 0.12));
 scene.add(new THREE.PointLight(0xffffff, 3, 0, 0));
 
-// Sterne
+// Himmel: Sterne + Milchstraße an ihrer echten Lage (galaktischer Pol/Zentrum in ekliptikalen Koordinaten)
+const eclDir = (lonDeg, latDeg) => { const l = lonDeg * D2R, b = latDeg * D2R; return new THREE.Vector3(Math.cos(b) * Math.cos(l), Math.sin(b), -Math.cos(b) * Math.sin(l)); };
+const GAL_POLE = eclDir(180.02, 29.81), GAL_CENTER = eclDir(266.84, -5.54);
+const sky = new THREE.Group(); scene.add(sky);
 {
-  const n = 6000, pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  const n = 9000, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), v = new THREE.Vector3();
+  const gx = GAL_CENTER, gz = new THREE.Vector3().crossVectors(gx, GAL_POLE).normalize();
   for (let i = 0; i < n; i++) {
-    const v = new THREE.Vector3().randomDirection().multiplyScalar(5000);
-    pos.set([v.x, v.y, v.z], i * 3);
-    const b = 0.4 + Math.random() * 0.6, t = Math.random();
-    col.set([b * (t < .2 ? 1 : .85), b * .9, b * (t > .8 ? 1 : .85)], i * 3);
+    if (i < 3500) {
+      // Häufung in der galaktischen Ebene, zum Zentrum hin dichter
+      const l = (Math.random() - 0.5) * 2 * Math.PI * (Math.random() < 0.5 ? 1 : 0.4);
+      const b = (Math.random() + Math.random() + Math.random() - 1.5) * 0.12;
+      v.copy(gx).multiplyScalar(Math.cos(b) * Math.cos(l)).addScaledVector(gz, Math.cos(b) * Math.sin(l)).addScaledVector(GAL_POLE, Math.sin(b));
+    } else v.randomDirection();
+    v.multiplyScalar(3000); pos.set([v.x, v.y, v.z], i * 3);
+    const br = (i < 3500 ? 0.25 : 0.4) + Math.random() * 0.6, t = Math.random();
+    col.set([br * (t < .2 ? 1 : .85), br * .9, br * (t > .8 ? 1 : .85)], i * 3);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, vertexColors: true })));
+  sky.add(new THREE.Points(g, new THREE.PointsMaterial({ size: 1.4, sizeAttenuation: false, vertexColors: true, depthWrite: false })));
+  const mw = new THREE.Mesh(new THREE.SphereGeometry(3500, 64, 32), new THREE.ShaderMaterial({
+    uniforms: { pole: { value: GAL_POLE }, center: { value: GAL_CENTER } },
+    side: THREE.BackSide, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    vertexShader: `varying vec3 vD;
+      #include <common>
+      #include <logdepthbuf_pars_vertex>
+      void main() { vD = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        #include <logdepthbuf_vertex>
+      }`,
+    fragmentShader: `uniform vec3 pole, center; varying vec3 vD;
+      #include <logdepthbuf_pars_fragment>
+      float h(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      float n(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(mix(h(i), h(i + vec3(1,0,0)), f.x), mix(h(i + vec3(0,1,0)), h(i + vec3(1,1,0)), f.x), f.y),
+                   mix(mix(h(i + vec3(0,0,1)), h(i + vec3(1,0,1)), f.x), mix(h(i + vec3(0,1,1)), h(i + vec3(1,1,1)), f.x), f.y), f.z); }
+      float fbm(vec3 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * n(p); p *= 2.03; a *= 0.5; } return v; }
+      void main() {
+        #include <logdepthbuf_fragment>
+        vec3 d = normalize(vD);
+        float b = asin(clamp(dot(d, pole), -1.0, 1.0));
+        float toC = dot(d, center) * 0.5 + 0.5;
+        float width = 0.10 + 0.08 * toC;
+        float band = exp(-pow(b / width, 2.0));
+        float cloud = fbm(d * 7.0) * 0.7 + fbm(d * 23.0) * 0.3;
+        float dust = 1.0 - 0.75 * exp(-pow((b + 0.01) / 0.025, 2.0)) * smoothstep(0.35, 0.65, fbm(d * 14.0 + 3.0));
+        float bulge = exp(-pow(acos(clamp(dot(d, center), -1.0, 1.0)) / 0.25, 2.0));
+        float I = (band * (0.35 + 0.65 * toC) * cloud + bulge * 0.5) * dust;
+        vec3 c = mix(vec3(0.62, 0.68, 0.85), vec3(1.0, 0.88, 0.7), bulge + toC * 0.3);
+        gl_FragColor = vec4(c * I * 0.28, 1.0);
+      }`
+  }));
+  mw.renderOrder = -1;
+  sky.add(mw);
 }
 
 // Sonne mit Glow
@@ -168,23 +212,46 @@ const glowTex = (() => {
 })();
 const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false }));
 scene.add(glow);
-// Strahlenkranz: zwei gegenläufig rotierende Sprites mit Strahlen
-const raysTex = (() => {
-  const c = document.createElement('canvas'); c.width = c.height = 512;
-  const g = c.getContext('2d'); g.translate(256, 256); g.globalCompositeOperation = 'lighter';
-  for (let i = 0; i < 24; i++) {
-    const a = Math.random() * Math.PI * 2, len = 120 + Math.random() * 130, w = 0.01 + Math.random() * 0.03;
-    const gr = g.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
-    gr.addColorStop(0, 'rgba(255,210,120,.5)'); gr.addColorStop(1, 'rgba(255,160,60,0)');
-    g.fillStyle = gr; g.beginPath(); g.moveTo(0, 0);
-    g.arc(0, 0, len, a - w, a + w); g.closePath(); g.fill();
-  }
-  return new THREE.CanvasTexture(c);
-})();
-const rays = [0].map(() => {
-  const r = new THREE.Sprite(new THREE.SpriteMaterial({ map: raysTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.22 }));
-  scene.add(r); return r;
+// Strahlenkranz: echte 3D-Strahlen von der Oberfläche nach außen, jeweils als Band, das zur Kamera zeigt
+const RAY_N = 40, rayDir = [], raySide = [], rayAlong = [], rayLen = [], rayIdx = [];
+for (let i = 0; i < RAY_N; i++) {
+  const d = new THREE.Vector3().randomDirection(), len = 2.2 + Math.random() * 3.2;
+  for (const [along, side] of [[0, -1], [0, 1], [1, -1], [1, 1]]) { rayDir.push(d.x, d.y, d.z); raySide.push(side); rayAlong.push(along); rayLen.push(len); }
+  const o = i * 4; rayIdx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
+}
+const rayGeo = new THREE.BufferGeometry();
+rayGeo.setAttribute('position', new THREE.Float32BufferAttribute(rayDir, 3));
+rayGeo.setAttribute('side', new THREE.Float32BufferAttribute(raySide, 1));
+rayGeo.setAttribute('along', new THREE.Float32BufferAttribute(rayAlong, 1));
+rayGeo.setAttribute('len', new THREE.Float32BufferAttribute(rayLen, 1));
+rayGeo.setIndex(rayIdx);
+const rayMat = new THREE.ShaderMaterial({
+  uniforms: { opacity: { value: 0.13 } },
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  vertexShader: `attribute float side, along, len; varying float vA, vF;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position * mix(0.95, len, along), 1.0);
+      vec3 dv = normalize((modelViewMatrix * vec4(position, 0.0)).xyz);
+      vec3 w = normalize(cross(dv, normalize(mv.xyz)));
+      float scale = length((modelMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz);
+      mv.xyz += w * side * mix(0.09, 0.015, along) * scale;
+      vF = 1.0 - abs(dot(dv, normalize(mv.xyz)));
+      vA = along;
+      gl_Position = projectionMatrix * mv;
+      #include <logdepthbuf_vertex>
+    }`,
+  fragmentShader: `uniform float opacity; varying float vA, vF;
+    #include <logdepthbuf_pars_fragment>
+    void main() {
+      #include <logdepthbuf_fragment>
+      gl_FragColor = vec4(1.0, 0.78, 0.45, opacity * pow(1.0 - vA, 2.0) * vF);
+    }`
 });
+const rays = new THREE.Mesh(rayGeo, rayMat);
+rays.frustumCulled = false;
+sun.add(rays);
 
 // Protuberanzen: Plasmabögen zwischen zwei Fußpunkten, wachsen auf, flackern, verblassen
 const promMat = () => new THREE.ShaderMaterial({
@@ -326,6 +393,53 @@ for (const p of PLANETS) {
   document.body.appendChild(l); p.label = l;
 }
 
+// Monde: Kreisbahnen in der Äquatorebene des Planeten (Erdmond: Ekliptik), Umlaufzeit echt;
+// Startwinkel für Mond und Galileische Monde aus mittleren Längen J2000, sonst Näherungswerte
+const MOONS = [
+  ['Erde', 'Mond', 1737, 384400, 27.321661, 218.316, 'moon'],
+  ['Mars', 'Phobos', 11, 9376, 0.31891, 35, 'moon', 0x8a7a6a], ['Mars', 'Deimos', 6, 23463, 1.26244, 150, 'moon', 0x9a8a78],
+  ['Jupiter', 'Io', 1822, 421700, 1.769138, 106.077, 'io'], ['Jupiter', 'Europa', 1561, 671034, 3.551181, 175.732, 'europa'],
+  ['Jupiter', 'Ganymed', 2634, 1070412, 7.154553, 120.559, 'ganymede'], ['Jupiter', 'Kallisto', 2410, 1882709, 16.689018, 84.445, 'callisto'],
+  ['Saturn', 'Mimas', 198, 185539, 0.942422, 20, 'mimas'], ['Saturn', 'Enceladus', 252, 237948, 1.370218, 110, 'enceladus'],
+  ['Saturn', 'Tethys', 533, 294619, 1.887802, 200, 'tethys'], ['Saturn', 'Dione', 561, 377396, 2.736915, 290, 'dione'],
+  ['Saturn', 'Rhea', 764, 527108, 4.518212, 60, 'rhea'], ['Saturn', 'Titan', 2575, 1221870, 15.945421, 160, 'titan'],
+  ['Saturn', 'Iapetus', 735, 3560820, 79.3215, 250, 'iapetus'],
+  ['Uranus', 'Miranda', 236, 129390, 1.413479, 30, 'miranda'], ['Uranus', 'Ariel', 579, 191020, 2.520379, 130, 'ariel'],
+  ['Uranus', 'Umbriel', 585, 266000, 4.144177, 230, 'moon', 0x777770], ['Uranus', 'Titania', 788, 435910, 8.705872, 320, 'titania'],
+  ['Uranus', 'Oberon', 761, 583520, 13.463239, 80, 'oberon'],
+  ['Neptun', 'Triton', 1353, 354759, -5.876854, 190, 'triton'],
+].map(([parent, name, r, a, P, L0, tex, tint]) => ({ parent: PLANETS.find(p => p.name === parent), name, r, a, P, L0, tex, tint }));
+const moonRadius = km => lerpLog(km / AU_KM, Math.max(0.045 * Math.sqrt(km / 1000), 0.012), mix);
+const moonDist = m => {
+  const rp = m.parent.r, illus = 0.045 * Math.sqrt(rp / 1000) * (1.8 + 0.9 * Math.log(m.a / rp));
+  return lerpLog(m.a / AU_KM, illus, mix);
+};
+const circleGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 129 }, (_, i) => new THREE.Vector3(Math.cos(i / 64 * Math.PI), 0, Math.sin(i / 64 * Math.PI))));
+for (const m of MOONS) {
+  const mat = new THREE.MeshStandardMaterial({ color: m.tint || 0x999999, roughness: 1 });
+  texLoader.load(`tex/1k_${m.tex}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; mat.map = t; if (!m.tint) mat.color.set(0xffffff); mat.needsUpdate = true; });
+  m.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), mat);
+  scene.add(m.mesh);
+  m.frame = new THREE.Object3D();
+  if (m.parent.name !== 'Erde') m.frame.rotation.z = m.parent.tilt * D2R;
+  scene.add(m.frame);
+  m.orbit = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({ color: 0x8890b0, transparent: true, opacity: 0.3 }));
+  m.frame.add(m.orbit);
+  m.spos = new THREE.Vector3();
+  const l = document.createElement('div'); l.className = 'label moon'; l.textContent = m.name;
+  document.body.appendChild(l); m.label = l;
+}
+function updateMoons() {
+  for (const m of MOONS) {
+    const th = (m.L0 + 360 * (jd - 2451545) / m.P) * D2R, d = moonDist(m);
+    m.frame.position.copy(m.parent.spos); m.frame.updateMatrixWorld();
+    m.orbit.scale.setScalar(d); m.orbit.visible = showOrbits;
+    m.spos.set(Math.cos(th) * d, 0, -Math.sin(th) * d).applyMatrix4(m.frame.matrixWorld);
+    m.mesh.position.copy(m.spos); m.mesh.scale.setScalar(moonRadius(m.r));
+    m.mesh.quaternion.copy(m.frame.quaternion); m.mesh.rotateY(th + Math.PI);
+  }
+}
+
 function updateOrbit(p, jd) {
   const k = elementsAt(p, (jd - 2451545) / 36525), arr = p.orbit.geometry.attributes.position, v = new THREE.Vector3();
   for (let i = 0; i <= 360; i++) { posFromE(k, i * D2R, v); mapPos(v, v); arr.setXYZ(i, v.x, v.y, v.z); }
@@ -360,18 +474,20 @@ let focus = null;
 const focusEl = document.getElementById('focus'), infoEl = document.getElementById('info');
 const fb = document.createElement('button'); fb.textContent = 'Sonne'; fb.onclick = () => setFocus(null); focusEl.appendChild(fb);
 for (const p of PLANETS) { const b = document.createElement('button'); b.textContent = p.name; b.onclick = () => setFocus(p); focusEl.appendChild(b); }
-function setFocus(p) {
+function setFocus(p, instant) {
   focus = p;
   [...focusEl.children].forEach((b, i) => b.classList.toggle('on', i === (p ? PLANETS.indexOf(p) + 1 : 0)));
-  const target = p ? p.spos : new THREE.Vector3();
-  const rad = p ? radiusMap(p.r) : sunRadius();
-  const dir = camera.position.clone().sub(controls.target).normalize();
-  const dist = p ? rad * 8 : distMap(6) * 2.6;
-  controls.target.copy(target);
-  camera.position.copy(target).addScaledVector(dir, dist);
+  const off = camera.position.clone().sub(controls.target);
+  const fromLen = off.length(); off.normalize();
+  // Blickrichtung behalten, aber mindestens 30° von oben, damit Mondbahnen nicht flach erscheinen
+  if (off.y < 0.5) { const h = Math.hypot(off.x, off.z) || 1; off.set(off.x / h * 0.866, 0.5, off.z / h * 0.866); }
+  flight = { fromT: controls.target.clone(), fromLen, dir: off, k: instant ? 1 : 0 };
   infoEl.style.display = p ? 'block' : 'none';
 }
-setFocus(null);
+// Zielabstand der Kamera: Planet + Platz für seine Monde, Sonne: inneres System
+const focusDist = p => p ? Math.max(radiusMap(p.r) * 8, ...MOONS.filter(m => m.parent === p && m.a < 1.5e6).map(m => moonDist(m) * 2.2)) : distMap(6) * 2.6;
+let flight = null;
+setFocus(null, true);
 
 const fmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'full', timeStyle: 'short' });
 const dateEl = document.getElementById('date');
@@ -387,9 +503,7 @@ function frame(now) {
   const t = now / 1000, pulse = 1 + 0.025 * Math.sin(t * 0.9);
   sunMat.uniforms.time.value = t;
   sun.scale.setScalar(s); glow.scale.setScalar(s * 6 * pulse);
-  rays[0].scale.setScalar(s * 6 * pulse);
-  // Strahlen mit der Kamera mitdrehen: Azimut um die Sonnenachse, gewichtet mit der Draufsicht (von unten gespiegelt, von der Seite kaum)
-  { const c = camera.position, az = Math.atan2(c.x, c.z); rays[0].material.rotation = t * 0.02 - az * (c.y / (c.length() || 1)); }
+  rays.scale.setScalar(pulse); rays.rotation.y = t * 0.02;
   updateSunActivity(t, dt);
 
   const prevFocus = focus ? focus.spos.clone() : null;
@@ -400,12 +514,24 @@ function frame(now) {
     p.orbit.visible = showOrbits;
     if (p.clouds) p.clouds.rotation.y = jd * 0.15;
   }
-  // Kamera wandert mit dem fokussierten Planeten; beim Maßstabswechsel Abstand mitskalieren
-  if (focus) {
+  updateMoons();
+  if (flight) {
+    // Kamerafahrt: Ziel weich ansteuern, Abstand logarithmisch, bei weiten Wegen kurz herauszoomen
+    flight.k = Math.min(1, flight.k + dt / 2.2);
+    const e = flight.k < 0.5 ? 4 * flight.k ** 3 : 1 - (-2 * flight.k + 2) ** 3 / 2;
+    const destT = focus ? focus.spos : new THREE.Vector3(), toLen = focusDist(focus);
+    const travel = flight.fromT.distanceTo(destT);
+    const len = lerpLog(flight.fromLen, toLen, e) * (1 + Math.sin(Math.PI * e) * Math.min(3, travel / (flight.fromLen + toLen)));
+    controls.target.lerpVectors(flight.fromT, destT, e);
+    camera.position.copy(controls.target).addScaledVector(flight.dir, len);
+    if (flight.k >= 1) flight = null;
+  } else if (focus) {
+    // Kamera wandert mit dem fokussierten Planeten
     const d = focus.spos.clone().sub(prevFocus);
     controls.target.add(d); camera.position.add(d);
   }
-  if (lastMix >= 0 && mix !== lastMix) {
+  // beim Maßstabswechsel Abstand mitskalieren
+  if (!flight && lastMix >= 0 && mix !== lastMix) {
     const ref = focus ? radiusMap(focus.r) : distMap(1.6);
     const old = (() => { const m = mix; mix = lastMix; const r = focus ? radiusMap(focus.r) : distMap(1.6); mix = m; return r; })();
     const off = camera.position.clone().sub(controls.target).multiplyScalar(ref / old);
@@ -415,6 +541,7 @@ function frame(now) {
   lastMix = mix;
 
   controls.update();
+  sky.position.copy(camera.position);
   renderer.render(scene, camera);
 
   for (const p of PLANETS) {
@@ -427,6 +554,19 @@ function frame(now) {
       const big = px > 3;
       p.label.classList.toggle('big', big);
       p.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth + (big ? px - 6 : 0)}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
+    }
+  }
+  for (const m of MOONS) {
+    tmp.copy(m.spos).project(camera);
+    const sep = m.spos.distanceTo(m.parent.spos) / (camera.position.distanceTo(m.spos) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2;
+    const vis = showLabels && focus === m.parent && sep > 25 && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+    m.label.style.display = vis ? 'block' : 'none';
+    if (vis) {
+      // wie bei den Planeten: sichtbare Monde ohne Kreis, Name neben dem Rand
+      const px = moonRadius(m.r) / (camera.position.distanceTo(m.spos) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2;
+      const big = px > 2;
+      m.label.classList.toggle('big', big);
+      m.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth + (big ? px - 4 : 0)}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
     }
   }
   dateEl.textContent = fmt.format(new Date((jd - 2440587.5) * 86400000));
