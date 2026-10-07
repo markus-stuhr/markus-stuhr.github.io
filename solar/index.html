@@ -219,7 +219,9 @@ const glowTex = (() => {
   g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
   return new THREE.CanvasTexture(c);
 })();
-const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false }));
+// normaler Schein bewusst schwach, damit die God Rays und Schatten stärker wirken
+const GLOW_OPACITY = 0.3;
+const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: GLOW_OPACITY }));
 scene.add(glow);
 // Strahlenkranz: echte 3D-Strahlen von der Oberfläche nach außen, jeweils als Band, das zur Kamera zeigt
 const RAY_N = 40, rayDir = [], raySide = [], rayAlong = [], rayLen = [], rayIdx = [];
@@ -765,8 +767,11 @@ function renderGodRays() {
   for (const o of scene.children) if (!keep.has(o) && o.visible) { o.visible = false; hidden.push(o); }
   for (const o of keep) if (o !== sun && o !== glow) o.traverse(c => { if (c.isMesh) { swapped.push([c, c.material]); c.material = blackMat; } });
   const bg = scene.background; scene.background = null;
+  // im Lichtquellen-Bild leuchtet der Schein voll und groß, damit die Strahlen kräftig bleiben
+  glow.material.opacity = 1; glow.scale.multiplyScalar(1.5);
   renderer.setRenderTarget(occRT); renderer.setClearColor(0x000000, 1); renderer.clear();
   renderer.render(scene, camera);
+  glow.material.opacity = GLOW_OPACITY; glow.scale.divideScalar(1.5);
   renderer.setRenderTarget(null);
   scene.background = bg;
   hidden.forEach(o => o.visible = true); swapped.forEach(([c, m]) => c.material = m);
@@ -885,7 +890,7 @@ function frame(now) {
   const s = sunRadius();
   const t = now / 1000, pulse = 1 + 0.025 * Math.sin(t * 0.9);
   sunMat.uniforms.time.value = t;
-  sun.scale.setScalar(s); glow.scale.setScalar(s * 6 * pulse);
+  sun.scale.setScalar(s); glow.scale.setScalar(s * 4 * pulse);
   rays.scale.setScalar(pulse); rays.rotation.y = t * 0.02;
   updateSunActivity(t, dt);
 
