@@ -677,7 +677,9 @@ const CRAFT = [
 let showCraft = true;
 const craftGroup = new THREE.Group(); scene.add(craftGroup);
 const satDist = (parent, aKm) => {
-  const R = parent.r, illus = 0.045 * Math.sqrt(R / 1000) * (1.8 + 0.9 * Math.log(aKm / R));
+  // erdnahe Bahnen (a < 1,5 Planetenradien) behalten das echte Verhältnis und fliegen flach über der Oberfläche
+  const R = parent.r, Ri = 0.045 * Math.sqrt(R / 1000);
+  const illus = aKm / R < 1.5 ? Ri * aKm / R : Ri * (1.8 + 0.9 * Math.log(aKm / R));
   return lerpLog(aKm / AU_KM, illus, mix);
 };
 for (const c of CRAFT) {
