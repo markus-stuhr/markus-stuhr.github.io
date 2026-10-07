@@ -32,6 +32,8 @@
   <div id="date"></div>
   <div class="row" id="speeds"></div>
   <div class="row"><button id="now">Jetzt</button><button id="labels" class="on">Namen</button><button id="orbits" class="on">Bahnen</button></div>
+  <div class="row"><button id="solecl">🌑 Sonnenfinsternis</button><button id="lunecl">🌕 Mondfinsternis</button></div>
+  <div id="eclinfo" style="font-size:11px;color:#aab;display:none"></div>
   <div class="row">Maßstab:
     <button id="real">Echt</button><button id="nice" class="on">Anschaulich</button></div>
   <div class="row"><input type="range" id="mix" min="0" max="1" step="0.001" value="1"></div>
@@ -358,10 +360,57 @@ function updateSunActivity(t, dt) {
   }
 }
 
+// Schatten analytisch im Shader: Strahl zur Sonne gegen Kugeln (Monde/Planeten) und die Ringebene testen,
+// Halbschatten-Breite aus scheinbarer Sonnengröße. Wirkt nur auf direktes Sonnenlicht.
+const SHADOW_GLSL = `
+uniform vec4 occ[8]; uniform int occN; uniform float sunR;
+uniform vec3 ringC, ringN; uniform vec2 ringR; uniform sampler2D ringTex; uniform float ringOn; uniform vec3 umbraTint;
+varying vec3 vWPos;
+float shadowAt(vec3 P) {
+  float dist = length(P); vec3 L = -P / dist; float s = 1.0;
+  for (int i = 0; i < 8; i++) {
+    if (i >= occN) break;
+    vec3 D = occ[i].xyz - P; float r = occ[i].w, t = dot(D, L);
+    if (t <= 0.0) continue;
+    float d = length(D - L * t), pen = r * 0.03 + t * sunR;
+    s *= smoothstep(r - pen, r + pen, d);
+  }
+  if (ringOn > 0.5) {
+    float den = dot(L, ringN);
+    if (abs(den) > 1e-6) {
+      float t = dot(ringC - P, ringN) / den;
+      if (t > 0.0) {
+        float rr = length(P + L * t - ringC);
+        if (rr > ringR.x && rr < ringR.y) s *= 1.0 - 0.85 * texture2D(ringTex, vec2((rr - ringR.x) / (ringR.y - ringR.x), 0.5)).a;
+      }
+    }
+  }
+  return s;
+}
+`;
+const blankTex = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1); blankTex.needsUpdate = true;
+function addShadows(mat) {
+  const u = { occ: { value: Array.from({ length: 8 }, () => new THREE.Vector4()) }, occN: { value: 0 }, sunR: { value: 0.5 },
+    ringC: { value: new THREE.Vector3() }, ringN: { value: new THREE.Vector3(0, 1, 0) }, ringR: { value: new THREE.Vector2() }, ringTex: { value: blankTex }, ringOn: { value: 0 }, umbraTint: { value: new THREE.Vector3() } };
+  mat.userData.sh = u;
+  mat.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = 'varying vec3 vWPos;\n' + sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n  vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = SHADOW_GLSL + sh.fragmentShader.replace('#include <lights_fragment_end>',
+      '#include <lights_fragment_end>\n  { float shd = shadowAt(vWPos); reflectedLight.directDiffuse *= shd; reflectedLight.directSpecular *= shd; reflectedLight.indirectDiffuse += (1.0 - shd) * umbraTint * diffuseColor.rgb; }');
+  };
+  return mat;
+}
+// sunR = echte scheinbare Sonnengröße (Winkelradius) am Ort des Empfängers – sonst wird der Halbschatten im anschaulichen Maßstab riesig
+function fillOcc(u, list, helioAU) {
+  list.forEach((o, i) => u.occ.value[i].set(o[0].x, o[0].y, o[0].z, o[1]));
+  u.occN.value = list.length; u.sunR.value = SUN_R / AU_KM / helioAU;
+}
+
 const labelsEl = [];
 const texLoader = new THREE.TextureLoader();
 for (const p of PLANETS) {
-  const mat = new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.9 });
+  const mat = addShadows(new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.9 }));
   texLoader.load(`tex/2k_${p.tex}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; });
   p.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), mat);
   p.mesh.rotation.order = 'ZYX'; p.mesh.rotation.z = p.tilt * D2R;
@@ -379,8 +428,9 @@ for (const p of PLANETS) {
     // UV radial umlegen, damit die Ringtextur (innen → außen) passt
     const rp = rg.attributes.position, ruv = rg.attributes.uv, rv = new THREE.Vector3();
     for (let i = 0; i < rp.count; i++) { rv.fromBufferAttribute(rp, i); ruv.setXY(i, (rv.length() - 1.24) / (2.27 - 1.24), 0.5); }
-    const ringMat = new THREE.MeshStandardMaterial({ color: 0xcfbf95, side: THREE.DoubleSide, transparent: true, opacity: 0.7, depthWrite: false });
-    texLoader.load('tex/2k_saturn_ring.png', t => { t.colorSpace = THREE.SRGBColorSpace; ringMat.map = t; ringMat.color.set(0xffffff); ringMat.opacity = 1; ringMat.needsUpdate = true; });
+    const ringMat = addShadows(new THREE.MeshStandardMaterial({ color: 0xcfbf95, side: THREE.DoubleSide, transparent: true, opacity: 0.7, depthWrite: false }));
+    p.ringMat = ringMat;
+    texLoader.load('tex/2k_saturn_ring.png', t => { t.colorSpace = THREE.SRGBColorSpace; ringMat.map = t; ringMat.color.set(0xffffff); ringMat.opacity = 1; ringMat.needsUpdate = true; mat.userData.sh.ringTex.value = t; mat.userData.sh.ringOn.value = 1; });
     const ring = new THREE.Mesh(rg, ringMat);
     ring.rotation.x = -Math.PI / 2;
     p.mesh.add(ring);
@@ -412,15 +462,16 @@ const MOONS = [
   ['Uranus', 'Oberon', 761, 583520, 13.463239, 80, 'oberon'],
   ['Neptun', 'Triton', 1353, 354759, -5.876854, 190, 'triton'],
 ].map(([parent, name, r, a, P, L0, tex, tint]) => ({ parent: PLANETS.find(p => p.name === parent), name, r, a, P, L0, tex, tint }));
-const moonRadius = km => lerpLog(km / AU_KM, Math.max(0.045 * Math.sqrt(km / 1000), 0.012), mix);
+const moonRadius = km => lerpLog(km / AU_KM, Math.max(0.03 * Math.sqrt(km / 1000), 0.01), mix);
 const moonDist = m => {
   const rp = m.parent.r, illus = 0.045 * Math.sqrt(rp / 1000) * (1.8 + 0.9 * Math.log(m.a / rp));
   return lerpLog(m.a / AU_KM, illus, mix);
 };
 const circleGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 129 }, (_, i) => new THREE.Vector3(Math.cos(i / 64 * Math.PI), 0, Math.sin(i / 64 * Math.PI))));
 for (const m of MOONS) {
-  const mat = new THREE.MeshStandardMaterial({ color: m.tint || 0x999999, roughness: 1 });
+  const mat = addShadows(new THREE.MeshStandardMaterial({ color: m.tint || 0x999999, roughness: 1 }));
   texLoader.load(`tex/1k_${m.tex}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; mat.map = t; if (!m.tint) mat.color.set(0xffffff); mat.needsUpdate = true; });
+  if (m.name === 'Mond') mat.userData.sh.umbraTint.value.set(1.1, 0.3, 0.1);
   m.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), mat);
   scene.add(m.mesh);
   m.frame = new THREE.Object3D();
@@ -646,6 +697,48 @@ SPEEDS.forEach(([n, s]) => {
   b.onclick = () => { speed = s; [...speedsEl.children].forEach(x => x.classList.toggle('on', x === b)); };
   speedsEl.appendChild(b);
 });
+// Finsternisse: echte Termine (UT, Maximum); das Modell wird um den Termin herum auf exakte Ausrichtung verfeinert,
+// weil Mondbahn hier kreisförmig und ohne Neigung ist
+const ECLIPSES = {
+  sol: [['2027-08-02T10:07Z', 'total'], ['2028-01-26T15:08Z', 'ringförmig'], ['2028-07-22T02:56Z', 'total'], ['2029-01-14T17:13Z', 'partiell'],
+        ['2030-06-01T06:29Z', 'ringförmig'], ['2030-11-25T06:51Z', 'total'], ['2031-05-21T07:16Z', 'ringförmig'], ['2033-03-30T18:02Z', 'total']],
+  lun: [['2027-02-20T23:13Z', 'Halbschatten'], ['2028-01-12T04:13Z', 'partiell'], ['2028-07-06T18:20Z', 'partiell'], ['2028-12-31T16:52Z', 'total'],
+        ['2029-06-26T03:22Z', 'total'], ['2029-12-20T22:42Z', 'total'], ['2030-06-15T18:33Z', 'partiell'], ['2032-04-25T15:14Z', 'total']],
+};
+const eclIdx = { sol: -1, lun: -1 };
+const moonObj = MOONS.find(m => m.name === 'Mond'), earthObj = PLANETS[2];
+function eclAngle(j, lunar) {
+  const e = planetPos(earthObj, j, new THREE.Vector3());
+  const th = (moonObj.L0 + 360 * (j - 2451545) / moonObj.P) * D2R;
+  const md = new THREE.Vector3(Math.cos(th), 0, -Math.sin(th));
+  return md.angleTo(e.negate().multiplyScalar(lunar ? -1 : 1));
+}
+function gotoEclipse(kind) {
+  const list = ECLIPSES[kind], now = jd;
+  // nächster Termin nach dem aktuell gezeigten Datum, danach weiterblättern
+  let i = list.findIndex(([d]) => Date.parse(d) / 86400000 + 2440587.5 > now + 1);
+  if (i < 0) i = 0;
+  const [date, type] = list[i];
+  let best = Date.parse(date) / 86400000 + 2440587.5, bestA = 9;
+  for (let d = -2; d <= 2; d += 0.005) { const a = eclAngle(best + d, kind === 'lun'); if (a < bestA) { bestA = a; var bj = best + d; } }
+  jd = bj;
+  speedsEl.children[0].click();
+  const eclEl = document.getElementById('eclinfo');
+  eclEl.style.display = 'block';
+  eclEl.textContent = `${kind === 'sol' ? 'Sonnenfinsternis' : 'Mondfinsternis'} am ${new Date(date).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' })} (${type}) – nochmal klicken für die nächste`;
+  // Kamera: bei Sonnenfinsternis auf die Tagseite der Erde mit dem Mondschatten, bei Mondfinsternis seitlich auf Erde + Mond
+  setTimeout(() => {
+    setFocus(earthObj);
+    const toSun = earthObj.spos.clone().negate().normalize();
+    const side = new THREE.Vector3().crossVectors(toSun, new THREE.Vector3(0, 1, 0)).normalize();
+    const dir = kind === 'sol' ? toSun.clone().multiplyScalar(0.8).addScaledVector(side, 0.45).add(new THREE.Vector3(0, 0.35, 0))
+                               : side.clone().multiplyScalar(0.9).addScaledVector(toSun, -0.25).add(new THREE.Vector3(0, 0.3, 0));
+    flight.dir = dir.normalize();
+    flight.lunar = kind === 'lun';
+  }, 50);
+}
+document.getElementById('solecl').onclick = () => gotoEclipse('sol');
+document.getElementById('lunecl').onclick = () => gotoEclipse('lun');
 document.getElementById('now').onclick = () => { jd = jdNow(); speedsEl.children[1].click(); };
 let showLabels = true, showOrbits = true;
 document.getElementById('labels').onclick = e => { showLabels = !showLabels; e.target.classList.toggle('on', showLabels); };
@@ -704,6 +797,16 @@ function frame(now) {
     if (p.clouds) p.clouds.rotation.y = jd * 0.15;
   }
   updateMoons();
+  for (const p of PLANETS) {
+    const moons = MOONS.filter(m => m.parent === p);
+    fillOcc(p.mesh.material.userData.sh, moons.map(m => [m.spos, moonRadius(m.r)]), p.pos.length());
+    for (const m of moons) fillOcc(m.mesh.material.userData.sh, [[p.spos, radiusMap(p.r)], ...moons.filter(o => o !== m).map(o => [o.spos, moonRadius(o.r)])], p.pos.length());
+    if (p.ringMat) {
+      const u = p.mesh.material.userData.sh, R = radiusMap(p.r);
+      u.ringC.value.copy(p.spos); u.ringN.value.set(0, 1, 0).applyQuaternion(p.mesh.quaternion); u.ringR.value.set(1.24 * R, 2.27 * R);
+      fillOcc(p.ringMat.userData.sh, [[p.spos, R]], p.pos.length());
+    }
+  }
   astMat.uniforms.days.value = jd - 2451545; astMat.uniforms.mixv.value = mix; astMat.uniforms.px.value = 1.6 * renderer.getPixelRatio();
   updateComets(mix !== lastMix || lastMix < 0);
   if (flight) {
@@ -711,7 +814,7 @@ function frame(now) {
     flight.k = Math.min(1, flight.k + dt / 2.2);
     const e = flight.k < 0.5 ? 4 * flight.k ** 3 : 1 - (-2 * flight.k + 2) ** 3 / 2;
     const destT = focus ? focus.spos : new THREE.Vector3();
-    const destC = destT.clone().addScaledVector(flight.dir, focusDist(focus));
+    const destC = destT.clone().addScaledVector(flight.dir, focusDist(focus) * (flight.lunar ? 1.6 : 1));
     controls.target.lerpVectors(flight.fromT, destT, e);
     camera.position.lerpVectors(flight.fromC, destC, e);
     if (flight.k >= 1) flight = null;
@@ -776,7 +879,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__solar = { camera, controls, setJd: v => { jd = v; }, setFocus, PLANETS };
+window.__solar = { camera, controls, setJd: v => { jd = v; }, setFocus, PLANETS, MOONS, eclAngle, getJd: () => jd };
 
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
