@@ -58,8 +58,14 @@ p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 
 /* Treemap */
 .tm-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 26px 0 10px; font-size: 15px; }
-.crumbs button { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font-weight: 600; }
-.crumbs span { color: var(--muted); }
+.crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 14px; }
+.crumbs button, .crumbs .cur { font: 600 14px Inter, sans-serif; border-radius: 99px; padding: 6px 13px; line-height: 1.25; text-align: left; }
+.crumbs .back { background: var(--ink); color: var(--bg); border: 1.5px solid var(--ink); cursor: pointer; font-weight: 700; margin-right: 6px; }
+.crumbs .back:hover { background: var(--accent); border-color: var(--accent); }
+.crumbs .lvl { background: var(--card); color: var(--ink); border: 1.5px solid var(--line); cursor: pointer; }
+.crumbs .lvl:hover { border-color: var(--ink); }
+.crumbs .cur { background: #e9e1d2; color: var(--ink); }
+.crumbs .sep { color: var(--muted); }
 #treemap { width: 100%; height: min(70vh, 640px); position: relative; border-radius: 14px; overflow: hidden; background: var(--ink); }
 #treemap .cell { position: absolute; overflow: hidden; padding: 8px 9px; color: #fff; font-size: 13px; line-height: 1.25; cursor: pointer;
   border: 1px solid rgba(0,0,0,.25); transition: filter .2s; }
@@ -160,7 +166,7 @@ footer a { color: #d6cdbd; }
   <div class="wrap">
     <div class="tm-head"><div class="crumbs" id="crumbs"></div></div>
     <div id="treemap"></div>
-    <div class="hint">Haushalts-Soll 2026, Gliederung nach Funktionenplan. Gleiche Farbe = gleicher Bereich. Pauschale Kürzungen (globale Minderausgaben) sind nicht als Fläche darstellbar. Klick auf den Pfad oben führt zurück.</div>
+    <div class="hint">Haushalts-Soll 2026, Gliederung nach Funktionenplan. Gleiche Farbe = gleicher Bereich. Pauschale Kürzungen (globale Minderausgaben) sind nicht als Fläche darstellbar. Mit „← Zurück“ oder den Ebenen oben geht es wieder hinaus.</div>
   </div>
 </section>
 
@@ -290,6 +296,22 @@ document.querySelectorAll('[data-count]').forEach(el => {
     .from(lg.children, { x: 30, opacity: 0, stagger: .06, duration: .4 }, .4);
 }
 
+function drawCrumbs(box, items) {
+  // items: [{ label, go }] – letzter Eintrag = aktuelle Ebene
+  box.innerHTML = '';
+  if (items.length > 1) {
+    const b = document.createElement('button'); b.className = 'back'; b.textContent = '← Zurück'; b.title = 'Eine Ebene nach oben';
+    b.onclick = items.at(-2).go; box.appendChild(b);
+  }
+  items.forEach((it, i) => {
+    if (i) box.insertAdjacentHTML('beforeend', '<span class="sep">›</span>');
+    const last = i === items.length - 1, el = document.createElement(last ? 'span' : 'button');
+    el.className = last ? 'cur' : 'lvl'; el.textContent = it.label;
+    if (!last) { el.onclick = it.go; el.title = 'Zurück zu dieser Ebene'; }
+    box.appendChild(el);
+  });
+}
+
 // Zoombare Treemap
 {
   const box = document.getElementById('treemap'), crumbs = document.getElementById('crumbs');
@@ -321,14 +343,9 @@ document.querySelectorAll('[data-count]').forEach(el => {
       box.appendChild(el); return el;
     });
     if (animate) gsap.from(cells, { opacity: 0, scale: .85, duration: .5, stagger: .02, ease: 'power2.out' });
-    crumbs.innerHTML = '';
-    node.ancestors().reverse().forEach((a, i, arr) => {
-      if (i) crumbs.insertAdjacentHTML('beforeend', '<span> › </span>');
-      const b = document.createElement(i === arr.length - 1 ? 'span' : 'button');
-      b.textContent = i ? a.data.name : 'Gesamt ' + de(D.total, 1) + ' Mrd. €';
-      if (i < arr.length - 1) b.onclick = () => render(a);
-      crumbs.appendChild(b);
-    });
+    // Die Startansicht zeigt schon Ebene 2 – deshalb Ebene 1 im Pfad überspringen (ein Klick rein = ein Klick raus)
+    const trail = node.ancestors().reverse().filter(a => a.depth !== 1 || a === node);
+    drawCrumbs(crumbs, trail.map((a, i) => ({ label: i ? a.data.name : 'Gesamt ' + de(D.total, 1) + ' Mrd. €', go: () => render(a) })));
   }
   ScrollTrigger.create({ trigger: box, start: 'top 80%', once: true, onEnter: () => render(root) });
   window.addEventListener('resize', () => box.children.length && render(cur, false));
