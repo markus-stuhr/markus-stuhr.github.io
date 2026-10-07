@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Haushalts-Explorer</title>
+<meta name="description" content="Alle Titel des Bundeshaushalts 2012–2027 durchsuchen, vergleichen und als Zeitreihe ansehen.">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="/analytics.js"></script>
+<style>
+:root { --bg: #f6f2ea; --ink: #1d1b18; --muted: #6f685d; --line: #d9d1c3; --card: #fffdf8; --accent: #c8452c; --blue: #2f5d8a; --up: #2f7d4f; --down: #c8452c; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 Inter, system-ui, sans-serif; }
+a { color: var(--accent); }
+header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 20; flex-wrap: wrap; }
+header h1 { font: 900 20px Fraunces, serif; margin: 0; }
+header a.back { font-size: 13px; text-decoration: none; font-weight: 600; }
+.search { position: relative; flex: 1; min-width: 220px; max-width: 520px; margin-left: auto; }
+.search input { width: 100%; padding: 9px 14px; border: 1.5px solid var(--line); border-radius: 99px; font: inherit; background: var(--bg); }
+.search input:focus { outline: none; border-color: var(--ink); }
+.results { position: absolute; top: 42px; left: 0; right: 0; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,.12); max-height: 70vh; overflow: auto; display: none; }
+.results div { padding: 8px 14px; cursor: pointer; border-bottom: 1px solid #eee6d8; }
+.results div:hover, .results div.sel { background: var(--bg); }
+.results small { color: var(--muted); display: block; font-size: 12px; }
+.results b { float: right; font-variant-numeric: tabular-nums; margin-left: 10px; }
+.controls { display: flex; gap: 10px; flex-wrap: wrap; padding: 12px 20px; align-items: center; }
+.seg { display: inline-flex; border: 1.5px solid var(--ink); border-radius: 99px; overflow: hidden; }
+.seg button { font: 600 13px Inter, sans-serif; border: 0; background: none; padding: 6px 12px; cursor: pointer; color: var(--ink); }
+.seg button.on { background: var(--ink); color: var(--bg); }
+.seg button:disabled { opacity: .35; cursor: not-allowed; }
+select { font: 600 13px Inter, sans-serif; padding: 6px 10px; border: 1.5px solid var(--ink); border-radius: 99px; background: var(--card); }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 18px; padding: 0 20px 30px; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
+.crumbs { font-size: 13px; margin-bottom: 10px; }
+.crumbs button { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-weight: 600; }
+.crumbs span { color: var(--muted); }
+.headline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.headline h2 { font: 700 22px Fraunces, serif; margin: 0; }
+.headline .tot { font: 900 22px Fraunces, serif; color: var(--accent); }
+.headline .sub { color: var(--muted); font-size: 13px; }
+#tm { height: 340px; position: relative; border-radius: 10px; overflow: hidden; background: var(--ink); margin-bottom: 14px; }
+#tm .c { position: absolute; padding: 5px 7px; color: #fff; font-size: 12px; line-height: 1.2; overflow: hidden; cursor: pointer; border: 1px solid rgba(0,0,0,.25); }
+#tm .c:hover { filter: brightness(1.15); }
+#tm .c b { display: block; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th { text-align: right; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1.5px solid var(--ink); cursor: pointer; white-space: nowrap; user-select: none; }
+th:first-child, td:first-child { text-align: left; }
+th.sorted::after { content: ' ↓'; } th.sorted.asc::after { content: ' ↑'; }
+td { text-align: right; padding: 7px 8px; border-bottom: 1px solid #eee6d8; white-space: nowrap; }
+td:first-child { white-space: normal; }
+tr:hover td { background: var(--bg); }
+tr.sel td { background: #f3e3d9; }
+td .nr { color: var(--muted); font-size: 11.5px; display: block; }
+td .share { display: block; height: 3px; background: var(--blue); border-radius: 2px; margin-top: 3px; opacity: .6; }
+td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
+.up { color: var(--up); } .down { color: var(--down); }
+.tablebar { display: flex; justify-content: space-between; align-items: center; margin: 10px 0 4px; gap: 10px; flex-wrap: wrap; }
+.tablebar input { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--bg); }
+.btn-s { font: 600 12px Inter; padding: 6px 12px; border-radius: 99px; border: 1.5px solid var(--ink); background: none; cursor: pointer; }
+.btn-s:hover { background: var(--ink); color: var(--bg); }
+.detail h3 { font: 700 19px Fraunces, serif; margin: 0 0 4px; }
+.detail .path { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.detail .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+.kv div { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.kv small { display: block; color: var(--muted); font-size: 11.5px; }
+.kv b { font-size: 16px; font-variant-numeric: tabular-nums; }
+#ts svg { width: 100%; display: block; overflow: visible; }
+.axis text { font: 11px Inter, sans-serif; fill: var(--muted); } .axis path, .axis line { stroke: var(--line); }
+.ytable { width: 100%; font-size: 12.5px; margin-top: 10px; }
+.ytable td, .ytable th { padding: 3px 6px; }
+.loading { color: var(--muted); padding: 20px; }
+.note { font-size: 12px; color: var(--muted); padding: 0 20px 30px; max-width: 900px; }
+.tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); padding: 7px 10px; border-radius: 7px; font-size: 12.5px; z-index: 99; opacity: 0; max-width: 300px; }
+@media (max-width: 1000px) { .main { grid-template-columns: 1fr; } .hide-m { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Haushalts-Explorer</h1>
+  <a class="back" href="./">← Zur Story</a>
+  <div class="search"><input id="q" placeholder="Titel suchen, z. B. Bahn, Kita, Elterngeld, 1101 681…" autocomplete="off"><div class="results" id="res"></div></div>
+</header>
+<div class="controls">
+  <select id="year"></select>
+  <div class="seg" id="quota"><button data-v="target">Soll</button><button data-v="actual">Ist</button></div>
+  <div class="seg" id="account"><button data-v="expenses">Ausgaben</button><button data-v="income">Einnahmen</button></div>
+  <div class="seg" id="unit"><button data-v="single">Ministerien</button><button data-v="function">Zweck</button><button data-v="group">Ausgabenart</button></div>
+  <div class="seg" id="cmp" title="Vergleichsspalte"><button data-v="prev">vs. Vorjahr</button><button data-v="quota">Soll vs. Ist</button></div>
+</div>
+<div class="main">
+  <div class="panel">
+    <div class="crumbs" id="crumbs"></div>
+    <div class="headline"><h2 id="nodeName"></h2><span class="tot" id="nodeTot"></span><span class="sub" id="nodeSub"></span></div>
+    <div id="tm"></div>
+    <div class="tablebar"><input id="filter" placeholder="In dieser Ebene filtern…"><span><button class="btn-s" id="csv">CSV exportieren</button> <button class="btn-s" id="link">Link kopieren</button></span></div>
+    <table><thead><tr><th data-k="name">Bezeichnung</th><th data-k="value" class="sorted">Betrag</th><th data-k="share" class="hide-m">Anteil</th><th data-k="perHead" class="hide-m">pro Kopf</th><th data-k="cmp" id="cmpHead">Δ</th></tr></thead><tbody id="rows"></tbody></table>
+  </div>
+  <div class="panel detail" id="detail"><div class="empty">Wähle eine Zeile oder suche einen Titel,<br>um die Entwicklung seit 2012 zu sehen.</div></div>
+</div>
+<p class="note">Quelle: bundeshaushalt.de (BMF), Kernhaushalt ohne Sondervermögen. Soll = vom Bundestag beschlossener Plan, Ist = tatsächliche Rechnung (bis 2025). Ministerien werden gelegentlich neu zugeschnitten und umbenannt; Zeitreihen folgen der Haushaltsstelle (Nummer), daher können Brüche auftreten. Einwohnerzahlen: Destatis.</p>
+<div class="tip" id="tip"></div>
+
+<script type="module">
+import { gsap } from '/lib/ui.js';
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
+
+const YEARS = d3.range(2012, 2028), LAST_IST = 2025;
+const POP = await fetch('web/story.json').then(r => r.json()).then(s => s.pop);
+const de = (v, d = 0) => v == null ? '–' : v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+const money = v => v == null ? '–' : Math.abs(v) >= 1e9 ? de(v / 1e9, 2) + ' Mrd. €' : Math.abs(v) >= 1e6 ? de(v / 1e6, 1) + ' Mio. €' : de(v / 1e3, 0) + ' Tsd. €';
+const tip = document.getElementById('tip');
+const showTip = (e, h) => { tip.innerHTML = h; tip.style.opacity = 1; tip.style.left = Math.min(e.clientX + 14, innerWidth - 310) + 'px'; tip.style.top = e.clientY + 14 + 'px'; };
+const hideTip = () => tip.style.opacity = 0;
+
+// Zustand (in URL-Hash gespiegelt)
+const st = Object.assign({ year: 2026, quota: 'target', account: 'expenses', unit: 'single', path: '', cmp: 'prev', sort: 'value', asc: false, sel: '' },
+  Object.fromEntries(new URLSearchParams(location.hash.slice(1))));
+st.year = +st.year; st.asc = st.asc === true || st.asc === 'true';
+const saveHash = () => history.replaceState(null, '', '#' + new URLSearchParams({ year: st.year, quota: st.quota, account: st.account, unit: st.unit, path: st.path, cmp: st.cmp, sel: st.sel }));
+
+// Baum-Cache: [id, name, value, children?] -> Objekte mit Parent
+const cache = new Map();
+const hasData = (y, q) => q === 'target' || y <= LAST_IST;
+async function tree(y, a, q, u) {
+  const k = `${y}-${a}-${q}-${u}`;
+  if (!hasData(y, q)) return null;
+  if (!cache.has(k)) cache.set(k, fetch(`web/tree/${k}.json`).then(r => r.ok ? r.json() : null).then(j => {
+    if (!j) return null;
+    const ix = new Map();
+    const conv = (c, parent) => { const n = { id: c[0], name: c[1], value: c[2], parent }; ix.set(n.id, n); if (c[3]) n.children = c[3].map(x => conv(x, n)); return n; };
+    const root = { id: '', name: 'Gesamt', value: j.total, modified: j.meta.modified };
+    root.children = j.children.map(c => conv(c, root)); ix.set('', root);
+    return { root, ix };
+  }));
+  return cache.get(k);
+}
+
+// UI-Grundgerüst
+const ysel = document.getElementById('year');
+YEARS.forEach(y => ysel.insertAdjacentHTML('beforeend', `<option value="${y}">${y}${y > LAST_IST ? ' (Plan)' : ''}</option>`));
+ysel.onchange = () => { st.year = +ysel.value; if (!hasData(st.year, st.quota)) st.quota = 'target'; render(); };
+const segs = ['quota', 'account', 'unit', 'cmp'];
+segs.forEach(s => document.querySelectorAll(`#${s} button`).forEach(b => b.onclick = () => { st[s] = b.dataset.v; if (s === 'account' || s === 'unit') st.path = ''; render(); }));
+document.querySelectorAll('th').forEach(th => th.onclick = () => { if (st.sort === th.dataset.k) st.asc = !st.asc; else { st.sort = th.dataset.k; st.asc = th.dataset.k === 'name'; } renderTable(); });
+document.getElementById('filter').oninput = () => renderTable();
+
+let cur, rows = [];
+async function render() {
+  ysel.value = st.year;
+  segs.forEach(s => document.querySelectorAll(`#${s} button`).forEach(b => b.classList.toggle('on', st[s] === b.dataset.v)));
+  document.querySelector('#quota [data-v=actual]').disabled = st.year > LAST_IST;
+  document.querySelector('#cmp [data-v=quota]').disabled = st.year > LAST_IST;
+  if (st.cmp === 'quota' && st.year > LAST_IST) st.cmp = 'prev';
+  saveHash();
+  const T = await tree(st.year, st.account, st.quota, st.unit);
+  let node = T.ix.get(st.path);
+  if (!node || !node.children) { node = T.root; st.path = ''; }
+  // Vergleichsbaum
+  const other = st.cmp === 'prev' ? await tree(st.year - 1, st.account, st.quota, st.unit)
+    : await tree(st.year, st.account, st.quota === 'target' ? 'actual' : 'target', st.unit);
+  document.getElementById('cmpHead').textContent = st.cmp === 'prev' ? `Δ ${st.year - 1}` : (st.quota === 'target' ? 'Ist − Soll' : 'Ist − Soll');
+  const total = T.root.value, pop = POP[st.year] * 1e6;
+  cur = node;
+  rows = node.children.map(c => {
+    const o = other && other.ix.get(c.id);
+    let cmp = null;
+    if (o) cmp = st.cmp === 'prev' ? c.value - o.value : (st.quota === 'actual' ? c.value - o.value : o.value - c.value);
+    const ref = st.cmp === 'prev' ? o?.value : (st.quota === 'actual' ? o?.value : c.value);
+    return { n: c, name: c.name, nr: c.id, value: c.value, share: c.value / node.value, perHead: c.value / pop, cmp, cmpPct: o && ref ? cmp / Math.abs(ref) : null, isNew: !o && !!other };
+  });
+  // Kopf
+  const crumbs = document.getElementById('crumbs'); crumbs.innerHTML = '';
+  const chain = []; for (let n = node; n; n = n.parent) chain.unshift(n);
+  chain.forEach((n, i) => {
+    if (i) crumbs.insertAdjacentHTML('beforeend', '<span> › </span>');
+    const el = document.createElement(i === chain.length - 1 ? 'span' : 'button');
+    el.textContent = i ? n.name : `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} ${st.year} (${st.quota === 'target' ? 'Soll' : 'Ist'})`;
+    if (i < chain.length - 1) el.onclick = () => { st.path = n.id; render(); };
+    crumbs.appendChild(el);
+  });
+  document.getElementById('nodeName').textContent = node === T.root ? 'Gesamthaushalt' : node.name;
+  document.getElementById('nodeTot').textContent = money(node.value);
+  document.getElementById('nodeSub').textContent = `${de(node.value / total * 100, 1)} % · ${de(node.value / pop)} € pro Kopf · ${node.children.length} Positionen · Stand ${T.root.modified}`;
+  renderTreemap(node);
+  renderTable();
+  if (st.sel) showDetail(st.sel);
+}
+
+const COLORS = ['#2f5d8a', '#c8452c', '#7a9e5a', '#d9a13b', '#8d6aa8', '#3f9c94', '#8a7f70', '#b0806a', '#5b8fc0', '#4a5a3a', '#a85a7a', '#6c8f6f'];
+function renderTreemap(node) {
+  const box = document.getElementById('tm'), W = box.clientWidth, H = box.clientHeight;
+  const kids = node.children.filter(c => c.value > 0);
+  const lay = d3.treemap().size([W, H]).paddingInner(2).round(true)(d3.hierarchy({ k: kids }, d => d.k).sum(d => d.k ? 0 : d.value).sort((a, b) => b.value - a.value));
+  box.innerHTML = '';
+  const els = lay.leaves().map((l, i) => {
+    const n = l.data, el = document.createElement('div'), w = l.x1 - l.x0, h = l.y1 - l.y0;
+    el.className = 'c'; Object.assign(el.style, { left: l.x0 + 'px', top: l.y0 + 'px', width: w + 'px', height: h + 'px', background: COLORS[i % COLORS.length] });
+    if (w * h > 3500) el.innerHTML = `<b>${money(n.value)}</b>${n.name}`; else if (w * h > 900) el.innerHTML = `<b>${de(n.value / 1e9, 1)}</b>`;
+    el.onmousemove = e => showTip(e, `<b>${n.name}</b><br>${money(n.value)} · ${de(n.value / node.value * 100, 1)} %${n.children ? '<br><i>Klick: reinzoomen</i>' : ''}`);
+    el.onmouseleave = hideTip;
+    el.onclick = () => { hideTip(); if (n.children) { st.path = n.id; render(); } else { st.sel = n.id; showDetail(n.id); renderTable(); } };
+    box.appendChild(el); return el;
+  });
+  gsap.from(els, { opacity: 0, scale: .9, duration: .35, stagger: .008, ease: 'power2.out' });
+}
+
+function renderTable() {
+  document.querySelectorAll('th').forEach(th => { th.classList.toggle('sorted', th.dataset.k === st.sort); th.classList.toggle('asc', st.sort === th.dataset.k && st.asc); });
+  const f = document.getElementById('filter').value.toLowerCase();
+  const list = rows.filter(r => !f || (r.name + ' ' + r.nr).toLowerCase().includes(f))
+    .sort((a, b) => { const x = a[st.sort], y = b[st.sort]; const s = typeof x === 'string' ? x.localeCompare(y) : (x ?? -Infinity) - (y ?? -Infinity); return st.asc ? s : -s; });
+  const max = d3.max(rows, r => r.value) || 1;
+  document.getElementById('rows').innerHTML = list.map(r => `<tr data-id="${r.nr}" class="${st.sel === r.nr ? 'sel' : ''}">
+    <td class="${r.n.children ? 'drill' : ''}"><span class="nm">${r.name}</span>${r.n.children ? ' ›' : ''}<span class="nr">${fmtNr(r.nr)}</span><span class="share" style="width:${Math.max(0, r.value / max * 100)}%"></span></td>
+    <td>${money(r.value)}</td><td class="hide-m">${de(r.share * 100, 1)} %</td><td class="hide-m">${de(r.perHead, r.perHead < 10 ? 2 : 0)} €</td>
+    <td class="${r.cmp > 0 ? 'up' : r.cmp < 0 ? 'down' : ''}">${r.isNew ? '<i>neu</i>' : r.cmp == null ? '–' : (r.cmp > 0 ? '+' : '') + money(r.cmp) + (r.cmpPct != null && isFinite(r.cmpPct) ? `<br><small>${r.cmp > 0 ? '+' : ''}${de(r.cmpPct * 100, 1)} %</small>` : '')}</td></tr>`).join('');
+  document.querySelectorAll('#rows tr').forEach(tr => tr.onclick = e => {
+    const r = rows.find(r => r.nr === tr.dataset.id);
+    if (r.n.children && e.target.closest('td.drill')) { st.path = r.nr; st.sel = r.nr; render(); }
+    else { st.sel = r.nr; saveHash(); renderTable(); showDetail(r.nr); }
+  });
+}
+const fmtNr = id => /^\d{9}$/.test(id) ? `${id.slice(0, 4)} ${id.slice(4, 7)} ${id.slice(7)}` : /^[FG]-/.test(id) ? (id[0] === 'F' ? 'Funktion ' : 'Gruppe ') + id.slice(2) : /^\d+$/.test(id) ? (id.length === 2 ? 'Einzelplan ' : 'Kapitel ') + id : id;
+
+// Detail: Zeitreihe über alle Jahre für dieselbe ID in der aktuellen Sicht
+let detailToken = 0;
+async function showDetail(id) {
+  const tok = ++detailToken, box = document.getElementById('detail');
+  box.innerHTML = '<div class="loading">Lade Zeitreihe 2012–2027…</div>';
+  const series = await Promise.all(YEARS.map(async y => {
+    const [s, i] = await Promise.all([tree(y, st.account, 'target', st.unit), tree(y, st.account, 'actual', st.unit)]);
+    const ns = s?.ix.get(id), ni = i?.ix.get(id);
+    return { year: y, soll: ns?.value ?? null, ist: ni?.value ?? null, name: (ni || ns)?.name, node: ns || ni };
+  }));
+  if (tok !== detailToken) return;
+  const last = [...series].reverse().find(s => s.node);
+  if (!last) { box.innerHTML = '<div class="empty">Keine Daten.</div>'; return; }
+  const path = []; for (let n = last.node.parent; n && n.id; n = n.parent) path.unshift(n.name);
+  const cy = series.find(s => s.year === st.year), first = series.find(s => (s.ist ?? s.soll) != null);
+  const firstV = first.ist ?? first.soll, lastV = last.ist ?? last.soll;
+  const names = [...new Set(series.filter(s => s.name).map(s => s.name))];
+  box.innerHTML = `<h3>${last.name}</h3><div class="path">${fmtNr(id)}${path.length ? ' · ' + path.join(' › ') : ''}</div>
+    <div class="kv"><div><small>${st.year} ${st.quota === 'target' ? 'Soll' : 'Ist'}</small><b>${money(st.quota === 'target' ? cy?.soll : cy?.ist)}</b></div>
+    <div><small>pro Kopf ${st.year}</small><b>${cy && (cy.soll ?? cy.ist) != null ? de((st.quota === 'target' ? cy.soll : cy.ist) / POP[st.year] / 1e6, 2) + ' €' : '–'}</b></div>
+    <div><small>${first.year} → ${last.year}</small><b class="${lastV >= firstV ? 'up' : 'down'}">${firstV ? (lastV >= firstV ? '+' : '') + de((lastV / firstV - 1) * 100, 0) + ' %' : '–'}</b></div>
+    <div><small>Summe Ist ${first.year}–${LAST_IST}</small><b>${money(d3.sum(series, s => s.ist))}</b></div></div>
+    <div id="ts"></div>
+    ${names.length > 1 ? `<div class="path" style="margin-top:8px">Frühere Bezeichnungen: ${names.slice(0, -1).filter(n => n !== last.name).join('; ')}</div>` : ''}
+    <table class="ytable"><thead><tr><th>Jahr</th><th>Soll</th><th>Ist</th><th>Ist − Soll</th></tr></thead><tbody>
+    ${series.filter(s => s.soll != null || s.ist != null).reverse().map(s => `<tr><td>${s.year}</td><td>${money(s.soll)}</td><td>${money(s.ist)}</td><td class="${s.ist - s.soll >= 0 ? 'up' : 'down'}">${s.ist != null && s.soll != null ? money(s.ist - s.soll) : ''}</td></tr>`).join('')}</tbody></table>`;
+  drawTS(series);
+  gsap.from(box.children, { opacity: 0, y: 12, duration: .35, stagger: .05 });
+}
+
+function drawTS(series) {
+  const el = document.getElementById('ts'), W = el.clientWidth, H = 210, m = { t: 14, r: 10, b: 24, l: 52 };
+  const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
+  const max = d3.max(series, s => Math.max(s.soll ?? 0, s.ist ?? 0)), min = Math.min(0, d3.min(series, s => Math.min(s.soll ?? 0, s.ist ?? 0)));
+  const x = d3.scaleBand().domain(YEARS).range([m.l, W - m.r]).padding(.25), y = d3.scaleLinear().domain([min, max || 1]).nice().range([H - m.b, m.t]);
+  const unit = max >= 1e9 ? [1e9, 'Mrd.'] : max >= 1e6 ? [1e6, 'Mio.'] : [1e3, 'Tsd.'];
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues(YEARS.filter(y => y % 3 === 0)).tickFormat(d => "'" + String(d).slice(2)));
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickFormat(v => de(v / unit[0], 1) + ' ' + unit[1]));
+  svg.append('g').selectAll('rect').data(series.filter(s => s.soll != null)).join('rect').attr('x', s => x(s.year)).attr('width', x.bandwidth())
+    .attr('y', y(0)).attr('height', 0).attr('fill', s => s.year === st.year ? '#c8452c' : '#9cc0de')
+    .on('mousemove', (e, s) => showTip(e, `<b>${s.year}</b><br>Soll: ${money(s.soll)}<br>Ist: ${money(s.ist)}`)).on('mouseleave', hideTip)
+    .transition().duration(500).delay((s, i) => i * 25).attr('y', s => y(Math.max(0, s.soll))).attr('height', s => Math.abs(y(s.soll) - y(0)));
+  const ist = series.filter(s => s.ist != null);
+  svg.append('path').datum(ist).attr('fill', 'none').attr('stroke', '#1d1b18').attr('stroke-width', 2).attr('d', d3.line().x(s => x(s.year) + x.bandwidth() / 2).y(s => y(s.ist)));
+  svg.append('g').selectAll('circle').data(ist).join('circle').attr('cx', s => x(s.year) + x.bandwidth() / 2).attr('cy', s => y(s.ist)).attr('r', 3).attr('fill', '#1d1b18');
+  svg.append('text').attr('x', W - m.r).attr('y', 10).attr('text-anchor', 'end').attr('class', 'axis').style('font-size', '11px').style('fill', '#6f685d').text('Balken = Soll · Linie = Ist');
+}
+
+// CSV + Link
+document.getElementById('csv').onclick = () => {
+  const csv = ['Nummer;Bezeichnung;Betrag_EUR;Anteil;Vergleich_EUR', ...rows.map(r => [r.nr, '"' + r.name.replace(/"/g, '""') + '"', r.value, (r.share * 100).toFixed(2).replace('.', ','), r.cmp ?? ''].join(';'))].join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv' }));
+  a.download = `bundeshaushalt-${st.year}-${st.account}-${st.quota}-${st.unit}${st.path ? '-' + st.path : ''}.csv`; a.click();
+};
+document.getElementById('link').onclick = e => { navigator.clipboard.writeText(location.href); e.target.textContent = 'Kopiert ✓'; setTimeout(() => e.target.textContent = 'Link kopieren', 1500); };
+
+// Volltextsuche über alle Titel (lazy)
+let TITLES;
+const q = document.getElementById('q'), res = document.getElementById('res');
+async function loadTitles() { if (!TITLES) { TITLES = fetch('web/titles.json').then(r => r.json()).then(j => { j.items.forEach(t => t.s = (t.l + ' ' + t.nr + ' ' + t.p.join(' ')).toLowerCase()); return j; }); } return TITLES; }
+q.onfocus = loadTitles;
+let selIdx = -1, hits = [];
+q.oninput = async () => {
+  const term = q.value.trim().toLowerCase();
+  if (term.length < 2) { res.style.display = 'none'; return; }
+  const T = await loadTitles(), words = term.split(/\s+/), yi = YEARS.indexOf(st.year);
+  hits = T.items.filter(t => words.every(w => t.s.includes(w)))
+    .map(t => ({ t, v: t.v[0][yi] ?? t.v[1][yi] ?? Math.max(...t.v[0].filter(v => v != null), 0) }))
+    .sort((a, b) => Math.abs(b.v) - Math.abs(a.v)).slice(0, 60);
+  selIdx = -1;
+  res.innerHTML = hits.length ? hits.map((h, i) => `<div data-i="${i}"><b>${money(h.v * 1e3)}</b>${h.t.l}<small>${h.t.a === 'e' ? 'Ausgabe' : 'Einnahme'} · ${h.t.nr} · ${h.t.p.slice(0, 2).join(' › ')}</small></div>`).join('') : '<div>Nichts gefunden.</div>';
+  res.style.display = 'block';
+  res.querySelectorAll('[data-i]').forEach(d => d.onclick = () => openTitle(hits[+d.dataset.i].t));
+};
+q.onkeydown = e => {
+  const items = res.querySelectorAll('[data-i]');
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { selIdx = Math.max(0, Math.min(items.length - 1, selIdx + (e.key === 'ArrowDown' ? 1 : -1))); items.forEach((d, i) => d.classList.toggle('sel', i === selIdx)); items[selIdx]?.scrollIntoView({ block: 'nearest' }); e.preventDefault(); }
+  if (e.key === 'Enter' && hits[Math.max(0, selIdx)]) openTitle(hits[Math.max(0, selIdx)].t);
+  if (e.key === 'Escape') res.style.display = 'none';
+};
+document.addEventListener('click', e => { if (!e.target.closest('.search')) res.style.display = 'none'; });
+function openTitle(t) {
+  res.style.display = 'none';
+  const id = t.nr.replace(/ /g, '');
+  st.account = t.a === 'e' ? 'expenses' : 'income'; st.unit = 'single'; st.path = id.slice(0, 4); st.sel = id;
+  render();
+}
+
+render();
+window.addEventListener('resize', () => cur && renderTreemap(cur));
+</script>
+</body>
+</html>

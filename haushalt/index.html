@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Der Bundeshaushalt</title>
+<meta name="description" content="Wofür gibt der Bund 524 Milliarden Euro aus? Eine Datenstory zum Bundeshaushalt 2012–2027.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="/analytics.js"></script>
+<style>
+:root {
+  --bg: #f6f2ea; --ink: #1d1b18; --muted: #6f685d; --line: #d9d1c3; --card: #fffdf8;
+  --accent: #c8452c; --blue: #2f5d8a;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Inter, system-ui, sans-serif; overflow-x: hidden; }
+h1, h2, .serif { font-family: Fraunces, Georgia, serif; }
+a { color: var(--accent); }
+.wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+.narrow { max-width: 680px; margin: 0 auto; padding: 0 20px; }
+section { padding: 14vh 0; position: relative; }
+.kicker { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 10px; }
+h2 { font-size: clamp(30px, 4.6vw, 52px); line-height: 1.08; margin: 0 0 22px; font-weight: 700; letter-spacing: -.01em; }
+p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
+.reveal { opacity: 0; transform: translateY(30px); }
+.nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 20px; font-size: 14px; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(8px); }
+.nav b { font-family: Fraunces, serif; font-size: 17px; }
+.nav a { text-decoration: none; font-weight: 600; border: 1.5px solid var(--ink); color: var(--ink); padding: 5px 12px; border-radius: 99px; }
+.nav a:hover { background: var(--ink); color: var(--bg); }
+.progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--accent); width: 0; z-index: 60; }
+
+/* Hero */
+#hero { min-height: 100vh; display: flex; align-items: center; padding: 90px 0 60px; }
+#hero h1 { font-size: clamp(44px, 8.5vw, 112px); line-height: .95; margin: 0; font-weight: 900; letter-spacing: -.03em; }
+#hero h1 .big { color: var(--accent); display: block; }
+#hero .sub { font-size: clamp(18px, 2.2vw, 24px); max-width: 640px; margin: 28px 0 0; color: #3a362f; }
+.ticker { margin-top: 44px; display: inline-block; padding: 14px 20px; border: 1.5px solid var(--ink); border-radius: 12px; font-size: 15px; background: var(--card); }
+.ticker b { font-family: Fraunces, serif; font-size: 26px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.scrollhint { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); font-size: 13px; color: var(--muted); }
+
+/* Kennzahlen */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px 22px; }
+.stat .n { font-family: Fraunces, serif; font-size: clamp(36px, 5vw, 60px); font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat .u { color: var(--muted); font-size: 15px; margin-top: 8px; }
+
+/* 100 Euro */
+.euro { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 50px; align-items: center; margin-top: 30px; }
+.waffle { display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px; max-width: 520px; }
+.waffle i { aspect-ratio: 1; border-radius: 4px; background: var(--line); display: block; transition: opacity .25s, outline .25s; }
+.legend { display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
+.legend div { display: flex; align-items: center; gap: 10px; cursor: default; padding: 3px 6px; border-radius: 6px; }
+.legend div:hover { background: var(--card); }
+.legend span.sw { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* Treemap */
+.tm-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin: 26px 0 10px; font-size: 15px; }
+.crumbs button { font: inherit; background: none; border: 0; color: var(--accent); cursor: pointer; padding: 0; font-weight: 600; }
+.crumbs span { color: var(--muted); }
+#treemap { width: 100%; height: min(70vh, 640px); position: relative; border-radius: 14px; overflow: hidden; background: var(--ink); }
+#treemap .cell { position: absolute; overflow: hidden; padding: 8px 9px; color: #fff; font-size: 13px; line-height: 1.25; cursor: pointer;
+  border: 1px solid rgba(0,0,0,.25); transition: filter .2s; }
+#treemap .cell:hover { filter: brightness(1.12); }
+#treemap .cell b { display: block; font-size: 15px; font-family: Fraunces, serif; }
+#treemap .cell.leaf { cursor: default; }
+.hint { font-size: 14px; color: var(--muted); margin-top: 10px; }
+
+/* Scrollytelling */
+.scrolly { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 40px; }
+.steps .step { min-height: 80vh; display: flex; align-items: center; }
+.steps .step > div { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; box-shadow: 0 6px 30px rgba(0,0,0,.05); }
+.steps .step h3 { font-family: Fraunces, serif; margin: 0 0 8px; font-size: 24px; }
+.steps .step p { margin: 0; font-size: 16px; }
+.sticky { position: sticky; top: 10vh; height: 80vh; align-self: start; }
+.sticky svg { width: 100%; height: 100%; overflow: visible; }
+.axis text { font: 12px Inter, sans-serif; fill: var(--muted); }
+.axis path, .axis line { stroke: var(--line); }
+.ann { font: 600 13px Inter, sans-serif; fill: var(--ink); }
+.chart { width: 100%; }
+.chart svg { width: 100%; overflow: visible; display: block; }
+.note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+
+/* Top-Titel */
+.bars .row { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 14px; align-items: center; margin: 10px 0; font-size: 15px; }
+.bars .bar { height: 30px; background: var(--accent); border-radius: 5px; width: 0; display: flex; align-items: center; padding: 0 10px; color: #fff; white-space: nowrap; overflow: visible; font-size: 14px; }
+.bars .row b { text-align: right; font-variant-numeric: tabular-nums; }
+.bars .lab { font-size: 13px; color: var(--muted); margin-bottom: -6px; }
+
+.outro { background: var(--ink); color: var(--bg); text-align: center; }
+.outro h2 { color: var(--bg); }
+.btn { display: inline-block; margin-top: 26px; padding: 15px 30px; background: var(--accent); color: #fff; border-radius: 99px; text-decoration: none; font-weight: 700; font-size: 18px; }
+.btn:hover { filter: brightness(1.1); }
+footer { font-size: 13px; color: #a79f91; padding: 30px 20px 50px; text-align: center; background: var(--ink); }
+footer a { color: #d6cdbd; }
+.tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--bg); padding: 8px 11px; border-radius: 8px; font-size: 13px; z-index: 99; opacity: 0; max-width: 280px; line-height: 1.4; }
+
+@media (max-width: 860px) {
+  .stats { grid-template-columns: 1fr; }
+  .euro { grid-template-columns: 1fr; gap: 26px; }
+  .scrolly { grid-template-columns: 1fr; }
+  .sticky { order: -1; top: 56px; height: 50vh; z-index: 1; background: var(--bg); }
+  .steps .step > div { background: color-mix(in srgb, var(--card) 94%, transparent); }
+  .steps { position: relative; z-index: 2; }
+  .steps .step { min-height: 95vh; align-items: flex-end; padding-bottom: 4vh; }
+  .steps .step h3 { font-size: 19px; } .steps .step p { font-size: 14.5px; } .steps .step > div { padding: 14px 16px; }
+  .bars .bar { font-size: 0; }
+}
+</style>
+</head>
+<body>
+<div class="progress"></div>
+<div class="nav"><b>Bundeshaushalt</b><a href="explorer.html">Explorer →</a></div>
+<div class="tip"></div>
+
+<section id="hero">
+  <div class="wrap">
+    <h1>Der Bund gibt 2026 <span class="big"><span id="heroNum">0</span> Mrd. €</span> aus.</h1>
+    <p class="sub">Wofür eigentlich? Woher kommt das Geld? Und was hat sich seit 2012 verändert? Eine Reise durch 16 Jahre Bundeshaushalt.</p>
+    <div class="ticker">Seit du diese Seite geöffnet hast, hat der Bund <b id="tick">0 €</b> ausgegeben.</div>
+  </div>
+  <div class="scrollhint">↓ scrollen</div>
+</section>
+
+<section>
+  <div class="narrow reveal">
+    <div class="kicker">Zum Begreifen</div>
+    <h2>Milliarden kann sich niemand vorstellen.</h2>
+    <p class="lead">Also rechnen wir sie herunter: auf jede einzelne Person in Deutschland, vom Baby bis zur Rentnerin.</p>
+  </div>
+  <div class="wrap">
+    <div class="stats">
+      <div class="stat reveal"><div class="n" data-count="perHead">0</div><div class="u">Euro pro Kopf und Jahr</div></div>
+      <div class="stat reveal"><div class="n" data-count="perDay">0</div><div class="u">Euro pro Kopf und Tag</div></div>
+      <div class="stat reveal"><div class="n" data-count="perSec">0</div><div class="u">Euro gibt der Bund jede Sekunde aus</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="hundert">
+  <div class="narrow reveal">
+    <div class="kicker">Die Aufteilung</div>
+    <h2>Stell dir vor, der Bund hätte nur 100 Euro.</h2>
+    <p class="lead">Jedes Kästchen ist ein Euro. Zwei von fünf Euro gehen in Rente, Sozialversicherung und Grundsicherung. Verteidigung ist inzwischen der zweitgrößte Brocken.</p>
+  </div>
+  <div class="wrap euro">
+    <div class="waffle" id="waffle"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+</section>
+
+<section id="tm">
+  <div class="narrow reveal">
+    <div class="kicker">Reinzoomen</div>
+    <h2>Jeder Euro hat einen Zweck.</h2>
+    <p class="lead">Die Fläche zeigt, wie viel Geld wohin fließt. Klick auf ein Feld, um tiefer zu gehen – bis zu einzelnen Posten wie dem Elterngeld oder der Eisenbahn.</p>
+  </div>
+  <div class="wrap">
+    <div class="tm-head"><div class="crumbs" id="crumbs"></div></div>
+    <div id="treemap"></div>
+    <div class="hint">Haushalts-Soll 2026, Gliederung nach Funktionenplan. Gleiche Farbe = gleicher Bereich. Pauschale Kürzungen (globale Minderausgaben) sind nicht als Fläche darstellbar. Klick auf den Pfad oben führt zurück.</div>
+  </div>
+</section>
+
+<section id="zeit">
+  <div class="wrap">
+    <div class="narrow reveal" style="padding:0;margin:0 0 30px">
+      <div class="kicker">Die Zeitreise</div>
+      <h2>16 Jahre in einem Bild.</h2>
+    </div>
+    <div class="scrolly">
+      <div class="steps">
+        <div class="step" data-step="0"><div><h3>Ruhiges Wachstum</h3><p>Von 2012 bis 2019 wächst der Haushalt gemächlich von 307 auf 357 Milliarden Euro – etwa im Tempo der Wirtschaft.</p></div></div>
+        <div class="step" data-step="1"><div><h3>Rente: der größte Block</h3><p>Der Zuschuss an Renten- und Sozialversicherung ist mit Abstand der größte Posten – und er wächst stetig: von 109 auf fast 160 Milliarden Euro.</p></div></div>
+        <div class="step" data-step="2"><div><h3>Corona</h3><p>2020 und 2021 explodieren die Ausgaben: Überbrückungshilfen, Kurzarbeit, Impfstoffe, Krankenhäuser. 2021 gibt der Bund 557 Milliarden aus – 56 % mehr als 2019.</p></div></div>
+        <div class="step" data-step="3"><div><h3>Die Zinswende</h3><p>2021 kostete die Bundesschuld dank Nullzinsen nur 4 Milliarden. Dann steigen die Zinsen – 2024 sind es über 40 Milliarden.</p></div></div>
+        <div class="step" data-step="4"><div><h3>Zeitenwende</h3><p>Nach dem Überfall auf die Ukraine wächst der Verteidigungsetat rasant: von 42 Milliarden (2019) auf 116 Milliarden im Plan für 2027.</p></div></div>
+        <div class="step" data-step="5"><div><h3>Der Plan</h3><p>2026 und 2027 sind noch Planzahlen (Soll). Der Kernhaushalt soll auf 555 Milliarden steigen – Sondervermögen wie das für Infrastruktur kommen noch obendrauf.</p></div></div>
+      </div>
+      <div class="sticky"><svg id="area"></svg></div>
+    </div>
+  </div>
+</section>
+
+<section id="einnahmen">
+  <div class="narrow reveal">
+    <div class="kicker">Woher das Geld kommt</div>
+    <h2>Steuern – und immer öfter Schulden.</h2>
+    <p class="lead">Von 2014 bis 2019 kam der Bund ganz ohne neue Kredite aus: die „schwarze Null“. Seit Corona wird wieder geliehen – im Plan für 2027 mehr als jeder fünfte Euro.</p>
+  </div>
+  <div class="wrap"><div class="chart" id="income"></div>
+    <div class="note">Ist-Werte bis 2025, danach Soll. Rot: Einnahmen aus Krediten am Kapitalmarkt (Gruppe 32). Ohne Sondervermögen.</div></div>
+</section>
+
+<section id="zinsen">
+  <div class="narrow reveal">
+    <div class="kicker">Der Preis der Schulden</div>
+    <h2>Zinsen: erst fast gratis, dann teuer.</h2>
+    <p class="lead">Jahrelang wurden alte, hoch verzinste Anleihen durch billige ersetzt. Seit 2022 dreht sich das: Was der Bund für Zinsen zahlt, fehlt woanders.</p>
+  </div>
+  <div class="wrap"><div class="chart" id="zinsChart"></div></div>
+</section>
+
+<section id="top">
+  <div class="narrow reveal">
+    <div class="kicker">Die größten Einzelposten</div>
+    <h2>Zehn Zeilen, fast die Hälfte des Geldes.</h2>
+    <p class="lead">Der Haushalt besteht aus rund 4.500 einzelnen „Titeln“. Allein die zehn größten stehen für über 230 Milliarden Euro – vor allem Zuschüsse an die Rentenversicherung.</p>
+  </div>
+  <div class="narrow"><div class="bars" id="bars"></div></div>
+</section>
+
+<section id="plan">
+  <div class="narrow reveal">
+    <div class="kicker">Plan und Wirklichkeit</div>
+    <h2>Geplant ist nicht gleich ausgegeben.</h2>
+    <p class="lead">Der Bundestag beschließt ein Soll – was am Jahresende tatsächlich rausging, ist das Ist. Bis 2019 lagen beide fast aufeinander. In der Krise blieben Milliarden liegen.</p>
+  </div>
+  <div class="wrap"><div class="chart" id="sollist"></div></div>
+</section>
+
+<section class="outro">
+  <div class="narrow reveal">
+    <div class="kicker" style="color:#e9967a">Selbst recherchieren</div>
+    <h2>Jetzt bist du dran.</h2>
+    <p class="lead" style="color:#d6cdbd">Im Explorer findest du alle 12.000 Haushaltstitel seit 2012, kannst durch Ministerien, Zwecke und Ausgabenarten navigieren, Soll und Ist vergleichen und Zeitreihen ansehen.</p>
+    <a class="btn" href="explorer.html">Zum Explorer →</a>
+  </div>
+</section>
+<footer>Daten: <a href="https://www.bundeshaushalt.de">bundeshaushalt.de</a> (Bundesministerium der Finanzen), Stand der Abfrage Oktober 2026. Einwohner: Destatis. Kernhaushalt ohne Sondervermögen. Gerundete Werte.</footer>
+
+<script type="module">
+import { gsap, ui } from '/lib/ui.js';
+import { ScrollTrigger } from 'https://cdn.jsdelivr.net/npm/gsap@3.13.0/ScrollTrigger.js';
+import * as d3 from 'https://cdn.jsdelivr.net/npm/d3@7/+esm';
+gsap.registerPlugin(ScrollTrigger);
+
+const S = await fetch('web/story.json').then(r => r.json());
+const Y = 2026, D = S.data[Y].target, POP = S.pop[Y] * 1e6;
+const COLORS = { rente: '#2f5d8a', arbeit: '#5b8fc0', sozial: '#9cc0de', verteidigung: '#4a5a3a', zinsen: '#c8452c',
+  verkehr: '#d9a13b', bildung: '#7a9e5a', wirtschaft: '#8d6aa8', staat: '#8a7f70', gesundheit: '#3f9c94', rest: '#c9bfae' };
+const label = Object.fromEntries(S.cats.map(c => [c.key, c.label]));
+const de = (v, d = 0) => v.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+const tip = document.querySelector('.tip');
+const showTip = (e, html) => { tip.innerHTML = html; tip.style.opacity = 1; tip.style.left = Math.min(e.clientX + 14, innerWidth - 300) + 'px'; tip.style.top = e.clientY + 14 + 'px'; };
+const hideTip = () => tip.style.opacity = 0;
+
+// Fortschrittsbalken + Reveals
+gsap.to('.progress', { width: '100%', ease: 'none', scrollTrigger: { start: 0, end: 'max', scrub: true } });
+gsap.utils.toArray('.reveal').forEach(el => gsap.to(el, { opacity: 1, y: 0, duration: .9, ease: 'power3.out',
+  scrollTrigger: { trigger: el, start: 'top 85%' } }));
+
+// Hero
+const heroO = { v: 0 };
+gsap.to(heroO, { v: D.total, duration: 2.2, ease: 'power3.out', delay: .3, onUpdate: () => heroNum.textContent = de(heroO.v) });
+gsap.from('#hero h1, #hero .sub, .ticker', { y: 40, opacity: 0, duration: 1, stagger: .15, ease: 'power3.out' });
+const perSec = D.total * 1e9 / (365 * 86400), t0 = performance.now();
+(function tick() { document.getElementById('tick').textContent = de((performance.now() - t0) / 1000 * perSec) + ' €'; requestAnimationFrame(tick); })();
+
+// Kennzahlen hochzählen
+const vals = { perHead: D.total * 1e9 / POP, perDay: D.total * 1e9 / POP / 365, perSec };
+document.querySelectorAll('[data-count]').forEach(el => {
+  const v = vals[el.dataset.count], o = { v: 0 };
+  ScrollTrigger.create({ trigger: el, start: 'top 85%', once: true, onEnter: () =>
+    gsap.to(o, { v, duration: 1.8, ease: 'power2.out', onUpdate: () => el.textContent = de(o.v, v < 100 ? 2 : 0) }) });
+});
+
+// 100-Euro-Waffel (größter-Rest-Verfahren auf 100)
+{
+  const cats = S.cats.map(c => ({ ...c, v: D.cats[c.key] / D.total * 100 })).sort((a, b) => b.v - a.v);
+  cats.forEach(c => c.n = Math.floor(c.v));
+  let left = 100 - d3.sum(cats, c => c.n);
+  [...cats].sort((a, b) => (b.v % 1) - (a.v % 1)).slice(0, left).forEach(c => c.n++);
+  const w = document.getElementById('waffle'), lg = document.getElementById('legend');
+  cats.forEach(c => { for (let i = 0; i < c.n; i++) { const s = document.createElement('i'); s.dataset.k = c.key; w.appendChild(s); } });
+  cats.forEach(c => {
+    const r = document.createElement('div'); r.dataset.k = c.key;
+    r.innerHTML = `<span class="sw" style="background:${COLORS[c.key]}"></span>${c.label}<b>${c.n} €</b>`;
+    r.onmouseenter = () => w.querySelectorAll('i').forEach(i => i.style.opacity = i.dataset.k === c.key ? 1 : .15);
+    r.onmouseleave = () => w.querySelectorAll('i').forEach(i => i.style.opacity = 1);
+    lg.appendChild(r);
+  });
+  const sq = w.querySelectorAll('i');
+  gsap.timeline({ scrollTrigger: { trigger: w, start: 'top 75%' } })
+    .from(sq, { scale: 0, duration: .35, stagger: { each: .012, from: 'start' }, ease: 'back.out(2)' })
+    .to(sq, { backgroundColor: i => COLORS[sq[i].dataset.k], duration: .3, stagger: .012 }, .2)
+    .from(lg.children, { x: 30, opacity: 0, stagger: .06, duration: .4 }, .4);
+}
+
+// Zoombare Treemap
+{
+  const box = document.getElementById('treemap'), crumbs = document.getElementById('crumbs');
+  let cur;
+  const root = d3.hierarchy(S.tree).sum(d => d.value || 0).sort((a, b) => b.value - a.value);
+  const topColor = d3.scaleOrdinal(['#2f5d8a', '#8a7f70', '#c8452c', '#7a9e5a', '#d9a13b', '#8d6aa8', '#3f9c94', '#b0806a', '#6c8f6f']);
+  root.children.forEach(c => c.data.color = topColor(c.data.name));
+  root.each(n => { if (n.depth > 1) { const top = n.ancestors().find(a => a.depth === 1); n.data.color = d3.color(top.data.color).brighter((n.depth - 1) * .35 + (n.parent.children.indexOf(n) % 3) * .12).formatHex(); } });
+  function render(node, animate = true) {
+    cur = node;
+    const W = box.clientWidth, H = box.clientHeight;
+    // Auf oberster Ebene gleich die zweite Ebene zeigen (gruppiert), sonst die Kinder
+    const items = node === root ? root.children.flatMap(c => c.children || [c]) : node.children;
+    const lay = d3.treemap().size([W, H]).paddingInner(2).paddingOuter(0).round(true)(
+      d3.hierarchy({ k: node === root ? root.children.map(c => ({ k: (c.children || [c]) })) : items }, d => Array.isArray(d.k) ? d.k : null)
+        .sum(d => d.value || 0).sort((a, b) => b.value - a.value));
+    box.innerHTML = '';
+    const cells = lay.leaves().map(c => {
+      const r = c.data, el = document.createElement('div'), leaf = !r.children;
+      el.className = 'cell' + (leaf ? ' leaf' : '');
+      Object.assign(el.style, { left: c.x0 + 'px', top: c.y0 + 'px', width: c.x1 - c.x0 + 'px', height: c.y1 - c.y0 + 'px', background: r.data.color });
+      const area = (c.x1 - c.x0) * (c.y1 - c.y0);
+      if (area > 5000) el.innerHTML = `<b>${de(r.value, 1)} Mrd.</b>${r.data.name}`;
+      else if (area > 1500) el.innerHTML = `<b>${de(r.value, 1)}</b>`;
+      const path = r.ancestors().reverse().slice(1, -1).map(a => a.data.name).join(' › ');
+      el.onmousemove = e => showTip(e, `${path ? `<span style="opacity:.7">${path}</span><br>` : ''}<b>${r.data.name}</b><br>${de(r.value, 2)} Mrd. € · ${de(r.value / D.total * 100, 1)} % des Haushalts<br>${de(r.value * 1e9 / POP)} € pro Kopf${leaf ? '' : '<br><i>Klicken zum Reinzoomen</i>'}`);
+      el.onmouseleave = hideTip;
+      if (!leaf) el.onclick = () => { hideTip(); render(r); };
+      box.appendChild(el); return el;
+    });
+    if (animate) gsap.from(cells, { opacity: 0, scale: .85, duration: .5, stagger: .02, ease: 'power2.out' });
+    crumbs.innerHTML = '';
+    node.ancestors().reverse().forEach((a, i, arr) => {
+      if (i) crumbs.insertAdjacentHTML('beforeend', '<span> › </span>');
+      const b = document.createElement(i === arr.length - 1 ? 'span' : 'button');
+      b.textContent = i ? a.data.name : 'Gesamt ' + de(D.total, 1) + ' Mrd. €';
+      if (i < arr.length - 1) b.onclick = () => render(a);
+      crumbs.appendChild(b);
+    });
+  }
+  ScrollTrigger.create({ trigger: box, start: 'top 80%', once: true, onEnter: () => render(root) });
+  window.addEventListener('resize', () => box.children.length && render(cur, false));
+}
+
+// Gestapelte Fläche + Scrollytelling
+const series = S.years.map(y => { const d = S.data[y].actual || S.data[y].target; return { year: y, plan: !S.data[y].actual, ...d.cats, total: d.total }; });
+{
+  const svg = d3.select('#area'), keys = ['rente', 'arbeit', 'sozial', 'gesundheit', 'verteidigung', 'zinsen', 'staat', 'verkehr', 'bildung', 'wirtschaft', 'rest'];
+  const box = svg.node().getBoundingClientRect(), W = box.width, H = box.height, narrow = W < 600, m = { t: 20, r: narrow ? 12 : 150, b: 30, l: 40 };
+  const x = d3.scaleLinear().domain([2012, 2027]).range([m.l, W - m.r]);
+  const y = d3.scaleLinear().domain([0, 600]).range([H - m.b, m.t]);
+  const stack = d3.stack().keys(keys)(series);
+  svg.append('rect').attr('x', x(2025.5)).attr('y', m.t).attr('width', x(2027) - x(2025.5)).attr('height', H - m.b - m.t).attr('fill', '#000').attr('opacity', .04);
+  svg.append('text').attr('class', 'axis').attr('x', x(2026.25)).attr('y', m.t + 12).attr('text-anchor', 'middle').style('font', '12px Inter').style('fill', '#6f685d').text('Plan');
+  const area = d3.area().x(d => x(d.data.year)).y0(d => y(d[0])).y1(d => y(d[1])).curve(d3.curveMonotoneX);
+  const layers = svg.append('g').selectAll('path').data(stack).join('path').attr('fill', d => COLORS[d.key]).attr('d', area)
+    .on('mousemove', (e, d) => { const yr = Math.round(x.invert(d3.pointer(e)[0])); const r = series.find(s => s.year === yr); r && showTip(e, `<b>${label[d.key]}</b><br>${yr}: ${de(r[d.key], 1)} Mrd. €`); })
+    .on('mouseleave', hideTip);
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(narrow ? 4 : 8).tickFormat(d3.format('d')));
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(6).tickFormat(d => d + ''));
+  svg.append('text').attr('class', 'axis').attr('x', m.l).attr('y', m.t - 6).style('font', '12px Inter').style('fill', '#6f685d').text('Mrd. €');
+  const labels = svg.append('g').selectAll('text').data(stack).join('text').attr('class', 'ann')
+    .attr('x', x(2027) + 8).attr('y', d => y((d.at(-1)[0] + d.at(-1)[1]) / 2) + 4).text(d => label[d.key]).style('display', narrow ? 'none' : null).style('font-size', '11.5px').style('fill', d => COLORS[d.key] === '#c9bfae' ? '#8a7f70' : COLORS[d.key]);
+  const ann = svg.append('g');
+  // Reveal: von links nach rechts aufziehen
+  const clip = svg.append('clipPath').attr('id', 'clipA').append('rect').attr('x', 0).attr('y', 0).attr('height', H).attr('width', 0);
+  layers.attr('clip-path', 'url(#clipA)'); labels.attr('opacity', 0);
+  const focus = (keysOn, from, to, text) => {
+    layers.transition().duration(600).attr('opacity', d => !keysOn || keysOn.includes(d.key) ? 1 : .13);
+    labels.transition().duration(600).attr('opacity', d => !keysOn || keysOn.includes(d.key) ? 1 : .25);
+    ann.selectAll('*').remove();
+    if (from) {
+      ann.append('rect').attr('x', x(from) - 8).attr('y', m.t).attr('width', x(to) - x(from) + 16).attr('height', H - m.b - m.t).attr('fill', 'none').attr('stroke', '#1d1b18').attr('stroke-dasharray', '4 4').attr('rx', 6).attr('opacity', 0).transition().duration(500).attr('opacity', .6);
+      ann.append('text').attr('class', 'ann').attr('x', x(from)).attr('y', m.t + 20).text(text).attr('opacity', 0).transition().duration(500).attr('opacity', 1);
+    }
+  };
+  const steps = [
+    () => focus(null, 2012, 2019, 'gemächlich'),
+    () => focus(['rente']),
+    () => focus(['sozial', 'gesundheit', 'rest', 'wirtschaft'], 2020, 2022, 'Corona-Hilfen'),
+    () => focus(['zinsen'], 2021, 2024, 'Zinswende'),
+    () => focus(['verteidigung'], 2022, 2027, 'Zeitenwende'),
+    () => focus(null, 2026, 2027, 'Soll'),
+  ];
+  ScrollTrigger.create({ trigger: '#zeit .scrolly', start: 'top 60%', once: true, onEnter: () => {
+    clip.transition().duration(1800).ease(d3.easeCubicInOut).attr('width', W + 200);
+    labels.transition().delay(1500).duration(500).attr('opacity', 1);
+  } });
+  document.querySelectorAll('#zeit .step').forEach(st => ScrollTrigger.create({ trigger: st, start: 'top 55%', end: 'bottom 55%',
+    onToggle: s => s.isActive && steps[+st.dataset.step]() }));
+  gsap.utils.toArray('#zeit .step > div').forEach(el => gsap.from(el, { opacity: 0, y: 50, duration: .6, scrollTrigger: { trigger: el, start: 'top 85%' } }));
+}
+
+// Kleine Helfer für Balken-/Liniendiagramme
+function frame(id, h = 380, m = { t: 30, r: 20, b: 30, l: 44 }) {
+  const el = document.getElementById(id), W = el.clientWidth;
+  const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${W} ${h}`).attr('height', h);
+  return { svg, W, H: h, m };
+}
+
+// Einnahmen: Steuern + Kredite
+{
+  const { svg, W, H, m } = frame('income', 400);
+  const data = S.years.map(y => { const d = S.data[y].actual || S.data[y].target; return { year: y, steuern: d.steuern, kredite: d.kredite, rest: Math.max(0, d.einnahmen - d.steuern - d.kredite), plan: !S.data[y].actual }; });
+  const x = d3.scaleBand().domain(S.years).range([m.l, W - m.r]).padding(.22), y = d3.scaleLinear().domain([0, 600]).range([H - m.b, m.t]);
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickFormat(d => W < 600 ? "'" + String(d).slice(2) : d));
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(6));
+  const parts = [['steuern', '#2f5d8a', 'Steuern'], ['rest', '#9cc0de', 'Sonstige Einnahmen'], ['kredite', '#c8452c', 'Neue Kredite']];
+  const g = svg.append('g');
+  data.forEach(d => { let acc = 0; parts.forEach(([k, c, l]) => {
+    g.append('rect').attr('class', 'ib').attr('x', x(d.year)).attr('width', x.bandwidth()).attr('fill', c).attr('opacity', d.plan ? .65 : 1)
+      .attr('data-y', y(acc + d[k])).attr('data-h', y(acc) - y(acc + d[k])).attr('y', H - m.b).attr('height', 0)
+      .on('mousemove', e => showTip(e, `<b>${d.year}${d.plan ? ' (Plan)' : ''}</b><br>${l}: ${de(d[k], 1)} Mrd. €<br>Kreditanteil: ${de(d.kredite / (d.steuern + d.kredite + d.rest) * 100, 0)} %`)).on('mouseleave', hideTip);
+    acc += d[k]; }); });
+  const lg = svg.append('g').attr('transform', `translate(${m.l + 10},${m.t - 14})`);
+  parts.forEach(([k, c, l], i) => { lg.append('rect').attr('x', i * 160).attr('width', 12).attr('height', 12).attr('fill', c); lg.append('text').attr('class', 'ann').attr('x', i * 160 + 18).attr('y', 11).text(l).style('font-weight', 500); });
+  svg.append('text').attr('class', 'ann').attr('x', (x(2014) + x(2019) + x.bandwidth()) / 2).attr('y', y(370)).attr('text-anchor', 'middle').text('„schwarze Null“');
+  ScrollTrigger.create({ trigger: '#income', start: 'top 75%', once: true, onEnter: () =>
+    g.selectAll('rect').transition().duration(700).delay((d, i) => i * 18).ease(d3.easeCubicOut).attr('y', function () { return this.dataset.y; }).attr('height', function () { return this.dataset.h; }) });
+}
+
+// Zinsen: Linie
+{
+  const { svg, W, H, m } = frame('zinsChart', 360);
+  const data = series.map(d => ({ year: d.year, v: d.zinsen, plan: d.plan }));
+  const x = d3.scaleLinear().domain([2012, 2027]).range([m.l, W - m.r]), y = d3.scaleLinear().domain([0, 50]).range([H - m.b, m.t]);
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(8).tickFormat(d3.format('d')));
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5));
+  svg.append('path').datum(data).attr('fill', '#c8452c').attr('opacity', .12).attr('d', d3.area().x(d => x(d.year)).y0(y(0)).y1(d => y(d.v)).curve(d3.curveMonotoneX));
+  const line = svg.append('path').datum(data).attr('fill', 'none').attr('stroke', '#c8452c').attr('stroke-width', 3.5).attr('d', d3.line().x(d => x(d.year)).y(d => y(d.v)).curve(d3.curveMonotoneX));
+  const len = line.node().getTotalLength(); line.attr('stroke-dasharray', len).attr('stroke-dashoffset', len);
+  const dots = svg.append('g').selectAll('circle').data(data).join('circle').attr('cx', d => x(d.year)).attr('cy', d => y(d.v)).attr('r', 0).attr('fill', d => d.plan ? '#fff' : '#c8452c').attr('stroke', '#c8452c').attr('stroke-width', 2)
+    .on('mousemove', (e, d) => showTip(e, `<b>${d.year}${d.plan ? ' (Plan)' : ''}</b><br>Zinsen & Schulden: ${de(d.v, 1)} Mrd. €`)).on('mouseleave', hideTip);
+  const callouts = [[2012, '30,5 Mrd.', -14], [2021, '3,9 Mrd. – Tiefpunkt', 22], [2024, '42,8 Mrd.', -14], [2027, '41,8 Mrd.', -14]];
+  const cg = svg.append('g').attr('opacity', 0);
+  callouts.forEach(([yr, t, dy]) => { const d = data.find(d => d.year === yr); cg.append('text').attr('class', 'ann').attr('x', x(yr)).attr('y', y(d.v) + dy).attr('text-anchor', yr === 2027 ? 'end' : yr === 2012 ? 'start' : 'middle').text(t); });
+  ScrollTrigger.create({ trigger: '#zinsChart', start: 'top 75%', once: true, onEnter: () => {
+    line.transition().duration(2000).ease(d3.easeCubicInOut).attr('stroke-dashoffset', 0);
+    dots.transition().delay((d, i) => i * 125).duration(300).attr('r', 5);
+    cg.transition().delay(1600).duration(600).attr('opacity', 1);
+  } });
+}
+
+// Top-Titel
+{
+  const el = document.getElementById('bars'), top = S.topTitles.slice(0, 10), max = top[0].value;
+  const sum10 = d3.sum(top, t => t.value);
+  top.forEach(t => el.insertAdjacentHTML('beforeend', `<div class="lab">${t.label}</div><div class="row"><div class="bar" data-w="${t.value / max * 100}"></div><b>${de(t.value, 1)} Mrd.</b></div>`));
+  el.insertAdjacentHTML('beforeend', `<p class="note">Zusammen ${de(sum10, 1)} Mrd. € = ${de(sum10 / S.data[S.topYear].target.total * 100, 0)} % des Haushalts ${S.topYear} (Soll).</p>`);
+  gsap.to(el.querySelectorAll('.bar'), { width: (i, b) => b.dataset.w + '%', duration: 1.1, stagger: .08, ease: 'power3.out', scrollTrigger: { trigger: el, start: 'top 75%' } });
+  gsap.from(el.querySelectorAll('.lab, .row b'), { opacity: 0, x: -20, stagger: .04, duration: .4, scrollTrigger: { trigger: el, start: 'top 75%' } });
+}
+
+// Soll vs. Ist (Hantel)
+{
+  const { svg, W, H, m } = frame('sollist', 380);
+  const data = S.years.filter(y => S.data[y].actual).map(y => ({ year: y, soll: S.data[y].target.total, ist: S.data[y].actual.total }));
+  const x = d3.scaleBand().domain(data.map(d => d.year)).range([m.l, W - m.r]).padding(.3), y = d3.scaleLinear().domain([250, 600]).range([H - m.b, m.t]);
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickFormat(d => W < 600 ? "'" + String(d).slice(2) : d));
+  svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(6));
+  const cx = d => x(d.year) + x.bandwidth() / 2;
+  const g = svg.append('g').selectAll('g').data(data).join('g').attr('opacity', 0)
+    .on('mousemove', (e, d) => showTip(e, `<b>${d.year}</b><br>Soll: ${de(d.soll, 1)} Mrd.<br>Ist: ${de(d.ist, 1)} Mrd.<br>Differenz: ${d.ist > d.soll ? '+' : ''}${de(d.ist - d.soll, 1)} Mrd.`)).on('mouseleave', hideTip);
+  g.append('line').attr('x1', cx).attr('x2', cx).attr('y1', d => y(d.soll)).attr('y2', d => y(d.ist)).attr('stroke', '#6f685d').attr('stroke-width', 2);
+  g.append('circle').attr('cx', cx).attr('cy', d => y(d.soll)).attr('r', 7).attr('fill', '#fffdf8').attr('stroke', '#2f5d8a').attr('stroke-width', 2.5);
+  g.append('circle').attr('cx', cx).attr('cy', d => y(d.ist)).attr('r', 7).attr('fill', '#c8452c');
+  g.append('rect').attr('x', d => x(d.year)).attr('width', x.bandwidth()).attr('y', m.t).attr('height', H - m.t - m.b).attr('fill', 'transparent');
+  const d20 = data.find(d => d.year === 2020);
+  svg.append('text').attr('class', 'ann').attr('x', cx(d20) - 14).attr('text-anchor', 'end').attr('y', (y(d20.soll) + y(d20.ist)) / 2 + 4).text(`${de(d20.soll - d20.ist, 0)} Mrd. nicht ausgegeben`);
+  const lg = svg.append('g').attr('transform', `translate(${m.l + 10},${m.t - 14})`);
+  lg.append('circle').attr('cx', 6).attr('cy', 6).attr('r', 6).attr('fill', '#fffdf8').attr('stroke', '#2f5d8a').attr('stroke-width', 2.5); lg.append('text').attr('class', 'ann').attr('x', 18).attr('y', 11).text('Soll (Plan)').style('font-weight', 500);
+  lg.append('circle').attr('cx', 126).attr('cy', 6).attr('r', 6).attr('fill', '#c8452c'); lg.append('text').attr('class', 'ann').attr('x', 138).attr('y', 11).text('Ist (tatsächlich)').style('font-weight', 500);
+  ScrollTrigger.create({ trigger: '#sollist', start: 'top 75%', once: true, onEnter: () => g.transition().delay((d, i) => i * 80).duration(400).attr('opacity', 1) });
+}
+</script>
+</body>
+</html>
