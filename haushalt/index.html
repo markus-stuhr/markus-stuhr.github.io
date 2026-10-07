@@ -166,7 +166,7 @@ footer a { color: #d6cdbd; }
   <div class="wrap">
     <div class="tm-head"><div class="crumbs" id="crumbs"></div></div>
     <div id="treemap"></div>
-    <div class="hint">Haushalts-Soll 2026, Gliederung nach Funktionenplan. Gleiche Farbe = gleicher Bereich. Pauschale Kürzungen (globale Minderausgaben) sind nicht als Fläche darstellbar. Mit „← Zurück“ oder den Ebenen oben geht es wieder hinaus.</div>
+    <div class="hint">Haushalts-Soll 2026, Gliederung nach Funktionenplan. Pauschale Kürzungen (globale Minderausgaben) sind nicht als Fläche darstellbar. Mit „← Zurück“ oder den Ebenen oben geht es wieder hinaus.</div>
   </div>
 </section>
 
@@ -323,11 +323,8 @@ function drawCrumbs(box, items) {
   function render(node, animate = true) {
     cur = node;
     const W = box.clientWidth, H = box.clientHeight;
-    // Auf oberster Ebene gleich die zweite Ebene zeigen (gruppiert), sonst die Kinder
-    const items = node === root ? root.children.flatMap(c => c.children || [c]) : node.children;
-    const lay = d3.treemap().size([W, H]).paddingInner(2).paddingOuter(0).round(true)(
-      d3.hierarchy({ k: node === root ? root.children.map(c => ({ k: (c.children || [c]) })) : items }, d => Array.isArray(d.k) ? d.k : null)
-        .sum(d => d.value || 0).sort((a, b) => b.value - a.value));
+    const lay = d3.treemap().size([W, H]).paddingInner(2).round(true)(
+      d3.hierarchy({ k: node.children }, d => Array.isArray(d.k) ? d.k : null).sum(d => d.value || 0).sort((a, b) => b.value - a.value));
     box.innerHTML = '';
     const cells = lay.leaves().map(c => {
       const r = c.data, el = document.createElement('div'), leaf = !r.children;
@@ -343,9 +340,7 @@ function drawCrumbs(box, items) {
       box.appendChild(el); return el;
     });
     if (animate) gsap.from(cells, { opacity: 0, scale: .85, duration: .5, stagger: .02, ease: 'power2.out' });
-    // Die Startansicht zeigt schon Ebene 2 – deshalb Ebene 1 im Pfad überspringen (ein Klick rein = ein Klick raus)
-    const trail = node.ancestors().reverse().filter(a => a.depth !== 1 || a === node);
-    drawCrumbs(crumbs, trail.map((a, i) => ({ label: i ? a.data.name : 'Gesamt ' + de(D.total, 1) + ' Mrd. €', go: () => render(a) })));
+    drawCrumbs(crumbs, node.ancestors().reverse().map((a, i) => ({ label: i ? a.data.name : 'Gesamt ' + de(D.total, 1) + ' Mrd. €', go: () => render(a) })));
   }
   ScrollTrigger.create({ trigger: box, start: 'top 80%', once: true, onEnter: () => render(root) });
   window.addEventListener('resize', () => box.children.length && render(cur, false));
