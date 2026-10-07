@@ -35,7 +35,7 @@ select { font: 600 13px Inter, sans-serif; padding: 6px 10px; border: 1.5px soli
 .headline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .headline { flex-wrap: nowrap; align-items: flex-start; }
 .hl { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; min-width: 0; }
-.up-btn { width: 40px; height: 40px; flex: none; border-radius: 50%; border: 0; background: var(--ink); color: var(--bg); font: 700 20px Inter, sans-serif; cursor: pointer; display: none; margin-top: -2px; }
+.up-btn { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 0; background: var(--ink); color: var(--bg); font: 700 14px/1 Inter, sans-serif; cursor: pointer; display: none; margin-top: 3px; }
 .up-btn:hover { background: var(--accent); }
 .headline h2 { font: 800 22px var(--num); margin: 0; }
 .headline .tot { font: 800 22px var(--num); color: var(--accent); }
@@ -183,6 +183,17 @@ async function render() {
 }
 
 const COLORS = ['#2f5d8a', '#c8452c', '#7a9e5a', '#d9a13b', '#8d6aa8', '#3f9c94', '#8a7f70', '#b0806a', '#5b8fc0', '#4a5a3a', '#a85a7a', '#6c8f6f'];
+// Farbe je Hauptposten; beim Reinzoomen Schattierungen dieser Farbe
+function topColor(n) {
+  let t = n; while (t.parent && t.parent.parent) t = t.parent;
+  if (!t.parent) return '#8a7f70';
+  return COLORS[t.parent.children.indexOf(t) % COLORS.length];
+}
+function shade(base, i, n) {
+  // größter Posten = Grundfarbe, kleinere werden schrittweise heller
+  const t = n < 2 ? 0 : Math.min(1, i / Math.max(n - 1, 4));
+  return d3.interpolateLab(base, d3.color(base).brighter(2.6))(t);
+}
 function renderTreemap(node) {
   const box = document.getElementById('tm'), W = box.clientWidth, H = box.clientHeight;
   const kids = node.children.filter(c => c.value > 0);
@@ -190,7 +201,7 @@ function renderTreemap(node) {
   box.innerHTML = '';
   const els = lay.leaves().map((l, i) => {
     const n = l.data, el = document.createElement('div'), w = l.x1 - l.x0, h = l.y1 - l.y0;
-    el.className = 'c'; Object.assign(el.style, { left: l.x0 + 'px', top: l.y0 + 'px', width: w + 'px', height: h + 'px', background: COLORS[i % COLORS.length] });
+    el.className = 'c'; Object.assign(el.style, { left: l.x0 + 'px', top: l.y0 + 'px', width: w + 'px', height: h + 'px', background: node.parent ? shade(topColor(node), i, lay.leaves().length) : topColor(n) });
     if (w * h > 3500) el.innerHTML = `<b>${money(n.value)}</b>${n.name}`; else if (w * h > 900) el.innerHTML = `<b>${de(n.value / 1e9, 1)}</b>`;
     el.onmousemove = e => showTip(e, `<b>${n.name}</b><br>${money(n.value)} · ${de(n.value / node.value * 100, 1)} %${n.children ? '<br><i>Klick: reinzoomen</i>' : ''}`);
     el.onmouseleave = hideTip;
