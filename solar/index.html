@@ -296,6 +296,14 @@ for (const p of PLANETS) {
   p.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), mat);
   p.mesh.rotation.order = 'ZYX'; p.mesh.rotation.z = p.tilt * D2R;
   scene.add(p.mesh);
+  if (p.name === 'Erde') {
+    // Wolkenschicht: Graustufenbild als Alpha, dreht etwas schneller als die Erde
+    const cm = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, roughness: 1 });
+    texLoader.load('tex/2k_earth_clouds.jpg', t => { cm.alphaMap = t; cm.needsUpdate = true; p.clouds.visible = true; });
+    p.clouds = new THREE.Mesh(new THREE.SphereGeometry(1.012, 64, 48), cm);
+    p.clouds.visible = false;
+    p.mesh.add(p.clouds);
+  }
   if (p.ring) {
     const rg = new THREE.RingGeometry(1.24, 2.27, 96);
     // UV radial umlegen, damit die Ringtextur (innen → außen) passt
@@ -379,7 +387,9 @@ function frame(now) {
   const t = now / 1000, pulse = 1 + 0.025 * Math.sin(t * 0.9);
   sunMat.uniforms.time.value = t;
   sun.scale.setScalar(s); glow.scale.setScalar(s * 6 * pulse);
-  rays[0].scale.setScalar(s * 6 * pulse); rays[0].material.rotation = t * 0.02;
+  rays[0].scale.setScalar(s * 6 * pulse);
+  // Strahlen mit der Kamera mitdrehen: Azimut um die Sonnenachse, gewichtet mit der Draufsicht (von unten gespiegelt, von der Seite kaum)
+  { const c = camera.position, az = Math.atan2(c.x, c.z); rays[0].material.rotation = t * 0.02 - az * (c.y / (c.length() || 1)); }
   updateSunActivity(t, dt);
 
   const prevFocus = focus ? focus.spos.clone() : null;
@@ -388,6 +398,7 @@ function frame(now) {
     p.mesh.position.copy(p.spos); p.mesh.scale.setScalar(radiusMap(p.r));
     p.mesh.rotation.y = jd * 2 * Math.PI * (p.name === 'Erde' ? 1 : 0.4);
     p.orbit.visible = showOrbits;
+    if (p.clouds) p.clouds.rotation.y = jd * 0.15;
   }
   // Kamera wandert mit dem fokussierten Planeten; beim Maßstabswechsel Abstand mitskalieren
   if (focus) {
