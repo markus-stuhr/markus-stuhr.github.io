@@ -757,6 +757,7 @@ function resizeOcc() { occRT.setSize(Math.ceil(innerWidth / 2), Math.ceil(innerH
 resizeOcc();
 const occKeep = () => new Set([sun, glow, ...PLANETS.map(p => p.mesh), ...MOONS.map(m => m.mesh)]);
 const sunNdc = new THREE.Vector3();
+let sunNearFade = 1;
 function renderGodRays() {
   sunNdc.set(0, 0, 0).project(camera);
   // nur, wenn die Sonne vor der Kamera und ungefähr im Bild ist
@@ -776,7 +777,7 @@ function renderGodRays() {
   scene.background = bg;
   hidden.forEach(o => o.visible = true); swapped.forEach(([c, m]) => c.material = m);
   rayPass.material.uniforms.sunUv.value.set(sunNdc.x * 0.5 + 0.5, sunNdc.y * 0.5 + 0.5);
-  rayPass.material.uniforms.strength.value = 1.1 * k;
+  rayPass.material.uniforms.strength.value = 1.1 * k * Math.max(sunNearFade, 0.25);
   renderer.autoClear = false; renderer.render(rayScene, rayCam); renderer.autoClear = true;
 }
 
@@ -892,6 +893,9 @@ function frame(now) {
   sunMat.uniforms.time.value = t;
   sun.scale.setScalar(s); glow.scale.setScalar(s * 4 * pulse);
   rays.scale.setScalar(pulse); rays.rotation.y = t * 0.02;
+  // aus der Nähe (in Sonnenradien) Strahlenkranz und God Rays deutlich zurücknehmen
+  sunNearFade = THREE.MathUtils.clamp((camera.position.length() / s - 3) / 20, 0.12, 1);
+  rayMat.uniforms.opacity.value = 0.13 * sunNearFade;
   updateSunActivity(t, dt);
 
   const prevFocus = focus ? focus.spos.clone() : null;
