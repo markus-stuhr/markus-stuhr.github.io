@@ -16,6 +16,7 @@
   input[type=range] { width: 160px; }
   #info { position: fixed; right: 12px; bottom: 12px; background: rgba(10,12,20,.75); border: 1px solid #334; border-radius: 10px; padding: 8px 12px; font-size: 12px; max-width: 260px; display: none; }
   .label { position: fixed; left: 0; top: 0; font-size: 12px; color: #cfd6ff; pointer-events: auto; cursor: pointer; white-space: nowrap; text-shadow: 0 0 4px #000; user-select: none; }
+  .label.big::before { visibility: hidden; }
   .label::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; border: 1px solid currentColor; margin-right: 4px; vertical-align: 0; transform: translate(-3px, 0); }
 </style>
 <script defer src="/analytics.js"></script>
@@ -255,7 +256,13 @@ function frame(now) {
     tmp.copy(p.spos).project(camera);
     const vis = showLabels && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
     p.label.style.display = vis ? 'block' : 'none';
-    if (vis) p.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
+    if (vis) {
+      // Bildschirmradius des Planeten: ist er sichtbar, Punkt ausblenden und Namen neben den Rand setzen
+      const px = radiusMap(p.r) / (camera.position.distanceTo(p.spos) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2;
+      const big = px > 3;
+      p.label.classList.toggle('big', big);
+      p.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth + (big ? px - 6 : 0)}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
+    }
   }
   dateEl.textContent = fmt.format(new Date((jd - 2440587.5) * 86400000));
   if (focus) {
