@@ -500,8 +500,11 @@ function updateMoons() {
 }
 
 function updateOrbit(p, jd) {
+  // Bahn beginnt exakt beim Planeten (exzentrische Anomalie E0), sonst laufen Sehnen im echten Maßstab
+  // tausende km neben dem Planeten vorbei
   const k = elementsAt(p, (jd - 2451545) / 36525), arr = p.orbit.geometry.attributes.position, v = new THREE.Vector3();
-  for (let i = 0; i <= 360; i++) { posFromE(k, i * D2R, v); mapPos(v, v); arr.setXYZ(i, v.x, v.y, v.z); }
+  const E0 = kepler(k.L - k.w, k.e);
+  for (let i = 0; i <= 360; i++) { posFromE(k, E0 + i * D2R, v); mapPos(v, v); arr.setXYZ(i, v.x, v.y, v.z); }
   arr.needsUpdate = true;
 }
 
@@ -882,7 +885,7 @@ setFocus(null, true);
 const fmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'full', timeStyle: 'short' });
 const dateEl = document.getElementById('date');
 const tmp = new THREE.Vector3(), earthPos = new THREE.Vector3();
-let last = performance.now(), orbitJd = -1e9, lastMix = -1;
+let last = performance.now(), lastMix = -1;
 
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.1); last = now;
@@ -945,7 +948,7 @@ function frame(now) {
     const off = camera.position.clone().sub(controls.target).multiplyScalar(ref / old);
     camera.position.copy(controls.target).add(off);
   }
-  if (Math.abs(jd - orbitJd) > 30 || mix !== lastMix) { PLANETS.forEach(p => updateOrbit(p, jd)); orbitJd = jd; }
+  if (showOrbits) PLANETS.forEach(p => updateOrbit(p, jd));
   lastMix = mix;
 
   controls.update();
