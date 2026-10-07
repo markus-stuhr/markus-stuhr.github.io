@@ -33,6 +33,10 @@ select { font: 600 13px Inter, sans-serif; padding: 6px 10px; border: 1.5px soli
 .main { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 18px; padding: 0 20px 30px; }
 .panel { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 16px; min-width: 0; }
 .headline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.path-mini { font-size: 12px; color: var(--muted); margin: 0 0 4px 36px; min-height: 0; }
+.path-mini button { font: inherit; background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; }
+.path-mini button:hover { color: var(--accent); text-decoration: underline; }
+.path-mini span { margin: 0 5px; opacity: .6; }
 .headline { flex-wrap: nowrap; align-items: flex-start; }
 .hl { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; min-width: 0; }
 .up-btn { width: 26px; height: 26px; flex: none; border-radius: 50%; border: 0; background: var(--ink); color: var(--bg); font: 700 14px/1 Inter, sans-serif; cursor: pointer; display: none; margin-top: 3px; }
@@ -92,6 +96,7 @@ td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
 </div>
 <div class="main">
   <div class="panel">
+    <div class="path-mini" id="pathMini"></div>
     <div class="headline"><button id="up" class="up-btn" title="Eine Ebene zurück (Esc)">←</button><div class="hl"><h2 id="nodeName"></h2><span class="tot" id="nodeTot"></span><span class="sub" id="nodeSub"></span></div></div>
     <div id="tm"></div>
     <div class="tablebar"><input id="filter" placeholder="In dieser Ebene filtern…"><span><button class="btn-s" id="csv">CSV exportieren</button> <button class="btn-s" id="link">Link kopieren</button></span></div>
@@ -171,6 +176,17 @@ async function render() {
     return { n: c, name: c.name, nr: c.id, value: c.value, share: c.value / node.value, perHead: c.value / pop, cmp, cmpPct: o && ref ? cmp / Math.abs(ref) : null, isNew: !o && !!other };
   });
   // Kopf
+  // kleiner Pfad über der Überschrift (nur Vorfahren, klickbar)
+  const pm = document.getElementById('pathMini'); pm.innerHTML = '';
+  const anc = []; for (let n = node.parent; n; n = n.parent) anc.unshift(n);
+  anc.forEach((n, i) => {
+    if (i) pm.insertAdjacentHTML('beforeend', '<span>›</span>');
+    const b = document.createElement('button');
+    b.textContent = n.parent ? n.name : `${st.account === 'expenses' ? 'Ausgaben' : 'Einnahmen'} ${st.year} (${st.quota === 'target' ? 'Soll' : 'Ist'})`;
+    b.onclick = () => { st.path = n.id; render(); };
+    pm.appendChild(b);
+  });
+  pm.style.display = anc.length ? 'block' : 'none';
   const up = document.getElementById('up');
   up.style.display = node.parent ? 'block' : 'none';
   up.onclick = node.parent ? () => { st.path = node.parent.id; render(); } : null;
