@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Haushalts-Explorer</title>
 <meta name="description" content="Alle Titel des Bundeshaushalts 2012–2027 durchsuchen, vergleichen und als Zeitreihe ansehen.">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="/analytics.js"></script>
 <style>
 :root { --num: Archivo, Inter, system-ui, sans-serif; --bg: #f6f2ea; --ink: #1d1b18; --muted: #6f685d; --line: #d9d1c3; --card: #fffdf8; --accent: #c8452c; --blue: #2f5d8a; --up: #2f7d4f; --down: #c8452c; }
@@ -13,7 +13,7 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 Inter, system-ui, sans-serif; }
 a { color: var(--accent); }
 header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 20; flex-wrap: wrap; }
-header h1 { font: 900 20px Fraunces, serif; margin: 0; }
+header h1 { font: 800 20px var(--num); margin: 0; }
 header a.back { font-size: 13px; text-decoration: none; font-weight: 600; }
 .search { position: relative; flex: 1; min-width: 220px; max-width: 520px; margin-left: auto; }
 .search input { width: 100%; padding: 9px 14px; border: 1.5px solid var(--line); border-radius: 99px; font: inherit; background: var(--bg); }
@@ -35,7 +35,7 @@ select { font: 600 13px Inter, sans-serif; padding: 6px 10px; border: 1.5px soli
 .crumbs button { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font-weight: 600; }
 .crumbs span { color: var(--muted); }
 .headline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
-.headline h2 { font: 700 22px Fraunces, serif; margin: 0; }
+.headline h2 { font: 800 22px var(--num); margin: 0; }
 .headline .tot { font: 800 22px var(--num); color: var(--accent); }
 .headline .sub { color: var(--muted); font-size: 13px; }
 #tm { height: 340px; position: relative; border-radius: 10px; overflow: hidden; background: var(--ink); margin-bottom: 14px; }
@@ -58,7 +58,7 @@ td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
 .tablebar input { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: var(--bg); }
 .btn-s { font: 600 12px Inter; padding: 6px 12px; border-radius: 99px; border: 1.5px solid var(--ink); background: none; cursor: pointer; }
 .btn-s:hover { background: var(--ink); color: var(--bg); }
-.detail h3 { font: 700 19px Fraunces, serif; margin: 0 0 4px; }
+.detail h3 { font: 800 19px var(--num); margin: 0 0 4px; }
 .detail .path { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 .detail .empty { color: var(--muted); padding: 30px 0; text-align: center; }
 .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }

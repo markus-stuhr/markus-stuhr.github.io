@@ -6,7 +6,7 @@
 <title>Der Bundeshaushalt</title>
 <meta name="description" content="Wofür gibt der Bund 524 Milliarden Euro aus? Eine Datenstory zum Bundeshaushalt 2012–2027.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="/analytics.js"></script>
 <style>
 :root { --num: Archivo, Inter, system-ui, sans-serif;
@@ -16,25 +16,25 @@
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 Inter, system-ui, sans-serif; overflow-x: hidden; }
-h1, h2, .serif { font-family: Fraunces, Georgia, serif; }
+h1, h2, .serif { font-family: var(--num); }
 a { color: var(--accent); }
 .wrap { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
 .narrow { max-width: 680px; margin: 0 auto; padding: 0 20px; }
 section { padding: 14vh 0; position: relative; }
 .kicker { font-size: 13px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 10px; }
-h2 { font-size: clamp(30px, 4.6vw, 52px); line-height: 1.08; margin: 0 0 22px; font-weight: 700; letter-spacing: -.01em; }
+h2 { font-size: clamp(30px, 4.6vw, 52px); line-height: 1.08; margin: 0 0 22px; font-weight: 800; letter-spacing: -.01em; }
 p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 .reveal { opacity: 0; transform: translateY(30px); }
 .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; justify-content: space-between; align-items: center;
   padding: 12px 20px; font-size: 14px; background: color-mix(in srgb, var(--bg) 82%, transparent); backdrop-filter: blur(8px); }
-.nav b { font-family: Fraunces, serif; font-size: 17px; }
+.nav b { font-family: var(--num); font-size: 17px; }
 .nav a { text-decoration: none; font-weight: 600; border: 1.5px solid var(--ink); color: var(--ink); padding: 5px 12px; border-radius: 99px; }
 .nav a:hover { background: var(--ink); color: var(--bg); }
 .progress { position: fixed; top: 0; left: 0; height: 3px; background: var(--accent); width: 0; z-index: 60; }
 
 /* Hero */
 #hero { min-height: 100vh; display: flex; align-items: center; padding: 90px 0 60px; }
-#hero h1 { font-size: clamp(44px, 8.5vw, 112px); line-height: .95; margin: 0; font-weight: 900; letter-spacing: -.03em; }
+#hero h1 { font-size: clamp(44px, 8.5vw, 112px); line-height: .95; margin: 0; font-weight: 800; letter-spacing: -.03em; }
 #hero h1 .big { color: var(--accent); display: block; font-family: var(--num); font-weight: 800; letter-spacing: -.02em; }
 #hero .sub { font-size: clamp(18px, 2.2vw, 24px); max-width: 640px; margin: 28px 0 0; color: #3a362f; }
 .scrollhint { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); font-size: 13px; color: var(--muted); }
@@ -73,7 +73,7 @@ p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 #zeit .wrap { max-width: 1400px; }
 .steps .step { min-height: 80vh; display: flex; align-items: center; }
 .steps .step > div { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; box-shadow: 0 6px 30px rgba(0,0,0,.05); }
-.steps .step h3 { font-family: Fraunces, serif; margin: 0 0 8px; font-size: 24px; }
+.steps .step h3 { font-family: var(--num); margin: 0 0 8px; font-size: 24px; }
 .steps .step p { margin: 0; font-size: 16px; }
 .sticky { position: sticky; top: 10vh; height: 80vh; align-self: start; }
 .sticky svg { width: 100%; height: 100%; overflow: visible; }
