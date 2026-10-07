@@ -477,7 +477,6 @@ const circleGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 
 for (const m of MOONS) {
   const mat = addShadows(new THREE.MeshStandardMaterial({ color: m.tint || 0x999999, roughness: 1 }));
   texLoader.load(`tex/1k_${m.tex}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; mat.map = t; if (!m.tint) mat.color.set(0xffffff); mat.needsUpdate = true; });
-  if (m.name === 'Mond') mat.userData.sh.umbraTint.value.set(1.1, 0.3, 0.1);
   m.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 24), mat);
   scene.add(m.mesh);
   m.frame = new THREE.Object3D();
