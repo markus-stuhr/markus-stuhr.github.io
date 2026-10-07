@@ -285,11 +285,12 @@ async function showDetail(id) {
     ${names.length > 1 ? `<div class="path" style="margin-top:8px">Frühere Bezeichnungen: ${names.slice(0, -1).filter(n => n !== last.name).join('; ')}</div>` : ''}
     <table class="ytable"><thead><tr><th>Jahr</th><th>Soll</th><th>Ist</th><th>Ist − Soll</th></tr></thead><tbody>
     ${series.filter(s => s.soll != null || s.ist != null).reverse().map(s => `<tr><td>${s.year}</td><td>${money(s.soll)}</td><td>${money(s.ist)}</td><td class="${s.ist - s.soll >= 0 ? 'up' : 'down'}">${s.ist != null && s.soll != null ? money(s.ist - s.soll) : ''}</td></tr>`).join('')}</tbody></table>`;
-  drawTS(series);
+  // gleiche Farbe wie in Treemap/Tabelle: gewählter Posten oder aktuelle Ebene
+  drawTS(series, colorById.get(id) || (cur.parent ? topColor(cur) : '#2f5d8a'));
   gsap.from(box.children, { opacity: 0, y: 12, duration: .35, stagger: .05 });
 }
 
-function drawTS(series) {
+function drawTS(series, color) {
   const el = document.getElementById('ts'), W = el.clientWidth, H = 210, m = { t: 14, r: 10, b: 24, l: 52 };
   const svg = d3.select(el).append('svg').attr('viewBox', `0 0 ${W} ${H}`).attr('height', H);
   const max = d3.max(series, s => Math.max(s.soll ?? 0, s.ist ?? 0)), min = Math.min(0, d3.min(series, s => Math.min(s.soll ?? 0, s.ist ?? 0)));
@@ -298,7 +299,7 @@ function drawTS(series) {
   svg.append('g').attr('class', 'axis').attr('transform', `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues(YEARS.filter(y => y % 3 === 0)).tickFormat(d => "'" + String(d).slice(2)));
   svg.append('g').attr('class', 'axis').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickFormat(v => de(v / unit[0], 1) + ' ' + unit[1]));
   svg.append('g').selectAll('rect').data(series.filter(s => s.soll != null)).join('rect').attr('x', s => x(s.year)).attr('width', x.bandwidth())
-    .attr('y', y(0)).attr('height', 0).attr('fill', s => s.year === st.year ? '#c8452c' : '#9cc0de')
+    .attr('y', y(0)).attr('height', 0).attr('fill', s => s.year === st.year ? color : d3.interpolateLab(color, '#fffdf8')(.55))
     .on('mousemove', (e, s) => showTip(e, `<b>${s.year}</b><br>Soll: ${money(s.soll)}<br>Ist: ${money(s.ist)}`)).on('mouseleave', hideTip)
     .transition().duration(500).delay((s, i) => i * 25).attr('y', s => y(Math.max(0, s.soll))).attr('height', s => Math.abs(y(s.soll) - y(0)));
   const ist = series.filter(s => s.ist != null);
