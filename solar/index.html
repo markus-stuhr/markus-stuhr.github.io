@@ -18,7 +18,8 @@
   #credit { position: fixed; left: 12px; bottom: 8px; font-size: 10px; color: #778; }
   #credit a { color: #99a; }
   .label { position: fixed; left: 0; top: 0; font-size: 12px; color: #cfd6ff; pointer-events: auto; cursor: pointer; white-space: nowrap; text-shadow: 0 0 4px #000; user-select: none; }
-  .label.craft { font-size: 10px; color: #9ff0b0; cursor: help; }
+  .label.craft { font-size: 10px; color: #9ff0b0; pointer-events: none; }
+  #tip { position: fixed; display: none; pointer-events: none; background: rgba(10,12,20,.85); border: 1px solid #334; border-radius: 6px; padding: 4px 8px; font-size: 11px; max-width: 240px; color: #cfe; }
   .label.craft::before { border-radius: 1px; transform: translate(-3px, 0) rotate(45deg); }
   .label.comet { font-size: 10px; color: #9fc3e8; pointer-events: none; }
   .label.moon { font-size: 10px; color: #a8aec8; pointer-events: none; }
@@ -42,6 +43,7 @@
   <div class="row" id="focus"></div>
 </div>
 <div id="info"></div>
+<div id="tip"></div>
 <div id="credit">Texturen: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a> (CC BY 4.0), Monde: <a href="https://stevealbers.net/albers/sos/sos.html" target="_blank" rel="noopener">Steve Albers</a>/NASA, Kallisto: Björn Jónsson</div>
 
 <script type="importmap">
@@ -693,7 +695,7 @@ for (const c of CRAFT) {
     c.line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: 0x9ff0b0, transparent: true, opacity: 0.25, dashSize: 0.6, gapSize: 0.4 }));
     craftGroup.add(c.line);
   }
-  const l = document.createElement('div'); l.className = 'label craft'; l.textContent = c.name; l.title = c.info;
+  const l = document.createElement('div'); l.className = 'label craft'; l.textContent = c.name;
   document.body.appendChild(l); c.label = l;
 }
 const craftTmp = new THREE.Vector3();
@@ -829,6 +831,17 @@ document.getElementById('lunecl').onclick = () => gotoEclipse('lun');
 document.getElementById('now').onclick = () => { jd = jdNow(); speedsEl.children[1].click(); };
 let showLabels = true, showOrbits = true;
 document.getElementById('labels').onclick = e => { showLabels = !showLabels; e.target.classList.toggle('on', showLabels); };
+// Kurzinfo zu Raumfahrzeugen: Namen sind für Maus durchlässig (Zoomen/Drehen bleibt möglich), Info per Nähe zum Namen
+const tipEl = document.getElementById('tip');
+renderer.domElement.addEventListener('pointermove', e => {
+  const hit = CRAFT.find(c => { if (c.label.style.display !== 'block') return false; const r = c.label.getBoundingClientRect(); return e.clientX >= r.left - 4 && e.clientX <= r.right + 4 && e.clientY >= r.top - 4 && e.clientY <= r.bottom + 4; });
+  tipEl.style.display = hit ? 'block' : 'none';
+  if (hit) { tipEl.textContent = hit.info; tipEl.style.left = e.clientX + 14 + 'px'; tipEl.style.top = e.clientY + 14 + 'px'; }
+});
+// Planetennamen bleiben klickbar, geben aber das Mausrad an die Kamera weiter
+document.querySelectorAll('.label:not(.craft)').forEach(l => l.addEventListener('wheel', e => {
+  e.preventDefault(); renderer.domElement.dispatchEvent(new WheelEvent('wheel', e));
+}, { passive: false }));
 document.getElementById('craft').onclick = e => { showCraft = !showCraft; e.target.classList.toggle('on', showCraft); };
 document.getElementById('orbits').onclick = e => { showOrbits = !showOrbits; e.target.classList.toggle('on', showOrbits); };
 
