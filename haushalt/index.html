@@ -6,10 +6,10 @@
 <title>Der Bundeshaushalt</title>
 <meta name="description" content="Wofür gibt der Bund 524 Milliarden Euro aus? Eine Datenstory zum Bundeshaushalt 2012–2027.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,700;9..144,900&family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="/analytics.js"></script>
 <style>
-:root {
+:root { --num: Archivo, Inter, system-ui, sans-serif;
   --bg: #f6f2ea; --ink: #1d1b18; --muted: #6f685d; --line: #d9d1c3; --card: #fffdf8;
   --accent: #c8452c; --blue: #2f5d8a;
 }
@@ -35,14 +35,14 @@ p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 /* Hero */
 #hero { min-height: 100vh; display: flex; align-items: center; padding: 90px 0 60px; }
 #hero h1 { font-size: clamp(44px, 8.5vw, 112px); line-height: .95; margin: 0; font-weight: 900; letter-spacing: -.03em; }
-#hero h1 .big { color: var(--accent); display: block; }
+#hero h1 .big { color: var(--accent); display: block; font-family: var(--num); font-weight: 800; letter-spacing: -.02em; }
 #hero .sub { font-size: clamp(18px, 2.2vw, 24px); max-width: 640px; margin: 28px 0 0; color: #3a362f; }
 .scrollhint { position: absolute; bottom: 26px; left: 50%; transform: translateX(-50%); font-size: 13px; color: var(--muted); }
 
 /* Kennzahlen */
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; }
 .stat { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 26px 22px; }
-.stat .n { font-family: Fraunces, serif; font-size: clamp(36px, 5vw, 60px); font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.stat .n { font-family: var(--num); font-size: clamp(36px, 5vw, 60px); font-weight: 800; letter-spacing: -.01em; line-height: 1; font-variant-numeric: tabular-nums; }
 .stat .u { color: var(--muted); font-size: 15px; margin-top: 8px; }
 
 /* 100 Euro */
@@ -53,7 +53,7 @@ p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 .legend div { display: flex; align-items: center; gap: 10px; cursor: default; padding: 3px 6px; border-radius: 6px; }
 .legend div:hover { background: var(--card); }
 .legend span.sw { width: 14px; height: 14px; border-radius: 3px; flex: none; }
-.legend b { margin-left: auto; padding-left: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.legend b { font-family: var(--num); font-weight: 800; margin-left: auto; padding-left: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .legend div { line-height: 1.3; }
 
 /* Treemap */
@@ -64,7 +64,7 @@ p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 #treemap .cell { position: absolute; overflow: hidden; padding: 8px 9px; color: #fff; font-size: 13px; line-height: 1.25; cursor: pointer;
   border: 1px solid rgba(0,0,0,.25); transition: filter .2s; }
 #treemap .cell:hover { filter: brightness(1.12); }
-#treemap .cell b { display: block; font-size: 15px; font-family: Fraunces, serif; }
+#treemap .cell b { display: block; font-size: 15px; font-family: var(--num); font-weight: 800; }
 #treemap .cell.leaf { cursor: default; }
 .hint { font-size: 14px; color: var(--muted); margin-top: 10px; }
 
@@ -79,7 +79,7 @@ p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 .sticky svg { width: 100%; height: 100%; overflow: visible; }
 .axis text { font: 12px Inter, sans-serif; fill: var(--muted); }
 .axis path, .axis line { stroke: var(--line); }
-.ann { font: 600 13px Inter, sans-serif; fill: var(--ink); }
+.ann { font: 700 13px var(--num); fill: var(--ink); }
 .chart { width: 100%; }
 .chart svg { width: 100%; overflow: visible; display: block; }
 .note { font-size: 13px; color: var(--muted); margin-top: 8px; }
@@ -87,7 +87,7 @@ p.lead { font-size: clamp(18px, 2vw, 21px); color: #3a362f; }
 /* Top-Titel */
 .bars .row { display: grid; grid-template-columns: minmax(0, 1fr) 90px; gap: 14px; align-items: center; margin: 10px 0; font-size: 15px; }
 .bars .bar { height: 30px; background: var(--accent); border-radius: 5px; width: 0; display: flex; align-items: center; padding: 0 10px; color: #fff; white-space: nowrap; overflow: visible; font-size: 14px; }
-.bars .row b { text-align: right; font-variant-numeric: tabular-nums; }
+.bars .row b { font-family: var(--num); font-weight: 800; text-align: right; font-variant-numeric: tabular-nums; }
 .bars .lab { font-size: 13px; color: var(--muted); margin-bottom: -6px; }
 
 .outro { background: var(--ink); color: var(--bg); text-align: center; }

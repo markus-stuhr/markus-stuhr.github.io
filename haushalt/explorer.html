@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Haushalts-Explorer</title>
 <meta name="description" content="Alle Titel des Bundeshaushalts 2012–2027 durchsuchen, vergleichen und als Zeitreihe ansehen.">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,700;9..144,900&family=Archivo:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="/analytics.js"></script>
 <style>
-:root { --bg: #f6f2ea; --ink: #1d1b18; --muted: #6f685d; --line: #d9d1c3; --card: #fffdf8; --accent: #c8452c; --blue: #2f5d8a; --up: #2f7d4f; --down: #c8452c; }
+:root { --num: Archivo, Inter, system-ui, sans-serif; --bg: #f6f2ea; --ink: #1d1b18; --muted: #6f685d; --line: #d9d1c3; --card: #fffdf8; --accent: #c8452c; --blue: #2f5d8a; --up: #2f7d4f; --down: #c8452c; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 Inter, system-ui, sans-serif; }
 a { color: var(--accent); }
@@ -36,12 +36,12 @@ select { font: 600 13px Inter, sans-serif; padding: 6px 10px; border: 1.5px soli
 .crumbs span { color: var(--muted); }
 .headline { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
 .headline h2 { font: 700 22px Fraunces, serif; margin: 0; }
-.headline .tot { font: 900 22px Fraunces, serif; color: var(--accent); }
+.headline .tot { font: 800 22px var(--num); color: var(--accent); }
 .headline .sub { color: var(--muted); font-size: 13px; }
 #tm { height: 340px; position: relative; border-radius: 10px; overflow: hidden; background: var(--ink); margin-bottom: 14px; }
 #tm .c { position: absolute; padding: 5px 7px; color: #fff; font-size: 12px; line-height: 1.2; overflow: hidden; cursor: pointer; border: 1px solid rgba(0,0,0,.25); }
 #tm .c:hover { filter: brightness(1.15); }
-#tm .c b { display: block; }
+#tm .c b { display: block; font-family: var(--num); font-weight: 800; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th { text-align: right; font-size: 12px; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1.5px solid var(--ink); cursor: pointer; white-space: nowrap; user-select: none; }
 th:first-child, td:first-child { text-align: left; }
@@ -64,7 +64,7 @@ td.drill { cursor: pointer; } td.drill:hover .nm { text-decoration: underline; }
 .kv { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
 .kv div { background: var(--bg); border-radius: 8px; padding: 8px 10px; }
 .kv small { display: block; color: var(--muted); font-size: 11.5px; }
-.kv b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.kv b { font-family: var(--num); font-weight: 800; font-size: 16px; font-variant-numeric: tabular-nums; }
 #ts svg { width: 100%; display: block; overflow: visible; }
 .axis text { font: 11px Inter, sans-serif; fill: var(--muted); } .axis path, .axis line { stroke: var(--line); }
 .ytable { width: 100%; font-size: 12.5px; margin-top: 10px; }
