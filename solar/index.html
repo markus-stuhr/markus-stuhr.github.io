@@ -570,15 +570,15 @@ function updateComets(orbitsDirty) {
     // Bewegungsrichtung (für den gekrümmten Staubschweif) aus einem Schritt einen Tag später
     posFromE(c.k, kepler(c.n * (jd + 1 - c.T), c.k.e), cometVel).sub(c.pos).normalize();
     const r = c.pos.length(), act = THREE.MathUtils.clamp((4.5 - r) / 3, 0, 1);
-    const L = Math.min(1.2, 0.35 / (r * r)) * act;
+    const L = Math.min(0.5, 0.15 / (r * r)) * act;
     const anti = c.pos.clone().normalize();
-    const size = lerpLog(2e-6, 0.06, mix) * (0.4 + act);
+    const size = lerpLog(2e-6, 0.04, mix) * (0.4 + act);
     c.head.position.copy(c.spos); c.head.scale.setScalar(size);
     const set = (m, dir, len, alpha) => {
       const u = m.material.uniforms;
       u.head.value.copy(c.spos);
       mapPos(cometTmp.copy(c.pos).addScaledVector(dir, len), u.tip.value);
-      u.width.value = u.head.value.distanceTo(u.tip.value) * 0.12 + size * 0.2;
+      u.width.value = u.head.value.distanceTo(u.tip.value) * 0.07 + size * 0.1;
       u.alpha.value = alpha * act; m.visible = act > 0;
     };
     set(c.ion, anti, L, 0.55);
