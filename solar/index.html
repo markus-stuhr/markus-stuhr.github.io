@@ -478,10 +478,10 @@ function setFocus(p, instant) {
   focus = p;
   [...focusEl.children].forEach((b, i) => b.classList.toggle('on', i === (p ? PLANETS.indexOf(p) + 1 : 0)));
   const off = camera.position.clone().sub(controls.target);
-  const fromLen = off.length(); off.normalize();
+  off.normalize();
   // Blickrichtung behalten, aber mindestens 30° von oben, damit Mondbahnen nicht flach erscheinen
   if (off.y < 0.5) { const h = Math.hypot(off.x, off.z) || 1; off.set(off.x / h * 0.866, 0.5, off.z / h * 0.866); }
-  flight = { fromT: controls.target.clone(), fromLen, dir: off, k: instant ? 1 : 0 };
+  flight = { fromT: controls.target.clone(), fromC: camera.position.clone(), dir: off, k: instant ? 1 : 0 };
   infoEl.style.display = p ? 'block' : 'none';
 }
 // Zielabstand der Kamera: Planet + Platz für seine Monde, Sonne: inneres System
@@ -516,14 +516,13 @@ function frame(now) {
   }
   updateMoons();
   if (flight) {
-    // Kamerafahrt: Ziel weich ansteuern, Abstand logarithmisch, bei weiten Wegen kurz herauszoomen
+    // Kamerafahrt: Kamera und Blickziel fahren auf gerader Linie zur Endposition
     flight.k = Math.min(1, flight.k + dt / 2.2);
     const e = flight.k < 0.5 ? 4 * flight.k ** 3 : 1 - (-2 * flight.k + 2) ** 3 / 2;
-    const destT = focus ? focus.spos : new THREE.Vector3(), toLen = focusDist(focus);
-    const travel = flight.fromT.distanceTo(destT);
-    const len = lerpLog(flight.fromLen, toLen, e) * (1 + Math.sin(Math.PI * e) * Math.min(3, travel / (flight.fromLen + toLen)));
+    const destT = focus ? focus.spos : new THREE.Vector3();
+    const destC = destT.clone().addScaledVector(flight.dir, focusDist(focus));
     controls.target.lerpVectors(flight.fromT, destT, e);
-    camera.position.copy(controls.target).addScaledVector(flight.dir, len);
+    camera.position.lerpVectors(flight.fromC, destC, e);
     if (flight.k >= 1) flight = null;
   } else if (focus) {
     // Kamera wandert mit dem fokussierten Planeten
