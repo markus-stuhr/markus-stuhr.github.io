@@ -823,10 +823,11 @@ function frame(now) {
     const d = focus.spos.clone().sub(prevFocus);
     controls.target.add(d); camera.position.add(d);
   }
-  // beim Maßstabswechsel Abstand mitskalieren
+  // beim Maßstabswechsel Kameraabstand im Verhältnis der Systemgröße mitskalieren
   if (!flight && lastMix >= 0 && mix !== lastMix) {
-    const ref = focus ? radiusMap(focus.r) : distMap(1.6);
-    const old = (() => { const m = mix; mix = lastMix; const r = focus ? radiusMap(focus.r) : distMap(1.6); mix = m; return r; })();
+    // Bezugsgröße ist das ganze System (Neptunbahn), damit sich die Zoomstufe aufs Ganze nicht ändert
+    const ref = distMap(30.07);
+    const old = (() => { const m = mix; mix = lastMix; const r = distMap(30.07); mix = m; return r; })();
     const off = camera.position.clone().sub(controls.target).multiplyScalar(ref / old);
     camera.position.copy(controls.target).add(off);
   }
