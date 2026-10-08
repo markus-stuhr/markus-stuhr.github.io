@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ASCII Rotator</title>
+<script defer src="/analytics.js"></script>
+<style>
+:root{--bg:#18181b;--fg:#4ade80}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-monospace,Menlo,monospace;overflow:hidden}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#out{display:block}
+#panel{position:fixed;top:12px;left:12px;background:rgba(0,0,0,.55);backdrop-filter:blur(6px);padding:12px 14px;border-radius:10px;font-size:12px;display:grid;grid-template-columns:auto auto;gap:8px 10px;align-items:center;max-width:calc(100vw - 24px)}
+#panel h1{grid-column:1/3;margin:0 0 2px;font-size:13px;letter-spacing:.1em}
+#panel select,#panel input[type=text]{background:#222;color:#ddd;border:1px solid #444;border-radius:4px;padding:3px 5px;font:inherit}
+#panel input[type=color]{width:42px;height:24px;border:none;background:none;padding:0}
+#panel button{grid-column:1/3;background:#333;color:#ddd;border:1px solid #555;border-radius:4px;padding:5px;font:inherit;cursor:pointer}
+#toggle{position:fixed;top:12px;right:12px;background:rgba(0,0,0,.55);color:#ddd;border:none;border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="out"></canvas></div>
+<div id="panel">
+  <h1>ASCII ROTATOR</h1>
+  <label>Motiv</label>
+  <select id="model">
+    <option value="helmet">F1-Helm</option>
+    <option value="car">F1-Auto</option>
+    <option value="track">Rennstrecke</option>
+  </select>
+  <label>Hintergrund</label><input type="color" id="bg" value="#18181b">
+  <label>Motivfarbe</label><input type="color" id="fg" value="#4ade80">
+  <label>Zeichen</label>
+  <select id="chars">
+    <option value=">">&gt;</option>
+    <option value="#">#</option>
+    <option value="/">/</option>
+    <option value="*">*</option>
+    <option value="+">+</option>
+    <option value="@">@</option>
+    <option value="0 1">0 1</option>
+    <option value=" .:-=+*#%@">flexibel (nach Helligkeit)</option>
+    <option value="custom">eigene…</option>
+  </select>
+  <label id="customL" class="hidden">Eigene</label><input id="custom" type="text" class="hidden" value="F1" maxlength="20">
+  <label>Auflösung</label><input type="range" id="res" min="30" max="140" value="70">
+  <label>Tempo</label><input type="range" id="speed" min="0" max="100" value="30">
+  <label>Kippung</label><input type="range" id="tilt" min="-60" max="60" value="15">
+  <button id="png">PNG speichern</button>
+</div>
+<button id="toggle">☰</button>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.167.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const $ = id => document.getElementById(id);
+const out = $('out'), ctx = out.getContext('2d');
+
+// --- Offscreen 3D-Renderer (klein, wird ausgelesen) ---
+const renderer = new THREE.WebGLRenderer({antialias:false, preserveDrawingBuffer:true});
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+camera.position.set(0, 0, 9);
+scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(3, 4, 5); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffffff, 0.8); rim.position.set(-4, -1, -3); scene.add(rim);
+
+const mat = (g=1) => new THREE.MeshStandardMaterial({color:new THREE.Color(g,g,g), roughness:.6, metalness:0});
+const pivot = new THREE.Group(); scene.add(pivot);
+
+function helmet(){
+  const g = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(1.6, 48, 32), mat(1));
+  shell.scale.set(1, 1.05, 1.15); g.add(shell);
+  // Visier vorne (dunkel)
+  const visor = new THREE.Mesh(new THREE.SphereGeometry(1.62, 48, 16, -0.95, 1.9, 1.3, 0.5), mat(0.05));
+  visor.scale.set(1.01, 1.06, 1.17); g.add(visor);
+  // Kinnpartie
+  const chin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 1.2), mat(0.85));
+  chin.position.set(0, -1.25, 0.9); g.add(chin);
+  // Streifen + Spoiler
+  const stripe = new THREE.Mesh(new THREE.TorusGeometry(1.64, 0.08, 8, 64, Math.PI), mat(0.4));
+  stripe.rotation.y = Math.PI/2; stripe.scale.set(1.15, 1.05, 1); g.add(stripe);
+  const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.15, 0.5), mat(0.7));
+  spoiler.position.set(0, 1.2, -1.45); spoiler.rotation.x = -0.5; g.add(spoiler);
+  return g;
+}
+
+function car(){
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 4.2), mat(1)); body.position.y = 0.1; g.add(body);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.2, 12), mat(1)); nose.rotation.x = Math.PI/2; nose.scale.set(1.2,1,0.6); nose.position.set(0, 0.05, 2.6); g.add(nose);
+  const pods = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 1.8), mat(0.85)); pods.position.set(0, 0.1, -0.3); g.add(pods);
+  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), mat(0.05)); cockpit.position.set(0, 0.35, 0.6); cockpit.scale.set(1,0.6,1.6); g.add(cockpit);
+  const intake = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 1.2), mat(0.9)); intake.position.set(0, 0.5, -0.4); g.add(intake);
+  const fw = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.08, 0.5), mat(0.75)); fw.position.set(0, -0.15, 3.0); g.add(fw);
+  const rw = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 0.5), mat(0.75)); rw.position.set(0, 0.95, -2.0); g.add(rw);
+  for (const x of [-0.6, 0.6]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.8, 0.5), mat(0.6)); p.position.set(x, 0.55, -2.0); g.add(p); }
+  const wheelG = new THREE.CylinderGeometry(0.45, 0.45, 0.45, 24); wheelG.rotateZ(Math.PI/2);
+  for (const [x,z,r] of [[1.15,1.6,0.4],[-1.15,1.6,0.4],[1.25,-1.6,0.5],[-1.25,-1.6,0.5]]) {
+    const w = new THREE.Mesh(wheelG, mat(0.35)); w.position.set(x, 0.05, z); w.scale.set(r/0.45*1.1, r/0.45, r/0.45); g.add(w);
+  }
+  g.scale.setScalar(0.85);
+  return g;
+}
+
+function track(){
+  // Grob Monza-/Spa-artige Kurvenfolge, geschlossene Kurve
+  const pts = [[0,0],[3,0],[4.2,0.6],[4.4,1.8],[3.6,2.4],[2.2,2.2],[1.4,3],[0.2,3.2],[-1.2,2.6],[-1.6,1.6],[-2.8,1.4],[-3.6,0.6],[-3.2,-0.6],[-1.6,-0.8]]
+    .map(([x,z]) => new THREE.Vector3(x-0.3, 0, -(z-1.2)));
+  const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+  const g = new THREE.Group();
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 300, 0.16, 8, true), mat(1));
+  tube.scale.set(1, 0.4, 1); g.add(tube);
+  // Start/Ziel-Markierung
+  const sf = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.6), mat(0.3)); sf.position.copy(pts[0]); g.add(sf);
+  g.scale.setScalar(0.85);
+  return g;
+}
+
+const builders = {helmet, car, track};
+let current;
+function setModel(n){
+  if (current) pivot.remove(current);
+  current = builders[n](); pivot.add(current);
+}
+
+// --- ASCII-Ausgabe ---
+let cols, rows, cw, ch, buf;
+const AR = 0.62; // Zeichenbreite/-höhe
+function resize(){
+  cols = +$('res').value;
+  const W = innerWidth, H = innerHeight;
+  cw = W / cols; ch = cw / AR;
+  rows = Math.floor(H / ch);
+  const dpr = devicePixelRatio || 1;
+  out.width = W * dpr; out.height = rows * ch * dpr;
+  out.style.width = W + 'px'; out.style.height = rows * ch + 'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  renderer.setPixelRatio(1);
+  renderer.setSize(cols, rows, false);
+  camera.aspect = (cols * cw) / (rows * ch); camera.updateProjectionMatrix();
+  buf = new Uint8Array(cols * rows * 4);
+}
+
+function charset(){
+  const v = $('chars').value;
+  return (v === 'custom' ? $('custom').value || '>' : v);
+}
+
+const gl = renderer.getContext();
+let angle = 0, last = performance.now();
+function frame(t){
+  const dt = Math.min(0.05, (t - last) / 1000); last = t;
+  angle += dt * (+$('speed').value / 100) * 2.5;
+  pivot.rotation.set(+$('tilt').value * Math.PI/180, angle, 0);
+  renderer.render(scene, camera);
+  gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+
+  const bg = $('bg').value, fg = $('fg').value;
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, out.width, out.height);
+  ctx.fillStyle = fg;
+  ctx.font = `bold ${Math.round(ch * 0.85)}px ui-monospace,Menlo,monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const cs = charset(), ramp = cs.length > 2 && cs.startsWith(' ');
+  for (let y = 0; y < rows; y++) {
+    const ry = rows - 1 - y;
+    for (let x = 0; x < cols; x++) {
+      const i = (ry * cols + x) * 4;
+      const l = buf[i] / 255;
+      if (l < 0.04) continue;
+      let c;
+      if (ramp) { c = cs[Math.min(cs.length-1, Math.floor(l * cs.length))]; ctx.globalAlpha = 1; }
+      else {
+        const parts = cs.split(' ').filter(Boolean);
+        c = parts.length > 1 ? parts[(x*7 + y*13 + Math.floor(angle*3)) % parts.length] : cs[(x + y) % cs.length];
+        ctx.globalAlpha = 0.25 + 0.75 * Math.min(1, l * 1.2);
+      }
+      if (c !== ' ') ctx.fillText(c, (x + 0.5) * cw, (y + 0.5) * ch);
+    }
+  }
+  ctx.globalAlpha = 1;
+  requestAnimationFrame(frame);
+}
+
+function applyColors(){ document.documentElement.style.setProperty('--bg', $('bg').value); }
+$('model').onchange = e => setModel(e.target.value);
+$('bg').oninput = applyColors;
+$('res').oninput = resize;
+$('chars').onchange = e => { const c = e.target.value === 'custom'; $('custom').classList.toggle('hidden', !c); $('customL').classList.toggle('hidden', !c); };
+$('toggle').onclick = () => $('panel').classList.toggle('hidden');
+$('png').onclick = () => { const a = document.createElement('a'); a.download = 'ascii.png'; a.href = out.toDataURL('image/png'); a.click(); };
+addEventListener('resize', resize);
+
+setModel('helmet'); resize(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>
