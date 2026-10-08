@@ -166,7 +166,7 @@ function charset(){
 const gl = renderer.getContext();
 let angle = 0, last = performance.now();
 window.__ascii = { setAngle: a => angle = a, frame: () => frame(performance.now()) };
-let recording = false;
+let recording = false, bbox = null;  // bbox: belegte Zellen [x0,y0,x1,y1] während Vorlauf
 function frame(t){
   const dt = Math.min(0.05, (t - last) / 1000); last = t;
   if (!recording) { angle += dt * (+$('speed').value / 100) * 2.5; draw(); }
@@ -205,6 +205,7 @@ function draw(){
         ctx.globalAlpha = (l < 0.06 ? 0.04 : 0.1 + 0.9 * ls) * Math.min(1, cov * 1.3);
       }
       if (c !== ' ') ctx.fillText(c, (x + 0.5) * cw, (y + 0.5) * ch);
+      if (bbox) { if (x < bbox[0]) bbox[0] = x; if (y < bbox[1]) bbox[1] = y; if (x > bbox[2]) bbox[2] = x; if (y > bbox[3]) bbox[3] = y; }
     }
   }
   ctx.globalAlpha = 1;
@@ -229,20 +230,29 @@ $('vid').onclick = async () => {
   const FPS = 30, N = Math.round(+$('vlen').value * FPS);
   const types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
   const type = types.find(t => MediaRecorder.isTypeSupported(t));
+  recording = true;
+  // Vorlauf: eine Umdrehung zeichnen und belegte Zellen sammeln → Ausschnitt + 1 Zeichen Rand
+  bbox = [1e9, 1e9, -1, -1];
+  for (let i = 0; i < N; i++) { angle = (i / N) * 2 * Math.PI; draw(); }
+  const [bx0, by0, bx1, by1] = bbox; bbox = null;
+  if (bx1 < 0) { recording = false; return; }
+  const dpr = out.width / innerWidth;
+  const sx = Math.max(0, (bx0 - 1) * cw * dpr), sy = Math.max(0, (by0 - 1) * ch * dpr);
+  const sw = Math.min(out.width - sx, (bx1 - bx0 + 3) * cw * dpr), sh = Math.min(out.height - sy, (by1 - by0 + 3) * ch * dpr);
   // eigene Aufnahme-Leinwand: Encoder schaffen keine 4K+-Retina-Größen, Maße müssen gerade sein
-  const k = Math.min(1, 1920 / out.width);
+  const k = Math.min(1, 1920 / sw, 1920 / sh);
   const vc = document.createElement('canvas'), vx = vc.getContext('2d');
-  vc.width = Math.round(out.width * k / 2) * 2; vc.height = Math.round(out.height * k / 2) * 2;
+  vc.width = Math.round(sw * k / 2) * 2; vc.height = Math.round(sh * k / 2) * 2;
   const stream = vc.captureStream(0), track = stream.getVideoTracks()[0];
   const rec = new MediaRecorder(stream, {mimeType: type, videoBitsPerSecond: 16e6});
   const chunks = []; rec.ondataavailable = e => e.data.size && chunks.push(e.data);
   const done = new Promise(r => rec.onstop = r);
-  recording = true; const btn = $('vid'), label = btn.textContent;
+  const btn = $('vid'), label = btn.textContent;
   const a0 = 0;
   rec.start();
   for (let i = 0; i < N; i++) {
     angle = a0 + (i / N) * 2 * Math.PI;
-    draw(); vx.drawImage(out, 0, 0, vc.width, vc.height); track.requestFrame();
+    draw(); vx.drawImage(out, sx, sy, sw, sh, 0, 0, vc.width, vc.height); track.requestFrame();
     btn.textContent = `Aufnahme … ${Math.round(i / N * 100)} %`;
     await sleep(1000 / FPS);
   }
