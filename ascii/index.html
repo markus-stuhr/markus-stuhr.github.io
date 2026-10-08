@@ -6,7 +6,7 @@
 <title>ASCII Rotator</title>
 <script defer src="/analytics.js"></script>
 <style>
-:root{--bg:#18181b;--fg:#4ade80}
+:root{--bg:#18181b;--fg:#d5f92c}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-monospace,Menlo,monospace;overflow:hidden}
 #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
@@ -34,7 +34,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-mo
   </select>
   <label id="circL" class="hidden">Strecke</label><select id="circuit" class="hidden"></select>
   <label>Hintergrund</label><input type="color" id="bg" value="#18181b">
-  <label>Motivfarbe</label><input type="color" id="fg" value="#4ade80">
+  <label>Motivfarbe</label><input type="color" id="fg" value="#d5f92c">
   <label>Zeichen</label>
   <select id="chars">
     <option value=">">&gt;</option>
@@ -48,7 +48,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-mo
     <option value="custom">eigene…</option>
   </select>
   <label id="customL" class="hidden">Eigene</label><input id="custom" type="text" class="hidden" value="F1" maxlength="20">
-  <label>Auflösung</label><input type="range" id="res" min="30" max="140" value="70">
+  <label>Auflösung</label><input type="range" id="res" min="30" max="260" value="140">
   <label>Glättung</label>
   <select id="ss"><option value="1">aus</option><option value="2">2×</option><option value="4" selected>4×</option></select>
   <label>Schattierung</label><input type="range" id="shade" min="0" max="100" value="50">
