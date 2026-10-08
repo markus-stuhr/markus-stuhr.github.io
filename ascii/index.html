@@ -51,7 +51,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-mo
   <label>Auflösung</label><input type="range" id="res" min="30" max="260" value="140">
   <label>Glättung</label>
   <select id="ss"><option value="1">aus</option><option value="2">2×</option><option value="4" selected>4×</option></select>
-  <label>Schattierung</label><input type="range" id="shade" min="0" max="100" value="50">
+  <label>Schattierung</label><input type="range" id="shade" min="0" max="100" value="85">
   <label>Tempo</label><input type="range" id="speed" min="0" max="100" value="30">
   <label>Kippung</label><input type="range" id="tilt" min="-60" max="60" value="15">
   <label>Video-Länge</label>
@@ -90,12 +90,14 @@ function fit(obj, r = 2.1){
   const g = new THREE.Group(); obj.position.sub(c); g.add(obj); g.scale.setScalar(k); return g;
 }
 // Originalfarben als Graustufen behalten, damit Details (Reifen, Visier) als dunklere Zeichen erscheinen
-function greyify(obj){
+function greyify(obj, lo = 0.45){
   obj.traverse(o => {
     if (!o.isMesh) return;
     const src = Array.isArray(o.material) ? o.material[0] : o.material;
     const c = src.color || new THREE.Color(1,1,1);
-    const l = 0.45 + 0.55 * Math.pow(0.2126*c.r + 0.7152*c.g + 0.0722*c.b, 0.6);
+    const y = 0.2126*c.r + 0.7152*c.g + 0.0722*c.b;
+    // lo < 0: Lackfarben einheitlich hell, nur fast schwarze Teile (Reifen) dunkel → Form kommt aus dem Licht
+    const l = lo < 0 ? (y < 0.03 ? 0.08 : 0.85 + 0.15 * Math.pow(y, 0.5)) : lo + (1 - lo) * Math.pow(y, 0.6);
     o.material = mat(l);
     if (src.map) { o.material.map = src.map; o.material.color.setScalar(1); }
   });
@@ -106,7 +108,7 @@ const files = {helmet:'models/helmet.glb', car:'models/car.glb', trophy:'models/
 async function loadModel(n){
   if (!cache[n]) {
     const gltf = await loader.loadAsync(files[n]);
-    let g = fit(greyify(gltf.scene));
+    let g = fit(greyify(gltf.scene, n === 'car' ? -1 : 0.45));
     if (n === 'car') g.rotation.y = 0;
     cache[n] = g;
   }
@@ -212,7 +214,7 @@ function draw(){
 }
 
 function applyColors(){ document.documentElement.style.setProperty('--bg', $('bg').value); }
-$('model').onchange = e => { $('tilt').value = e.target.value === 'track' ? 55 : 15; setModel(e.target.value); };
+$('model').onchange = e => { const v = e.target.value; $('tilt').value = v === 'track' ? 55 : 15; $('shade').value = v === 'car' ? 85 : 50; setModel(v); };
 $('circuit').onchange = () => setModel('track');
 $('ss').onchange = resize;
 $('bg').oninput = applyColors;
