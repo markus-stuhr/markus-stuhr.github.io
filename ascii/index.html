@@ -17,6 +17,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-mo
 #panel input[type=color]{width:42px;height:24px;border:none;background:none;padding:0}
 #panel button{grid-column:1/3;background:#333;color:#ddd;border:1px solid #555;border-radius:4px;padding:5px;font:inherit;cursor:pointer}
 #toggle{position:fixed;top:12px;right:12px;background:rgba(0,0,0,.55);color:#ddd;border:none;border-radius:8px;padding:6px 10px;font:inherit;cursor:pointer}
+#credit{position:fixed;bottom:6px;right:10px;font-size:10px;opacity:.45}
 .hidden{display:none!important}
 </style>
 </head>
@@ -29,7 +30,9 @@ html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-mo
     <option value="helmet">F1-Helm</option>
     <option value="car">F1-Auto</option>
     <option value="track">Rennstrecke</option>
+    <option value="trophy">Pokal</option>
   </select>
+  <label id="circL" class="hidden">Strecke</label><select id="circuit" class="hidden"></select>
   <label>Hintergrund</label><input type="color" id="bg" value="#18181b">
   <label>Motivfarbe</label><input type="color" id="fg" value="#4ade80">
   <label>Zeichen</label>
@@ -46,91 +49,95 @@ html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-mo
   </select>
   <label id="customL" class="hidden">Eigene</label><input id="custom" type="text" class="hidden" value="F1" maxlength="20">
   <label>Auflösung</label><input type="range" id="res" min="30" max="140" value="70">
+  <label>Glättung</label>
+  <select id="ss"><option value="1">aus</option><option value="2">2×</option><option value="4" selected>4×</option></select>
+  <label>Schattierung</label><input type="range" id="shade" min="0" max="100" value="50">
   <label>Tempo</label><input type="range" id="speed" min="0" max="100" value="30">
   <label>Kippung</label><input type="range" id="tilt" min="-60" max="60" value="15">
   <button id="png">PNG speichern</button>
 </div>
 <button id="toggle">☰</button>
+<div id="credit">Modelle: Helm „Low-poly racing helmet“ von flavio (CC-BY-SA 4.0, opengameart.org), Racing car von scaranto, Trophy von CreativeTrio (beide CC0, poly.pizza) · Strecken: bacinger/f1-circuits (MIT)</div>
 
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.167.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.167.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.167.0/examples/jsm/"}}</script>
 <script type="module">
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const $ = id => document.getElementById(id);
 const out = $('out'), ctx = out.getContext('2d');
 
 // --- Offscreen 3D-Renderer (klein, wird ausgelesen) ---
-const renderer = new THREE.WebGLRenderer({antialias:false, preserveDrawingBuffer:true});
+const renderer = new THREE.WebGLRenderer({antialias:false, alpha:true, premultipliedAlpha:false, preserveDrawingBuffer:true});
+renderer.setClearColor(0x000000, 0);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000000);
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
 camera.position.set(0, 0, 9);
-scene.add(new THREE.AmbientLight(0xffffff, 0.25));
-const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(3, 4, 5); scene.add(key);
-const rim = new THREE.DirectionalLight(0xffffff, 0.8); rim.position.set(-4, -1, -3); scene.add(rim);
+scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+const key = new THREE.DirectionalLight(0xffffff, 3.2); key.position.set(3, 3, 6); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffffff, 0.35); rim.position.set(-4, -1, -3); scene.add(rim);
 
 const mat = (g=1) => new THREE.MeshStandardMaterial({color:new THREE.Color(g,g,g), roughness:.6, metalness:0});
 const pivot = new THREE.Group(); scene.add(pivot);
 
-function helmet(){
-  const g = new THREE.Group();
-  const shell = new THREE.Mesh(new THREE.SphereGeometry(1.6, 48, 32), mat(1));
-  shell.scale.set(1, 1.05, 1.15); g.add(shell);
-  // Visier vorne (dunkel)
-  const visor = new THREE.Mesh(new THREE.SphereGeometry(1.62, 48, 16, -0.95, 1.9, 1.3, 0.5), mat(0.05));
-  visor.scale.set(1.01, 1.06, 1.17); g.add(visor);
-  // Kinnpartie
-  const chin = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 1.2), mat(0.85));
-  chin.position.set(0, -1.25, 0.9); g.add(chin);
-  // Streifen + Spoiler
-  const stripe = new THREE.Mesh(new THREE.TorusGeometry(1.64, 0.08, 8, 64, Math.PI), mat(0.4));
-  stripe.rotation.y = Math.PI/2; stripe.scale.set(1.15, 1.05, 1); g.add(stripe);
-  const spoiler = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.15, 0.5), mat(0.7));
-  spoiler.position.set(0, 1.2, -1.45); spoiler.rotation.x = -0.5; g.add(spoiler);
-  return g;
+// Modell zentrieren und auf Radius ~2 skalieren
+function fit(obj, r = 2.1){
+  const box = new THREE.Box3().setFromObject(obj), c = box.getCenter(new THREE.Vector3());
+  const k = r / box.getBoundingSphere(new THREE.Sphere()).radius;
+  const g = new THREE.Group(); obj.position.sub(c); g.add(obj); g.scale.setScalar(k); return g;
 }
-
-function car(){
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.35, 4.2), mat(1)); body.position.y = 0.1; g.add(body);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.35, 1.2, 12), mat(1)); nose.rotation.x = Math.PI/2; nose.scale.set(1.2,1,0.6); nose.position.set(0, 0.05, 2.6); g.add(nose);
-  const pods = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 1.8), mat(0.85)); pods.position.set(0, 0.1, -0.3); g.add(pods);
-  const cockpit = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 12), mat(0.05)); cockpit.position.set(0, 0.35, 0.6); cockpit.scale.set(1,0.6,1.6); g.add(cockpit);
-  const intake = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 1.2), mat(0.9)); intake.position.set(0, 0.5, -0.4); g.add(intake);
-  const fw = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.08, 0.5), mat(0.75)); fw.position.set(0, -0.15, 3.0); g.add(fw);
-  const rw = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.1, 0.5), mat(0.75)); rw.position.set(0, 0.95, -2.0); g.add(rw);
-  for (const x of [-0.6, 0.6]) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.8, 0.5), mat(0.6)); p.position.set(x, 0.55, -2.0); g.add(p); }
-  const wheelG = new THREE.CylinderGeometry(0.45, 0.45, 0.45, 24); wheelG.rotateZ(Math.PI/2);
-  for (const [x,z,r] of [[1.15,1.6,0.4],[-1.15,1.6,0.4],[1.25,-1.6,0.5],[-1.25,-1.6,0.5]]) {
-    const w = new THREE.Mesh(wheelG, mat(0.35)); w.position.set(x, 0.05, z); w.scale.set(r/0.45*1.1, r/0.45, r/0.45); g.add(w);
+// Originalfarben als Graustufen behalten, damit Details (Reifen, Visier) als dunklere Zeichen erscheinen
+function greyify(obj){
+  obj.traverse(o => {
+    if (!o.isMesh) return;
+    const src = Array.isArray(o.material) ? o.material[0] : o.material;
+    const c = src.color || new THREE.Color(1,1,1);
+    const l = 0.45 + 0.55 * Math.pow(0.2126*c.r + 0.7152*c.g + 0.0722*c.b, 0.6);
+    o.material = mat(l);
+    if (src.map) { o.material.map = src.map; o.material.color.setScalar(1); o.material.emissive.setScalar(0.12); }
+  });
+  return obj;
+}
+const loader = new GLTFLoader(), cache = {};
+const files = {helmet:'models/helmet.glb', car:'models/car.glb', trophy:'models/trophy.glb'};
+async function loadModel(n){
+  if (!cache[n]) {
+    const gltf = await loader.loadAsync(files[n]);
+    let g = fit(greyify(gltf.scene));
+    if (n === 'car') g.rotation.y = 0;
+    cache[n] = g;
   }
-  g.scale.setScalar(0.85);
-  return g;
+  return cache[n];
 }
 
-function track(){
-  // Grob Monza-/Spa-artige Kurvenfolge, geschlossene Kurve
-  const pts = [[0,0],[3,0],[4.2,0.6],[4.4,1.8],[3.6,2.4],[2.2,2.2],[1.4,3],[0.2,3.2],[-1.2,2.6],[-1.6,1.6],[-2.8,1.4],[-3.6,0.6],[-3.2,-0.6],[-1.6,-0.8]]
-    .map(([x,z]) => new THREE.Vector3(x-0.3, 0, -(z-1.2)));
+let circuits = [];
+function track(i){
+  const c = circuits[i], p = c.p, pts = [];
+  for (let k = 0; k < p.length; k += 2) pts.push(new THREE.Vector3(p[k] * 2, 0, p[k+1] * 2));
+  // Band aus Streckenpunkten: flache Fahrbahn mit kleiner Kante
   const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
-  const g = new THREE.Group();
-  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 300, 0.16, 8, true), mat(1));
-  tube.scale.set(1, 0.4, 1); g.add(tube);
-  // Start/Ziel-Markierung
-  const sf = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.6), mat(0.3)); sf.position.copy(pts[0]); g.add(sf);
-  g.scale.setScalar(0.85);
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.min(1500, pts.length * 3), 0.09, 6, true), mat(1));
+  tube.scale.y = 0.35;
+  const g = new THREE.Group(); g.add(tube);
+  const start = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.12, 0.3), mat(0.25));
+  start.position.copy(pts[0]);
+  const t = curve.getTangentAt(0); start.rotation.y = Math.atan2(t.x, t.z) + Math.PI/2;
+  g.add(start);
   return g;
 }
 
-const builders = {helmet, car, track};
-let current;
-function setModel(n){
+let current, token = 0;
+async function setModel(n){
+  const my = ++token;
+  $('circuit').classList.toggle('hidden', n !== 'track'); $('circL').classList.toggle('hidden', n !== 'track');
+  const obj = n === 'track' ? track(+$('circuit').value) : await loadModel(n);
+  if (my !== token) return;
   if (current) pivot.remove(current);
-  current = builders[n](); pivot.add(current);
+  current = obj; pivot.add(current);
 }
 
 // --- ASCII-Ausgabe ---
-let cols, rows, cw, ch, buf;
+let cols, rows, cw, ch, buf, SS = 4;
 const AR = 0.62; // Zeichenbreite/-höhe
 function resize(){
   cols = +$('res').value;
@@ -142,9 +149,10 @@ function resize(){
   out.style.width = W + 'px'; out.style.height = rows * ch + 'px';
   ctx.setTransform(dpr,0,0,dpr,0,0);
   renderer.setPixelRatio(1);
-  renderer.setSize(cols, rows, false);
+  SS = +$('ss').value;
+  renderer.setSize(cols * SS, rows * SS, false);
   camera.aspect = (cols * cw) / (rows * ch); camera.updateProjectionMatrix();
-  buf = new Uint8Array(cols * rows * 4);
+  buf = new Uint8Array(cols * rows * SS * SS * 4);
 }
 
 function charset(){
@@ -159,7 +167,7 @@ function frame(t){
   angle += dt * (+$('speed').value / 100) * 2.5;
   pivot.rotation.set(+$('tilt').value * Math.PI/180, angle, 0);
   renderer.render(scene, camera);
-  gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+  gl.readPixels(0, 0, cols * SS, rows * SS, gl.RGBA, gl.UNSIGNED_BYTE, buf);
 
   const bg = $('bg').value, fg = $('fg').value;
   ctx.fillStyle = bg; ctx.fillRect(0, 0, out.width, out.height);
@@ -170,15 +178,23 @@ function frame(t){
   for (let y = 0; y < rows; y++) {
     const ry = rows - 1 - y;
     for (let x = 0; x < cols; x++) {
-      const i = (ry * cols + x) * 4;
-      const l = buf[i] / 255;
-      if (l < 0.04) continue;
+      // Zelle = Mittel aus SS×SS Pixeln: Abdeckung (Alpha) × Helligkeit → weiche Ränder
+      let lum = 0, cov = 0;
+      const W = cols * SS;
+      for (let sy = 0; sy < SS; sy++) for (let sx = 0; sx < SS; sx++) {
+        const i = ((ry * SS + sy) * W + x * SS + sx) * 4;
+        const a = buf[i+3] / 255; cov += a; lum += (0.2126*buf[i] + 0.7152*buf[i+1] + 0.0722*buf[i+2]) / 255 * a;
+      }
+      const n = SS * SS; cov /= n;
+      if (cov < 0.08) continue;
+      const l = (lum / n) / cov;
       let c;
-      if (ramp) { c = cs[Math.min(cs.length-1, Math.floor(l * cs.length))]; ctx.globalAlpha = 1; }
+      const sh = +$('shade').value / 100, ls = Math.pow(Math.min(1, l), 0.5 + 1.8 * sh);
+      if (ramp) { c = cs[Math.min(cs.length-1, Math.floor(ls * cs.length))]; ctx.globalAlpha = Math.min(1, cov * 1.3); }
       else {
         const parts = cs.split(' ').filter(Boolean);
         c = parts.length > 1 ? parts[(x*7 + y*13 + Math.floor(angle*3)) % parts.length] : cs[(x + y) % cs.length];
-        ctx.globalAlpha = 0.25 + 0.75 * Math.min(1, l * 1.2);
+        ctx.globalAlpha = (0.1 + 0.9 * ls) * Math.min(1, cov * 1.3);
       }
       if (c !== ' ') ctx.fillText(c, (x + 0.5) * cw, (y + 0.5) * ch);
     }
@@ -188,7 +204,9 @@ function frame(t){
 }
 
 function applyColors(){ document.documentElement.style.setProperty('--bg', $('bg').value); }
-$('model').onchange = e => setModel(e.target.value);
+$('model').onchange = e => { $('tilt').value = e.target.value === 'track' ? 55 : 15; setModel(e.target.value); };
+$('circuit').onchange = () => setModel('track');
+$('ss').onchange = resize;
 $('bg').oninput = applyColors;
 $('res').oninput = resize;
 $('chars').onchange = e => { const c = e.target.value === 'custom'; $('custom').classList.toggle('hidden', !c); $('customL').classList.toggle('hidden', !c); };
@@ -196,6 +214,11 @@ $('toggle').onclick = () => $('panel').classList.toggle('hidden');
 $('png').onclick = () => { const a = document.createElement('a'); a.download = 'ascii.png'; a.href = out.toDataURL('image/png'); a.click(); };
 addEventListener('resize', resize);
 
+fetch('circuits.json').then(r => r.json()).then(c => {
+  circuits = c;
+  $('circuit').innerHTML = c.map((x, i) => `<option value="${i}">${x.name}</option>`).join('');
+  $('circuit').value = c.findIndex(x => x.name.includes('Monza'));
+});
 setModel('helmet'); resize(); requestAnimationFrame(frame);
 </script>
 </body>
