@@ -55,7 +55,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:#ddd;font-family:ui-mo
   <label>Tempo</label><input type="range" id="speed" min="0" max="100" value="30">
   <label>Kippung</label><input type="range" id="tilt" min="-60" max="60" value="15">
   <label>Video-Länge</label>
-  <select id="vlen"><option value="3">3 s</option><option value="5" selected>5 s</option><option value="8">8 s</option><option value="12">12 s</option></select>
+  <span id="vlen"></span>
   <button id="png">PNG speichern</button>
   <button id="vid">Video speichern (1 Umdrehung, loopt)</button>
 </div>
@@ -224,10 +224,14 @@ addEventListener('resize', resize);
 
 // Video: genau eine Umdrehung, Bild für Bild mit festem Winkelschritt.
 // Letztes Bild = Winkel kurz vor 2π, damit Ende → Anfang nahtlos übergeht.
+// Länge = Dauer einer vollen Umdrehung beim eingestellten Tempo (wie in frame(): speed/100·2.5 rad/s)
+const loopSeconds = () => { const w = +$('speed').value / 100 * 2.5; return w > 0 ? Math.min(60, 2 * Math.PI / w) : 5; };
+const showLen = () => $('vlen').textContent = loopSeconds().toFixed(1).replace('.', ',') + ' s' + (+$('speed').value ? '' : ' (Tempo 0)');
+$('speed').addEventListener('input', showLen); showLen();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 $('vid').onclick = async () => {
   if (recording) return;
-  const FPS = 30, N = Math.round(+$('vlen').value * FPS);
+  const FPS = 30, N = Math.round(loopSeconds() * FPS);
   const types = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'];
   const type = types.find(t => MediaRecorder.isTypeSupported(t));
   recording = true;
@@ -250,11 +254,12 @@ $('vid').onclick = async () => {
   const btn = $('vid'), label = btn.textContent;
   const a0 = 0;
   rec.start();
+  const t0 = performance.now();
   for (let i = 0; i < N; i++) {
     angle = a0 + (i / N) * 2 * Math.PI;
     draw(); vx.drawImage(out, sx, sy, sw, sh, 0, 0, vc.width, vc.height); track.requestFrame();
     btn.textContent = `Aufnahme … ${Math.round(i / N * 100)} %`;
-    await sleep(1000 / FPS);
+    await sleep(Math.max(0, t0 + (i + 1) * 1000 / FPS - performance.now()));
   }
   rec.stop(); await done;
   recording = false; btn.textContent = label;
