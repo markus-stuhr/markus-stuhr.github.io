@@ -94,7 +94,7 @@ function greyify(obj){
     const c = src.color || new THREE.Color(1,1,1);
     const l = 0.45 + 0.55 * Math.pow(0.2126*c.r + 0.7152*c.g + 0.0722*c.b, 0.6);
     o.material = mat(l);
-    if (src.map) { o.material.map = src.map; o.material.color.setScalar(1); o.material.emissive.setScalar(0.12); }
+    if (src.map) { o.material.map = src.map; o.material.color.setScalar(1); }
   });
   return obj;
 }
@@ -162,6 +162,7 @@ function charset(){
 
 const gl = renderer.getContext();
 let angle = 0, last = performance.now();
+window.__ascii = { setAngle: a => angle = a, frame: () => frame(performance.now()) };
 function frame(t){
   const dt = Math.min(0.05, (t - last) / 1000); last = t;
   angle += dt * (+$('speed').value / 100) * 2.5;
@@ -194,7 +195,7 @@ function frame(t){
       else {
         const parts = cs.split(' ').filter(Boolean);
         c = parts.length > 1 ? parts[(x*7 + y*13 + Math.floor(angle*3)) % parts.length] : cs[(x + y) % cs.length];
-        ctx.globalAlpha = (0.1 + 0.9 * ls) * Math.min(1, cov * 1.3);
+        ctx.globalAlpha = (l < 0.06 ? 0.04 : 0.1 + 0.9 * ls) * Math.min(1, cov * 1.3);
       }
       if (c !== ' ') ctx.fillText(c, (x + 0.5) * cw, (y + 0.5) * ch);
     }
