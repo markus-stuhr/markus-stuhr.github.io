@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>find – LEGO-Teile suchen</title>
+<meta name="theme-color" content="#111">
+<script defer src="/analytics.js"></script>
+<style>
+  :root { --bg:#111; --fg:#eee; --mut:#999; --acc:#ffd400; --ok:#2ecc71; --card:#1d1d1d; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font:15px/1.35 system-ui,-apple-system,sans-serif; overflow:hidden; }
+  button,input,select { font:inherit; color:inherit; }
+  button { background:#2a2a2a; border:0; border-radius:10px; padding:9px 14px; cursor:pointer; }
+  button.pri { background:var(--acc); color:#111; font-weight:600; }
+  input,select { background:#222; border:1px solid #333; border-radius:10px; padding:9px 11px; width:100%; }
+
+  #stage { position:fixed; inset:0; bottom:var(--sheet,170px); background:#000; }
+  #video,#overlay { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  #overlay { touch-action:manipulation; }
+  #topbar { position:absolute; top:env(safe-area-inset-top,0); left:0; right:0; display:flex; gap:8px;
+    padding:10px; align-items:center; pointer-events:none; }
+  #topbar > * { pointer-events:auto; }
+  #topbar .chip { background:rgba(0,0,0,.6); backdrop-filter:blur(6px); border-radius:20px; padding:7px 12px; }
+  #status { flex:1; font-size:13px; color:#ddd; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #startCam { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:14px 22px; }
+  #toast { position:absolute; left:50%; top:70px; transform:translateX(-50%); background:var(--ok); color:#000;
+    font-weight:700; padding:10px 16px; border-radius:12px; display:none; max-width:90%; text-align:center; }
+
+  #sheet { position:fixed; left:0; right:0; bottom:0; height:var(--sheet,170px); background:var(--card);
+    border-radius:16px 16px 0 0; display:flex; flex-direction:column; padding-bottom:env(safe-area-inset-bottom,0); }
+  #sheetHead { display:flex; align-items:center; gap:10px; padding:10px 12px 6px; }
+  #progress { flex:1; font-weight:600; }
+  #bar { height:4px; background:#333; margin:0 12px; border-radius:2px; overflow:hidden; }
+  #bar > i { display:block; height:100%; width:0; background:var(--ok); transition:width .3s; }
+  #list { flex:1; overflow-x:auto; overflow-y:hidden; display:flex; gap:8px; padding:8px 12px; scroll-snap-type:x proximity; }
+  .part { flex:0 0 92px; background:#262626; border-radius:12px; padding:6px; position:relative; border:2px solid transparent;
+    scroll-snap-align:start; cursor:pointer; text-align:center; font-size:11px; }
+  .part.focus { border-color:var(--acc); }
+  .part.done { opacity:.35; }
+  .part img { width:100%; height:58px; object-fit:contain; background:#fff; border-radius:8px; }
+  .part .sw { position:absolute; top:10px; left:10px; width:14px; height:14px; border-radius:50%; border:1px solid #0008; }
+  .part .q { position:absolute; top:8px; right:8px; background:#000c; border-radius:8px; padding:1px 6px; font-weight:700; }
+  .part .n { margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--mut); }
+  .empty { color:var(--mut); padding:14px; font-size:14px; }
+
+  dialog { background:var(--card); color:var(--fg); border:0; border-radius:16px; width:min(460px,94vw); padding:18px; }
+  dialog::backdrop { background:#000a; }
+  dialog h2 { margin:0 0 12px; font-size:18px; }
+  dialog label { display:block; font-size:12px; color:var(--mut); margin:12px 0 4px; }
+  .row { display:flex; gap:8px; }
+  .row > * { flex:1; }
+  .hint { font-size:12px; color:var(--mut); margin-top:6px; }
+  .hint a { color:var(--acc); }
+  #colorPick { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:160px; overflow:auto; }
+  #colorPick button { padding:5px 8px; font-size:12px; display:flex; gap:6px; align-items:center; }
+  #colorPick i { width:14px; height:14px; border-radius:50%; display:inline-block; border:1px solid #0008; }
+  #result { margin-top:10px; font-size:13px; }
+  #result .cand { display:flex; gap:8px; align-items:center; margin:6px 0; }
+  #result img { width:44px; height:44px; object-fit:contain; background:#fff; border-radius:6px; }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="video" playsinline muted></video>
+  <canvas id="overlay"></canvas>
+  <button id="startCam" class="pri">📷 Kamera starten</button>
+  <div id="topbar">
+    <button class="chip" id="btnSearch">＋ Suche</button>
+    <div class="chip" id="status">Lade eine Teileliste</div>
+    <button class="chip" id="btnAuto" title="Automatisch prüfen">Auto: an</button>
+    <button class="chip" id="btnTorch" title="Licht">🔦</button>
+    <button class="chip" id="btnSettings">⚙︎</button>
+  </div>
+  <div id="toast"></div>
+</div>
+
+<div id="sheet">
+  <div id="sheetHead">
+    <div id="progress">Keine Suche</div>
+    <button id="btnAll" style="padding:6px 10px;font-size:13px">alle Farben</button>
+  </div>
+  <div id="bar"><i></i></div>
+  <div id="list"><div class="empty">Tippe auf „＋ Suche“ und gib eine Setnummer oder ein einzelnes Teil ein.</div></div>
+</div>
+
+<dialog id="dlgSearch">
+  <h2>Was suchst du?</h2>
+  <label>Set (ganze Teileliste abarbeiten)</label>
+  <div class="row"><input id="inSet" placeholder="z.B. 31058-1" inputmode="text"><button class="pri" id="goSet" style="flex:0 0 auto">Laden</button></div>
+  <label>oder einzelnes Teil (Teilenummer)</label>
+  <div class="row"><input id="inPart" placeholder="z.B. 3001"><button id="goPart" style="flex:0 0 auto">Farben</button></div>
+  <div id="colorPick"></div>
+  <div class="hint" id="searchMsg"></div>
+  <div class="row" style="margin-top:14px"><button id="clearList">Liste leeren</button><button onclick="dlgSearch.close()">Schließen</button></div>
+</dialog>
+
+<dialog id="dlgSettings">
+  <h2>Einstellungen</h2>
+  <label>Rebrickable API-Key (für Teilelisten)</label>
+  <input id="inKey" placeholder="API-Key" autocomplete="off">
+  <div class="hint">Kostenlos unter <a href="https://rebrickable.com/api/" target="_blank" rel="noopener">rebrickable.com/api</a>. Wird nur in diesem Browser gespeichert.</div>
+  <label>Farbtoleranz: <span id="tolVal"></span></label>
+  <input id="inTol" type="range" min="6" max="40" step="1">
+  <label>Mindestgröße Fleck: <span id="minVal"></span></label>
+  <input id="inMin" type="range" min="4" max="200" step="2">
+  <div class="hint">Tipp: Steine auf heller, einfarbiger Unterlage verteilen, Licht an. Tippe auf einen Rahmen, um ihn sofort zu prüfen.</div>
+  <div class="row" style="margin-top:14px"><button class="pri" onclick="saveSettings();dlgSettings.close()">OK</button></div>
+</dialog>
+
+<dialog id="dlgResult">
+  <h2 id="resTitle">Ergebnis</h2>
+  <div id="result"></div>
+  <div class="row" style="margin-top:14px"><button onclick="dlgResult.close()">Schließen</button></div>
+</dialog>
+
+<script>
+// ---------- Zustand ----------
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('find.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('find.' + k, JSON.stringify(v)); } catch (e) {} },
+};
+let items = LS.get('items', []);          // {key, part, ids[], name, img, color:{id,name,rgb}, qty, found}
+let focusKey = LS.get('focus', null);    // null = alle offenen Farben
+let settings = Object.assign({ key: '', tol: 16, min: 24, auto: true }, LS.get('settings', {}));
+const $ = id => document.getElementById(id);
+const video = $('video'), overlay = $('overlay'), octx = overlay.getContext('2d');
+
+// ---------- Farbe ----------
+function hex2rgb(h) { h = h.replace('#', ''); return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)]; }
+function srgb2lin(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+const LIN = new Float32Array(256); for (let i = 0; i < 256; i++) LIN[i] = srgb2lin(i);
+function rgb2lab(r, g, b) {
+  r = LIN[r]; g = LIN[g]; b = LIN[b];
+  let x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+  let y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+  let z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+  const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+  x = f(x); y = f(y); z = f(z);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+
+// ---------- Liste ----------
+function save() { LS.set('items', items); LS.set('focus', focusKey); }
+function openItems() { return items.filter(i => i.found < i.qty); }
+function activeItems() {
+  const o = openItems();
+  if (focusKey) { const f = o.find(i => i.key === focusKey); if (f) return [f]; }
+  return o;
+}
+function renderList() {
+  const L = $('list');
+  if (!items.length) { L.innerHTML = '<div class="empty">Tippe auf „＋ Suche“ und gib eine Setnummer oder ein einzelnes Teil ein.</div>'; }
+  else {
+    const sorted = [...items].sort((a, b) => (a.found >= a.qty) - (b.found >= b.qty));
+    L.innerHTML = sorted.map(i => `
+      <div class="part ${i.found >= i.qty ? 'done' : ''} ${i.key === focusKey ? 'focus' : ''}" data-k="${i.key}">
+        <img src="${i.img || ''}" alt="" loading="lazy">
+        <span class="sw" style="background:#${i.color.rgb}"></span>
+        <span class="q">${i.found}/${i.qty}</span>
+        <div class="n">${i.part} · ${i.color.name}</div>
+      </div>`).join('');
+  }
+  const tq = items.reduce((s, i) => s + i.qty, 0), tf = items.reduce((s, i) => s + Math.min(i.found, i.qty), 0);
+  $('progress').textContent = items.length ? `${tf} / ${tq} gefunden` : 'Keine Suche';
+  $('bar').firstElementChild.style.width = tq ? (100 * tf / tq) + '%' : '0';
+  $('btnAll').textContent = focusKey ? 'alle Farben' : 'Fokus: alle';
+  rebuildTargets();
+}
+$('list').addEventListener('click', e => {
+  const p = e.target.closest('.part'); if (!p) return;
+  const it = items.find(i => i.key === p.dataset.k);
+  if (it.found >= it.qty) { if (confirm('Wieder als offen markieren?')) it.found = 0; }
+  else focusKey = focusKey === it.key ? null : it.key;
+  save(); renderList();
+});
+$('list').addEventListener('contextmenu', e => {
+  const p = e.target.closest('.part'); if (!p) return; e.preventDefault();
+  const it = items.find(i => i.key === p.dataset.k); it.found = Math.min(it.qty, it.found + 1); save(); renderList();
+});
+$('btnAll').onclick = () => { focusKey = null; save(); renderList(); };
+
+// ---------- Rebrickable ----------
+async function rb(path) {
+  if (!settings.key) { dlgSettings.showModal(); throw new Error('Bitte zuerst einen Rebrickable API-Key eintragen.'); }
+  const r = await fetch('https://rebrickable.com/api/v3/lego/' + path + (path.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(settings.key));
+  if (!r.ok) throw new Error('Rebrickable: ' + r.status + (r.status === 404 ? ' (nicht gefunden)' : ''));
+  return r.json();
+}
+function idsOf(part) {
+  const ids = new Set([part.part_num]);
+  const ex = part.external_ids || {};
+  for (const k of ['BrickLink', 'LDraw']) (ex[k] || []).forEach(x => ids.add(String(x)));
+  return [...ids];
+}
+function addItem(part, color, qty) {
+  const key = part.part_num + '|' + color.id;
+  const ex = items.find(i => i.key === key);
+  if (ex) { ex.qty += qty; return; }
+  items.push({ key, part: part.part_num, ids: idsOf(part), name: part.name, img: part.part_img_url,
+    color: { id: color.id, name: color.name, rgb: color.rgb }, qty, found: 0 });
+}
+$('goSet').onclick = async () => {
+  let s = $('inSet').value.trim(); if (!s) return; if (!s.includes('-')) s += '-1';
+  $('searchMsg').textContent = 'Lade ' + s + ' …';
+  try {
+    const set = await rb('sets/' + s + '/');
+    let url = 'sets/' + s + '/parts/?page_size=1000&inc_part_details=1', n = 0;
+    items = []; focusKey = null;
+    while (url) {
+      const d = await rb(url);
+      d.results.filter(r => !r.is_spare).forEach(r => { addItem(r.part, r.color, r.quantity); n++; });
+      url = d.next ? d.next.replace(/^.*\/lego\//, '').replace(/[?&]key=[^&]*/, '') : null;
+    }
+    save(); renderList(); dlgSearch.close();
+    status(`${set.name}: ${items.length} Teilesorten`);
+  } catch (e) { $('searchMsg').textContent = e.message; }
+};
+$('goPart').onclick = async () => {
+  const p = $('inPart').value.trim(); if (!p) return;
+  $('searchMsg').textContent = 'Lade Farben …'; $('colorPick').innerHTML = '';
+  try {
+    const [part, cols, all] = await Promise.all([rb('parts/' + encodeURIComponent(p) + '/'), rb('parts/' + encodeURIComponent(p) + '/colors/?page_size=500'), allColors()]);
+    $('searchMsg').textContent = part.name + ' – Farbe wählen:';
+    cols.results.forEach(c => {
+      const col = all[c.color_id] || { id: c.color_id, name: c.color_name, rgb: '888888' };
+      const b = document.createElement('button');
+      b.innerHTML = `<i style="background:#${col.rgb}"></i>${col.name}`;
+      b.onclick = () => { addItem(Object.assign({}, part, { part_img_url: c.part_img_url || part.part_img_url }), col, 1);
+        focusKey = part.part_num + '|' + col.id; save(); renderList(); dlgSearch.close(); status('Suche: ' + part.name + ' in ' + col.name); };
+      $('colorPick').appendChild(b);
+    });
+  } catch (e) { $('searchMsg').textContent = e.message; }
+};
+let colorCache = null;
+async function allColors() {
+  if (colorCache) return colorCache;
+  const d = await rb('colors/?page_size=500'); colorCache = {};
+  d.results.forEach(c => colorCache[c.id] = { id: c.id, name: c.name, rgb: c.rgb });
+  return colorCache;
+}
+$('clearList').onclick = () => { if (confirm('Liste wirklich leeren?')) { items = []; focusKey = null; save(); renderList(); } };
+
+// ---------- Kamera ----------
+let stream = null, track = null, torchOn = false;
+async function startCam() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } });
+    video.srcObject = stream; await video.play();
+    track = stream.getVideoTracks()[0];
+    $('startCam').style.display = 'none';
+    requestAnimationFrame(loop);
+  } catch (e) { status('Kamera nicht verfügbar: ' + e.message); }
+}
+$('startCam').onclick = startCam;
+$('btnTorch').onclick = async () => {
+  if (!track) return;
+  torchOn = !torchOn;
+  try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); }
+  catch (e) { torchOn = false; status('Licht wird von diesem Gerät nicht unterstützt'); }
+  $('btnTorch').style.background = torchOn ? 'rgba(255,212,0,.7)' : '';
+};
+
+// ---------- Farbsuche ----------
+const SW = 192;                          // Analyse-Breite
+const work = document.createElement('canvas'), wctx = work.getContext('2d', { willReadFrequently: true });
+let targets = [];                        // {lab, rgb, items[]}
+function rebuildTargets() {
+  const byColor = new Map();
+  activeItems().forEach(i => {
+    if (!byColor.has(i.color.id)) byColor.set(i.color.id, { rgb: i.color.rgb, lab: rgb2lab(...hex2rgb(i.color.rgb)), items: [] });
+    byColor.get(i.color.id).items.push(i);
+  });
+  targets = [...byColor.values()];
+}
+let blobs = [], lastAuto = 0, busy = false;
+const recent = [];                       // zuletzt geprüfte Stellen {x,y,t}
+
+function analyse() {
+  const vw = video.videoWidth, vh = video.videoHeight; if (!vw) return [];
+  const W = SW, H = Math.round(SW * vh / vw);
+  if (work.width !== W) { work.width = W; work.height = H; }
+  wctx.drawImage(video, 0, 0, W, H);
+  const px = wctx.getImageData(0, 0, W, H).data;
+  const N = W * H, L = new Float32Array(N), A = new Float32Array(N), B = new Float32Array(N);
+  let mean = [0, 0, 0];
+  for (let i = 0, p = 0; i < N; i++, p += 4) {
+    const lab = rgb2lab(px[p], px[p + 1], px[p + 2]); L[i] = lab[0]; A[i] = lab[1]; B[i] = lab[2];
+    mean[0] += px[p]; mean[1] += px[p + 1]; mean[2] += px[p + 2];
+  }
+  const out = [];
+  const tol = settings.tol, tol2 = tol * tol, minA = settings.min * (W / SW) ** 2;
+  const mask = new Uint8Array(N), lbl = new Int32Array(N), stack = new Int32Array(N);
+  targets.forEach(t => {
+    const [tl, ta, tb] = t.lab;
+    // Helligkeit weniger stark gewichten (Schatten), Farbton stärker
+    for (let i = 0; i < N; i++) {
+      const dl = (L[i] - tl) * 0.5, da = A[i] - ta, db = B[i] - tb;
+      mask[i] = dl * dl + da * da + db * db < tol2 ? 1 : 0;
+    }
+    lbl.fill(0); let cur = 0;
+    for (let s = 0; s < N; s++) {
+      if (!mask[s] || lbl[s]) continue;
+      cur++; let sp = 0; stack[sp++] = s; lbl[s] = cur;
+      let n = 0, x0 = W, y0 = H, x1 = 0, y1 = 0;
+      while (sp) {
+        const i = stack[--sp], x = i % W, y = (i / W) | 0; n++;
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        if (x > 0 && mask[i - 1] && !lbl[i - 1]) { lbl[i - 1] = cur; stack[sp++] = i - 1; }
+        if (x < W - 1 && mask[i + 1] && !lbl[i + 1]) { lbl[i + 1] = cur; stack[sp++] = i + 1; }
+        if (y > 0 && mask[i - W] && !lbl[i - W]) { lbl[i - W] = cur; stack[sp++] = i - W; }
+        if (y < H - 1 && mask[i + W] && !lbl[i + W]) { lbl[i + W] = cur; stack[sp++] = i + W; }
+      }
+      const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+      // zu klein, oder riesige Fläche (Kistenboden/Hintergrund) → ignorieren
+      if (n < minA || bw * bh > N * 0.35) continue;
+      if (n / (bw * bh) < 0.25) continue;
+      out.push({ x: x0 / W, y: y0 / H, w: bw / W, h: bh / H, n, t });
+    }
+  });
+  out.sort((a, b) => b.n - a.n);
+  return out.slice(0, 25);
+}
+
+// Video→Bildschirm-Abbildung (object-fit: cover)
+function mapRect(b) {
+  const cw = overlay.width, ch = overlay.height, vw = video.videoWidth, vh = video.videoHeight;
+  const s = Math.max(cw / vw, ch / vh), ox = (cw - vw * s) / 2, oy = (ch - vh * s) / 2;
+  return { x: ox + b.x * vw * s, y: oy + b.y * vh * s, w: b.w * vw * s, h: b.h * vh * s };
+}
+let flash = null;
+function draw() {
+  const dpr = devicePixelRatio || 1, r = overlay.getBoundingClientRect();
+  if (overlay.width !== Math.round(r.width * dpr)) { overlay.width = Math.round(r.width * dpr); overlay.height = Math.round(r.height * dpr); }
+  octx.clearRect(0, 0, overlay.width, overlay.height);
+  octx.lineWidth = 2.5 * dpr;
+  blobs.forEach(b => {
+    const m = mapRect(b), pad = 6 * dpr;
+    octx.strokeStyle = '#' + b.t.rgb; octx.setLineDash([]);
+    octx.strokeRect(m.x - pad, m.y - pad, m.w + 2 * pad, m.h + 2 * pad);
+    octx.strokeStyle = '#fff8'; octx.setLineDash([4 * dpr, 4 * dpr]);
+    octx.strokeRect(m.x - pad - 2 * dpr, m.y - pad - 2 * dpr, m.w + 2 * pad + 4 * dpr, m.h + 2 * pad + 4 * dpr);
+  });
+  octx.setLineDash([]);
+  if (flash && performance.now() - flash.t < 2500) {
+    const m = mapRect(flash.b), pad = 10 * dpr;
+    octx.lineWidth = 6 * dpr; octx.strokeStyle = flash.ok ? '#2ecc71' : '#ffd400';
+    octx.strokeRect(m.x - pad, m.y - pad, m.w + 2 * pad, m.h + 2 * pad);
+    octx.fillStyle = flash.ok ? '#2ecc71' : '#ffd400'; octx.font = `700 ${15 * dpr}px system-ui`;
+    octx.fillText(flash.label, m.x - pad, m.y - pad - 6 * dpr);
+  }
+}
+let lastA = 0;
+function loop(t) {
+  if (t - lastA > 80) {                  // ~12 Analysen/s
+    lastA = t;
+    blobs = targets.length ? analyse() : [];
+    if (settings.auto && !busy && blobs.length && t - lastAuto > 1400) {
+      const b = blobs.find(b => !recent.some(r => Math.abs(r.x - (b.x + b.w / 2)) < 0.06 && Math.abs(r.y - (b.y + b.h / 2)) < 0.06 && t - r.t < 6000));
+      if (b) { lastAuto = t; check(b, false); }
+    }
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ---------- Brickognize ----------
+function crop(b) {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const cx = (b.x + b.w / 2) * vw, cy = (b.y + b.h / 2) * vh;
+  const side = Math.max(b.w * vw, b.h * vh) * 1.6 + 30;
+  const c = document.createElement('canvas'); c.width = c.height = 384;
+  const cc = c.getContext('2d'); cc.fillStyle = '#fff'; cc.fillRect(0, 0, 384, 384);
+  cc.drawImage(video, cx - side / 2, cy - side / 2, side, side, 0, 0, 384, 384);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.9));
+}
+async function check(b, manual) {
+  busy = true;
+  const now = performance.now();
+  recent.push({ x: b.x + b.w / 2, y: b.y + b.h / 2, t: now }); if (recent.length > 30) recent.shift();
+  if (manual) status('Prüfe …');
+  try {
+    const fd = new FormData(); fd.append('query_image', await crop(b), 'crop.jpg');
+    const r = await fetch('https://api.brickognize.com/predict/parts/', { method: 'POST', body: fd });
+    const d = await r.json();
+    const cands = (d.items || []).slice(0, 5);
+    // Treffer: einer der Top-Kandidaten passt zu einem gesuchten Teil dieser Farbe
+    let hit = null;
+    for (const c of cands.slice(0, 3)) {
+      if (c.score < 0.35) continue;
+      hit = b.t.items.find(i => i.found < i.qty && i.ids.includes(String(c.id)));
+      if (hit) { hit._score = c.score; break; }
+    }
+    if (hit) {
+      hit.found++; save(); renderList();
+      flash = { b, ok: true, label: '✓ ' + hit.part, t: performance.now() };
+      toast(`Gefunden: ${hit.name} (${hit.color.name}) – ${hit.found}/${hit.qty}`);
+      try { navigator.vibrate && navigator.vibrate([80, 40, 80]); } catch (e) {}
+      beep();
+    } else if (manual) {
+      flash = { b, ok: false, label: cands[0] ? cands[0].id : '?', t: performance.now() };
+      showResult(cands, b);
+    }
+    if (manual) status(hit ? 'Treffer!' : 'Kein gesuchtes Teil');
+  } catch (e) { if (manual) status('Brickognize-Fehler: ' + e.message); }
+  busy = false;
+}
+function showResult(cands, b) {
+  $('resTitle').textContent = 'Kein gesuchtes Teil erkannt';
+  $('result').innerHTML = (cands.length ? '<div class="hint">Brickognize meint:</div>' : 'Nichts erkannt – näher ran oder Teil freilegen.') +
+    cands.map(c => `<div class="cand"><img src="${c.img_url}" alt=""><div><b>${c.id}</b> ${c.name}<br><span class="hint">${Math.round(c.score * 100)} %</span></div>
+      ${b.t.items.length ? `<button data-id="${c.id}" style="margin-left:auto">ist es</button>` : ''}</div>`).join('');
+  $('result').querySelectorAll('button[data-id]').forEach(btn => btn.onclick = () => {
+    // Manuell bestätigen: erstes offenes Teil dieser Farbe zählen
+    const it = b.t.items.find(i => i.found < i.qty);
+    if (it) { it.found++; save(); renderList(); toast('Gezählt: ' + it.name); }
+    dlgResult.close();
+  });
+  dlgResult.showModal();
+}
+overlay.addEventListener('click', e => {
+  const r = overlay.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  const x = (e.clientX - r.left) * dpr, y = (e.clientY - r.top) * dpr;
+  const b = blobs.find(b => { const m = mapRect(b), p = 16 * dpr; return x > m.x - p && x < m.x + m.w + p && y > m.y - p && y < m.y + m.h + p; });
+  if (b && !busy) check(b, true);
+});
+
+// ---------- UI ----------
+let actx = null;
+function beep() {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = 880; o.connect(g); g.connect(actx.destination);
+    g.gain.setValueAtTime(0.2, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.25);
+    o.start(); o.stop(actx.currentTime + 0.25);
+  } catch (e) {}
+}
+let toastT;
+function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(toastT); toastT = setTimeout(() => t.style.display = 'none', 2500); }
+function status(m) { $('status').textContent = m; }
+$('btnSearch').onclick = () => { $('searchMsg').textContent = ''; dlgSearch.showModal(); };
+$('btnSettings').onclick = () => {
+  $('inKey').value = settings.key; $('inTol').value = settings.tol; $('inMin').value = settings.min; upd(); dlgSettings.showModal();
+};
+function upd() { $('tolVal').textContent = $('inTol').value; $('minVal').textContent = $('inMin').value; }
+$('inTol').oninput = $('inMin').oninput = () => { upd(); settings.tol = +$('inTol').value; settings.min = +$('inMin').value; };
+function saveSettings() { settings.key = $('inKey').value.trim(); settings.tol = +$('inTol').value; settings.min = +$('inMin').value; LS.set('settings', settings); }
+$('btnAuto').onclick = () => { settings.auto = !settings.auto; LS.set('settings', settings); $('btnAuto').textContent = 'Auto: ' + (settings.auto ? 'an' : 'aus'); };
+$('btnAuto').textContent = 'Auto: ' + (settings.auto ? 'an' : 'aus');
+
+renderList();
+if (items.length) status(openItems().length + ' Teilesorten offen');
+</script>
+</body>
+</html>
