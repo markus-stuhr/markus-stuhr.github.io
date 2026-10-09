@@ -99,9 +99,6 @@
 
 <dialog id="dlgSettings">
   <h2>Einstellungen</h2>
-  <label>Rebrickable API-Key (für Teilelisten)</label>
-  <input id="inKey" placeholder="API-Key" autocomplete="off">
-  <div class="hint">Kostenlos unter <a href="https://rebrickable.com/api/" target="_blank" rel="noopener">rebrickable.com/api</a>. Wird nur in diesem Browser gespeichert.</div>
   <label>Farbtoleranz: <span id="tolVal"></span></label>
   <input id="inTol" type="range" min="6" max="40" step="1">
   <label>Mindestgröße Fleck: <span id="minVal"></span></label>
@@ -124,7 +121,7 @@ const LS = {
 };
 let items = LS.get('items', []);          // {key, part, ids[], name, img, color:{id,name,rgb}, qty, found}
 let focusKey = LS.get('focus', null);    // null = alle offenen Farben
-let settings = Object.assign({ key: '', tol: 16, min: 24, auto: true }, LS.get('settings', {}));
+let settings = Object.assign({ tol: 16, min: 24, auto: true }, LS.get('settings', {}));
 const $ = id => document.getElementById(id);
 const video = $('video'), overlay = $('overlay'), octx = overlay.getContext('2d');
 
@@ -183,9 +180,10 @@ $('list').addEventListener('contextmenu', e => {
 $('btnAll').onclick = () => { focusKey = null; save(); renderList(); };
 
 // ---------- Rebrickable ----------
+// Rebrickable läuft über den eigenen Proxy (api.illstyles.de), der Key liegt nur dort
+const RB = 'https://api.illstyles.de/rb/';
 async function rb(path) {
-  if (!settings.key) { dlgSettings.showModal(); throw new Error('Bitte zuerst einen Rebrickable API-Key eintragen.'); }
-  const r = await fetch('https://rebrickable.com/api/v3/lego/' + path + (path.includes('?') ? '&' : '?') + 'key=' + encodeURIComponent(settings.key));
+  const r = await fetch(path.startsWith('http') ? path : RB + path);
   if (!r.ok) throw new Error('Rebrickable: ' + r.status + (r.status === 404 ? ' (nicht gefunden)' : ''));
   return r.json();
 }
@@ -212,7 +210,7 @@ $('goSet').onclick = async () => {
     while (url) {
       const d = await rb(url);
       d.results.filter(r => !r.is_spare).forEach(r => { addItem(r.part, r.color, r.quantity); n++; });
-      url = d.next ? d.next.replace(/^.*\/lego\//, '').replace(/[?&]key=[^&]*/, '') : null;
+      url = d.next || null;
     }
     save(); renderList(); dlgSearch.close();
     status(`${set.name}: ${items.length} Teilesorten`);
@@ -444,11 +442,11 @@ function toast(m) { const t = $('toast'); t.textContent = m; t.style.display = '
 function status(m) { $('status').textContent = m; }
 $('btnSearch').onclick = () => { $('searchMsg').textContent = ''; dlgSearch.showModal(); };
 $('btnSettings').onclick = () => {
-  $('inKey').value = settings.key; $('inTol').value = settings.tol; $('inMin').value = settings.min; upd(); dlgSettings.showModal();
+  $('inTol').value = settings.tol; $('inMin').value = settings.min; upd(); dlgSettings.showModal();
 };
 function upd() { $('tolVal').textContent = $('inTol').value; $('minVal').textContent = $('inMin').value; }
 $('inTol').oninput = $('inMin').oninput = () => { upd(); settings.tol = +$('inTol').value; settings.min = +$('inMin').value; };
-function saveSettings() { settings.key = $('inKey').value.trim(); settings.tol = +$('inTol').value; settings.min = +$('inMin').value; LS.set('settings', settings); }
+function saveSettings() { settings.tol = +$('inTol').value; settings.min = +$('inMin').value; LS.set('settings', settings); }
 $('btnAuto').onclick = () => { settings.auto = !settings.auto; LS.set('settings', settings); $('btnAuto').textContent = 'Auto: ' + (settings.auto ? 'an' : 'aus'); };
 $('btnAuto').textContent = 'Auto: ' + (settings.auto ? 'an' : 'aus');
 
