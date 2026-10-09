@@ -277,6 +277,10 @@ fetch('circuits.json').then(r => r.json()).then(c => {
   $('circuit').innerHTML = c.map((x, i) => `<option value="${i}">${x.name}</option>`).join('');
   $('circuit').value = c.findIndex(x => x.name.includes('Monza'));
 });
+const qs = new URLSearchParams(location.search);
+if (qs.has('a')) angle = +qs.get('a');
+if (qs.has('r')) $('res').value = qs.get('r');
+if (qs.get('ui') === '0') ['panel', 'toggle', 'credit'].forEach(id => $(id).classList.add('hidden'));
 setModel('car'); resize(); requestAnimationFrame(frame);
 </script>
 </body>
