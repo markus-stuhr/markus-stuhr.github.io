@@ -1,6 +1,6 @@
 import json, struct, io
 from PIL import Image
-src = "/Users/markusstuhr/markus-stuhr.github.io/assets/models/KayKit_Adventurers_2.0_FREE/Characters/gltf/Mage.glb"
+src = "/Users/markusstuhr/Repos/markus-stuhr.github.io/assets/models/KayKit_Adventurers_2.0_FREE/Characters/gltf/Mage.glb"
 b = open(src, 'rb').read()
 jlen = struct.unpack('<I', b[12:16])[0]
 j = json.loads(b[20:20+jlen])

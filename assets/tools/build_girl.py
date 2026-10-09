@@ -9,9 +9,9 @@ damit alle Animationen der Rig-Medium-Bibliothek weiter passen.
 """
 import bpy, os
 
-SRC = "/Users/markusstuhr/markus-stuhr.github.io/assets/models/KayKit_Adventurers_2.0_FREE/Characters/gltf/Mage.glb"
+SRC = "/Users/markusstuhr/Repos/markus-stuhr.github.io/assets/models/KayKit_Adventurers_2.0_FREE/Characters/gltf/Mage.glb"
 TEX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "girl_texture.png")
-OUT_DIR = "/Users/markusstuhr/markus-stuhr.github.io/assets/models/Custom_Characters/Characters/gltf"
+OUT_DIR = "/Users/markusstuhr/Repos/markus-stuhr.github.io/assets/models/Custom_Characters/Characters/gltf"
 OUT = os.path.join(OUT_DIR, "Redhead_Adventurer.glb")
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
