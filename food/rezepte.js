@@ -775,5 +775,33 @@ window.REZEPTE = [
         ] }
     ],
     tipps: ['Pita kurz mit in den Ofen legen, dann ist sie warm und knusprig.', 'Mit Kokosjoghurt statt Crème fraîche wird das Gericht vegan.', 'Quelle: @15minutenrezepte']
+  },
+  {
+    id: 'lasagne', titel: 'Klassische Lasagne', kategorie: 'Italienisch', bild: 'img/lasagne.svg', emoji: '🍝',
+    farbe: ['#a8401f', '#f0c27a'], portionen: '6 Portionen', zeit: '2 Std. 30 Min.',
+    teaser: 'Lange geschmorter Ragù alla Bolognese, samtige Béchamel und goldbraun überbackener Käse – Schicht für Schicht der Sonntagsklassiker.',
+    tags: ['Familie', 'Klassiker', 'Ofen'],
+    abschnitte: [
+      { titel: 'Ragù', zutaten: [['500 g', 'Rinderhack (oder halb Rind, halb Schwein)'], ['1', 'Zwiebel'], ['1', 'Karotte'], ['1 Stange', 'Staudensellerie'], ['2', 'Knoblauchzehen'], ['2 EL', 'Olivenöl'], ['2 EL', 'Tomatenmark'], ['150 ml', 'Rotwein (optional)'], ['800 g', 'Passierte Tomaten'], ['1 TL', 'Oregano, getrocknet'], ['', 'Salz, Pfeffer, 1 Prise Zucker']],
+        schritte: [
+          { t: 'Soffritto', x: 'Zwiebel, Karotte und Sellerie sehr fein würfeln, Knoblauch hacken. Im Olivenöl bei mittlerer Hitze weich dünsten.', z: '8 Min.' },
+          { t: 'Hack anbraten', x: 'Hitze erhöhen, Hackfleisch dazugeben und krümelig braun anbraten. Tomatenmark kurz mitrösten.', z: '8 Min.' },
+          { t: 'Ablöschen', x: 'Mit Rotwein ablöschen und fast vollständig einkochen lassen.', z: '3 Min.' },
+          { t: 'Schmoren', x: 'Passierte Tomaten und Oregano einrühren, mit Salz, Pfeffer und Zucker würzen. Halb zugedeckt bei kleiner Hitze schmoren, gelegentlich umrühren. Der Ragù soll dick, aber nicht trocken sein.', z: '60 Min.' }
+        ] },
+      { titel: 'Béchamel', zutaten: [['60 g', 'Butter'], ['60 g', 'Mehl'], ['750 ml', 'Milch'], ['', 'Salz, Pfeffer, Muskatnuss']],
+        schritte: [
+          { t: 'Mehlschwitze', x: 'Butter in einem Topf schmelzen, Mehl einrühren und unter Rühren kurz anschwitzen, ohne dass es braun wird.', z: '2 Min.' },
+          { t: 'Milch einrühren', x: 'Milch nach und nach mit dem Schneebesen einrühren, aufkochen und unter Rühren leicht cremig eindicken lassen. Mit Salz, Pfeffer und frisch geriebener Muskatnuss abschmecken.', z: '5 Min.' }
+        ] },
+      { titel: 'Schichten & Backen', zutaten: [['250 g', 'Lasagneplatten (ohne Vorkochen)'], ['125 g', 'Mozzarella'], ['80 g', 'Parmesan, frisch gerieben'], ['1 EL', 'Butter für die Form']],
+        schritte: [
+          { t: 'Ofen vorheizen', x: 'Ofen auf 180 °C Ober-/Unterhitze vorheizen, eine Auflaufform (ca. 30 × 20 cm) einfetten.' },
+          { t: 'Schichten', x: 'Etwas Béchamel auf den Boden streichen. Dann abwechselnd Lasagneplatten, Ragù, Béchamel und etwas Parmesan schichten – meist 4 Lagen. Mit Platten, Béchamel, zerzupftem Mozzarella und restlichem Parmesan abschließen.' },
+          { t: 'Backen', x: 'Im Ofen backen, bis die Oberfläche goldbraun blubbert. Falls sie zu schnell bräunt, mit Alufolie abdecken.', z: '40 Min.' },
+          { t: 'Ruhen lassen', x: 'Vor dem Anschneiden ruhen lassen, damit die Schichten fest werden und sich sauber schneiden lassen.', z: '10 Min.' }
+        ] }
+    ],
+    tipps: ['Der Ragù schmeckt am besten, wenn er am Vortag gekocht wird.', 'Lasagne lässt sich gut vorbereiten und ungebacken einfrieren – dann ca. 20 Min. länger backen.', 'Frische Basilikumblätter zum Servieren darüber zupfen.']
   }
 ];
