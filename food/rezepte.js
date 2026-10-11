@@ -806,24 +806,24 @@ window.REZEPTE = [
   },
   {
     id: 'apfelkuchen', titel: 'Saftiger Apfelkuchen mit Streusel', kategorie: 'Deutsch', bild: 'img/apfelkuchen.svg', emoji: '🍎',
-    farbe: ['#b5652a', '#f3d08a'], portionen: '1 Springform (26 cm)', zeit: '1 Std. 30 Min.',
+    farbe: ['#b5652a', '#f3d08a'], portionen: '12 Stück (1 Springform 26 cm)', zeit: '1 Std. 30 Min.',
     teaser: 'Lockerer Rührteig, säuerliche Apfelstücke und grobe, knusprige Butterstreusel obendrauf – der Kuchen, der nach Herbst und Sonntagnachmittag duftet.',
     tags: ['Kuchen', 'Herbst', 'Ofen'],
     abschnitte: [
-      { titel: 'Äpfel', zutaten: [['4', 'Säuerliche Äpfel (z. B. Elstar oder Boskop)'], ['1 EL', 'Zitronensaft']],
+      { titel: 'Äpfel', zutaten: [['750 g', 'Äpfel (geschält und entkernt), z. B. Elstar oder Boskop'], ['1 EL', 'Zitronensaft']],
         schritte: [
           { t: 'Äpfel vorbereiten', x: 'Äpfel schälen, entkernen und in Spalten oder Würfel schneiden. Mit etwas Zitronensaft mischen, damit sie nicht braun werden.' }
         ] },
-      { titel: 'Streusel', zutaten: [['150 g', 'Mehl'], ['100 g', 'Zucker'], ['1 Prise', 'Salz'], ['100 g', 'Kalte Butter']],
+      { titel: 'Streusel', zutaten: [['125 g', 'Mehl (Weizen 405 oder Dinkel 630)'], ['75 g', 'Kalte Butter'], ['40 g', 'Zucker'], ['10 g', 'Vanillezucker'], ['1 Prise', 'Zimt'], ['1 Prise', 'Salz']],
         schritte: [
           { t: 'Streusel mischen', x: 'Trockene Zutaten kurz vermengen, kalte Butter in Stücken zugeben und nur so lange verreiben, bis krümelige Streusel entstehen. Nicht zu Teig kneten.' },
           { t: 'Kühlen', x: 'Streusel in den Kühlschrank stellen, während du den Rührteig zubereitest.', z: '15 Min.' }
         ] },
-      { titel: 'Rührteig', zutaten: [['150 g', 'Weiche Butter'], ['130 g', 'Zucker'], ['1 Pck.', 'Vanillezucker'], ['1', 'Bio-Zitrone (Abrieb)'], ['1 Prise', 'Salz'], ['3', 'Eier'], ['250 g', 'Mehl'], ['2 TL', 'Backpulver']],
+      { titel: 'Rührteig', zutaten: [['250 g', 'Mehl (Weizen 405 oder Dinkel 630)'], ['200 g', 'Weiche Butter, zimmerwarm'], ['150 g', 'Zucker'], ['10 g', 'Vanillezucker'], ['3', 'Eier (Gr. M), zimmerwarm'], ['2 TL', 'Backpulver'], ['1 TL', 'Zitronenschalenabrieb'], ['1 Prise', 'Salz'], ['3–4 EL', 'Milch (mit Dinkelmehl etwas mehr)']],
         schritte: [
           { t: 'Aufschlagen', x: 'Weiche Butter mit Zucker, Vanille, Zitronenschale und Salz hellcremig aufschlagen.', z: '3–5 Min.' },
           { t: 'Eier einrühren', x: 'Eier nacheinander einrühren, bis die Masse stabil und cremig ist.' },
-          { t: 'Mehl unterheben', x: 'Mehl mit Backpulver sieben und nur kurz unterheben, gerade so, dass keine Mehlnester mehr sichtbar sind. Zu langes Rühren macht den Teig zäh und kompakt.' }
+          { t: 'Mehl unterheben', x: 'Mehl mit Backpulver sieben und mit der Milch nur kurz unterheben, gerade so, dass keine Mehlnester mehr sichtbar sind. Zu langes Rühren macht den Teig zäh und kompakt.' }
         ] },
       { titel: 'Schichten & Backen', zutaten: [['', 'Butter für die Form']],
         schritte: [
