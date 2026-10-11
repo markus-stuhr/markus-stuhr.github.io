@@ -805,7 +805,7 @@ window.REZEPTE = [
     tipps: ['Der Ragù schmeckt am besten, wenn er am Vortag gekocht wird.', 'Lasagne lässt sich gut vorbereiten und ungebacken einfrieren – dann ca. 20 Min. länger backen.', 'Frische Basilikumblätter zum Servieren darüber zupfen.']
   },
   {
-    id: 'apfelkuchen', titel: 'Saftiger Apfelkuchen mit Streusel', kategorie: 'Deutsch', emoji: '🍎',
+    id: 'apfelkuchen', titel: 'Saftiger Apfelkuchen mit Streusel', kategorie: 'Deutsch', bild: 'img/apfelkuchen.svg', emoji: '🍎',
     farbe: ['#b5652a', '#f3d08a'], portionen: '1 Springform (26 cm)', zeit: '1 Std. 30 Min.',
     teaser: 'Lockerer Rührteig, säuerliche Apfelstücke und grobe, knusprige Butterstreusel obendrauf – der Kuchen, der nach Herbst und Sonntagnachmittag duftet.',
     tags: ['Kuchen', 'Herbst', 'Ofen'],
