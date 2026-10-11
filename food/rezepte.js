@@ -803,5 +803,35 @@ window.REZEPTE = [
         ] }
     ],
     tipps: ['Der Ragù schmeckt am besten, wenn er am Vortag gekocht wird.', 'Lasagne lässt sich gut vorbereiten und ungebacken einfrieren – dann ca. 20 Min. länger backen.', 'Frische Basilikumblätter zum Servieren darüber zupfen.']
+  },
+  {
+    id: 'apfelkuchen', titel: 'Saftiger Apfelkuchen mit Streusel', kategorie: 'Deutsch', emoji: '🍎',
+    farbe: ['#b5652a', '#f3d08a'], portionen: '1 Springform (26 cm)', zeit: '1 Std. 30 Min.',
+    teaser: 'Lockerer Rührteig, säuerliche Apfelstücke und grobe, knusprige Butterstreusel obendrauf – der Kuchen, der nach Herbst und Sonntagnachmittag duftet.',
+    tags: ['Kuchen', 'Herbst', 'Ofen'],
+    abschnitte: [
+      { titel: 'Äpfel', zutaten: [['4', 'Säuerliche Äpfel (z. B. Elstar oder Boskop)'], ['1 EL', 'Zitronensaft']],
+        schritte: [
+          { t: 'Äpfel vorbereiten', x: 'Äpfel schälen, entkernen und in Spalten oder Würfel schneiden. Mit etwas Zitronensaft mischen, damit sie nicht braun werden.' }
+        ] },
+      { titel: 'Streusel', zutaten: [['150 g', 'Mehl'], ['100 g', 'Zucker'], ['1 Prise', 'Salz'], ['100 g', 'Kalte Butter']],
+        schritte: [
+          { t: 'Streusel mischen', x: 'Trockene Zutaten kurz vermengen, kalte Butter in Stücken zugeben und nur so lange verreiben, bis krümelige Streusel entstehen. Nicht zu Teig kneten.' },
+          { t: 'Kühlen', x: 'Streusel in den Kühlschrank stellen, während du den Rührteig zubereitest.', z: '15 Min.' }
+        ] },
+      { titel: 'Rührteig', zutaten: [['150 g', 'Weiche Butter'], ['130 g', 'Zucker'], ['1 Pck.', 'Vanillezucker'], ['1', 'Bio-Zitrone (Abrieb)'], ['1 Prise', 'Salz'], ['3', 'Eier'], ['250 g', 'Mehl'], ['2 TL', 'Backpulver']],
+        schritte: [
+          { t: 'Aufschlagen', x: 'Weiche Butter mit Zucker, Vanille, Zitronenschale und Salz hellcremig aufschlagen.', z: '3–5 Min.' },
+          { t: 'Eier einrühren', x: 'Eier nacheinander einrühren, bis die Masse stabil und cremig ist.' },
+          { t: 'Mehl unterheben', x: 'Mehl mit Backpulver sieben und nur kurz unterheben, gerade so, dass keine Mehlnester mehr sichtbar sind. Zu langes Rühren macht den Teig zäh und kompakt.' }
+        ] },
+      { titel: 'Schichten & Backen', zutaten: [['', 'Butter für die Form']],
+        schritte: [
+          { t: 'Schichten', x: 'Rührteig in die gefettete Form streichen und die Äpfel darüber verteilen. Gekühlte Streusel locker obendrauf streuen, nicht andrücken.' },
+          { t: 'Backen', x: 'Auf mittlerer Schiene im vorgeheizten Ofen bei 175–180 °C Ober-/Unterhitze backen. Stäbchenprobe in der Teigzone, nicht in den Äpfeln: ein paar feuchte Krümel sind okay, roher Teig nicht.', z: '45–55 Min.' },
+          { t: 'Auskühlen', x: 'In der Form ruhen lassen, dann den Rand lösen und auf einem Gitter auskühlen lassen.', z: '10 Min.' }
+        ] }
+    ],
+    tipps: ['Leicht säuerliche, formstabile Sorten wie Elstar oder Boskop bringen Frische und bleiben bissfest.', 'Gut gekühlte Streusel schmelzen weniger und backen knuspriger.', 'Locker gestreute Streusel backen rundum goldbraun und bleiben knusprig.', 'Ohne Streusel und mit sichtbaren Äpfeln wird daraus ein versunkener Apfelkuchen.']
   }
 ];
