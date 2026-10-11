@@ -810,28 +810,31 @@ window.REZEPTE = [
     teaser: 'Lockerer Rührteig, säuerliche Apfelstücke und grobe, knusprige Butterstreusel obendrauf – der Kuchen, der nach Herbst und Sonntagnachmittag duftet.',
     tags: ['Kuchen', 'Herbst', 'Ofen'],
     abschnitte: [
-      { titel: 'Äpfel', zutaten: [['750 g', 'Äpfel (geschält und entkernt), z. B. Elstar oder Boskop'], ['1 EL', 'Zitronensaft']],
+      { titel: 'Vorbereitung', zutaten: [['750 g', 'Äpfel (geschält und entkernt), z. B. Elstar oder Boskop'], ['1 EL', 'Zitronensaft'], ['', 'Backpapier, Butter für den Rand']],
         schritte: [
-          { t: 'Äpfel vorbereiten', x: 'Äpfel schälen, entkernen und in Spalten oder Würfel schneiden. Mit etwas Zitronensaft mischen, damit sie nicht braun werden.' }
+          { t: 'Form & Ofen', x: 'Springform (24–26 cm) mit Backpapier auslegen, den Rand dünn einfetten. Ofen auf 175–180 °C Ober-/Unterhitze vorheizen.' },
+          { t: 'Äpfel schneiden', x: 'Äpfel in kleine Würfel oder feine Spalten schneiden und mit Zitronensaft mischen, damit sie nicht braun werden.' }
         ] },
       { titel: 'Streusel', zutaten: [['125 g', 'Mehl (Weizen 405 oder Dinkel 630)'], ['75 g', 'Kalte Butter'], ['40 g', 'Zucker'], ['10 g', 'Vanillezucker'], ['1 Prise', 'Zimt'], ['1 Prise', 'Salz']],
         schritte: [
-          { t: 'Streusel mischen', x: 'Trockene Zutaten kurz vermengen, kalte Butter in Stücken zugeben und nur so lange verreiben, bis krümelige Streusel entstehen. Nicht zu Teig kneten.' },
-          { t: 'Kühlen', x: 'Streusel in den Kühlschrank stellen, während du den Rührteig zubereitest.', z: '15 Min.' }
+          { t: 'Streusel reiben', x: 'Trockene Zutaten mischen, kalte Butter in Stücken zugeben und rasch zu Streuseln verreiben. Nicht zu Teig kneten.' },
+          { t: 'Kühlen', x: 'Streusel kalt stellen, während du den Rührteig zubereitest.' }
         ] },
-      { titel: 'Rührteig', zutaten: [['250 g', 'Mehl (Weizen 405 oder Dinkel 630)'], ['200 g', 'Weiche Butter, zimmerwarm'], ['150 g', 'Zucker'], ['10 g', 'Vanillezucker'], ['3', 'Eier (Gr. M), zimmerwarm'], ['2 TL', 'Backpulver'], ['1 TL', 'Zitronenschalenabrieb'], ['1 Prise', 'Salz'], ['3–4 EL', 'Milch (mit Dinkelmehl etwas mehr)']],
+      { titel: 'Rührteig', zutaten: [['200 g', 'Weiche Butter, zimmerwarm'], ['150 g', 'Zucker'], ['10 g', 'Vanillezucker'], ['1 TL', 'Zitronenschalenabrieb'], ['1 Prise', 'Salz'], ['3', 'Eier (Gr. M), zimmerwarm'], ['250 g', 'Mehl (Weizen 405 oder Dinkel 630)'], ['2 TL', 'Backpulver'], ['3–4 EL', 'Milch (mit Dinkelmehl etwas mehr)']],
         schritte: [
           { t: 'Aufschlagen', x: 'Weiche Butter mit Zucker, Vanille, Zitronenschale und Salz hellcremig aufschlagen.', z: '3–5 Min.' },
           { t: 'Eier einrühren', x: 'Eier nacheinander einrühren, bis die Masse stabil und cremig ist.' },
-          { t: 'Mehl unterheben', x: 'Mehl mit Backpulver sieben und mit der Milch nur kurz unterheben, gerade so, dass keine Mehlnester mehr sichtbar sind. Zu langes Rühren macht den Teig zäh und kompakt.' }
+          { t: 'Mehl unterheben', x: 'Mehl mit Backpulver sieben und nur kurz unterheben, gerade so, dass keine Mehlnester mehr sichtbar sind. Danach die Milch kurz unterrühren. Zu langes Rühren macht den Teig zäh.' },
+          { t: 'In die Form', x: 'Teig in der vorbereiteten Springform verteilen.' }
         ] },
-      { titel: 'Schichten & Backen', zutaten: [['', 'Butter für die Form']],
+      { titel: 'Schichten & Backen', zutaten: [],
         schritte: [
-          { t: 'Schichten', x: 'Rührteig in die gefettete Form streichen und die Äpfel darüber verteilen. Gekühlte Streusel locker obendrauf streuen, nicht andrücken.' },
-          { t: 'Backen', x: 'Auf mittlerer Schiene im vorgeheizten Ofen bei 175–180 °C Ober-/Unterhitze backen. Stäbchenprobe in der Teigzone, nicht in den Äpfeln: ein paar feuchte Krümel sind okay, roher Teig nicht.', z: '45–55 Min.' },
-          { t: 'Auskühlen', x: 'In der Form ruhen lassen, dann den Rand lösen und auf einem Gitter auskühlen lassen.', z: '10 Min.' }
+          { t: 'Äpfel verteilen', x: 'Äpfel gleichmäßig auf dem Rührteig verteilen.' },
+          { t: 'Streuseln', x: 'Streusel locker darübergeben, nicht andrücken.' },
+          { t: 'Backen', x: 'Im vorgeheizten Ofen auf mittlerer Schiene backen. Rechtzeitig die Stäbchenprobe in der Teigmitte machen, nicht in den Äpfeln: ein paar feuchte Krümel sind okay, roher Teig nicht.', z: '45–55 Min.' },
+          { t: 'Auskühlen', x: 'In der Form ruhen lassen, dann den Rand lösen und auf einem Kuchengitter auskühlen lassen.', z: '10 Min.' }
         ] }
     ],
-    tipps: ['Leicht säuerliche, formstabile Sorten wie Elstar oder Boskop bringen Frische und bleiben bissfest.', 'Gut gekühlte Streusel schmelzen weniger und backen knuspriger.', 'Locker gestreute Streusel backen rundum goldbraun und bleiben knusprig.', 'Ohne Streusel und mit sichtbaren Äpfeln wird daraus ein versunkener Apfelkuchen.']
+    tipps: ["Teig zu fest? Je nach Eigröße oder Mehlsorte zusätzlich 2–3 EL Milch unterrühren – nicht mehr, sonst verliert der Teig seine Tragkraft und die Äpfel sinken durch.", "Zimmerwarme Butter und Eier sorgen für eine stabile Emulsion und eine zarte Krume.", "Sehr saftige Äpfel? Erst dünn Semmelbrösel oder gemahlene Mandeln auf den Teig streuen, dann die Äpfel – das schützt den Boden vor Nässe.", "Nach dem Backen den Rand lösen und den Kuchen locker abdecken: die Feuchte bleibt innen, die Streusel behalten ihren Biss.", "Gut gekühlte, locker gestreute Streusel backen rundum goldbraun und knusprig.", "Thermomix – Streusel: alle Zutaten 10 Sek. / Stufe 6 zu Krümeln mixen, kalt stellen.", "Thermomix – Rührteig: Butter, Zucker, Vanillezucker, Zitronenabrieb und Salz 1 Min. / Stufe 5 cremig rühren. Eier einzeln durch die Deckelöffnung 45–60 Sek. / Stufe 4 unterrühren. Mehl und Backpulver 10–20 Sek. / Stufe 4 unterheben, ggf. mit dem Spatel nachhelfen.", "Ca. 393 kcal pro Stück (48,9 g Kohlenhydrate, 5,5 g Eiweiß, 20,3 g Fett).", "Ohne Streusel und mit sichtbaren Äpfeln wird daraus ein versunkener Apfelkuchen."]
   }
 ];
