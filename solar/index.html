@@ -14,7 +14,7 @@
   button { background: #1c2236; color: #dde; border: 1px solid #3a4466; border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; }
   button.on { background: #3b5bd6; border-color: #6d8bff; color: #fff; }
   input[type=range] { width: 160px; }
-  #info { position: fixed; right: 12px; bottom: 12px; background: rgba(10,12,20,.75); border: 1px solid #334; border-radius: 10px; padding: 8px 12px; font-size: 12px; max-width: 260px; display: none; }
+  #info { position: fixed; right: 12px; bottom: 24px; background: rgba(10,12,20,.82); border: 1px solid #334; border-radius: 10px; padding: 10px 12px; font-size: 12px; width: 280px; max-width: calc(100vw - 48px); display: none; backdrop-filter: blur(6px); }
   #credit { position: fixed; left: 12px; bottom: 8px; font-size: 10px; color: #778; }
   #credit a { color: #99a; }
   .label { position: fixed; left: 0; top: 0; font-size: 12px; color: #cfd6ff; pointer-events: auto; cursor: pointer; white-space: nowrap; text-shadow: 0 0 4px #000; user-select: none; }
@@ -25,6 +25,14 @@
   .label.moon { font-size: 10px; color: #a8aec8; pointer-events: none; }
   .label.moon::before { width: 4px; height: 4px; transform: translate(-2px, 0); }
   .label.big::before { visibility: hidden; }
+  .label.dwarf { font-size: 11px; opacity: .85; }
+  .label.net { font-size: 10px; pointer-events: none; }
+  #info h2 { font-size: 15px; margin: 0 22px 1px 0; font-weight: 600; }
+  #info .sub { font-size: 11px; color: #8f97b8; margin-bottom: 6px; }
+  #info .facts { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 6px 0; color: #bcc4e0; font-variant-numeric: tabular-nums; }
+  #info .facts span:nth-child(odd) { color: #8088a8; }
+  #info p { margin: 6px 0 0; line-height: 1.45; }
+  #infoClose { position: absolute; right: 6px; top: 6px; background: none; border: none; font-size: 16px; color: #99a; padding: 0 6px; }
   .label::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; border: 1px solid currentColor; margin-right: 4px; vertical-align: 0; transform: translate(-3px, 0); }
 </style>
 <script defer src="/analytics.js"></script>
@@ -42,9 +50,9 @@
   <div class="row"><input type="range" id="mix" min="0" max="1" step="0.001" value="1"></div>
   <div class="row" id="focus"></div>
 </div>
-<div id="info"></div>
+<div id="info"><button id="infoClose" aria-label="Schließen">×</button><div id="infoBody"></div></div>
 <div id="tip"></div>
-<div id="credit">Texturen: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a> (CC BY 4.0), Monde: <a href="https://stevealbers.net/albers/sos/sos.html" target="_blank" rel="noopener">Steve Albers</a>/NASA, Kallisto: Björn Jónsson</div>
+<div id="credit">Texturen: <a href="https://www.solarsystemscope.com/textures/" target="_blank" rel="noopener">Solar System Scope</a> (CC BY 4.0), Monde: <a href="https://stevealbers.net/albers/sos/sos.html" target="_blank" rel="noopener">Steve Albers</a>/NASA, Kallisto: Björn Jónsson, Pluto: NASA/JHUAPL/SwRI; Ceres, Haumea, Makemake, Eris: künstlerische Texturen</div>
 
 <script type="importmap">
 { "imports": {
@@ -55,6 +63,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import MOONS_RAW from './moons.js';
 
 const AU_KM = 149597870.7;
 const D2R = Math.PI / 180;
@@ -69,6 +78,12 @@ const PLANETS = [
   { name: 'Saturn', tilt: 26.73, tex: 'saturn',  r: 58232, color: 0xe3cf9a, el: [9.53667594,0.05386179,2.48599187,49.95424423,92.59887831,113.66242448], rate: [-0.00125060,-0.00050991,0.00193609,1222.49362201,-0.41897216,-0.28867794], ring: true },
   { name: 'Uranus', tilt: 97.77, tex: 'uranus',  r: 25362, color: 0x9fdde6, el: [19.18916464,0.04725744,0.77263783,313.23810451,170.95427630,74.01692503], rate: [-0.00196176,-0.00004397,-0.00242939,428.48202785,0.40805281,0.04240589] },
   { name: 'Neptun', tilt: 28.32, tex: 'neptune',  r: 24622, color: 0x4566e0, el: [30.06992276,0.00859048,1.77004347,-55.12002969,44.96476227,131.78422574], rate: [0.00026291,0.00005105,0.00035372,218.45945325,-0.32241464,-0.01262724] },
+  // Zwergplaneten: Pluto aus derselben JPL-Tabelle, die übrigen aus Bahnelementen (Epoche 2022) auf J2000 zurückgerechnet, nur L läuft
+  { name: 'Ceres', dwarf: true, tilt: 4, tex: '1k_ceres', r: 470, color: 0x9a948c, el: [2.7675,0.0785,10.59,160.65,153.87,80.27], rate: [0,0,0,7819.3,0,0] },
+  { name: 'Pluto', dwarf: true, tilt: 122.5, tex: '2k_pluto', r: 1188, color: 0xd9bf9e, el: [39.48211675,0.24882730,17.14001206,238.92903833,224.06891629,110.30393684], rate: [-0.00031596,0.00005170,0.00004818,145.20780515,-0.04062942,-0.01183482] },
+  { name: 'Haumea', dwarf: true, tilt: 0, tex: '1k_haumea', r: 816, shape: [1.29, 0.66, 1.03], color: 0xd8d4cc, el: [43.18,0.195,28.2,191.2,1.2,122.2], rate: [0,0,0,126.8,0,0] },
+  { name: 'Makemake', dwarf: true, tilt: 0, tex: '1k_makemake', r: 715, color: 0xc89a7a, el: [45.43,0.161,28.98,153.5,14.4,79.6], rate: [0,0,0,117.6,0,0] },
+  { name: 'Eris', dwarf: true, tilt: 0, tex: '1k_eris', r: 1163, color: 0xe0dcd6, el: [67.86,0.4359,44.04,19.34,187.55,35.95], rate: [0,0,0,64.4,0,0] },
 ];
 const SUN_R = 696000;
 
@@ -417,7 +432,7 @@ const labelsEl = [];
 const texLoader = new THREE.TextureLoader();
 for (const p of PLANETS) {
   const mat = addShadows(new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.9 }));
-  texLoader.load(`tex/2k_${p.tex}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; });
+  texLoader.load(`tex/${p.tex.includes('_') ? p.tex : '2k_' + p.tex}.jpg`, t => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; mat.map = t; mat.color.set(0xffffff); mat.needsUpdate = true; });
   p.mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 32), mat);
   p.mesh.rotation.order = 'ZYX'; p.mesh.rotation.z = p.tilt * D2R;
   scene.add(p.mesh);
@@ -444,11 +459,12 @@ for (const p of PLANETS) {
   p.pos = new THREE.Vector3(); p.spos = new THREE.Vector3();
   const lineGeo = new THREE.BufferGeometry();
   lineGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(361 * 3), 3));
-  p.orbit = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: 0.35 }));
+  p.orbit = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: p.color, transparent: true, opacity: p.dwarf ? 0.18 : 0.35 }));
   scene.add(p.orbit);
-  const l = document.createElement('div'); l.className = 'label'; l.textContent = p.name;
+  p.cat = p.dwarf ? 'dwarf' : 'planet';
+  const l = document.createElement('div'); l.className = p.dwarf ? 'label dwarf' : 'label'; l.textContent = p.name;
   l.style.color = '#' + new THREE.Color(p.color).lerp(new THREE.Color(0xffffff), .4).getHexString();
-  l.onclick = () => setFocus(p);
+  l.onclick = () => { setFocus(p); select(p); };
   document.body.appendChild(l); p.label = l;
 }
 
@@ -467,7 +483,8 @@ const MOONS = [
   ['Uranus', 'Umbriel', 585, 266000, 4.144177, 230, 'moon', 0x777770], ['Uranus', 'Titania', 788, 435910, 8.705872, 320, 'titania'],
   ['Uranus', 'Oberon', 761, 583520, 13.463239, 80, 'oberon'],
   ['Neptun', 'Triton', 1353, 354759, -5.876854, 190, 'triton'],
-].map(([parent, name, r, a, P, L0, tex, tint]) => ({ parent: PLANETS.find(p => p.name === parent), name, r, a, P, L0, tex, tint }));
+  ['Pluto', 'Charon', 606, 19591, 6.387221, 0, 'moon', 0xa8a39c],
+].map(([parent, name, r, a, P, L0, tex, tint]) => ({ parent: PLANETS.find(p => p.name === parent), name, r, a, P, L0, tex, tint, cat: 'moon' }));
 const moonRadius = km => lerpLog(km / AU_KM, Math.max(0.03 * Math.sqrt(km / 1000), 0.01), mix);
 const moonDist = m => {
   const rp = m.parent.r, illus = 0.045 * Math.sqrt(rp / 1000) * (1.8 + 0.9 * Math.log(m.a / rp));
@@ -496,6 +513,45 @@ function updateMoons() {
     m.spos.set(Math.cos(th) * d, 0, -Math.sin(th) * d).applyMatrix4(m.frame.matrixWorld);
     m.mesh.position.copy(m.spos); m.mesh.scale.setScalar(moonRadius(m.r));
     m.mesh.quaternion.copy(m.frame.quaternion); m.mesh.rotateY(th + Math.PI);
+  }
+}
+
+
+// Alle übrigen bekannten Monde (JPL-Mittelelemente, ohne Textur): echte Keplerbahn, Abstand wie bei den großen Monden abgebildet.
+// Bezugsebene Ekliptik oder genähert die Äquatorebene des Planeten (Laplace-Ebene)
+const smallGeo = new THREE.SphereGeometry(1, 12, 8), smallMat = new THREE.MeshStandardMaterial({ color: 0x8c8a86, roughness: 1 });
+const EXTRA = MOONS_RAW.map(([parent, name, r, a, e, w, M, i, O, Pd, ecl]) => {
+  const m = { parent: PLANETS.find(p => p.name === parent), name, r: r || 3, rKnown: r > 0, a, P: Pd, cat: 'moon', extra: true, ecl,
+    k: { a, e, I: i * D2R, O: O * D2R, w: (w + O) * D2R }, M0: M * D2R, spos: new THREE.Vector3(), raw: new THREE.Vector3() };
+  m.mesh = new THREE.Mesh(smallGeo, smallMat); scene.add(m.mesh);
+  const l = document.createElement('div'); l.className = 'label moon'; l.textContent = name;
+  document.body.appendChild(l); m.label = l;
+  m.labelled = r >= 15 && !/^S\d/.test(name);
+  return m;
+}).filter(m => m.parent);
+const extraOrbit = new THREE.Line(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(257 * 3), 3)), new THREE.LineBasicMaterial({ color: 0x8890b0, transparent: true, opacity: 0.35 }));
+extraOrbit.frustumCulled = false; scene.add(extraOrbit);
+const exFrame = new THREE.Object3D(), exTmp = new THREE.Vector3();
+function extraPos(m, E, out) {
+  posFromE(m.k, E, out);
+  if (!m.ecl) out.applyAxisAngle(new THREE.Vector3(0, 0, 1), m.parent.tilt * D2R);
+  const d = out.length(); // in km
+  return out.multiplyScalar(moonDist({ parent: m.parent, a: d }) / d).add(m.parent.spos);
+}
+function updateExtra() {
+  for (const m of EXTRA) {
+    const vis = focus === m.parent;
+    m.mesh.visible = vis;
+    if (!vis) continue;
+    extraPos(m, kepler(m.M0 + 2 * Math.PI * (jd - 2451545) / m.P, m.k.e), m.spos);
+    m.mesh.position.copy(m.spos); m.mesh.scale.setScalar(moonRadius(m.r));
+  }
+  // Bahn nur für den ausgewählten kleinen Mond
+  extraOrbit.visible = !!(selected && selected.extra && showOrbits && focus === selected.parent);
+  if (extraOrbit.visible) {
+    const a = extraOrbit.geometry.attributes.position;
+    for (let i = 0; i <= 256; i++) { extraPos(selected, i / 256 * 2 * Math.PI, exTmp); a.setXYZ(i, exTmp.x, exTmp.y, exTmp.z); }
+    a.needsUpdate = true;
   }
 }
 
@@ -665,6 +721,12 @@ const CRAFT = [
   { name: 'ISS', info: 'Internationale Raumstation, ~420 km', kind: 'orbit', parent: P('Erde'), a: 6371 + 420, P: 92.7 / 1440, inc: 51.6, node: 40 },
   { name: 'Tiangong', info: 'Chinesische Raumstation, ~390 km', kind: 'orbit', parent: P('Erde'), a: 6371 + 390, P: 92.2 / 1440, inc: 41.5, node: 200 },
   { name: 'Hubble', info: 'Weltraumteleskop seit 1990, ~530 km', kind: 'orbit', parent: P('Erde'), a: 6371 + 530, P: 95.2 / 1440, inc: 28.5, node: 120 },
+  { name: 'Sentinel-2A', info: 'Copernicus-Erdbeobachtung der ESA, sonnensynchron in 786 km – fotografiert alle 5 Tage jeden Fleck Land', kind: 'orbit', parent: P('Erde'), a: 6371 + 786, P: 100.6 / 1440, inc: 98.6, node: 300 },
+  { name: 'Landsat 9', info: 'NASA/USGS-Erdbeobachtung, sonnensynchron in 705 km; die Landsat-Reihe beobachtet die Erde seit 1972', kind: 'orbit', parent: P('Erde'), a: 6371 + 705, P: 98.9 / 1440, inc: 98.2, node: 250 },
+  { name: 'Meteosat-10', info: 'Europäischer Wettersatellit, geostationär über 0° Länge – liefert die Wolkenbilder im Wetterbericht', kind: 'geo', parent: P('Erde'), lon: 0 },
+  { name: 'Astra 19,2° Ost', info: 'SES-Fernsehsatelliten, versorgen einen Großteil der deutschen Satellitenschüsseln', kind: 'geo', parent: P('Erde'), lon: 19.2 },
+  { name: 'GOES-East', info: 'US-Wettersatellit über Amerika, geostationär bei 75,2° West', kind: 'geo', parent: P('Erde'), lon: -75.2 },
+  { name: 'Himawari-9', info: 'Japanischer Wettersatellit, geostationär bei 140,7° Ost', kind: 'geo', parent: P('Erde'), lon: 140.7 },
   { name: 'James Webb', info: 'Infrarot-Weltraumteleskop am Lagrange-Punkt L2, 1,5 Mio. km', kind: 'L2', parent: P('Erde'), a: 1.5e6, off: 0.25 },
   { name: 'Euclid', info: 'ESA-Teleskop für Dunkle Materie/Energie, L2', kind: 'L2', parent: P('Erde'), a: 1.5e6, off: -0.3 },
   { name: 'SOHO', info: 'Sonnenobservatorium am Lagrange-Punkt L1 seit 1995', kind: 'L1', parent: P('Erde'), a: 1.5e6, off: 0.2 },
@@ -704,7 +766,8 @@ for (const c of CRAFT) {
   const l = document.createElement('div'); l.className = 'label craft'; l.textContent = c.name;
   document.body.appendChild(l); c.label = l;
 }
-const craftTmp = new THREE.Vector3();
+const craftTmp = new THREE.Vector3(), geoFrame = new THREE.Object3D();
+geoFrame.rotation.order = 'ZYX';
 function updateCraft() {
   craftGroup.visible = showCraft;
   if (!showCraft) return;
@@ -716,6 +779,11 @@ function updateCraft() {
       c.frame.updateMatrixWorld();
       c.orbit.scale.setScalar(d); c.orbit.visible = showOrbits;
       c.spos.set(Math.cos(th) * d, 0, -Math.sin(th) * d).applyMatrix4(c.frame.matrixWorld);
+    } else if (c.kind === 'geo') {
+      // steht über einem festen Längengrad: dreht mit der Erde (Textur: Länge λ liegt lokal bei (cos λ, 0, −sin λ))
+      const d = satDist(c.parent, 42164), th = c.lon * D2R + c.parent.mesh.rotation.y;
+      geoFrame.position.copy(c.parent.spos); geoFrame.rotation.set(0, 0, c.parent.tilt * D2R); geoFrame.updateMatrixWorld();
+      c.spos.set(Math.cos(th) * d, 0, -Math.sin(th) * d).applyMatrix4(geoFrame.matrixWorld);
     } else if (c.kind === 'L1' || c.kind === 'L2') {
       // Lagrange-Punkte liegen auf der Linie Sonne–Erde; kleine seitliche Versetzung für die Halo-Bahn
       const out = c.parent.spos.clone().normalize().multiplyScalar(c.kind === 'L2' ? 1 : -1);
@@ -735,6 +803,59 @@ function updateCraft() {
       c.line.computeLineDistances(); c.line.visible = showOrbits;
     }
     c.marker.position.copy(c.spos);
+  }
+}
+
+// Satellitennetze um die Erde: je Netz ein repräsentativer Ausschnitt auf Kreisbahnen
+// (Ebenen gleichmäßig um die Erdachse verteilt, Satelliten gleichmäßig in der Ebene, Umlaufzeit nach Kepler)
+const NETS = [
+  { name: 'Starlink', color: 0xdfe8ff, alt: 550, inc: 53, planes: 24, per: 10, real: '≈ 9.000', text: 'Internet-Megakonstellation von SpaceX. Die Satelliten fliegen so tief, dass sie nach Ende ihrer Lebensdauer innerhalb weniger Jahre verglühen. Kurz nach dem Start sieht man sie als „Perlenkette“ am Nachthimmel.' },
+  { name: 'OneWeb', color: 0xffc27a, alt: 1200, inc: 87.9, planes: 12, per: 8, real: '≈ 650', text: 'Internet-Konstellation von Eutelsat OneWeb auf fast polaren Bahnen – deckt auch Arktis und Antarktis ab.' },
+  { name: 'Iridium', color: 0xc6a8ff, alt: 780, inc: 86.4, planes: 6, per: 11, real: '66', text: 'Satellitentelefonie weltweit, 6 polare Bahnebenen mit je 11 Satelliten – hier in echter Anzahl. Die alten Iridium-Satelliten waren für ihre hellen „Flares“ bekannt.' },
+  { name: 'GPS', color: 0x86d4ff, alt: 20180, inc: 55, planes: 6, per: 4, real: '31', text: 'US-Navigationssystem (seit 1995 voll in Betrieb). Ein Empfänger braucht mindestens 4 Satelliten gleichzeitig, um aus den Signallaufzeiten seine Position zu berechnen.' },
+  { name: 'Galileo', color: 0x7f9dff, alt: 23222, inc: 56, planes: 3, per: 8, real: '≈ 28', text: 'Europas Navigationssystem, genauer als GPS für zivile Nutzer; Atomuhren an Bord gehen in 3 Mio. Jahren nur eine Sekunde falsch.' },
+  { name: 'GLONASS', color: 0xff8a8a, alt: 19100, inc: 64.8, planes: 3, per: 8, real: '24', text: 'Russisches Navigationssystem. Die stärkere Bahnneigung verbessert den Empfang in hohen nördlichen Breiten.' },
+  { name: 'BeiDou', color: 0xffd36a, alt: 21528, inc: 55, planes: 3, per: 8, real: '≈ 45 (davon 24 MEO)', text: 'Chinas Navigationssystem – neben den hier gezeigten MEO-Satelliten auch mit geostationären und geneigten geosynchronen Satelliten.' },
+  { name: 'Geostationärer Ring', color: 0xc8c8c8, alt: 35786, inc: 0, planes: 1, per: 40, real: '≈ 550', geo: true, text: 'In 35.786 km Höhe dauert ein Umlauf genau einen Tag: Die Satelliten stehen scheinbar still über dem Äquator. Hier sitzen Fernseh-, Kommunikations- und Wettersatelliten dicht an dicht.' },
+];
+const netGroup = new THREE.Group(); scene.add(netGroup);
+for (const n of NETS) {
+  n.cat = 'net'; n.count = n.planes * n.per;
+  n.P = 2 * Math.PI * Math.sqrt((6371 + n.alt) ** 3 / 398600.4) / 86400;
+  n.frames = Array.from({ length: n.planes }, (_, i) => { const f = new THREE.Object3D(); f.rotation.order = 'ZYX'; f.userData.node = i * 360 / n.planes; return f; });
+  n.rings = n.frames.map(f => { const r = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({ color: n.color, transparent: true, opacity: 0.18 })); f.add(r); netGroup.add(f); return r; });
+  n.pts = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array(n.count * 3), 3)),
+    new THREE.PointsMaterial({ map: dotTex, color: n.color, size: n.alt < 2000 ? 3.5 : 4.5, sizeAttenuation: false, transparent: true, depthWrite: false }));
+  n.pts.frustumCulled = false; netGroup.add(n.pts);
+  n.spos = new THREE.Vector3();
+  const l = document.createElement('div'); l.className = 'label craft net'; l.textContent = n.name;
+  l.style.color = '#' + new THREE.Color(n.color).getHexString();
+  document.body.appendChild(l); n.label = l;
+}
+const netTmp = new THREE.Vector3();
+function updateNets() {
+  const earth = P('Erde');
+  // nur aus der Nähe der Erde zeigen
+  netGroup.visible = showCraft && camera.position.distanceTo(earth.spos) < focusDist(earth) * 5;
+  if (!netGroup.visible) return;
+  for (const n of NETS) {
+    const d = satDist(earth, 6371 + n.alt), a = n.pts.geometry.attributes.position;
+    n.frames.forEach((f, i) => {
+      f.position.copy(earth.spos); f.rotation.set(n.inc * D2R, f.userData.node * D2R, earth.tilt * D2R); f.updateMatrixWorld();
+      n.rings[i].scale.setScalar(d);
+      // Ringe nur beim ausgewählten Netz, der geostationäre Ring immer (dezent)
+      n.rings[i].visible = showOrbits && (selected === n || n.geo);
+      n.rings[i].material.opacity = selected === n ? 0.3 : 0.12;
+      for (let j = 0; j < n.per; j++) {
+        // Phasenversatz zwischen Nachbarebenen, damit sich die Satelliten nicht an den Knoten treffen
+        const th = n.geo ? 2 * Math.PI * (j + 0.37 * Math.sin(j * 7.1)) / n.per + earth.mesh.rotation.y
+                         : 2 * Math.PI * (jd / n.P % 1 + (j + i * 0.5) / n.per);
+        netTmp.set(Math.cos(th) * d, 0, -Math.sin(th) * d).applyMatrix4(f.matrixWorld);
+        a.setXYZ(i * n.per + j, netTmp.x, netTmp.y, netTmp.z);
+        if (i === 0 && j === (n.geo ? 13 : 0)) n.spos.copy(netTmp);
+      }
+    });
+    a.needsUpdate = true;
   }
 }
 
@@ -855,6 +976,124 @@ document.querySelectorAll('.label:not(.craft)').forEach(l => l.addEventListener(
 document.getElementById('craft').onclick = e => { showCraft = !showCraft; e.target.classList.toggle('on', showCraft); };
 document.getElementById('orbits').onclick = e => { showOrbits = !showOrbits; e.target.classList.toggle('on', showOrbits); };
 
+
+// Infobox: Klick auf ein Objekt (oder seinen Namen) zeigt Kurzinfos, Abstände laufen live mit
+const INFO = {
+  Sonne: 'Ein gelber Zwergstern, 4,6 Mrd. Jahre alt, mit 99,86 % der gesamten Masse des Sonnensystems. Im Kern verschmilzt bei rund 15 Mio. °C Wasserstoff zu Helium.',
+  Merkur: 'Kleinster und sonnennächster Planet. Ohne schützende Atmosphäre schwankt die Temperatur zwischen 430 °C am Tag und −180 °C in der Nacht.',
+  Venus: 'Dichte CO₂-Atmosphäre mit extremem Treibhauseffekt: 465 °C am Boden, heißer als Merkur. Sie dreht sich rückwärts, ein Venustag dauert länger als ihr Jahr.',
+  Erde: 'Der einzige bekannte Ort mit Leben, zu 71 % von Ozeanen bedeckt. Der große Mond stabilisiert ihre Achsneigung und damit das Klima.',
+  Mars: 'Der rote Planet verdankt seine Farbe Eisenoxid-Staub. Hier steht Olympus Mons, mit 22 km der höchste Vulkan im Sonnensystem, und es gibt Spuren alter Flüsse.',
+  Jupiter: 'Der größte Planet ist 2,5-mal so schwer wie alle anderen zusammen. Der Große Rote Fleck ist ein Wirbelsturm, größer als die Erde.',
+  Saturn: 'Gasriese mit dem prächtigsten Ringsystem aus Eis und Gestein. Seine mittlere Dichte ist geringer als die von Wasser.',
+  Uranus: 'Ein Eisriese, der auf der Seite liegt (98° Achsneigung): Jeder Pol hat 42 Jahre Tag und danach 42 Jahre Nacht.',
+  Neptun: 'Der äußerste Planet wurde 1846 erst berechnet und dann gefunden. Hier wehen die schnellsten Winde im Sonnensystem, bis 2.100 km/h.',
+  Ceres: 'Größtes Objekt im Asteroidengürtel und einziger Zwergplanet im inneren Sonnensystem. Die Sonde Dawn entdeckte helle Salzablagerungen im Krater Occator.',
+  Pluto: 'Bis 2006 der neunte Planet. New Horizons zeigte 2015 eine herzförmige Ebene aus Stickstoffeis (Sputnik Planitia) und Berge aus Wassereis.',
+  Haumea: 'Dreht sich in knapp 4 Stunden und ist dadurch eiförmig gestreckt (etwa 2.100 × 1.700 × 1.100 km). Sie hat einen Ring und zwei Monde.',
+  Makemake: 'Heller, rötlicher Zwergplanet im Kuipergürtel, kurz nach Ostern 2005 entdeckt und nach dem Schöpfergott der Osterinsel benannt.',
+  Eris: 'Fast so groß wie Pluto, aber schwerer. Ihre Entdeckung 2005 führte dazu, dass der Begriff „Planet“ neu definiert und Pluto zum Zwergplaneten wurde.',
+  Mond: 'Entstand vermutlich, als ein marsgroßer Körper mit der jungen Erde kollidierte. Er zeigt uns immer dieselbe Seite und entfernt sich jedes Jahr um 3,8 cm.',
+  Phobos: 'Kartoffelförmig und erdnah wie kein anderer Mond: Er sinkt langsam auf den Mars zu und wird in etwa 50 Mio. Jahren zerbrechen.',
+  Deimos: 'Winziger äußerer Marsmond, vermutlich ein eingefangener Asteroid.',
+  Io: 'Der vulkanisch aktivste Körper im Sonnensystem mit über 400 aktiven Vulkanen, angetrieben von Jupiters Gezeitenkräften.',
+  Europa: 'Unter ihrem Eispanzer liegt ein globaler Salzwasserozean, einer der vielversprechendsten Orte für die Suche nach Leben.',
+  Ganymed: 'Der größte Mond im Sonnensystem, größer als Merkur, und der einzige mit eigenem Magnetfeld.',
+  Kallisto: 'Der am dichtesten verkraterte Körper im Sonnensystem; ihre Oberfläche hat sich seit Milliarden Jahren kaum verändert.',
+  Mimas: 'Der riesige Krater Herschel lässt ihn aussehen wie den Todesstern aus Star Wars.',
+  Enceladus: 'Schleudert am Südpol Wasserfontänen ins All, die Saturns E-Ring speisen. Darunter liegt ein Ozean.',
+  Tethys: 'Besteht fast nur aus Wassereis und trägt den 400 km großen Einschlagkrater Odysseus.',
+  Dione: 'Eisiger Mond mit hellen Eisklippen auf der Rückseite.',
+  Rhea: 'Zweitgrößter Saturnmond, alt und stark verkratert.',
+  Titan: 'Der einzige Mond mit dichter Atmosphäre. Es gibt Seen und Flüsse aus flüssigem Methan; 2005 landete hier die Sonde Huygens.',
+  Iapetus: 'Zweifarbig: Eine Hälfte ist dunkel wie Kohle, die andere hell wie Schnee. Dazu kommt ein 13 km hoher Wall um den Äquator.',
+  Miranda: 'Ein Flickenteppich aus Landschaften mit bis zu 20 km hohen Steilwänden (Verona Rupes).',
+  Ariel: 'Hellster der großen Uranusmonde, durchzogen von Grabenbrüchen.',
+  Umbriel: 'Der dunkelste der großen Uranusmonde.',
+  Titania: 'Der größte Uranusmond mit kilometertiefen Canyons.',
+  Oberon: 'Der äußerste große Uranusmond mit alter, verkraterter Oberfläche.',
+  Triton: 'Umkreist Neptun rückwärts, wohl ein eingefangenes Kuipergürtel-Objekt. Voyager 2 sah Geysire aus Stickstoff.',
+  Charon: 'So groß im Verhältnis zu Pluto, dass beide um einen gemeinsamen Punkt zwischen sich kreisen – fast ein Doppel-Zwergplanet.',
+  '1P/Halley': 'Der berühmteste Komet, alle rund 76 Jahre mit bloßem Auge zu sehen: zuletzt 1986, wieder 2061. Er ist der Ursprung der Orioniden.',
+  '2P/Encke': 'Kürzeste Umlaufzeit aller bekannten großen Kometen: 3,3 Jahre. Seine Staubspur erzeugt die Tauriden.',
+  '67P/Tschurjumow-Gerassimenko': 'Die Raumsonde Rosetta umkreiste ihn 2014–2016; ihr Lander Philae setzte als erstes Gerät auf einem Kometen auf.',
+  '109P/Swift-Tuttle': 'Mutterkörper der Perseiden, der Sternschnuppen im August. Ein Umlauf dauert 133 Jahre.',
+  'C/1995 O1 Hale-Bopp': '1997 rund 18 Monate lang mit bloßem Auge sichtbar, einer der hellsten Kometen des 20. Jahrhunderts. Nächste Wiederkehr in über 2.000 Jahren.',
+};
+const CAT = { sun: 'Stern', planet: 'Planet', dwarf: 'Zwergplanet', moon: 'Mond', comet: 'Komet', craft: 'Raumfahrt', net: 'Satellitennetz' };
+const sunObj = { name: 'Sonne', cat: 'sun', r: SUN_R, spos: new THREE.Vector3(), pos: new THREE.Vector3() };
+for (const c of COMETS) c.cat = 'comet';
+for (const c of CRAFT) c.cat = 'craft';
+const nf = (v, d = 0) => v.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
+const period = days => days < 1 ? `${nf(days * 1440)} min` : days < 400 ? `${nf(days, days < 10 ? 2 : 1)} Tage` : `${nf(days / 365.25, 1)} Jahre`;
+let selected = null;
+const extraText = m => /^S\d/.test(m.name) ? 'Noch ohne Namen – nur eine vorläufige Bezeichnung aus Entdeckungsjahr und Planet. Einer der vielen winzigen, erst mit großen Teleskopen gefundenen Monde.'
+  : m.k.e > 0.1 || m.a > 50 * m.parent.r ? 'Kleiner, unregelmäßiger Mond auf weiter, schräger Bahn – vermutlich ein eingefangener Asteroid oder Kometenkern.'
+  : 'Kleiner innerer Mond nahe der Ringebene bzw. dem Äquator des Planeten.';
+const infoBody = document.getElementById('infoBody');
+function select(o) {
+  selected = o;
+  infoEl.style.display = o ? 'block' : 'none';
+  if (!o) return;
+  const f = [];
+  if (o.cat === 'sun') f.push(['Radius', '696.000 km'], ['Oberfläche', '≈ 5.500 °C']);
+  if (o.cat === 'planet' || o.cat === 'dwarf') f.push(['Radius', `${nf(o.r)} km`], ['Umlaufzeit', period(365.25 * o.el[0] ** 1.5)], ['Bahnneigung', `${nf(o.el[2], 1)}°`]);
+  if (o.cat === 'moon') f.push(['umkreist', o.parent.name], ['Radius', o.extra && !o.rKnown ? 'wenige km' : `${nf(o.r)} km`], ['Bahnradius', `${nf(o.a)} km`], ['Umlaufzeit', period(Math.abs(o.P)) + (o.P < 0 || (o.k && o.k.I > Math.PI / 2) ? ' (rückläufig)' : '')]);
+  if (o.cat === 'comet') f.push(['Perihel', `${nf(o.q, 2)} AE`], ['Umlaufzeit', period(365.25 * o.k.a ** 1.5)]);
+  if (o.cat === 'net') f.push(['Bahnhöhe', `${nf(o.alt)} km`], ['Neigung', `${nf(o.inc, 1)}°`], ['Umlaufzeit', o.geo ? '1 Sterntag' : period(o.P)], ['gezeigt', `${o.count} Satelliten`], ['in echt', o.real]);
+  if (o.cat === 'craft' && o.kind === 'orbit') f.push(['Bahnhöhe', `${nf(o.a - o.parent.r)} km`], ['Umlaufzeit', period(o.P)]);
+  infoBody.innerHTML = `<h2>${o.name}</h2><div class="sub">${CAT[o.cat]}</div>` +
+    (f.length ? `<div class="facts">${f.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : '') +
+    `<div class="facts" id="live"></div><p>${o.cat === 'craft' ? o.info : o.cat === 'net' ? o.text : INFO[o.name] || (o.extra ? extraText(o) : '')}</p>`;
+  updateLive();
+}
+const liveTmp = new THREE.Vector3();
+function updateLive() {
+  const el = document.getElementById('live'), o = selected;
+  if (!el || !o) return;
+  const ep = planetPos(earthObj, jd, liveTmp.set(0, 0, 0)).clone();
+  let p = null;
+  if (o.cat === 'planet' || o.cat === 'dwarf' || o.cat === 'comet') p = o.pos;
+  else if (o.cat === 'craft' && o.kind === 'escape') p = o.dir.clone().multiplyScalar(o.r0 + o.v * (jd - 2461041.5) / 365.25);
+  const rows = [];
+  if (o.cat === 'sun') rows.push(['Abstand Erde', `${nf(ep.length(), 3)} AE`]);
+  if (p) {
+    const r = p.length(), de = p.distanceTo(ep);
+    rows.push(['Abstand Sonne', `${nf(r, 2)} AE (${nf(r * AU_KM / 1e6)} Mio. km)`]);
+    if (o !== earthObj) rows.push(['Abstand Erde', `${nf(de, 2)} AE`], ['Licht braucht', de * 499 > 5400 ? `${nf(de * 499 / 3600, 1)} h` : `${nf(de * 499 / 60, 1)} min`]);
+  }
+  el.style.display = rows.length ? '' : 'none';
+  el.innerHTML = rows.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('');
+}
+document.getElementById('infoClose').onclick = () => select(null);
+
+// Klick ohne Ziehen: zuerst sichtbare Namen, dann das nächste Objekt in Bildschirmnähe
+let downAt = null;
+renderer.domElement.addEventListener('pointerdown', e => { downAt = [e.clientX, e.clientY, performance.now()]; });
+renderer.domElement.addEventListener('pointerup', e => {
+  if (!downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 5 || performance.now() - downAt[2] > 500) return;
+  const x = e.clientX, y = e.clientY, all = [...MOONS, ...EXTRA, ...CRAFT, ...NETS, ...COMETS, ...PLANETS];
+  let hit = all.find(o => { if (o.label.style.display !== 'block') return false; const r = o.label.getBoundingClientRect(); return x >= r.left - 3 && x <= r.right + 3 && y >= r.top - 3 && y <= r.bottom + 3; });
+  if (!hit) {
+    let best = 14;
+    const test = (o, v, rad) => {
+      tmp.copy(v).project(camera);
+      if (tmp.z > 1) return;
+      const px = rad / (camera.position.distanceTo(v) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2;
+      const d = Math.hypot((tmp.x + 1) / 2 * innerWidth - x, (1 - tmp.y) / 2 * innerHeight - y) - px;
+      if (d < best) { best = d; hit = o; }
+    };
+    test(sunObj, sunObj.spos, sunRadius());
+    for (const p of PLANETS) test(p, p.spos, radiusMap(p.r));
+    for (const m of [...MOONS, ...EXTRA]) if (focus === m.parent) test(m, m.spos, moonRadius(m.r));
+    for (const c of COMETS) test(c, c.spos, 0);
+    if (showCraft) for (const c of CRAFT) if (!c.parent || focus === c.parent) test(c, c.spos, 0);
+    if (netGroup.visible) for (const n of NETS) { const a = n.pts.geometry.attributes.position; for (let i = 0; i < n.count; i++) test(n, netTmp.fromBufferAttribute(a, i), 0); }
+  }
+  if (hit && (hit.cat === 'planet' || hit.cat === 'dwarf')) setFocus(hit);
+  select(hit || null);
+});
+
 // Maßstab
 const mixEl = document.getElementById('mix');
 const setScale = t => { mixTarget = t; document.getElementById('real').classList.toggle('on', t === 0); document.getElementById('nice').classList.toggle('on', t === 1); };
@@ -865,17 +1104,20 @@ mixEl.oninput = () => { mixTarget = mix = +mixEl.value; setScale(mixTarget === 0
 // Fokus
 let focus = null;
 const focusEl = document.getElementById('focus'), infoEl = document.getElementById('info');
-const fb = document.createElement('button'); fb.textContent = 'Sonne'; fb.onclick = () => setFocus(null); focusEl.appendChild(fb);
-for (const p of PLANETS) { const b = document.createElement('button'); b.textContent = p.name; b.onclick = () => setFocus(p); focusEl.appendChild(b); }
+const focusBtns = [], dwarfRow = document.createElement('div'); dwarfRow.className = 'row'; focusEl.after(dwarfRow);
+for (const p of [null, ...PLANETS]) {
+  const b = document.createElement('button'); b.textContent = p ? p.name : 'Sonne'; b._p = p;
+  b.onclick = () => { setFocus(p); select(p || sunObj); };
+  (p && p.dwarf ? dwarfRow : focusEl).appendChild(b); focusBtns.push(b);
+}
 function setFocus(p, instant) {
   focus = p;
-  [...focusEl.children].forEach((b, i) => b.classList.toggle('on', i === (p ? PLANETS.indexOf(p) + 1 : 0)));
+  focusBtns.forEach(b => b.classList.toggle('on', b._p === p));
   const off = camera.position.clone().sub(controls.target);
   off.normalize();
   // Blickrichtung behalten, aber mindestens 30° von oben, damit Mondbahnen nicht flach erscheinen
   if (off.y < 0.5) { const h = Math.hypot(off.x, off.z) || 1; off.set(off.x / h * 0.866, 0.5, off.z / h * 0.866); }
   flight = { fromT: controls.target.clone(), fromC: camera.position.clone(), dir: off, k: instant ? 1 : 0 };
-  infoEl.style.display = p ? 'block' : 'none';
 }
 // Zielabstand der Kamera: Planet + Platz für seine Monde, Sonne: inneres System
 const focusDist = p => p ? Math.max(radiusMap(p.r) * 8, ...MOONS.filter(m => m.parent === p && m.a < 1.5e6).map(m => moonDist(m) * 2.2)) : distMap(6) * 2.6;
@@ -885,7 +1127,7 @@ setFocus(null, true);
 const fmt = new Intl.DateTimeFormat('de-DE', { dateStyle: 'full', timeStyle: 'short' });
 const dateEl = document.getElementById('date');
 const tmp = new THREE.Vector3(), earthPos = new THREE.Vector3();
-let last = performance.now(), lastMix = -1;
+let last = performance.now(), lastMix = -1, liveTick = 0;
 
 function frame(now) {
   const dt = Math.min((now - last) / 1000, 0.1); last = now;
@@ -907,11 +1149,13 @@ function frame(now) {
   for (const p of PLANETS) {
     planetPos(p, jd, p.pos); mapPos(p.pos, p.spos);
     p.mesh.position.copy(p.spos); p.mesh.scale.setScalar(radiusMap(p.r));
+    if (p.shape) p.mesh.scale.multiply(tmp.fromArray(p.shape));
     p.mesh.rotation.y = jd * 2 * Math.PI * (p.name === 'Erde' ? 1 : 0.4);
     p.orbit.visible = showOrbits;
     if (p.clouds) p.clouds.rotation.y = jd * 0.15;
   }
   updateMoons();
+  updateExtra();
   for (const p of PLANETS) {
     const moons = MOONS.filter(m => m.parent === p);
     fillOcc(p.mesh.material.userData.sh, moons.map(m => [m.spos, moonRadius(m.r)]), p.pos.length());
@@ -925,6 +1169,7 @@ function frame(now) {
   astMat.uniforms.days.value = jd - 2451545; astMat.uniforms.mixv.value = mix; astMat.uniforms.px.value = 1.6 * renderer.getPixelRatio();
   updateComets(mix !== lastMix || lastMix < 0);
   updateCraft();
+  updateNets();
   if (flight) {
     // Kamerafahrt: Kamera und Blickziel fahren auf gerader Linie zur Endposition
     flight.k = Math.min(1, flight.k + dt / 2.2);
@@ -981,6 +1226,16 @@ function frame(now) {
       m.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth + (big ? px - 4 : 0)}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
     }
   }
+  for (const m of EXTRA) {
+    let vis = false;
+    if (m.mesh.visible && showLabels && (m.labelled || selected === m)) {
+      tmp.copy(m.spos).project(camera);
+      const sep = m.spos.distanceTo(m.parent.spos) / (camera.position.distanceTo(m.spos) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2;
+      vis = sep > 25 && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+      if (vis) m.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
+    }
+    m.label.style.display = vis ? 'block' : 'none';
+  }
   for (const c of COMETS) {
     tmp.copy(c.spos).project(camera);
     const vis = showLabels && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
@@ -996,13 +1251,14 @@ function frame(now) {
     c.label.style.display = vis ? 'block' : 'none';
     if (vis) c.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
   }
-  dateEl.textContent = fmt.format(new Date((jd - 2440587.5) * 86400000));
-  if (focus) {
-    planetPos(PLANETS[2], jd, earthPos);
-    const r = focus.pos.length(), de = focus.pos.distanceTo(earthPos);
-    infoEl.innerHTML = `<b>${focus.name}</b><br>Radius: ${focus.r.toLocaleString('de-DE')} km<br>Abstand Sonne: ${r.toFixed(3)} AE (${(r * AU_KM / 1e6).toFixed(0)} Mio. km)` +
-      (focus.name !== 'Erde' ? `<br>Abstand Erde: ${de.toFixed(3)} AE<br>Licht braucht ${(de * 499 / 60).toFixed(1)} min` : '');
+  for (const n of NETS) {
+    tmp.copy(n.spos).project(camera);
+    const vis = netGroup.visible && showLabels && focus === earthObj && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+    n.label.style.display = vis ? 'block' : 'none';
+    if (vis) n.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
   }
+  dateEl.textContent = fmt.format(new Date((jd - 2440587.5) * 86400000));
+  if (selected && (liveTick = (liveTick + 1) % 10) === 0) updateLive();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
