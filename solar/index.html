@@ -42,7 +42,8 @@
   <h1>☀️ Sonnensystem</h1>
   <div id="date"></div>
   <div class="row" id="speeds"></div>
-  <div class="row"><button id="now">Jetzt</button><button id="labels" class="on">Namen</button><button id="orbits" class="on">Bahnen</button><button id="craft" class="on">Raumfahrt</button></div>
+  <div class="row"><button id="now">Jetzt</button><button id="labels" class="on">Namen</button><button id="orbits" class="on">Bahnen</button><button id="craft" class="on">Raumfahrt</button><button id="sats">Satelliten ▾</button></div>
+  <div class="row" id="netRow" style="display:none"></div>
   <div class="row"><button id="solecl">🌑 Sonnenfinsternis</button><button id="lunecl">🌕 Mondfinsternis</button></div>
   <div id="eclinfo" style="font-size:11px;color:#aab;display:none"></div>
   <div class="row">Maßstab:
@@ -820,7 +821,7 @@ const NETS = [
 ];
 const netGroup = new THREE.Group(); scene.add(netGroup);
 for (const n of NETS) {
-  n.cat = 'net'; n.count = n.planes * n.per;
+  n.on = true; n.cat = 'net'; n.count = n.planes * n.per;
   n.P = 2 * Math.PI * Math.sqrt((6371 + n.alt) ** 3 / 398600.4) / 86400;
   n.frames = Array.from({ length: n.planes }, (_, i) => { const f = new THREE.Object3D(); f.rotation.order = 'ZYX'; f.userData.node = i * 360 / n.planes; return f; });
   n.rings = n.frames.map(f => { const r = new THREE.Line(circleGeo, new THREE.LineBasicMaterial({ color: n.color, transparent: true, opacity: 0.18 })); f.add(r); netGroup.add(f); return r; });
@@ -836,9 +837,11 @@ const netTmp = new THREE.Vector3();
 function updateNets() {
   const earth = P('Erde');
   // nur aus der Nähe der Erde zeigen
-  netGroup.visible = showCraft && camera.position.distanceTo(earth.spos) < focusDist(earth) * 5;
+  netGroup.visible = NETS.some(n => n.on) && camera.position.distanceTo(earth.spos) < focusDist(earth) * 5;
   if (!netGroup.visible) return;
   for (const n of NETS) {
+    n.pts.visible = n.on; n.frames.forEach(f => f.visible = n.on);
+    if (!n.on) continue;
     const d = satDist(earth, 6371 + n.alt), a = n.pts.geometry.attributes.position;
     n.frames.forEach((f, i) => {
       f.position.copy(earth.spos); f.rotation.set(n.inc * D2R, f.userData.node * D2R, earth.tilt * D2R); f.updateMatrixWorld();
@@ -973,6 +976,15 @@ renderer.domElement.addEventListener('pointermove', e => {
 document.querySelectorAll('.label:not(.craft)').forEach(l => l.addEventListener('wheel', e => {
   e.preventDefault(); renderer.domElement.dispatchEvent(new WheelEvent('wheel', e));
 }, { passive: false }));
+// Satellitennetze einzeln schaltbar
+const netRow = document.getElementById('netRow');
+document.getElementById('sats').onclick = e => { const open = netRow.style.display === 'none'; netRow.style.display = open ? 'flex' : 'none'; e.target.classList.toggle('on', open); };
+for (const n of NETS) {
+  const b = document.createElement('button'); b.textContent = n.name === 'Geostationärer Ring' ? 'Geostationär' : n.name; b.className = 'on';
+  b.style.borderColor = '#' + new THREE.Color(n.color).getHexString();
+  b.onclick = () => { n.on = !n.on; b.classList.toggle('on', n.on); if (!n.on && selected === n) select(null); };
+  netRow.appendChild(b);
+}
 document.getElementById('craft').onclick = e => { showCraft = !showCraft; e.target.classList.toggle('on', showCraft); };
 document.getElementById('orbits').onclick = e => { showOrbits = !showOrbits; e.target.classList.toggle('on', showOrbits); };
 
@@ -1088,7 +1100,7 @@ renderer.domElement.addEventListener('pointerup', e => {
     for (const m of [...MOONS, ...EXTRA]) if (focus === m.parent) test(m, m.spos, moonRadius(m.r));
     for (const c of COMETS) test(c, c.spos, 0);
     if (showCraft) for (const c of CRAFT) if (!c.parent || focus === c.parent) test(c, c.spos, 0);
-    if (netGroup.visible) for (const n of NETS) { const a = n.pts.geometry.attributes.position; for (let i = 0; i < n.count; i++) test(n, netTmp.fromBufferAttribute(a, i), 0); }
+    if (netGroup.visible) for (const n of NETS) if (n.on) { const a = n.pts.geometry.attributes.position; for (let i = 0; i < n.count; i++) test(n, netTmp.fromBufferAttribute(a, i), 0); }
   }
   if (hit && (hit.cat === 'planet' || hit.cat === 'dwarf')) setFocus(hit);
   select(hit || null);
@@ -1253,7 +1265,7 @@ function frame(now) {
   }
   for (const n of NETS) {
     tmp.copy(n.spos).project(camera);
-    const vis = netGroup.visible && showLabels && focus === earthObj && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
+    const vis = n.on && netGroup.visible && showLabels && focus === earthObj && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
     n.label.style.display = vis ? 'block' : 'none';
     if (vis) n.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
   }
