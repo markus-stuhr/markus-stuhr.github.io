@@ -32,6 +32,9 @@
   #info .facts { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 6px 0; color: #bcc4e0; font-variant-numeric: tabular-nums; }
   #info .facts span:nth-child(odd) { color: #8088a8; }
   #info p { margin: 6px 0 0; line-height: 1.45; }
+  #sats { padding-right: 0; }
+  #satsMore { display: inline-block; margin: -4px 0 -4px 6px; padding: 4px 9px; border-left: 1px solid rgba(255,255,255,.25); }
+  #satsMore.open { transform: none; background: rgba(255,255,255,.12); }
   #infoClose { position: absolute; right: 6px; top: 6px; background: none; border: none; font-size: 16px; color: #99a; padding: 0 6px; }
   .label::before { content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%; border: 1px solid currentColor; margin-right: 4px; vertical-align: 0; transform: translate(-3px, 0); }
 </style>
@@ -42,7 +45,7 @@
   <h1>☀️ Sonnensystem</h1>
   <div id="date"></div>
   <div class="row" id="speeds"></div>
-  <div class="row"><button id="now">Jetzt</button><button id="labels" class="on">Namen</button><button id="orbits" class="on">Bahnen</button><button id="craft" class="on">Raumfahrt</button><button id="sats">Satelliten ▾</button></div>
+  <div class="row"><button id="now">Jetzt</button><button id="labels" class="on">Namen</button><button id="orbits" class="on">Bahnen</button><button id="craft" class="on">Raumfahrt</button><button id="sats" class="on">Satelliten<span id="satsMore" aria-label="Netze einzeln">▾</span></button></div>
   <div class="row" id="netRow" style="display:none"></div>
   <div class="row"><button id="solecl">🌑 Sonnenfinsternis</button><button id="lunecl">🌕 Mondfinsternis</button></div>
   <div id="eclinfo" style="font-size:11px;color:#aab;display:none"></div>
@@ -837,7 +840,7 @@ const netTmp = new THREE.Vector3();
 function updateNets() {
   const earth = P('Erde');
   // nur aus der Nähe der Erde zeigen
-  netGroup.visible = NETS.some(n => n.on) && camera.position.distanceTo(earth.spos) < focusDist(earth) * 5;
+  netGroup.visible = showNets && NETS.some(n => n.on) && camera.position.distanceTo(earth.spos) < focusDist(earth) * 5;
   if (!netGroup.visible) return;
   for (const n of NETS) {
     n.pts.visible = n.on; n.frames.forEach(f => f.visible = n.on);
@@ -978,7 +981,11 @@ document.querySelectorAll('.label:not(.craft)').forEach(l => l.addEventListener(
 }, { passive: false }));
 // Satellitennetze einzeln schaltbar
 const netRow = document.getElementById('netRow');
-document.getElementById('sats').onclick = e => { const open = netRow.style.display === 'none'; netRow.style.display = open ? 'flex' : 'none'; e.target.classList.toggle('on', open); };
+// ganzer Knopf: alle Netze an/aus, Pfeil: Einzelschalter auf-/zuklappen
+let showNets = true;
+const satsBtn = document.getElementById('sats'), satsMore = document.getElementById('satsMore');
+satsBtn.onclick = () => { showNets = !showNets; satsBtn.classList.toggle('on', showNets); if (!showNets && selected && selected.cat === 'net') select(null); };
+satsMore.onclick = e => { e.stopPropagation(); const open = netRow.style.display === 'none'; netRow.style.display = open ? 'flex' : 'none'; satsMore.textContent = open ? '▴' : '▾'; satsMore.classList.toggle('open', open); };
 for (const n of NETS) {
   const b = document.createElement('button'); b.textContent = n.name === 'Geostationärer Ring' ? 'Geostationär' : n.name; b.className = 'on';
   b.style.borderColor = '#' + new THREE.Color(n.color).getHexString();
