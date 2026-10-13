@@ -21,6 +21,7 @@
   .label.craft { font-size: 10px; color: #9ff0b0; pointer-events: none; }
   #tip { position: fixed; display: none; pointer-events: none; background: rgba(10,12,20,.85); border: 1px solid #334; border-radius: 6px; padding: 4px 8px; font-size: 11px; max-width: 240px; color: #cfe; }
   .label.craft::before { border-radius: 1px; transform: translate(-3px, 0) rotate(45deg); }
+  .label.lander { color: #ffc48a; }
   .label.comet { font-size: 10px; color: #9fc3e8; pointer-events: none; }
   .label.moon { font-size: 10px; color: #a8aec8; pointer-events: none; }
   .label.moon::before { width: 4px; height: 4px; transform: translate(-2px, 0); }
@@ -741,20 +742,67 @@ const CRAFT = [
   { name: 'Voyager 2', info: 'Seit 1977, einzige Sonde an Uranus und Neptun', kind: 'escape', dir: raDecDir(20.12, -58.5), r0: 142.0, v: 3.25 },
   { name: 'New Horizons', info: 'Pluto-Vorbeiflug 2015, Arrokoth 2019', kind: 'escape', dir: raDecDir(19.33, -20.0), r0: 63.8, v: 2.91 },
   { name: 'Pioneer 10', info: 'Start 1972, Kontakt 2003 verloren', kind: 'escape', dir: raDecDir(5.2, 26.0), r0: 139.0, v: 2.53 },
+  // weitere Orbiter (Bahnen genähert als Kreise)
+  { name: 'Mars Odyssey', info: 'NASA-Marsorbiter seit 2001 – die am längsten arbeitende Marssonde, Funkrelais für die Rover', kind: 'orbit', parent: P('Mars'), a: 3390 + 400, P: 118 / 1440, inc: 93, node: 60 },
+  { name: 'Mars Express', info: 'ESA-Marsorbiter seit 2003, fand Hinweise auf Wasser unter dem Südpol-Eis', kind: 'orbit', parent: P('Mars'), a: 8600, P: 0.29, inc: 86, node: 140 },
+  { name: 'MAVEN', info: 'NASA-Orbiter seit 2014, untersucht, wie Mars seine Atmosphäre ans All verliert', kind: 'orbit', parent: P('Mars'), a: 6300, P: 0.18, inc: 75, node: 220 },
+  { name: 'Trace Gas Orbiter', info: 'ESA/Roskosmos (ExoMars) seit 2016, sucht Methan und andere Spurengase', kind: 'orbit', parent: P('Mars'), a: 3390 + 400, P: 120 / 1440, inc: 74, node: 300 },
+  { name: 'Hope', info: 'Marsorbiter der Vereinigten Arabischen Emirate seit 2021, beobachtet Wetter und Klima', kind: 'orbit', parent: P('Mars'), a: 34900, P: 2.3, inc: 25, node: 20 },
+  { name: 'Tianwen-1', info: 'Chinesischer Marsorbiter seit 2021, brachte den Rover Zhurong mit', kind: 'orbit', parent: P('Mars'), a: 9000, P: 0.33, inc: 87, node: 100 },
+  { name: 'LRO', info: 'Lunar Reconnaissance Orbiter (NASA) seit 2009 – fotografierte sogar die Apollo-Landestellen', kind: 'orbit', parent: MOONS.find(m => m.name === 'Mond'), show: P('Erde'), a: 1737 + 100, P: 113 / 1440, inc: 90, node: 0 },
+  { name: 'Danuri', info: 'Südkoreanischer Mondorbiter seit 2022', kind: 'orbit', parent: MOONS.find(m => m.name === 'Mond'), show: P('Erde'), a: 1737 + 100, P: 118 / 1440, inc: 90, node: 90 },
+  { name: 'Chandrayaan-2', info: 'Indischer Mondorbiter seit 2019', kind: 'orbit', parent: MOONS.find(m => m.name === 'Mond'), show: P('Erde'), a: 1737 + 100, P: 118 / 1440, inc: 90, node: 45 },
+  { name: 'Juno', info: 'NASA-Jupitersonde seit 2016 auf langgestreckter Polarbahn, lieferte die farbigen Wolkenbilder', kind: 'orbit', parent: P('Jupiter'), a: 1.9e6, P: 33, inc: 90, node: 30 },
+  { name: 'Solar Orbiter', info: 'ESA/NASA-Sonnensonde seit 2020, fotografiert als erste die Pole der Sonne (Bahn genähert)', kind: 'helio', el: { a: 0.6, e: 0.52, I: 17 * D2R, O: 70 * D2R, w: 150 * D2R }, T: 2461000 },
+  // unterwegs: Position zwischen Start und Ankunft genähert interpoliert (Swing-bys nicht dargestellt)
+  { name: 'Europa Clipper', info: 'NASA-Sonde zum Jupitermond Europa, Start Oktober 2024, Ankunft April 2030 (Weg genähert)', kind: 'transfer', from: P('Erde'), to: P('Jupiter'), t0: '2024-10-14', t1: '2030-04-11' },
+  { name: 'JUICE', info: 'ESA-Sonde zu Ganymed, Europa und Kallisto, Start April 2023, Ankunft Juli 2031 (Weg genähert)', kind: 'transfer', from: P('Erde'), to: P('Jupiter'), t0: '2023-04-14', t1: '2031-07-20' },
   { name: 'Pioneer 11', info: 'Start 1973, Kontakt 1995 verloren', kind: 'escape', dir: raDecDir(18.87, -8.5), r0: 117.7, v: 2.34 },
 ];
+// Lander und Rover an ihren Landeorten (Breite, Länge; Ost positiv)
+const L = (name, body, lat, lon, info) => ({ name, info, kind: 'surface', body, lat, lon, cat: 'lander' });
+const MOON = MOONS.find(m => m.name === 'Mond'), TITAN = MOONS.find(m => m.name === 'Titan');
+CRAFT.push(
+  L('Luna 9', MOON, 7.08, -64.37, 'Sowjetunion, 1966: erste weiche Landung auf dem Mond und erste Bilder von der Oberfläche'),
+  L('Apollo 11', MOON, 0.67, 23.47, 'Juli 1969: Neil Armstrong und Buzz Aldrin betreten als erste Menschen den Mond'),
+  L('Apollo 15', MOON, 26.13, 3.63, '1971: erster Einsatz des Mondautos (Lunar Roving Vehicle)'),
+  L('Apollo 17', MOON, 20.19, 30.77, 'Dezember 1972: bisher letzte Menschen auf dem Mond'),
+  L("Chang'e 3 / Yutu", MOON, 44.12, -19.51, 'China, 2013: erster chinesischer Lander mit Rover Yutu'),
+  L("Chang'e 4", MOON, -45.44, 177.6, 'China, 2019: erste Landung auf der Mondrückseite, mit Rover Yutu-2'),
+  L("Chang'e 5", MOON, 43.1, -51.8, 'China, 2020: brachte 1,7 kg Mondgestein zur Erde'),
+  L("Chang'e 6", MOON, -41.6, -153.98, 'China, 2024: erste Bodenproben von der Mondrückseite'),
+  L('Chandrayaan-3', MOON, -69.37, 32.32, 'Indien, 2023: erste Landung nahe dem Mondsüdpol, mit Rover Pragyan'),
+  L('SLIM', MOON, -13.3, 25.25, 'Japan, 2024: Präzisionslandung, kippte dabei auf die Nase'),
+  L('Odysseus (IM-1)', MOON, -80.13, 1.44, 'USA, 2024: erste kommerzielle Mondlandung'),
+  L('Blue Ghost 1', MOON, 18.56, 61.81, 'USA (Firefly), 2025: kommerzielle Landung im Mare Crisium'),
+  L('Viking 1', P('Mars'), 22.27, -47.95, 'NASA, 1976: erster voll erfolgreicher Marslander, arbeitete 6 Jahre'),
+  L('Viking 2', P('Mars'), 47.64, 134.29, 'NASA, 1976: zweiter Viking-Lander in der Utopia Planitia'),
+  L('Pathfinder / Sojourner', P('Mars'), 19.13, -33.22, 'NASA, 1997: erster Marsrover Sojourner'),
+  L('Spirit', P('Mars'), -14.57, 175.47, 'NASA-Rover, 2004–2010 im Gusev-Krater'),
+  L('Opportunity', P('Mars'), -1.95, -5.53, 'NASA-Rover, 2004–2018: geplant 90 Tage, fuhr über 45 km'),
+  L('Phoenix', P('Mars'), 68.22, -125.7, 'NASA, 2008: fand Wassereis direkt unter der Oberfläche'),
+  L('Curiosity', P('Mars'), -4.59, 137.44, 'NASA-Rover seit 2012 im Gale-Krater, erklimmt den Mount Sharp'),
+  L('InSight', P('Mars'), 4.5, 135.62, 'NASA, 2018–2022: maß Marsbeben und den inneren Aufbau'),
+  L('Perseverance', P('Mars'), 18.44, 77.45, 'NASA-Rover seit 2021 im Jezero-Krater, sammelt Proben; brachte den Hubschrauber Ingenuity mit'),
+  L('Zhurong', P('Mars'), 25.07, 109.93, 'Chinas erster Marsrover, 2021–2022 in der Utopia Planitia'),
+  L('Venera 7', P('Venus'), -5, -9, 'Sowjetunion, 1970: erste Landung auf einem anderen Planeten, sendete 23 Minuten'),
+  L('Venera 13', P('Venus'), -7.5, -57, 'Sowjetunion, 1982: erste Farbbilder von der Venusoberfläche, hielt 127 Minuten bei 457 °C'),
+  L('Huygens', TITAN, -10.3, 167.7, 'ESA, 2005: Landung auf Titan – die bislang fernste Landung im Sonnensystem'),
+);
+for (const c of CRAFT) if (c.kind === 'surface') c.parent = c.body.parent || c.body;
 let showCraft = true;
 const craftGroup = new THREE.Group(); scene.add(craftGroup);
 const satDist = (parent, aKm) => {
   // erdnahe Bahnen (a < 1,5 Planetenradien) behalten das echte Verhältnis und fliegen flach über der Oberfläche
-  const R = parent.r, Ri = 0.045 * Math.sqrt(R / 1000);
+  const R = parent.r, Ri = (parent.cat === 'moon' ? 0.03 : 0.045) * Math.sqrt(R / 1000);
   const illus = aKm / R < 1.5 ? Ri * aKm / R : Ri * (1.8 + 0.9 * Math.log(aKm / R));
   return lerpLog(aKm / AU_KM, illus, mix);
 };
 for (const c of CRAFT) {
   c.spos = new THREE.Vector3();
   c.marker = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex, color: 0x9ff0b0, sizeAttenuation: false, depthWrite: false, transparent: true }));
-  c.marker.scale.setScalar(0.012);
+  c.marker.scale.setScalar(c.kind === 'surface' ? 0.009 : 0.012);
+  if (c.kind === 'surface') c.marker.material.color.set(0xffb070);
   craftGroup.add(c.marker);
   if (c.kind === 'orbit') {
     c.frame = new THREE.Object3D();
@@ -767,7 +815,7 @@ for (const c of CRAFT) {
     c.line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: 0x9ff0b0, transparent: true, opacity: 0.25, dashSize: 0.6, gapSize: 0.4 }));
     craftGroup.add(c.line);
   }
-  const l = document.createElement('div'); l.className = 'label craft'; l.textContent = c.name;
+  const l = document.createElement('div'); l.className = c.kind === 'surface' ? 'label craft lander' : 'label craft'; l.textContent = c.name;
   document.body.appendChild(l); c.label = l;
 }
 const craftTmp = new THREE.Vector3(), geoFrame = new THREE.Object3D();
@@ -779,7 +827,7 @@ function updateCraft() {
     if (c.kind === 'orbit') {
       const d = satDist(c.parent, c.a), th = 2 * Math.PI * (jd / c.P % 1);
       c.frame.position.copy(c.parent.spos);
-      c.frame.rotation.set(c.inc * D2R, c.node * D2R, c.parent.tilt * D2R);
+      c.frame.rotation.set(c.inc * D2R, c.node * D2R, (c.parent.tilt || 0) * D2R);
       c.frame.updateMatrixWorld();
       c.orbit.scale.setScalar(d); c.orbit.visible = showOrbits;
       c.spos.set(Math.cos(th) * d, 0, -Math.sin(th) * d).applyMatrix4(c.frame.matrixWorld);
@@ -794,6 +842,25 @@ function updateCraft() {
       const side = new THREE.Vector3(0, 1, 0).cross(out).normalize();
       const d = satDist(c.parent, c.a);
       c.spos.copy(c.parent.spos).addScaledVector(out, d).addScaledVector(side, d * c.off * Math.sin(jd / 90 + c.off * 10));
+    } else if (c.kind === 'surface') {
+      // Länge λ liegt im Körper-Koordinatensystem bei (cos λ, 0, −sin λ), wie die Texturen
+      const b = c.body.mesh, la = c.lat * D2R, lo = c.lon * D2R;
+      b.updateMatrixWorld();
+      c.spos.set(Math.cos(la) * Math.cos(lo), Math.sin(la), -Math.cos(la) * Math.sin(lo)).multiplyScalar(1.01).applyMatrix4(b.matrixWorld);
+    } else if (c.kind === 'transfer') {
+      const j0 = Date.parse(c.t0) / 864e5 + 2440587.5, j1 = Date.parse(c.t1) / 864e5 + 2440587.5;
+      if (jd < j0) { c.spos.copy(c.from.spos); }
+      else if (jd > j1) { c.spos.copy(c.to.spos).add(craftTmp.set(1, 0.3, 0).normalize().multiplyScalar(satDist(c.to, 2e6))); }
+      else {
+        // in Polarkoordinaten zwischen Startort und Zielort zur Ankunftszeit, immer rechtläufig
+        const a = planetPos(c.from, j0, new THREE.Vector3()), b = planetPos(c.to, j1, new THREE.Vector3());
+        const u = (jd - j0) / (j1 - j0), w = (1 - Math.cos(Math.PI * u)) / 2;
+        const t0 = Math.atan2(-a.z, a.x); let t1 = Math.atan2(-b.z, b.x);
+        while (t1 < t0) t1 += 2 * Math.PI;
+        const th = t0 + (t1 - t0) * u, r = a.length() + (b.length() - a.length()) * w;
+        craftTmp.set(Math.cos(th) * r, a.y + (b.y - a.y) * u, -Math.sin(th) * r);
+        mapPos(craftTmp, c.spos);
+      }
     } else if (c.kind === 'near') {
       c.spos.copy(c.parent.spos).add(new THREE.Vector3(1, 0.3, 0).normalize().multiplyScalar(satDist(c.parent, c.a)));
     } else if (c.kind === 'helio') {
@@ -1039,10 +1106,10 @@ const INFO = {
   '109P/Swift-Tuttle': 'Mutterkörper der Perseiden, der Sternschnuppen im August. Ein Umlauf dauert 133 Jahre.',
   'C/1995 O1 Hale-Bopp': '1997 rund 18 Monate lang mit bloßem Auge sichtbar, einer der hellsten Kometen des 20. Jahrhunderts. Nächste Wiederkehr in über 2.000 Jahren.',
 };
-const CAT = { sun: 'Stern', planet: 'Planet', dwarf: 'Zwergplanet', moon: 'Mond', comet: 'Komet', craft: 'Raumfahrt', net: 'Satellitennetz' };
+const CAT = { sun: 'Stern', planet: 'Planet', dwarf: 'Zwergplanet', moon: 'Mond', comet: 'Komet', craft: 'Raumfahrt', lander: 'Lander / Rover', net: 'Satellitennetz' };
 const sunObj = { name: 'Sonne', cat: 'sun', r: SUN_R, spos: new THREE.Vector3(), pos: new THREE.Vector3() };
 for (const c of COMETS) c.cat = 'comet';
-for (const c of CRAFT) c.cat = 'craft';
+for (const c of CRAFT) c.cat = c.cat || 'craft';
 const nf = (v, d = 0) => v.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d });
 const period = days => days < 1 ? `${nf(days * 1440)} min` : days < 400 ? `${nf(days, days < 10 ? 2 : 1)} Tage` : `${nf(days / 365.25, 1)} Jahre`;
 let selected = null;
@@ -1060,10 +1127,11 @@ function select(o) {
   if (o.cat === 'moon') f.push(['umkreist', o.parent.name], ['Radius', o.extra && !o.rKnown ? 'wenige km' : `${nf(o.r)} km`], ['Bahnradius', `${nf(o.a)} km`], ['Umlaufzeit', period(Math.abs(o.P)) + (o.P < 0 || (o.k && o.k.I > Math.PI / 2) ? ' (rückläufig)' : '')]);
   if (o.cat === 'comet') f.push(['Perihel', `${nf(o.q, 2)} AE`], ['Umlaufzeit', period(365.25 * o.k.a ** 1.5)]);
   if (o.cat === 'net') f.push(['Bahnhöhe', `${nf(o.alt)} km`], ['Neigung', `${nf(o.inc, 1)}°`], ['Umlaufzeit', o.geo ? '1 Sterntag' : period(o.P)], ['gezeigt', `${o.count} Satelliten`], ['in echt', o.real]);
+  if (o.cat === 'lander') f.push(['auf', o.body.name], ['Landeort', `${nf(Math.abs(o.lat), 1)}° ${o.lat >= 0 ? 'N' : 'S'}, ${nf(Math.abs(o.lon), 1)}° ${o.lon >= 0 ? 'O' : 'W'}`]);
   if (o.cat === 'craft' && o.kind === 'orbit') f.push(['Bahnhöhe', `${nf(o.a - o.parent.r)} km`], ['Umlaufzeit', period(o.P)]);
   infoBody.innerHTML = `<h2>${o.name}</h2><div class="sub">${CAT[o.cat]}</div>` +
     (f.length ? `<div class="facts">${f.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join('')}</div>` : '') +
-    `<div class="facts" id="live"></div><p>${o.cat === 'craft' ? o.info : o.cat === 'net' ? o.text : INFO[o.name] || (o.extra ? extraText(o) : '')}</p>`;
+    `<div class="facts" id="live"></div><p>${o.cat === 'craft' || o.cat === 'lander' ? o.info : o.cat === 'net' ? o.text : INFO[o.name] || (o.extra ? extraText(o) : '')}</p>`;
   updateLive();
 }
 const liveTmp = new THREE.Vector3();
@@ -1106,7 +1174,7 @@ renderer.domElement.addEventListener('pointerup', e => {
     for (const p of PLANETS) test(p, p.spos, radiusMap(p.r));
     for (const m of [...MOONS, ...EXTRA]) if (focus === m.parent) test(m, m.spos, moonRadius(m.r));
     for (const c of COMETS) test(c, c.spos, 0);
-    if (showCraft) for (const c of CRAFT) if (!c.parent || focus === c.parent) test(c, c.spos, 0);
+    if (showCraft) for (const c of CRAFT) if (c.kind === 'surface' ? c.marker.visible : !c.parent || focus === (c.show || c.parent)) test(c, c.spos, 0);
     if (netGroup.visible) for (const n of NETS) if (n.on) { const a = n.pts.geometry.attributes.position; for (let i = 0; i < n.count; i++) test(n, netTmp.fromBufferAttribute(a, i), 0); }
   }
   if (hit && (hit.cat === 'planet' || hit.cat === 'dwarf')) setFocus(hit);
@@ -1265,7 +1333,14 @@ function frame(now) {
     tmp.copy(c.spos).project(camera);
     // Raumfahrzeuge bei Planeten nur zeigen, wenn dieser Planet im Fokus ist (und weit genug vom Planeten entfernt)
     let near = true;
-    if (c.parent) near = focus === c.parent && c.spos.distanceTo(c.parent.spos) / (camera.position.distanceTo(c.spos) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2 > 18;
+    if (c.kind === 'surface') {
+      // Lander nur, wenn der Körper groß genug im Bild ist und der Ort zur Kamera zeigt
+      const b = c.body, bs = b.mesh.scale.x, ctr = b.spos;
+      const px = bs / (camera.position.distanceTo(ctr) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2;
+      near = focus === c.parent && px > 60 && craftTmp.copy(c.spos).sub(ctr).dot(tmp.copy(camera.position).sub(c.spos)) > 0;
+      c.marker.visible = near;
+      tmp.copy(c.spos).project(camera);
+    } else if (c.parent) near = focus === (c.show || c.parent) && c.spos.distanceTo(c.parent.spos) / (camera.position.distanceTo(c.spos) * Math.tan(camera.fov * D2R / 2)) * innerHeight / 2 > 18;
     const vis = showCraft && showLabels && near && tmp.z < 1 && Math.abs(tmp.x) < 1.1 && Math.abs(tmp.y) < 1.1;
     c.label.style.display = vis ? 'block' : 'none';
     if (vis) c.label.style.transform = `translate(${(tmp.x + 1) / 2 * innerWidth}px, ${(1 - tmp.y) / 2 * innerHeight - 7}px)`;
