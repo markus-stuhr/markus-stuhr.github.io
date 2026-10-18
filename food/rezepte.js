@@ -359,7 +359,7 @@ window.REZEPTE = [
     tipps: ["Ein Fleischthermometer ist beim Filet Gold wert – so wird es genau auf den Punkt.", "Die Kartoffeln zuerst in den Ofen schieben, dann läuft alles andere nebenher.", "Kräuterbutter-Rolle hält sich eingefroren wochenlang – gleich die doppelte Menge machen."]
   },
   {
-    id: "kartoffelpuffer",
+    id: "kartoffelpuffer", neu: true,
     titel: "Kartoffelpuffer mit Sour Cream",
     kategorie: "Deutsch",
     bild: "img/kartoffelpuffer.svg",
@@ -753,7 +753,7 @@ window.REZEPTE = [
     tipps: ['Kein Ketchup: die orange Farbe kommt aus Paprika und Kurkuma.', 'Zucker + Essig ersetzen das amerikanische Sweet Relish.', 'Nur Zwiebelpulver – die gehackte Zwiebel liegt beim Big Mac separat auf dem Burger.', 'Hält abgedeckt etwa eine Woche im Kühlschrank.']
   },
   {
-    id: 'kuerbiscurry', titel: 'Kürbis-Curry', kategorie: 'Indisch', emoji: '🎃',
+    id: 'kuerbiscurry', neu: true, titel: 'Kürbis-Curry', kategorie: 'Indisch', emoji: '🎃',
     farbe: ['#b8561c', '#f2c078'], portionen: '4 Portionen', zeit: '40 Min.',
     teaser: 'Würzig geröstete Kürbiswürfel und knusprige Kichererbsen in cremiger Kokos-Tomaten-Sauce – mit Pita, Crème fraîche und Limette.',
     tags: ['vegetarisch', 'Herbst', 'Ofen'],
