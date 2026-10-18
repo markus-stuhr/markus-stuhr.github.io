@@ -181,12 +181,12 @@ if (!r) {
   document.title = 'Rezepte';
   const GRUPPEN = [
     ['Salat', ['caesar', 'ziegenkaese', 'kartoffelsalat', 'tabouleh', 'coban']],
-    ['Suppe', ['kuerbis', 'currysuppe', 'mercimek', 'gazpacho']],
-    ['Asiatisch', ['teriyaki', 'eierreis', 'wantan', 'bao', 'tamagoyaki']],
-    ['Orientalisch', ['koefte', 'shawarma', 'falafel', 'lahmacun', 'babaganoush', 'kaesestangen', 'suetlac']],
-    ['Mittag', ['filet', 'kuerbiscurry', 'pilzsahne', 'parmesannudeln', 'lachs', 'bolognese', 'lasagne', 'schinkennudeln', 'kartoffelquark', 'kartoffelpuffer', 'knoedel', 'cheeseburger', 'pizzateig', 'wraps', 'pfannkuchen']],
-    ['Backen', ['pide', 'broetchen', 'hefezopf', 'macarons', 'plaetzchen', 'pfefferkuchen', 'apfelkuchen', 'granola']],
+    ['Suppen & Meze', ['kuerbis', 'currysuppe', 'mercimek', 'gazpacho', 'falafel', 'babaganoush']],
+    ['Vorspeisen & Snacks', ['wantan', 'bao', 'tamagoyaki']],
+    ['Mittag', ['filet', 'kuerbiscurry', 'pilzsahne', 'parmesannudeln', 'lachs', 'bolognese', 'lasagne', 'schinkennudeln', 'teriyaki', 'eierreis', 'koefte', 'shawarma', 'lahmacun', 'kartoffelquark', 'kartoffelpuffer', 'knoedel', 'cheeseburger', 'pizzateig', 'wraps']],
     ['Beilagen', ['kartoffelrosen', 'fenchel']],
+    ['Backen', ['pide', 'kaesestangen', 'broetchen', 'hefezopf', 'macarons', 'plaetzchen', 'pfefferkuchen', 'apfelkuchen']],
+    ['Frühstück & Süßes', ['pfannkuchen', 'granola', 'suetlac']],
     ['Saucen', ['french', 'bigmac']]
   ];
   const vergeben = new Set(GRUPPEN.flatMap(g => g[1]));
