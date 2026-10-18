@@ -84,6 +84,7 @@ h3 { font: 600 12px Inter; text-transform: uppercase; letter-spacing: .12em; col
 .tile .pic { position: relative; height: 150px; display: grid; place-items: center; font-size: 76px; }
 .tile .txt { padding: 14px 18px 18px; }
 .tile .pic img { width: 118px !important; height: 118px !important; }
+.tile .pill.neu { left: auto; right: 12px; top: 12px; bottom: auto; background: #e63946; color: #fff; letter-spacing: .06em; }
 .tile .pill { position: absolute; left: 12px; bottom: 12px; background: rgba(255,255,255,.92); color: var(--ink); font: 600 12px Inter; border-radius: 999px; padding: 4px 10px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
 .tile .kicker { white-space: nowrap; overflow: hidden; text-overflow: ellipsis;  color: var(--muted); font-size: 11px; }
 .tile h5 { margin: 4px 0 0; font: 600 19px/1.2 Fraunces, serif; }
@@ -171,7 +172,7 @@ const r = R.find(x => x.id === id);
 
 const pic = x => x.bild ? `<img src="${x.bild}" alt="" style="width:1.1em;height:1.1em;display:block;margin:auto">` : x.emoji;
 function tile(x) {
-  return `<a class="tile" href="?r=${x.id}"><div class="pic" style="background:radial-gradient(circle at 60% 40%, ${x.farbe[1]}, ${x.farbe[0]})">${pic(x)}<span class="pill">⏱ ${esc(x.zeit)}</span></div>
+  return `<a class="tile" href="?r=${x.id}"><div class="pic" style="background:radial-gradient(circle at 60% 40%, ${x.farbe[1]}, ${x.farbe[0]})">${pic(x)}<span class="pill">⏱ ${esc(x.zeit)}</span>${x.neu ? '<span class="pill neu">NEU</span>' : ''}</div>
     <div class="txt"><div class="kicker">${esc(x.kategorie)}</div><h5>${esc(x.titel)}</h5></div></a>`;
 }
 

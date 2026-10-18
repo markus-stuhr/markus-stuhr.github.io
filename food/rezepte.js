@@ -186,7 +186,7 @@ window.REZEPTE = [
     tipps: ["Zitrone ist Pflicht – erst der Spritzer macht die Suppe richtig frisch.", "Dazu passt knuspriges Fladenbrot.", "Hält sich 3 Tage im Kühlschrank und dickt nach, dann mit Wasser verdünnen."]
   },
   {
-    id: "tabouleh",
+    id: "tabouleh", neu: true,
     titel: "Tabouleh",
     kategorie: "Libanesisch",
     bild: "img/tabouleh.svg",
@@ -214,7 +214,7 @@ window.REZEPTE = [
     tipps: ["Je dunkler die Haut, desto rauchiger das Aroma – keine Angst vor Schwarz.", "Mit der Gabel statt im Mixer: so bleibt eine schöne Struktur.", "Passt zu Fladenbrot und zum Köfte-Teller."]
   },
   {
-    id: "coban",
+    id: "coban", neu: true,
     titel: "Hirtensalat (Çoban Salatası)",
     kategorie: "Türkisch",
     bild: "img/coban.svg",
@@ -507,7 +507,7 @@ window.REZEPTE = [
     tipps: ['Hokkaido-Schale wird beim Kochen weich und kann mitpüriert werden.', 'Mit Kokosmilch und einem Stück Ingwer wird die Suppe asiatisch – und vegan.', 'Ein paar Tropfen Kürbiskernöl zum Schluss machen sie besonders.']
   },
   {
-    id: 'ziegenkaese', titel: 'Salat mit gebackenem Ziegenkäse', kategorie: 'Französisch', bild: 'img/ziegenkaese.svg', emoji: '🥗',
+    id: 'ziegenkaese', neu: true, titel: 'Salat mit gebackenem Ziegenkäse', kategorie: 'Französisch', bild: 'img/ziegenkaese.svg', emoji: '🥗',
     farbe: ['#4a6a2a', '#d6d88a'], portionen: '4 Portionen', zeit: '25 Min.',
     teaser: 'Warmer, cremiger Ziegenkäse auf knusprigem Baguette, mit Honig und Thymian überbacken – auf knackigem Salat mit Birne, Walnüssen und Balsamico-Dressing.',
     tags: ['vegetarisch', 'Salat', 'Gäste'],
