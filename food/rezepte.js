@@ -228,18 +228,25 @@ window.REZEPTE = [
     tipps: ["Erst kurz vor dem Essen salzen, sonst ziehen Tomate und Gurke Wasser.", "Je kleiner die Würfel, desto typischer.", "Perfekt zu Köfte, Lahmacun und Bulgur-Pilav."]
   },
   {
-    id: "suetlac", neu: true,
-    titel: "Sütlaç – Milchreis aus dem Ofen",
-    kategorie: "Türkisch",
-    bild: "img/suetlac.svg",
-    emoji: "🍮",
-    farbe: ["#8a4a24", "#f0d0a0"],
-    portionen: "6 Schälchen",
-    zeit: "50 Min. + 2 Std. kühlen",
-    teaser: "Der türkische Milchreis: cremig gekocht, in Schälchen gefüllt und unter dem Grill gebräunt, bis die Oberfläche karamellige Flecken bekommt – kalt mit Zimt serviert.",
-    tags: ["vegetarisch", "süß", "Dessert"],
-    abschnitte: [{"zutaten": [["100 g", "Rundkornreis (Milchreis)"], ["300 ml", "Wasser"], ["1 l", "Vollmilch"], ["130 g", "Zucker"], ["2 EL", "Reismehl oder Speisestärke"], ["1 Pck.", "Vanillezucker"], ["", "Zimt zum Bestreuen"]], "schritte": [{"t": "Reis vorkochen", "x": "Reis waschen und im Wasser kochen, bis das Wasser fast aufgesogen ist.", "z": "10 Min."}, {"t": "Mit Milch köcheln", "x": "Milch dazugießen und unter häufigem Rühren sanft köcheln lassen, bis der Reis ganz weich ist.", "z": "20 Min."}, {"t": "Binden", "x": "Reismehl mit etwas kalter Milch oder Wasser glatt rühren, mit Zucker und Vanillezucker einrühren und weitere Minuten köcheln, bis es cremig bindet.", "z": "5 Min."}, {"t": "Abfüllen", "x": "In ofenfeste Schälchen füllen und in eine Auflaufform mit etwas kaltem Wasser stellen."}, {"t": "Bräunen", "x": "Unter dem vorgeheizten Ofengrill auf oberster Schiene bräunen, bis die Oberfläche braune Flecken hat. Dabei nicht aus den Augen lassen.", "z": "8–12 Min."}, {"t": "Kühlen", "x": "Abkühlen lassen und im Kühlschrank durchkühlen. Vor dem Servieren mit Zimt bestäuben.", "z": "2 Std."}]}],
-    tipps: ["Das kalte Wasserbad verhindert, dass der Milchreis unten anbrennt, während die Oberfläche bräunt.", "Reismehl macht ihn besonders cremig – Speisestärke geht auch.", "Mit gehackten Pistazien noch schöner."]
+    id: "milchreis", neu: true,
+    titel: "Klassischer Milchreis mit Zimt und Zucker",
+    kategorie: "Deutsch",
+    bild: "img/milchreis.svg",
+    emoji: "🍚",
+    farbe: ["#a0603a", "#f6e6c4"],
+    portionen: "4 Portionen",
+    zeit: "40 Min.",
+    teaser: "Wie bei Oma: Rundkornreis langsam in Milch mit Vanille cremig geköchelt, warm serviert mit Zimt und Zucker, gern mit Apfelmus oder Kirschen.",
+    tags: ["vegetarisch", "süß", "Kindheit"],
+    abschnitte: [{"titel": "Zubereitung", "zutaten": [["250 g", "Milchreis (Rundkornreis)"], ["1 l", "Vollmilch"], ["2 EL", "Zucker"], ["1", "Vanilleschote (oder 1 Pck. Vanillezucker)"], ["1 Prise", "Salz"], ["1 EL", "Butter"], ["2 EL", "Zucker + 1 TL Zimt zum Bestreuen"], ["", "Apfelmus oder Sauerkirschen zum Servieren"]],
+      "schritte": [
+        {"t": "Aufkochen", "x": "Milch mit Zucker, Salz, Butter und dem ausgekratzten Vanillemark samt Schote in einem Topf mit dickem Boden aufkochen."},
+        {"t": "Reis einrühren", "x": "Milchreis einrühren und einmal kurz aufkochen lassen."},
+        {"t": "Quellen lassen", "x": "Hitze auf die kleinste Stufe stellen, Deckel auflegen und den Reis ausquellen lassen. Alle paar Minuten umrühren, damit nichts am Boden ansetzt.", "z": "30–35 Min."},
+        {"t": "Abschmecken", "x": "Vanilleschote entfernen. Ist der Reis zu fest, noch einen Schuss Milch unterrühren – er dickt beim Abkühlen nach."},
+        {"t": "Servieren", "x": "Zimt und Zucker mischen, den Milchreis warm in Schälchen füllen und großzügig bestreuen. Dazu Apfelmus oder warme Kirschen."}
+      ]}],
+    tipps: ["Topf mit dickem Boden oder Milchreis im Backofen bei 150 °C (ca. 45 Min.) – dann brennt nichts an.", "Kalt schmeckt er auch: mit etwas geschlagener Sahne unterheben, wird er luftig wie Reis Trauttmansdorff.", "Thermomix: alles außer Zimt-Zucker in den Mixtopf, 35 Min. / 90 °C / Linkslauf / Sanftrührstufe.", "Statt Vanille eine Zimtstange und ein Stück Zitronenschale mitkochen."]
   },
   {
     id: "bao", neu: true,
