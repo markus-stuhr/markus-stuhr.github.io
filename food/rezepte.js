@@ -242,7 +242,7 @@ window.REZEPTE = [
     tipps: ["Das kalte Wasserbad verhindert, dass der Milchreis unten anbrennt, während die Oberfläche bräunt.", "Reismehl macht ihn besonders cremig – Speisestärke geht auch.", "Mit gehackten Pistazien noch schöner."]
   },
   {
-    id: "bao",
+    id: "bao", neu: true,
     titel: "Bao mit Hackfüllung",
     kategorie: "Chinesisch",
     bild: "img/bao.svg",
@@ -256,7 +256,7 @@ window.REZEPTE = [
     tipps: ["Bao lassen sich hervorragend einfrieren und gefroren 20 Min. dämpfen.", "Ohne Bambuskorb geht ein Metall-Dämpfeinsatz im großen Topf.", "Für extra weiße Bao einen Teil des Mehls durch Weizenstärke ersetzen."]
   },
   {
-    id: 'teriyaki', titel: 'Teriyaki-Hähnchen mit Reis', kategorie: 'Japanisch', bild: 'img/teriyaki.svg', emoji: '🍗',
+    id: 'teriyaki', neu: true, titel: 'Teriyaki-Hähnchen mit Reis', kategorie: 'Japanisch', bild: 'img/teriyaki.svg', emoji: '🍗',
     farbe: ['#8e2a1c', '#e8925a'], portionen: '4 Portionen', zeit: '30 Min.',
     teaser: 'Zarte Hähnchenstücke in glänzend-klebriger Soja-Honig-Sauce mit Ingwer und Knoblauch – auf Reis, mit Brokkoli, Sesam und Frühlingszwiebeln.',
     tags: ['asiatisch', 'Familie', 'schnell'],
@@ -277,7 +277,7 @@ window.REZEPTE = [
     tipps: ['Hähnchenschenkel bleiben saftiger als Brust.', 'Sesam kurz in der trockenen Pfanne rösten – das gibt viel Aroma.', 'Wer es schärfer mag: eine Prise Chiliflocken in die Sauce.']
   },
   {
-    id: 'eierreis', titel: 'Gebratener Eierreis mit Hühnchen', kategorie: 'Chinesisch', bild: 'img/eierreis.svg', emoji: '🍚',
+    id: 'eierreis', neu: true, titel: 'Gebratener Eierreis mit Hühnchen', kategorie: 'Chinesisch', bild: 'img/eierreis.svg', emoji: '🍚',
     farbe: ['#9a6a12', '#f2d06a'], portionen: '4 Portionen', zeit: '25 Min.',
     teaser: 'Der Klassiker aus dem Wok: Reis vom Vortag, zerzupftes Rührei, Hähnchen, Erbsen und Karotten – mit Sojasauce knusprig gebraten.',
     tags: ['asiatisch', 'Resteverwertung', 'schnell'],
@@ -295,7 +295,7 @@ window.REZEPTE = [
     tipps: ['Unbedingt Reis vom Vortag nehmen – frischer Reis klebt und wird matschig.', 'Die Pfanne muss richtig heiß sein und nicht zu voll, sonst dünstet der Reis statt zu braten.', 'Übrige Gemüsereste (Paprika, Mais, Brokkoli) passen auch hinein.']
   },
   {
-    id: 'wantan', titel: 'Knusprige Wan Tans mit Koriander-Hack', kategorie: 'Chinesisch', bild: 'img/wantan.svg', emoji: '🥟',
+    id: 'wantan', neu: true, titel: 'Knusprige Wan Tans mit Koriander-Hack', kategorie: 'Chinesisch', bild: 'img/wantan.svg', emoji: '🥟',
     farbe: ['#9a4a12', '#f2b45a'], portionen: 'ca. 40 Stück', zeit: '1 Std.',
     teaser: 'Kleine Säckchen aus Wan-Tan-Teig, gefüllt mit würzigem Hack, frischem Koriander, Ingwer und Knoblauch – goldbraun frittiert und mit Sweet-Chili-Sauce gedippt.',
     tags: ['asiatisch', 'Fingerfood', 'Wochenende'],
