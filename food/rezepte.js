@@ -187,7 +187,7 @@ window.REZEPTE = [
   },
   {
     id: "tabouleh", neu: true,
-    titel: "Tabouleh",
+    titel: "Petersiliensalat",
     kategorie: "Libanesisch",
     bild: "img/tabouleh.svg",
     emoji: "🥗",
