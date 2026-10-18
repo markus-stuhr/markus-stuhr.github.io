@@ -77,7 +77,7 @@ window.REZEPTE = [
     tipps: ['Parmesan nicht kochen lassen – sonst wird er fädig. Immer neben dem Herd einrühren.', 'Das stärkehaltige Nudelwasser macht die Sauce glatt und bindet sie.', 'Parmesan am Stück kaufen und frisch reiben, fertig geriebener schmilzt schlechter.']
   },
   {
-    id: 'koefte', titel: 'Köfte & Halloumi mit Reis, Hummus und Saucen', kategorie: 'Türkisch', bild: 'img/koefte.svg', emoji: '🧆',
+    id: 'koefte', neu: true, titel: 'Köfte & Halloumi mit Reis, Hummus und Saucen', kategorie: 'Türkisch', bild: 'img/koefte.svg', emoji: '🧆',
     farbe: ['#7a3a1a', '#e8b27a'], portionen: '4 Portionen', zeit: '1 Std.',
     teaser: 'Der große Grillteller für zuhause: würzige Köfte, gegrillter Halloumi, Butterreis, cremiger Hummus – dazu Knoblauch-Joghurt und eine scharfe Tomatensauce.',
     tags: ['Familie', 'Grillen', 'Wochenende'],
@@ -130,7 +130,7 @@ window.REZEPTE = [
     tipps: ['Hitze lieber etwas niedriger – das Omelett soll gelb bleiben und keine braunen Stellen bekommen.', 'Nicht warten, bis eine Schicht ganz fest ist: leicht feucht klebt sie besser an der nächsten.', 'Ohne eckige Pfanne geht es auch in einer kleinen runden – dann die Seiten vor dem Rollen einklappen.']
   },
   {
-    id: "falafel",
+    id: "falafel", neu: true,
     titel: "Falafel",
     kategorie: "Levantinisch",
     bild: "img/falafel.svg",
@@ -144,7 +144,7 @@ window.REZEPTE = [
     tipps: ["Dosen-Kichererbsen sind zu weich – die Falafel zerfallen dann im Öl.", "Zum Testen erst ein Bällchen frittieren. Zerfällt es, einen Löffel Mehl unterkneten.", "Ofen-Variante: mit Öl bepinseln und bei 200 °C 25 Min. backen, einmal wenden."]
   },
   {
-    id: "shawarma",
+    id: "shawarma", neu: true,
     titel: "Hähnchen-Shawarma aus dem Ofen",
     kategorie: "Levantinisch",
     bild: "img/shawarma.svg",
@@ -158,7 +158,7 @@ window.REZEPTE = [
     tipps: ["Schenkel bleiben saftiger als Brust – genau das macht Shawarma aus.", "Für extra Röstaromen die letzten 3 Min. unter den Grill.", "Übriges Hähnchen schmeckt auch auf Reis oder Salat."]
   },
   {
-    id: "lahmacun",
+    id: "lahmacun", neu: true,
     titel: "Lahmacun",
     kategorie: "Türkisch",
     bild: "img/lahmacun.svg",
@@ -200,7 +200,7 @@ window.REZEPTE = [
     tipps: ["Die Kräuter müssen ganz trocken sein, sonst wird der Salat wässrig.", "Tabouleh ist ein Kräutersalat – der Bulgur ist nur Beiwerk.", "Mit Romanasalatblättern als Löffel servieren."]
   },
   {
-    id: "babaganoush",
+    id: "babaganoush", neu: true,
     titel: "Baba Ganoush",
     kategorie: "Levantinisch",
     bild: "img/babaganoush.svg",
@@ -228,7 +228,7 @@ window.REZEPTE = [
     tipps: ["Erst kurz vor dem Essen salzen, sonst ziehen Tomate und Gurke Wasser.", "Je kleiner die Würfel, desto typischer.", "Perfekt zu Köfte, Lahmacun und Bulgur-Pilav."]
   },
   {
-    id: "suetlac",
+    id: "suetlac", neu: true,
     titel: "Sütlaç – Milchreis aus dem Ofen",
     kategorie: "Türkisch",
     bild: "img/suetlac.svg",
