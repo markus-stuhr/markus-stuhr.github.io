@@ -836,5 +836,39 @@ window.REZEPTE = [
         ] }
     ],
     tipps: ["Teig zu fest? Je nach Eigröße oder Mehlsorte zusätzlich 2–3 EL Milch unterrühren – nicht mehr, sonst verliert der Teig seine Tragkraft und die Äpfel sinken durch.", "Zimmerwarme Butter und Eier sorgen für eine stabile Emulsion und eine zarte Krume.", "Sehr saftige Äpfel? Erst dünn Semmelbrösel oder gemahlene Mandeln auf den Teig streuen, dann die Äpfel – das schützt den Boden vor Nässe.", "Nach dem Backen den Rand lösen und den Kuchen locker abdecken: die Feuchte bleibt innen, die Streusel behalten ihren Biss.", "Gut gekühlte, locker gestreute Streusel backen rundum goldbraun und knusprig.", "Thermomix – Streusel: alle Zutaten 10 Sek. / Stufe 6 zu Krümeln mixen, kalt stellen.", "Thermomix – Rührteig: Butter, Zucker, Vanillezucker, Zitronenabrieb und Salz 1 Min. / Stufe 5 cremig rühren. Eier einzeln durch die Deckelöffnung 45–60 Sek. / Stufe 4 unterrühren. Mehl und Backpulver 10–20 Sek. / Stufe 4 unterheben, ggf. mit dem Spatel nachhelfen.", "Ca. 393 kcal pro Stück (48,9 g Kohlenhydrate, 5,5 g Eiweiß, 20,3 g Fett).", "Ohne Streusel und mit sichtbaren Äpfeln wird daraus ein versunkener Apfelkuchen."]
+  },
+  {
+    id: 'kartoffelrosen', titel: 'Kartoffelrosen aus der Muffinform', kategorie: 'Deutsch', emoji: '🥔',
+    farbe: ['#b07a2a', '#f1dca0'], portionen: '4 Personen (1 Muffinblech)', zeit: '40 Min.',
+    teaser: 'Dünne Kartoffelscheiben, rosettenartig in die Muffinförmchen gelegt und mit gewürzter Crème fraîche übergossen – schön und lecker, wie ein kleines Gratin. Rezept von Bente.',
+    tags: ['Beilage', 'Ofen', 'Vegetarisch'],
+    abschnitte: [
+      { titel: 'Zubereitung', zutaten: [['4', 'Große, längliche, rote Kartoffeln'], ['200 g', 'Crème fraîche'], ['', 'Pfeffer'], ['', 'Kräutersalz'], ['', 'Butter für die Förmchen']],
+        schritte: [
+          { t: 'Ofen vorheizen', x: 'Backofen auf ca. 200 °C Ober-/Unterhitze vorheizen, Muffinförmchen dünn einfetten.' },
+          { t: 'Kartoffeln schneiden', x: 'Kartoffeln waschen und in dünne Scheiben schneiden (gern mit dem Hobel).' },
+          { t: 'Rosetten legen', x: 'Die Scheiben rosettenartig in die Förmchen legen.' },
+          { t: 'Crème fraîche', x: 'Crème fraîche mit Pfeffer und Kräutersalz verrühren und in die Rosetten gießen.' },
+          { t: 'Backen', x: 'Im vorgeheizten Backofen backen – wie Gratin. Zum Schluss die Garprobe machen.', z: '20–30 Min.' }
+        ] }
+    ],
+    tipps: ['Je dünner die Scheiben, desto schöner die Rosen und desto schneller sind sie gar.', 'Garprobe: Mit einem Messer in die Mitte stechen – es muss leicht hineingleiten.', 'Schön + lecker!! (Originalnotiz auf Bentes Karte)']
+  },
+  {
+    id: 'fenchel', titel: 'Überbackener Fenchel', kategorie: 'Mediterran', emoji: '🌿',
+    farbe: ['#5c7d3a', '#e8e0a8'], portionen: '2–3 Personen', zeit: '30 Min.',
+    teaser: 'Fenchelscheiben mit Tomaten, darüber eine Kruste aus Zitronenschale, Semmelbröseln und Parmesan, mit Olivenöl beträufelt und goldbraun überbacken. Rezept von Bente.',
+    tags: ['Gemüse', 'Ofen', 'Vegetarisch'],
+    abschnitte: [
+      { titel: 'Zubereitung', zutaten: [['2', 'Fenchelknollen'], ['3', 'Tomaten'], ['', 'Butter für die Form'], ['', 'Pfeffer'], ['', 'Knoblauchsalz'], ['1', 'Bio-Zitrone (geriebene Schale)'], ['3 EL', 'Semmelbrösel'], ['40 g', 'Geriebener Parmesan'], ['', 'Olivenöl']],
+        schritte: [
+          { t: 'Fenchel', x: 'Fenchel in dicke Scheiben schneiden und in eine mit etwas Butter ausgestrichene Auflaufform legen.' },
+          { t: 'Tomaten', x: 'Tomaten in Stücke oder Scheiben schneiden und auf dem Fenchel verteilen.' },
+          { t: 'Kruste', x: 'Pfeffer, Knoblauchsalz, geriebene Zitronenschale, Semmelbrösel und geriebenen Parmesan mischen und über alles streuen und verteilen.' },
+          { t: 'Olivenöl', x: 'Mit etwas Olivenöl beträufeln.' },
+          { t: 'Überbacken', x: 'Im Backofen überbacken.', z: 'ca. 15–20 Min.' }
+        ] }
+    ],
+    tipps: ['Passt dazu: geröstete Kürbiskerne.', 'Für zarteren Fenchel die Scheiben vorher 5 Min. in Salzwasser blanchieren.']
   }
 ];
