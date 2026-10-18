@@ -172,7 +172,7 @@ window.REZEPTE = [
     tipps: ["Der Belag muss wirklich hauchdünn sein – das Hack gart roh auf dem Teig.", "Fertige Lahmacun stapeln und mit einem Tuch abdecken, dann bleiben sie weich zum Rollen.", "Mit einem Glas Ayran servieren."]
   },
   {
-    id: "mercimek",
+    id: "mercimek", neu: true,
     titel: "Rote Linsensuppe (Mercimek Çorbası)",
     kategorie: "Türkisch",
     bild: "img/mercimek.svg",
@@ -547,7 +547,7 @@ window.REZEPTE = [
     tipps: ['Kartoffeln warm anmachen – nur dann nehmen sie die Marinade richtig auf.', 'Ist der Salat zu trocken, einfach noch einen Schuss heiße Brühe dazu.', 'Lauwarm schmeckt er am besten. Variante: ein paar Speckwürfel mit den Zwiebeln anbraten.']
   },
   {
-    id: "currysuppe",
+    id: "currysuppe", neu: true,
     titel: "Thai-Curry-Kokossuppe mit Zitronengras",
     kategorie: "Thailändisch",
     bild: "img/currysuppe.svg",
