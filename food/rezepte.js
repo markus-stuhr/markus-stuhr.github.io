@@ -877,5 +877,440 @@ window.REZEPTE = [
         ] }
     ],
     tipps: ['Passt dazu: geröstete Kürbiskerne.', 'Für zarteren Fenchel die Scheiben vorher 5 Min. in Salzwasser blanchieren.']
+  },
+  {
+      "id": "zucchini",
+      "neu": true,
+      "titel": "Zucchini mit Gemüse-Käse-Füllung",
+      "kategorie": "Deutsch",
+      "bild": "img/zucchini.svg",
+      "emoji": "🥒",
+      "farbe": [
+          "#3f7a2e",
+          "#e9e3b0"
+      ],
+      "portionen": "2 Personen (4 Hälften)",
+      "zeit": "45 Min.",
+      "teaser": "Zucchinihälften, gefüllt mit Gorgonzola, Hüttenkäse und angedünstetem Gemüse, in Weißwein geschmort und mit Crème fraîche beträufelt.",
+      "tags": [
+          "vegetarisch",
+          "Gemüse",
+          "Pfanne"
+      ],
+      "abschnitte": [
+          {
+              "titel": "Füllung",
+              "zutaten": [
+                  [
+                      "2",
+                      "Zucchini (= 4 Hälften)"
+                  ],
+                  [
+                      "½",
+                      "Rote Paprika"
+                  ],
+                  [
+                      "1",
+                      "Mittelgroße Möhre"
+                  ],
+                  [
+                      "3",
+                      "Frühlingszwiebeln (die weißen Enden)"
+                  ],
+                  [
+                      "1 EL",
+                      "Olivenöl zum Andünsten"
+                  ],
+                  [
+                      "100 g",
+                      "Gorgonzola"
+                  ],
+                  [
+                      "100 g",
+                      "Hüttenkäse"
+                  ],
+                  [
+                      "1 EL",
+                      "Zitronensaft"
+                  ],
+                  [
+                      "2 EL",
+                      "Gehackte Petersilie (TK geht)"
+                  ],
+                  [
+                      "",
+                      "Salz, Pfeffer"
+                  ],
+                  [
+                      "",
+                      "Piment oder Rosenpaprika nach Geschmack"
+                  ]
+              ],
+              "schritte": [
+                  {
+                      "t": "Zucchini vorbereiten",
+                      "x": "Zucchini waschen und halbieren, Stielansatz entfernen und die Kerne herauskratzen."
+                  },
+                  {
+                      "t": "Gemüse schneiden",
+                      "x": "Paprika putzen und waschen, Möhre schälen, beides fein würfeln. Frühlingszwiebeln waschen, putzen und in dünne Ringe schneiden."
+                  },
+                  {
+                      "t": "Andünsten",
+                      "x": "Frühlingszwiebeln, Paprika und Möhre in etwa 1 EL Olivenöl andünsten und in der Pfanne auskühlen lassen."
+                  },
+                  {
+                      "t": "Käsemasse",
+                      "x": "Gorgonzola klein würfeln und mit dem Hüttenkäse vermischen. Das gedünstete Gemüse unterrühren, mit Zitronensaft, Petersilie, Salz, Pfeffer und Paprika würzen."
+                  },
+                  {
+                      "t": "Füllen",
+                      "x": "Die Zucchinihälften mit der Masse füllen."
+                  }
+              ]
+          },
+          {
+              "titel": "Schmoren",
+              "zutaten": [
+                  [
+                      "1 EL",
+                      "Olivenöl"
+                  ],
+                  [
+                      "100 ml",
+                      "Trockener Weißwein"
+                  ],
+                  [
+                      "100 g",
+                      "Crème fraîche"
+                  ]
+              ],
+              "schritte": [
+                  {
+                      "t": "Schmoren",
+                      "x": "Olivenöl in einer großen Pfanne erhitzen, die gefüllten Zucchini hineinlegen. Weißwein vorsichtig angießen (Spritzgefahr, am besten hinter einem Deckel) und zugedeckt schmoren.",
+                      "z": "15 Min."
+                  },
+                  {
+                      "t": "Anrichten",
+                      "x": "Zucchini in eine angewärmte Auflaufform setzen. Crème fraîche mit der Flüssigkeit aus der Pfanne verrühren und über die Zucchini träufeln."
+                  }
+              ]
+          }
+      ],
+      "tipps": [
+          "Den Weißwein unbedingt vorsichtig angießen – Spritzgefahr! Den Deckel als Schutzschild davorhalten.",
+          "Wer es milder mag, ersetzt den Gorgonzola durch Feta.",
+          "Dazu passen Baguette oder Reis."
+      ]
+  },
+  {
+      "id": "wintersalat",
+      "neu": true,
+      "titel": "Fruchtiger Wintersalat mit Nüssen",
+      "kategorie": "Deutsch",
+      "bild": "img/wintersalat.svg",
+      "emoji": "🥗",
+      "farbe": [
+          "#9c1f45",
+          "#e8f0c8"
+      ],
+      "portionen": "2 Personen",
+      "zeit": "25 Min.",
+      "teaser": "Geraspelte Rote Bete und Apfel in Balsamico-Apfel-Dressing, auf Feldsalat mit Lauchzwiebeln, roten Trauben und Walnüssen. Notiz am Rand: sehr gut!",
+      "tags": [
+          "vegetarisch",
+          "Winter",
+          "Rohkost"
+      ],
+      "abschnitte": [
+          {
+              "titel": "Rohkost & Dressing",
+              "zutaten": [
+                  [
+                      "250 g",
+                      "Frische Rote Bete"
+                  ],
+                  [
+                      "1",
+                      "Apfel (ca. 125 g)"
+                  ],
+                  [
+                      "2 EL",
+                      "Balsamicoessig"
+                  ],
+                  [
+                      "3 EL",
+                      "Apfelsaft"
+                  ],
+                  [
+                      "1 TL",
+                      "Senf"
+                  ],
+                  [
+                      "1 EL",
+                      "Rapsöl"
+                  ],
+                  [
+                      "1 TL",
+                      "Honig"
+                  ],
+                  [
+                      "",
+                      "Salz, Pfeffer aus der Mühle"
+                  ]
+              ],
+              "schritte": [
+                  {
+                      "t": "Raspeln",
+                      "x": "Rote Bete schälen, den Apfel vierteln und entkernen. Beides grob raspeln."
+                  },
+                  {
+                      "t": "Dressing",
+                      "x": "Essig, Apfelsaft, Senf und Öl verrühren, mit Salz, Pfeffer und etwas Honig abschmecken."
+                  },
+                  {
+                      "t": "Ziehen lassen",
+                      "x": "Dressing mit der Rohkost vermischen und ziehen lassen.",
+                      "z": "15 Min."
+                  }
+              ]
+          },
+          {
+              "titel": "Salat",
+              "zutaten": [
+                  [
+                      "80 g",
+                      "Feldsalat"
+                  ],
+                  [
+                      "2",
+                      "Lauchzwiebeln"
+                  ],
+                  [
+                      "100 g",
+                      "Rote Trauben"
+                  ],
+                  [
+                      "25 g",
+                      "Walnusskerne"
+                  ]
+              ],
+              "schritte": [
+                  {
+                      "t": "Feldsalat",
+                      "x": "Feldsalat waschen und trocken schütteln, mit der marinierten Rohkost auf zwei Tellern verteilen."
+                  },
+                  {
+                      "t": "Toppings",
+                      "x": "Lauchzwiebeln in feine Ringe schneiden und darüberstreuen. Halbierte Trauben und Walnüsse darauf verteilen."
+                  }
+              ]
+          }
+      ],
+      "tipps": [
+          "Im Original kommen noch 1 Karotte und 125 g Camembert dazu – bei uns ohne beides.",
+          "Die Walnüsse kommen ungeröstet drauf.",
+          "Ca. 414 kcal pro Person (Originalrezept)."
+      ]
+  },
+  {
+      "id": "medaillons",
+      "neu": true,
+      "titel": "Schweinemedaillons mit Erbsenreis",
+      "kategorie": "Deutsch",
+      "bild": "img/medaillons.svg",
+      "emoji": "🍖",
+      "farbe": [
+          "#8a5a2a",
+          "#e8e4d4"
+      ],
+      "portionen": "4 Personen",
+      "zeit": "30 Min.",
+      "teaser": "Goldbraun gebratene Schweinefilet-Medaillons in einer Champignon-Rahmsoße mit Zitrone, dazu Reis mit jungen Erbsen. Notiz am Rand: lecker!",
+      "tags": [
+          "Fleisch",
+          "Pfanne",
+          "schnell"
+      ],
+      "abschnitte": [
+          {
+              "titel": "Erbsenreis",
+              "zutaten": [
+                  [
+                      "200 g",
+                      "Langkornreis"
+                  ],
+                  [
+                      "",
+                      "Salz"
+                  ],
+                  [
+                      "150 g",
+                      "Junge Erbsen (TK)"
+                  ]
+              ],
+              "schritte": [
+                  {
+                      "t": "Reis kochen",
+                      "x": "Reis nach Packungsanweisung in Salzwasser kochen. Die Erbsen ca. 5 Minuten vor Ende der Garzeit zum Reis geben, danach abgießen."
+                  }
+              ]
+          },
+          {
+              "titel": "Medaillons & Soße",
+              "zutaten": [
+                  [
+                      "650 g",
+                      "Schweinefilet"
+                  ],
+                  [
+                      "",
+                      "Salz, Pfeffer"
+                  ],
+                  [
+                      "4 EL",
+                      "Öl"
+                  ],
+                  [
+                      "250 g",
+                      "Champignons"
+                  ],
+                  [
+                      "2",
+                      "Zwiebeln"
+                  ],
+                  [
+                      "½",
+                      "Zitrone"
+                  ],
+                  [
+                      "250 ml",
+                      "Kochcreme (oder Sahne)"
+                  ],
+                  [
+                      "15 g",
+                      "Glatte Petersilie"
+                  ]
+              ],
+              "schritte": [
+                  {
+                      "t": "Vorbereiten",
+                      "x": "Zitrone auspressen. Champignons putzen und je nach Größe halbieren oder vierteln. Zwiebeln schälen, halbieren und in Streifen schneiden. Schweinefilet in 3 cm dicke Scheiben schneiden, trocken tupfen, salzen und pfeffern."
+                  },
+                  {
+                      "t": "Anbraten",
+                      "x": "2 EL Öl in einer großen beschichteten Pfanne erhitzen, die Medaillons darin goldbraun anbraten und herausnehmen."
+                  },
+                  {
+                      "t": "Soße",
+                      "x": "2 EL Öl in die Pfanne geben, Champignons rundum hellbraun anbraten, salzen und pfeffern. Zwiebeln 2 Minuten mitbraten. Mit 100 ml Wasser ablöschen, Kochcreme zugeben und aufkochen. Mit 2 TL Zitronensaft, Salz und Pfeffer würzen."
+                  },
+                  {
+                      "t": "Fertigstellen",
+                      "x": "Medaillons zurück in die Soße geben und erhitzen. Petersilie fein hacken, alles mit dem Erbsenreis anrichten und bestreuen."
+                  }
+              ]
+          }
+      ],
+      "tipps": [
+          "Risi e bisi: In Italien wird der Erbsenreis noch mit Parmesan verfeinert – passt auch hier.",
+          "Ca. 604 kcal pro Person."
+      ]
+  },
+  {
+      "id": "lachsingwer",
+      "neu": true,
+      "titel": "Gratinierter Lachs mit Ingwer",
+      "kategorie": "Asiatisch inspiriert",
+      "bild": "img/lachsingwer.svg",
+      "emoji": "🐟",
+      "farbe": [
+          "#e0703f",
+          "#f6e0c8"
+      ],
+      "portionen": "4 Portionen",
+      "zeit": "25 Min.",
+      "teaser": "Lachsfilet unter einer Kruste aus Ingwer, Knoblauch, Limettenschale, Koriander und Semmelbröseln, mit Limettenscheiben im Ofen gebacken. Drei Sterne und ein Smiley am Rand!",
+      "tags": [
+          "Fisch",
+          "Ofen",
+          "schnell"
+      ],
+      "abschnitte": [
+          {
+              "titel": "Zubereitung",
+              "zutaten": [
+                  [
+                      "800 g",
+                      "Lachsfilet (mit Haut)"
+                  ],
+                  [
+                      "2",
+                      "Limetten"
+                  ],
+                  [
+                      "30 g",
+                      "Frischer Ingwer"
+                  ],
+                  [
+                      "2",
+                      "Knoblauchzehen"
+                  ],
+                  [
+                      "1 Bund",
+                      "Koriander"
+                  ],
+                  [
+                      "2–3 EL",
+                      "Semmelbrösel"
+                  ],
+                  [
+                      "1–2 EL",
+                      "Sonnenblumenöl"
+                  ],
+                  [
+                      "",
+                      "Salz, frisch gemahlener Pfeffer"
+                  ],
+                  [
+                      "",
+                      "Evtl. Minitomaten"
+                  ]
+              ],
+              "schritte": [
+                  {
+                      "t": "Ofen",
+                      "x": "Backofen auf 200 °C (Umluft 180 °C) vorheizen."
+                  },
+                  {
+                      "t": "Lachs",
+                      "x": "Lachsfilet abspülen, trocken tupfen und auf ein Backblech oder in eine große Auflaufform legen."
+                  },
+                  {
+                      "t": "Limetten",
+                      "x": "Limetten heiß abspülen. Von einer Limette die Schale fein abreiben und den Saft auspressen, über den Fisch träufeln."
+                  },
+                  {
+                      "t": "Paste",
+                      "x": "Ingwer und Knoblauch schälen und fein hacken. Korianderblätter bis auf ein paar zur Deko fein hacken. Limettenschale, Ingwer, Knoblauch, Koriander, Semmelbrösel und Öl zu einer Paste verrühren."
+                  },
+                  {
+                      "t": "Bestreichen",
+                      "x": "Fisch salzen, wenig pfeffern und die Ingwerpaste daraufstreichen. Die zweite Limette in Scheiben schneiden und mit in die Form legen, nach Belieben auch Minitomaten."
+                  },
+                  {
+                      "t": "Backen",
+                      "x": "Je nach Dicke des Filets backen, dann mit Korianderblättern bestreuen und servieren.",
+                      "z": "12–15 Min."
+                  }
+              ]
+          }
+      ],
+      "tipps": [
+          "Minitomaten mit in die Form geben – Notiz auf dem Rezept.",
+          "Wer keinen Koriander mag, nimmt glatte Petersilie.",
+          "Ca. 340 kcal pro Portion."
+      ]
   }
 ];
