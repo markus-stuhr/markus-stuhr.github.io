@@ -640,7 +640,7 @@ window.REZEPTE = [
     tipps: ['Blätterteig gut gekühlt verarbeiten, dann lässt er sich sauber drehen.', 'Schmecken warm am besten, lassen sich aber auch prima vorbereiten und kurz aufbacken.', 'Variante: statt Petersilie etwas Minze oder Spinat in die Füllung.']
   },
   {
-    id: "pide",
+    id: "pide", neu: true,
     titel: "Orientalisches Fladenbrot (Pide)",
     kategorie: "Türkisch",
     bild: "img/pide.svg",
@@ -654,7 +654,7 @@ window.REZEPTE = [
     tipps: ["Der weiche Teig ist das Geheimnis – nicht zu viel Mehl einarbeiten.", "Die Rillen richtig tief eindrücken, sonst verschwindet das Muster beim Backen.", "Passt zu Köfte, Hummus, Baba Ganoush und allen Suppen."]
   },
   {
-    id: "macarons",
+    id: "macarons", neu: true,
     titel: "Bunte Macarons",
     kategorie: "Französisch",
     bild: "img/macarons.svg",
@@ -682,7 +682,7 @@ window.REZEPTE = [
     tipps: ["Ausgestochene Plätzchen vor dem Backen 10 Min. auf dem Blech kühlen – dann behalten sie ihre Form.", "Guss lieber zu dick als zu dünn anrühren, verdünnen geht immer.", "In der Blechdose halten sie sich 3–4 Wochen."]
   },
   {
-    id: "pfefferkuchen",
+    id: "pfefferkuchen", neu: true,
     titel: "Richtiger Pfefferkuchen",
     kategorie: "Deutsch",
     bild: "img/pfefferkuchen.svg",
@@ -737,7 +737,7 @@ window.REZEPTE = [
     }]
   },
   {
-    id: 'bigmac', titel: 'BigMac Sauce', kategorie: 'Amerikanisch', bild: 'img/bigmac.svg', emoji: '🥫',
+    id: 'bigmac', neu: true, titel: 'BigMac Sauce', kategorie: 'Amerikanisch', bild: 'img/bigmac.svg', emoji: '🥫',
     farbe: ['#b8561a', '#f7c16a'], portionen: 'für 4 Burger', zeit: '10 Min. + 30 Min. kühlen',
     teaser: 'Die Haus-Variante nach Original-Rezeptur – ohne Ketchup, dafür mit Essiggurken, Zucker und Essig für das süß-saure Profil.',
     tags: ['Burger', 'vegetarisch'],
