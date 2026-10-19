@@ -216,7 +216,9 @@ const mwMat = new THREE.ShaderMaterial({
       float X = atmo > 0.5 ? airmass(d.y) : 1.0;
       float ext = pow(10.0, -0.4*extK*(X-1.0));
       float vis = mwOn * night * mix(1.0, 0.12, lp) * ext;
-      gl_FragColor = vec4(vec3(0.62,0.66,0.78)*I*0.075*vis, 1.0);
+      vec3 mc = vec3(0.62,0.66,0.78)*I*0.075*vis;
+      float dz = fract(sin(dot(gl_FragCoord.xy, vec2(39.346,11.135)))*43758.5453);
+      gl_FragColor = vec4(max(mc + (dz-0.5)/255.0*step(0.0005, mc.b), 0.0), 1.0);
     }`,
 });
 const mw = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), mwMat);
@@ -236,7 +238,7 @@ const skyMat = new THREE.ShaderMaterial({
       float day = smoothstep(-0.12, 0.06, sa);
       float tw = smoothstep(-0.31, -0.04, sa) * (1.0 - day*0.85);
       float h = pow(1.0 - alt, 3.0);
-      vec3 zen = mix(vec3(0.0012,0.0018,0.0045), vec3(0.10,0.25,0.58), day);
+      vec3 zen = mix(vec3(0.002,0.0028,0.0075), vec3(0.10,0.25,0.58), day);
       vec3 hor = mix(vec3(0.004,0.005,0.01), vec3(0.60,0.72,0.86), day);
       vec3 c = mix(zen, hor, h);
       float cs = dot(d, sunDir);
@@ -244,6 +246,8 @@ const skyMat = new THREE.ShaderMaterial({
       c += tw * vec3(0.05,0.07,0.18) * (1.0 - h) * 0.8;
       c += day * vec3(1.0,0.92,0.75) * (pow(max(cs,0.),400.)*1.5 + pow(max(cs,0.),10.)*0.22);
       c += lp * (1.0 - day) * vec3(0.085,0.058,0.045) * (0.18 + 0.82*pow(1.0-alt, 5.0));
+      float dz = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898,78.233)))*43758.5453);
+      c = max(c + (dz-0.5)/255.0, 0.0);
       gl_FragColor = vec4(c, 1.0);
     }`,
 });
