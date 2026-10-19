@@ -56,6 +56,7 @@
   <button id="bPlay" title="Zeitraffer">▶ 1×</button>
   <button id="bFwd" title="1 Stunde vor">+1 h</button>
   <button id="bNow" title="Jetzt">Jetzt</button>
+  <button id="bIss" title="ISS zeigen oder nächsten sichtbaren Überflug suchen (I)">ISS</button>
   <div class="sep"></div>
   <button id="tCon" class="on" title="Sternbilder (C)">Sternbilder</button>
   <button id="tNames" class="on" title="Namen (N)">Namen</button>
@@ -65,10 +66,11 @@
 </div>
 <div id="view" class="panel">–</div>
 <div id="credits" class="panel"><a href="#" id="credT">Daten &amp; Quellen</a>
-  <div id="creditBox">Sterne: <a href="https://github.com/astronexus/HYG-Database" target="_blank">HYG-Datenbank v4.1</a> (Hipparcos, Yale, Gliese), CC BY-SA 4.0 · Sternbildlinien: <a href="https://github.com/Stellarium/stellarium" target="_blank">Stellarium</a> „modern“, GPL/CC BY-SA · Planeten, Mond &amp; Sonne: <a href="https://github.com/cosinekitty/astronomy" target="_blank">Astronomy Engine</a> (MIT) · Rendering: three.js</div>
+  <div id="creditBox">Sterne: <a href="https://github.com/astronexus/HYG-Database" target="_blank">HYG-Datenbank v4.1</a> (Hipparcos, Yale, Gliese), CC BY-SA 4.0 · Sternbildlinien: <a href="https://github.com/Stellarium/stellarium" target="_blank">Stellarium</a> „modern“, GPL/CC BY-SA · ISS-Bahndaten: <a href="https://celestrak.org" target="_blank">CelesTrak</a>, Bahnrechnung <a href="https://github.com/shashwatak/satellite-js" target="_blank">satellite.js</a> (MIT) · Planeten, Mond &amp; Sonne: <a href="https://github.com/cosinekitty/astronomy" target="_blank">Astronomy Engine</a> (MIT) · Rendering: three.js</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js"></script>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js" } }
 </script>
@@ -287,6 +289,90 @@ const sun = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), sunMat);
 moon.renderOrder = 5; sun.renderOrder = 5;
 scene.add(moon, sun);
 
+// ---------- ISS (TLE von CelesTrak, SGP4 über satellite.js) ----------
+const SAT = window.satellite;
+let issRec = SAT.twoline2satrec(
+  '1 25544U 98067A   26292.43498098  .00007189  00000+0  13878-3 0  9990',
+  '2 25544  51.6326  45.2419 0006754 282.9887  77.0347 15.48939196591015');
+let passCache = null;
+fetch('https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE').then(r => r.text()).then(t => {
+  const l = t.trim().split('\n').map(x => x.trim());
+  if (l.length >= 3 && l[1].startsWith('1 ') && l[2].startsWith('2 ')) { issRec = SAT.twoline2satrec(l[1], l[2]); passCache = null; }
+}).catch(() => {});
+const OBS_GD = { latitude: 52.52 * DEG, longitude: 13.405 * DEG, height: 0.034 };
+function issAt(t) {
+  const d = new Date(t), pv = SAT.propagate(issRec, d);
+  if (!pv || !pv.position) return null;
+  const la = SAT.ecfToLookAngles(OBS_GD, SAT.eciToEcf(pv.position, SAT.gstime(d)));
+  return { az: la.azimuth, el: la.elevation, range: la.rangeSat, eci: pv.position, vel: pv.velocity };
+}
+function sunlit(eci, t) { // zylindrischer Erdschatten
+  const s = A.GeoVector(A.Body.Sun, new Date(t), false), n = Math.hypot(s.x, s.y, s.z);
+  const sx = s.x / n, sy = s.y / n, sz = s.z / n, d = eci.x * sx + eci.y * sy + eci.z * sz;
+  if (d > 0) return true;
+  return Math.hypot(eci.x - d * sx, eci.y - d * sy, eci.z - d * sz) > 6371;
+}
+function sunAltAt(t) { const at = A.MakeTime(new Date(t)); const e = A.Equator(A.Body.Sun, at, OBS, true, true); return A.Horizon(at, OBS, e.ra, e.dec).altitude; }
+const issVisibleAt = t => { const p = issAt(t); return p && p.el > 10 * DEG && sunlit(p.eci, t) && sunAltAt(t) < -6 ? p : null; };
+function findPass(from) {
+  for (let t = from; t < from + 4 * 864e5; t += 20e3) {
+    const p = issAt(t); if (!p || p.el < 10 * DEG) continue;
+    if (!issVisibleAt(t)) continue;
+    let a = t, b = t, maxEl = p.el;
+    while (issVisibleAt(a - 5e3)) a -= 5e3;
+    for (let q; (q = issVisibleAt(b + 5e3)); ) { b += 5e3; maxEl = Math.max(maxEl, q.el); }
+    return { from, start: a, end: b, maxEl, startAz: issAt(a).az, endAz: issAt(b).az };
+  }
+  return null;
+}
+function nextPass() {
+  if (!passCache || state.time < passCache.from || state.time > passCache.end) passCache = findPass(state.time) || { from: state.time, end: state.time + 36e5, none: true };
+  return passCache.none ? null : passCache;
+}
+const issPos = new Float32Array(3), issMagA = new Float32Array([99]);
+const issGeo = new THREE.BufferGeometry();
+issGeo.setAttribute('position', new THREE.BufferAttribute(issPos, 3));
+issGeo.setAttribute('mag', new THREE.BufferAttribute(issMagA, 1));
+issGeo.setAttribute('ci', new THREE.BufferAttribute(new Float32Array([0.3]), 1));
+const issPts = new THREE.Points(issGeo, starMat);
+issPts.frustumCulled = false; issPts.renderOrder = 4;
+scene.add(issPts);
+const TRAIL = 91, trailPos = new Float32Array(TRAIL * 3), trailF = new Float32Array(TRAIL);
+for (let i = 0; i < TRAIL; i++) trailF[i] = i < 30 ? i / 30 : 1 - (i - 30) / 60;
+const trailGeo = new THREE.BufferGeometry();
+trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+trailGeo.setAttribute('f', new THREE.BufferAttribute(trailF, 1));
+const trail = new THREE.Line(trailGeo, new THREE.ShaderMaterial({
+  uniforms: uni, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `attribute float f; varying float vF; varying float vY; void main(){ vF = f; vY = normalize(position).y; gl_Position = projectionMatrix*viewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform float atmo; varying float vF; varying float vY; void main(){ float h = atmo>0.5 ? smoothstep(-0.01,0.02,vY) : 1.0; gl_FragColor = vec4(vec3(1.0,0.75,0.35)*0.35*vF*h, 1.); }`,
+}));
+trail.frustumCulled = false; trail.renderOrder = 4;
+scene.add(trail);
+const hor2w = (az, el, out) => out.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+const issW = new THREE.Vector3(); let issNow = null, issLit = false;
+function updateIss(t) {
+  issNow = issAt(t);
+  if (!issNow) { issMagA[0] = 99; issGeo.attributes.mag.needsUpdate = true; return; }
+  hor2w(issNow.az, issNow.el, issW).toArray(issPos);
+  issLit = sunlit(issNow.eci, t);
+  issMagA[0] = issLit ? -1.6 + 5 * Math.log10(issNow.range / 800) : 99;
+  issGeo.attributes.position.needsUpdate = true; issGeo.attributes.mag.needsUpdate = true;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < TRAIL; i++) { const q = issAt(t + (i - 30) * 10e3); if (q) hor2w(q.az, q.el, v).toArray(trailPos, i * 3); }
+  trailGeo.attributes.position.needsUpdate = true;
+}
+function showIss() {
+  updateIss(state.time);
+  if (issNow && issNow.el > 0) { state.az = issNow.az; state.alt = issNow.el; }
+  else {
+    const p = nextPass();
+    if (p) { state.time = p.start - 60e3; lastAstro = -1e15; updateIss(state.time); const q = issAt(p.start); state.az = q.az; state.alt = Math.max(q.el, 20 * DEG); }
+  }
+  state.fov = Math.max(state.fov, 70); clampView();
+  selected = { kind: 'iss' }; showInfo();
+}
+
 // ---------- Boden mit Berliner Silhouette ----------
 const SK = 1024, skyline = new Uint8Array(SK);
 {
@@ -391,7 +477,7 @@ addEventListener('keydown', e => {
   else if (e.key === 'ArrowUp') state.alt += k; else if (e.key === 'ArrowDown') state.alt -= k;
   else if (e.key === '+' || e.key === '=') state.fov /= 1.15; else if (e.key === '-') state.fov *= 1.15;
   else if (e.key === 'c') toggle('con'); else if (e.key === 'n') toggle('names'); else if (e.key === 'm') toggle('mw');
-  else if (e.key === 'h') toggle('ground'); else if (e.key === 'l') toggle('dark'); else if (e.key === ' ') cycleRate();
+  else if (e.key === 'h') toggle('ground'); else if (e.key === 'i') showIss(); else if (e.key === 'l') toggle('dark'); else if (e.key === ' ') cycleRate();
   else return;
   clampView();
 });
@@ -413,6 +499,7 @@ function syncPlay() { $('bPlay').textContent = '▶ ' + (state.rate === 1 ? '1×
 $('bPlay').onclick = cycleRate;
 $('bBack').onclick = () => { state.time -= 3600e3; lastAstro = -1e15; };
 $('bFwd').onclick = () => { state.time += 3600e3; lastAstro = -1e15; };
+$('bIss').onclick = showIss;
 $('bNow').onclick = () => { state.time = Date.now(); state.rate = 1; lastAstro = -1e15; syncPlay(); };
 $('credT').onclick = e => { e.preventDefault(); const b = $('creditBox'); b.style.display = b.style.display === 'block' ? 'none' : 'block'; };
 $('infoX').onclick = () => { $('info').style.display = 'none'; selected = null; };
@@ -454,6 +541,7 @@ function drawLabels(lim) {
       label(s[1] || s[2], '', w); n++;
     }
     PLANETS.forEach((p, i) => { if (plMag[i] < lim + 1) { toWorld(bodies.planets[i], w); if (above(w)) label(p[1], 'pl', w); } });
+    if (issNow && above(issW)) label(issLit ? 'ISS' : 'ISS (Erdschatten)', 'pl', issW);
     toWorld(bodies.moon, w); if (above(w)) label('Mond', 'pl', w, 14, -14);
     toWorld(bodies.sun, w); if (above(w)) label('Sonne', 'pl', w, 14, -14);
   }
@@ -469,6 +557,7 @@ function pick(cx, cy) {
   const thr = Math.cos(Math.max(0.15, state.fov * 0.035) * DEG);
   let best = null, bd = thr;
   const test = (vEq, obj) => { toWorld(vEq, w); const d = w.dot(ray); if (d > bd) { bd = d; best = obj; } };
+  if (issNow && (issW.y > -0.01 || !state.ground) && issW.dot(ray) > bd) { bd = issW.dot(ray); best = { kind: 'iss' }; }
   test(bodies.moon, { kind: 'moon' }); test(bodies.sun, { kind: 'sun' });
   PLANETS.forEach((p, i) => test(bodies.planets[i], { kind: 'planet', i }));
   const v = new THREE.Vector3();
@@ -478,6 +567,19 @@ function pick(cx, cy) {
 function showInfo() {
   if (!selected) { $('info').style.display = 'none'; return; }
   let title, rows = [], vEq;
+  if (selected.kind === 'iss') {
+    if (!issNow) return;
+    const r = issNow.eci, v = issNow.vel, p = nextPass(), ep = new Date((issRec.jdsatepoch - 2440587.5) * 864e5);
+    const f2 = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    rows.push(['Bahnhöhe', Math.round(Math.hypot(r.x, r.y, r.z) - 6371) + ' km'], ['Entfernung', Math.round(issNow.range).toLocaleString('de-DE') + ' km'],
+      ['Tempo', Math.round(Math.hypot(v.x, v.y, v.z) * 3600).toLocaleString('de-DE') + ' km/h'], ['Licht', issLit ? 'sonnenbeschienen' : 'im Erdschatten'],
+      ['Azimut', (issNow.az / DEG).toFixed(1) + '° ' + dirName(issNow.az)], ['Höhe', (issNow.el / DEG).toFixed(1) + '°' + (issNow.el < 0 ? ' (unter dem Horizont)' : '')]);
+    if (p) rows.push(['Nächster sichtbarer Überflug', ''], ['Beginn', f2.format(new Date(p.start)) + ' im ' + dirName(p.startAz)], ['Höchster Stand', (p.maxEl / DEG).toFixed(0) + '°'], ['Ende', f2.format(new Date(p.end)) + ' im ' + dirName(p.endAz)]);
+    rows.push(['Bahndaten vom', ep.toLocaleDateString('de-DE')]);
+    $('infoBody').innerHTML = '<h2>ISS</h2>' + rows.map(([k, v]) => `<div class="row">${k}<b>${v}</b></div>`).join('');
+    $('info').style.display = 'block';
+    return;
+  }
   if (selected.kind === 'star') {
     const [i, proper, lbl, ly, sp] = selected.s; vEq = new THREE.Vector3().fromArray(pos, i * 3);
     title = proper || lbl;
@@ -510,6 +612,7 @@ function frame(now) {
   const dt = Math.min(0.25, (now - last) / 1000); last = now;
   if (state.playing) state.time += dt * 1000 * state.rate;
   updateAstro(state.time);
+  updateIss(state.time);
 
   dirV.set(Math.sin(state.az) * Math.cos(state.alt), Math.sin(state.alt), -Math.cos(state.az) * Math.cos(state.alt));
   camera.position.set(0, 0, 0); camera.up.set(0, 1, 0); camera.lookAt(dirV);
@@ -518,9 +621,9 @@ function frame(now) {
   const sunW = toWorld(bodies.sun, new THREE.Vector3()), moonW = toWorld(bodies.moon, new THREE.Vector3());
   const sunAlt = Math.asin(sunW.y) / DEG;
   const t = Math.min(1, Math.max(0, (sunAlt + 18) / 18)), dayDim = t * t * (3 - 2 * t);
-  const base = state.dark ? 7.6 : 5.6;
+  const base = state.dark ? 7.0 : 5.0;
   const moonUp = Math.max(0, Math.min(1, moonW.y * 10 + 0.5));
-  const zoomGain = Math.max(0, Math.min(5, 3.5 * Math.log10(110 / state.fov)));
+  const zoomGain = Math.max(0, Math.min(5, 3.5 * Math.log10(80 / state.fov)));
   const atmo = state.ground;
   curLim = Math.min(9.5, base - (atmo ? dayDim * (base + 2.5) + moonUp * moonIllum * (state.dark ? 1.5 : 0.6) : 0) + zoomGain);
   uni.lim.value = curLim;
