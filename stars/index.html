@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Sternenhimmel über Berlin</title>
+<script defer src="/analytics.js"></script>
+<style>
+  :root { --panel: rgba(12,16,28,.72); --line: rgba(160,180,255,.18); --txt: #dfe6ff; --dim: #8e9bc0; --acc: #ffd27a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--txt); font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; cursor: grab; }
+  canvas.drag { cursor: grabbing; }
+  #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .lb { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11px; color: rgba(200,212,255,.75); text-shadow: 0 0 3px #000; will-change: transform; }
+  .lb.con { color: rgba(130,160,255,.55); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; transform-origin: 0 0; }
+  .lb.pl { color: #ffd27a; font-weight: 600; }
+  .lb.card { color: #ff9b6a; font-weight: 700; font-size: 14px; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  #top { left: 12px; top: 12px; padding: 10px 14px; max-width: calc(100vw - 24px); }
+  #top h1 { margin: 0 0 2px; font-size: 15px; font-weight: 650; }
+  #top .sub { color: var(--dim); font-size: 12px; }
+  #time { font-variant-numeric: tabular-nums; }
+  #bar { left: 50%; bottom: 12px; transform: translateX(-50%); padding: 6px; display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: calc(100vw - 24px); }
+  button { background: rgba(255,255,255,.06); color: var(--txt); border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; }
+  button:hover { background: rgba(255,255,255,.12); }
+  button.on { border-color: rgba(255,210,122,.6); color: var(--acc); }
+  .sep { width: 1px; background: var(--line); margin: 2px 4px; }
+  #info { right: 12px; top: 12px; padding: 12px 14px; width: 240px; display: none; }
+  #info h2 { margin: 0 0 4px; font-size: 16px; }
+  #info .row { display: flex; justify-content: space-between; gap: 10px; color: var(--dim); }
+  #info .row b { color: var(--txt); font-weight: 500; text-align: right; }
+  #info .x { position: absolute; right: 6px; top: 4px; padding: 2px 8px; background: none; }
+  #view { right: 12px; bottom: 12px; padding: 6px 10px; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+  #credits { left: 12px; bottom: 12px; padding: 6px 10px; color: var(--dim); font-size: 11px; }
+  #credits a { color: var(--dim); }
+  #creditBox { display: none; margin-top: 6px; max-width: 300px; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 14px; }
+  @media (max-width: 760px) {
+    #view, #credits { display: none; }
+    #bar { bottom: 8px; }
+    #info { left: 12px; right: 12px; width: auto; top: auto; bottom: 120px; }
+  }
+</style>
+</head>
+<body>
+<div id="loading">Sterne werden geladen …</div>
+<div id="labels"></div>
+<div id="top" class="panel">
+  <h1>Sternenhimmel über Berlin</h1>
+  <div class="sub"><span id="time">–</span> · <span id="rateTxt">Echtzeit</span></div>
+</div>
+<div id="info" class="panel"><button class="x" id="infoX">×</button><div id="infoBody"></div></div>
+<div id="bar" class="panel">
+  <button id="bBack" title="1 Stunde zurück">−1 h</button>
+  <button id="bPlay" title="Zeitraffer">▶ 1×</button>
+  <button id="bFwd" title="1 Stunde vor">+1 h</button>
+  <button id="bNow" title="Jetzt">Jetzt</button>
+  <div class="sep"></div>
+  <button id="tCon" class="on" title="Sternbilder (C)">Sternbilder</button>
+  <button id="tNames" class="on" title="Namen (N)">Namen</button>
+  <button id="tMw" class="on" title="Milchstraße (M)">Milchstraße</button>
+  <button id="tGround" class="on" title="Horizont (H)">Horizont</button>
+  <button id="tSky" title="Lichtverschmutzung (L)">Himmel: Berlin</button>
+</div>
+<div id="view" class="panel">–</div>
+<div id="credits" class="panel"><a href="#" id="credT">Daten &amp; Quellen</a>
+  <div id="creditBox">Sterne: <a href="https://github.com/astronexus/HYG-Database" target="_blank">HYG-Datenbank v4.1</a> (Hipparcos, Yale, Gliese), CC BY-SA 4.0 · Sternbildlinien: <a href="https://github.com/Stellarium/stellarium" target="_blank">Stellarium</a> „modern“, GPL/CC BY-SA · Planeten, Mond &amp; Sonne: <a href="https://github.com/cosinekitty/astronomy" target="_blank">Astronomy Engine</a> (MIT) · Rendering: three.js</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+const A = window.Astronomy;
+const OBS = new A.Observer(52.5200, 13.4050, 34);
+const DEG = Math.PI / 180;
+
+// ---------- Renderer, Szene, Kamera ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+const DPR = Math.min(devicePixelRatio || 1, 2);
+renderer.setPixelRatio(DPR);
+renderer.setSize(innerWidth, innerHeight);
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 10);
+
+// Äquatorialer Rahmen (J2000): alles darin wird pro Frame in den Horizont gedreht
+const eqGroup = new THREE.Group();
+eqGroup.matrixAutoUpdate = false;
+scene.add(eqGroup);
+
+const state = {
+  az: 180 * DEG, alt: 25 * DEG, fov: innerWidth < innerHeight ? 95 : 60,
+  time: Date.now(), rate: 1, playing: true,
+  con: true, names: true, mw: true, ground: true, dark: false,
+};
+const RATES = [1, 60, 600, 3600, 86400 / 4];
+
+// ---------- Daten laden ----------
+const [bin, meta] = await Promise.all([
+  fetch('stars.bin').then(r => r.arrayBuffer()),
+  fetch('meta.json').then(r => r.json()),
+]);
+document.getElementById('loading').remove();
+const raw = new Float32Array(bin);
+const N = raw.length / 4;
+const pos = new Float32Array(N * 3), mag = new Float32Array(N), ci = new Float32Array(N);
+for (let i = 0; i < N; i++) {
+  const ra = raw[i * 4], de = raw[i * 4 + 1], c = Math.cos(de);
+  pos[i * 3] = c * Math.cos(ra); pos[i * 3 + 1] = c * Math.sin(ra); pos[i * 3 + 2] = Math.sin(de);
+  mag[i] = raw[i * 4 + 2]; ci[i] = raw[i * 4 + 3];
+}
+const CON_DE = Object.fromEntries(meta.cons.map(c => [c.ab, c.de]));
+
+// ---------- gemeinsame Shader-Bausteine ----------
+const uni = {
+  lim: { value: 6 }, pxScale: { value: DPR }, extK: { value: 0.3 }, atmo: { value: 1 },
+  sunDir: { value: new THREE.Vector3(0, -1, 0) }, lp: { value: 1 }, night: { value: 1 },
+  mwOn: { value: 1 },
+};
+const EXT = `
+  float airmass(float s){ float h = degrees(asin(clamp(s,-1.,1.))); return 1.0/(max(s,0.0)+0.50572*pow(max(h+6.07995,0.3),-1.6364)); }
+`;
+
+// ---------- Sterne ----------
+const starGeo = new THREE.BufferGeometry();
+starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+starGeo.setAttribute('mag', new THREE.BufferAttribute(mag, 1));
+starGeo.setAttribute('ci', new THREE.BufferAttribute(ci, 1));
+const pointVS = `
+  attribute float mag; attribute float ci;
+  uniform float lim, pxScale, extK, atmo;
+  varying vec3 vCol; varying float vB;
+  ${EXT}
+  vec3 bv(float t){ t = clamp(t,-0.4,2.0);
+    vec3 a = mix(vec3(0.62,0.72,1.0), vec3(1.0,0.97,0.93), clamp((t+0.4)/0.8,0.,1.));
+    return mix(a, vec3(1.0,0.6,0.34), clamp((t-0.4)/1.6,0.,1.)); }
+  void main(){
+    vec4 wp = modelMatrix * vec4(position,1.0);
+    vec3 d = normalize(wp.xyz);
+    float X = atmo > 0.5 ? airmass(d.y) : 1.0;
+    float m = mag + extK*(X-1.0);
+    float rel = lim - m;
+    gl_Position = projectionMatrix * viewMatrix * wp;
+    if (rel < 0.0 || (atmo > 0.5 && d.y < -0.02)) { gl_Position = vec4(2.,2.,2.,1.); gl_PointSize = 0.; return; }
+    vCol = mix(bv(ci), vec3(1.0,0.55,0.3), clamp((X-1.0)*0.04,0.,0.6));
+    vB = clamp(rel*0.55, 0.0, 1.0) * (1.0 + 0.22*max(rel-1.5,0.0));
+    gl_PointSize = pxScale * (2.2 + 1.0*rel + 0.1*rel*rel);
+  }`;
+const pointFS = `
+  varying vec3 vCol; varying float vB;
+  void main(){
+    vec2 p = gl_PointCoord*2.0-1.0; float r2 = dot(p,p);
+    if (r2 > 1.0) discard;
+    float k = exp(-r2*7.0) + 0.3*exp(-r2*2.2);
+    gl_FragColor = vec4(vCol*k*vB, 1.0);
+  }`;
+const starMat = new THREE.ShaderMaterial({
+  uniforms: uni, vertexShader: pointVS, fragmentShader: pointFS,
+  blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false, transparent: true,
+});
+const stars = new THREE.Points(starGeo, starMat);
+stars.frustumCulled = false; stars.renderOrder = 3;
+eqGroup.add(stars);
+
+// ---------- Sternbildlinien ----------
+const conIdx = [];
+for (const c of meta.cons) conIdx.push(...c.s);
+const lineGeo = new THREE.BufferGeometry();
+lineGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+lineGeo.setIndex(conIdx);
+const lineMat = new THREE.ShaderMaterial({
+  uniforms: uni, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `varying float vY; void main(){ vec4 wp = modelMatrix*vec4(position,1.); vY = normalize(wp.xyz).y; gl_Position = projectionMatrix*viewMatrix*wp; }`,
+  fragmentShader: `uniform float night, atmo; varying float vY; void main(){ float f = atmo>0.5 ? smoothstep(-0.01,0.03,vY) : 1.0; gl_FragColor = vec4(vec3(0.28,0.38,0.75)*0.55*(0.25+0.75*night)*f, 1.); }`,
+});
+const conLines = new THREE.LineSegments(lineGeo, lineMat);
+conLines.frustumCulled = false; conLines.renderOrder = 2;
+eqGroup.add(conLines);
+const conCenters = meta.cons.map(c => {
+  const v = new THREE.Vector3(), seen = new Set();
+  for (const i of c.s) if (!seen.has(i)) { seen.add(i); v.x += pos[i*3]; v.y += pos[i*3+1]; v.z += pos[i*3+2]; }
+  return v.normalize();
+});
+
+// ---------- Milchstraße (prozedural, galaktische Koordinaten) ----------
+const mwMat = new THREE.ShaderMaterial({
+  uniforms: uni, side: THREE.BackSide, transparent: true, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending,
+  vertexShader: `varying vec3 vEq; varying vec3 vW; void main(){ vEq = position; vec4 wp = modelMatrix*vec4(position,1.); vW = wp.xyz; gl_Position = projectionMatrix*viewMatrix*wp; }`,
+  fragmentShader: `
+    uniform float night, lp, mwOn, atmo, extK; varying vec3 vEq; varying vec3 vW;
+    ${EXT}
+    float h3(vec3 p){ p = fract(p*vec3(0.1031,0.1030,0.0973)); p += dot(p, p.yxz+33.33); return fract((p.x+p.y)*p.z); }
+    float n3(vec3 x){ vec3 i = floor(x), f = fract(x); f = f*f*(3.-2.*f);
+      return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x), mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x),f.y),
+                 mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x), mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x),f.y), f.z); }
+    float fbm(vec3 p){ float s=0., a=.5; for(int i=0;i<5;i++){ s += a*n3(p); p*=2.03; a*=.5; } return s; }
+    void main(){
+      vec3 e = normalize(vEq);
+      mat3 M = mat3(-0.0548755604, 0.4941094279, -0.8676661490,
+                    -0.8734370902,-0.4448296300, -0.1980763734,
+                    -0.4838350155, 0.7469822445,  0.4559837762);
+      vec3 g = M * e;
+      float b = asin(clamp(g.z,-1.,1.)), l = atan(g.y, g.x);
+      float n = fbm(g*5.0), n2 = fbm(g*14.0+3.1);
+      float band = exp(-pow(b/(0.13+0.06*n),2.0));
+      float bulge = exp(-(l*l/0.45 + b*b/0.05));
+      float dust = exp(-pow((b-0.012)/0.035,2.0)) * smoothstep(1.9,0.2,abs(l)) * smoothstep(0.35,0.7,n2);
+      float I = (band*(0.35+0.65*n) + 0.9*bulge) * (1.0 - 0.75*dust) * (0.55 + 0.45*n2);
+      vec3 d = normalize(vW);
+      float X = atmo > 0.5 ? airmass(d.y) : 1.0;
+      float ext = pow(10.0, -0.4*extK*(X-1.0));
+      float vis = mwOn * night * mix(1.0, 0.12, lp) * ext;
+      gl_FragColor = vec4(vec3(0.62,0.66,0.78)*I*0.075*vis, 1.0);
+    }`,
+});
+const mw = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), mwMat);
+mw.renderOrder = 1; mw.frustumCulled = false;
+eqGroup.add(mw);
+
+// ---------- Himmelshintergrund (Horizontsystem) ----------
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: uni, side: THREE.BackSide, depthTest: false, depthWrite: false,
+  vertexShader: `varying vec3 vW; void main(){ vW = position; gl_Position = projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.); }`,
+  fragmentShader: `
+    uniform vec3 sunDir; uniform float lp, atmo; varying vec3 vW;
+    void main(){
+      vec3 d = normalize(vW);
+      if (atmo < 0.5) { gl_FragColor = vec4(0.,0.,0.,1.); return; }
+      float alt = max(d.y, 0.0), sa = sunDir.y;
+      float day = smoothstep(-0.12, 0.06, sa);
+      float tw = smoothstep(-0.31, -0.04, sa) * (1.0 - day*0.85);
+      float h = pow(1.0 - alt, 3.0);
+      vec3 zen = mix(vec3(0.0012,0.0018,0.0045), vec3(0.10,0.25,0.58), day);
+      vec3 hor = mix(vec3(0.004,0.005,0.01), vec3(0.60,0.72,0.86), day);
+      vec3 c = mix(zen, hor, h);
+      float cs = dot(d, sunDir);
+      c += tw * vec3(0.55,0.27,0.11) * exp(-alt*6.0) * (0.25 + 0.75*pow(cs*0.5+0.5, 4.0));
+      c += tw * vec3(0.05,0.07,0.18) * (1.0 - h) * 0.8;
+      c += day * vec3(1.0,0.92,0.75) * (pow(max(cs,0.),400.)*1.5 + pow(max(cs,0.),10.)*0.22);
+      c += lp * (1.0 - day) * vec3(0.085,0.058,0.045) * (0.18 + 0.82*pow(1.0-alt, 5.0));
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 32), skyMat);
+sky.renderOrder = 0; sky.frustumCulled = false;
+scene.add(sky);
+
+// ---------- Planeten ----------
+const PLANETS = [
+  ['Mercury', 'Merkur', 0.75], ['Venus', 'Venus', 0.2], ['Mars', 'Mars', 1.6],
+  ['Jupiter', 'Jupiter', 0.8], ['Saturn', 'Saturn', 1.0], ['Uranus', 'Uranus', 0.0], ['Neptune', 'Neptun', -0.1],
+];
+const plPos = new Float32Array(PLANETS.length * 3), plMag = new Float32Array(PLANETS.length), plCi = new Float32Array(PLANETS.map(p => p[2]));
+const plGeo = new THREE.BufferGeometry();
+plGeo.setAttribute('position', new THREE.BufferAttribute(plPos, 3));
+plGeo.setAttribute('mag', new THREE.BufferAttribute(plMag, 1));
+plGeo.setAttribute('ci', new THREE.BufferAttribute(plCi, 1));
+const planets = new THREE.Points(plGeo, starMat);
+planets.frustumCulled = false; planets.renderOrder = 4;
+eqGroup.add(planets);
+
+// ---------- Sonne & Mond (echte Winkelgröße, Phase aus Sonnenrichtung) ----------
+const bodyMat = (isMoon) => new THREE.ShaderMaterial({
+  uniforms: { ...uni, center: { value: new THREE.Vector3() } }, depthTest: false, depthWrite: false, transparent: true,
+  vertexShader: `varying vec3 vW; void main(){ vec4 wp = modelMatrix*vec4(position,1.); vW = wp.xyz; gl_Position = projectionMatrix*viewMatrix*wp; }`,
+  fragmentShader: isMoon ? `
+    uniform vec3 sunDir, center; varying vec3 vW;
+    float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,37.719)))*43758.5453); }
+    void main(){
+      vec3 n = normalize(vW - center);
+      vec3 q = n*6.0; vec3 i = floor(q); float maria = 0.0;
+      maria = smoothstep(0.55, 0.9, h(i)) * 0.25 + smoothstep(0.3, 0.8, sin(n.x*7.+n.y*5.)*0.5+0.5)*0.18;
+      float lit = smoothstep(-0.04, 0.08, dot(n, sunDir));
+      vec3 col = vec3(0.92,0.9,0.84) * (1.0 - maria);
+      gl_FragColor = vec4(col * (0.035 + 0.965*lit), 1.0);
+    }` : `
+    varying vec3 vW; void main(){ gl_FragColor = vec4(1.0,0.97,0.88,1.0); }`,
+});
+const BODY_D = 0.5;
+const moonMat = bodyMat(true), sunMat = bodyMat(false);
+const moon = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), moonMat);
+const sun = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 16), sunMat);
+moon.renderOrder = 5; sun.renderOrder = 5;
+scene.add(moon, sun);
+
+// ---------- Boden mit Berliner Silhouette ----------
+const SK = 1024, skyline = new Uint8Array(SK);
+{
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < SK;) {
+    const w = 3 + Math.floor(rnd() * 14), hgt = rnd() < 0.08 ? 2.4 + rnd() * 2.2 : 0.5 + rnd() * 1.6;
+    for (let k = 0; k < w && i < SK; k++, i++) skyline[i] = Math.min(255, hgt / 6 * 255);
+    if (rnd() < 0.25) { const g = 1 + Math.floor(rnd() * 6); for (let k = 0; k < g && i < SK; k++, i++) skyline[i] = (0.25 + rnd() * 0.2) / 6 * 255; }
+  }
+}
+const skyTex = new THREE.DataTexture(skyline, SK, 1, THREE.RedFormat, THREE.UnsignedByteType);
+skyTex.wrapS = THREE.RepeatWrapping; skyTex.magFilter = THREE.NearestFilter; skyTex.needsUpdate = true;
+const groundMat = new THREE.ShaderMaterial({
+  uniforms: { ...uni, sky: { value: skyTex } }, side: THREE.BackSide, depthTest: false, depthWrite: false,
+  vertexShader: `varying vec3 vW; void main(){ vW = position; gl_Position = projectionMatrix*viewMatrix*modelMatrix*vec4(position,1.); }`,
+  fragmentShader: `
+    uniform sampler2D sky; uniform vec3 sunDir; uniform float lp; varying vec3 vW;
+    void main(){
+      vec3 d = normalize(vW);
+      float alt = degrees(asin(clamp(d.y,-1.,1.)));
+      float az = atan(d.x, -d.z); if (az < 0.0) az += 6.2831853;
+      float hh = texture2D(sky, vec2(az/6.2831853, 0.5)).r * 6.0;
+      // Fernsehturm im Nordosten
+      float da = abs(az - radians(62.0)); da = min(da, 6.2831853-da);
+      float dx = degrees(da) * cos(radians(alt));
+      bool tower = (dx < 0.16 && alt < 10.8) || (dx < 0.05 && alt < 12.6) || length(vec2(dx, alt-7.4)) < 0.95;
+      if (alt > hh && !tower) discard;
+      float day = smoothstep(-0.12, 0.06, sunDir.y);
+      vec3 c = mix(vec3(0.006,0.006,0.009) + lp*vec3(0.012,0.008,0.006), vec3(0.09,0.10,0.11), day);
+      float win = step(0.86, fract(sin(floor(az*900.0)*31.7 + floor(alt*4.0)*17.3)*4375.5)) * step(0.3, alt) * step(alt, hh-0.15) * (1.0-day);
+      c += win * vec3(0.20,0.14,0.07) * 0.5;
+      if (tower && length(vec2(dx, alt-7.4)) < 0.95) c += vec3(0.02,0.0,0.0) * step(0.5, fract(alt*1.5));
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+});
+const ground = new THREE.Mesh(new THREE.SphereGeometry(1, 128, 64), groundMat);
+ground.renderOrder = 6; ground.frustumCulled = false;
+scene.add(ground);
+
+// ---------- Astronomie pro Zeitschritt ----------
+const eqM = new THREE.Matrix4(), tmpV = new THREE.Vector3();
+const H2T = new THREE.Matrix4().set(0, -1, 0, 0,  0, 0, 1, 0,  -1, 0, 0, 0,  0, 0, 0, 1); // HOR (N,W,Zenit) -> three (O,oben,-N)
+const raDecVec = (raH, decD, out = new THREE.Vector3()) => {
+  const ra = raH * 15 * DEG, de = decD * DEG, c = Math.cos(de);
+  return out.set(c * Math.cos(ra), c * Math.sin(ra), Math.sin(de));
+};
+const bodies = { sun: new THREE.Vector3(), moon: new THREE.Vector3(), planets: PLANETS.map(() => new THREE.Vector3()) };
+let moonIllum = 0, lastAstro = -1e15;
+function updateAstro(t) {
+  const date = new Date(t);
+  const rot = A.Rotation_EQJ_HOR(date, OBS).rot;
+  const R = new THREE.Matrix4().set(
+    rot[0][0], rot[1][0], rot[2][0], 0,
+    rot[0][1], rot[1][1], rot[2][1], 0,
+    rot[0][2], rot[1][2], rot[2][2], 0,
+    0, 0, 0, 1);
+  eqM.multiplyMatrices(H2T, R);
+  eqGroup.matrix.copy(eqM); eqGroup.matrixWorldNeedsUpdate = true;
+  if (Math.abs(t - lastAstro) < 20000 * Math.max(1, state.rate / 60)) return;
+  lastAstro = t;
+  const at = A.MakeTime(date);
+  const s = A.Equator(A.Body.Sun, at, OBS, false, true); raDecVec(s.ra, s.dec, bodies.sun);
+  const m = A.Equator(A.Body.Moon, at, OBS, false, true); raDecVec(m.ra, m.dec, bodies.moon);
+  moonIllum = A.Illumination(A.Body.Moon, at).phase_fraction;
+  PLANETS.forEach(([b], i) => {
+    const e = A.Equator(A.Body[b], at, OBS, false, true);
+    raDecVec(e.ra, e.dec, bodies.planets[i]).toArray(plPos, i * 3);
+    plMag[i] = A.Illumination(A.Body[b], at).mag;
+  });
+  plGeo.attributes.position.needsUpdate = true; plGeo.attributes.mag.needsUpdate = true;
+}
+const toWorld = (v, out = new THREE.Vector3()) => out.copy(v).applyMatrix4(eqM);
+
+// ---------- Steuerung: Umschauen & Zoomen ----------
+const el = renderer.domElement;
+const pointers = new Map(); let pinch0 = 0, fov0 = 60, moved = 0;
+const clampView = () => {
+  state.alt = Math.max(-89.5 * DEG, Math.min(89.5 * DEG, state.alt));
+  state.fov = Math.max(0.5, Math.min(110, state.fov));
+  state.az = ((state.az % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+};
+el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); moved = 0; el.classList.add('drag');
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); fov0 = state.fov; } });
+el.addEventListener('pointermove', e => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 1) {
+    const k = state.fov * DEG / innerHeight;
+    state.az -= dx * k / Math.max(0.2, Math.cos(state.alt)); state.alt += dy * k; moved += Math.abs(dx) + Math.abs(dy);
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch0) state.fov = fov0 * pinch0 / d; moved = 99;
+  }
+  clampView();
+});
+const endPtr = e => { const wasTap = pointers.size === 1 && moved < 6; pointers.delete(e.pointerId); if (!pointers.size) el.classList.remove('drag'); pinch0 = 0; if (wasTap && e.type === 'pointerup') pick(e.clientX, e.clientY); };
+el.addEventListener('pointerup', endPtr); el.addEventListener('pointercancel', endPtr);
+el.addEventListener('wheel', e => { e.preventDefault(); state.fov *= Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0012)); clampView(); }, { passive: false });
+addEventListener('keydown', e => {
+  const k = state.fov * DEG * 0.05;
+  if (e.key === 'ArrowLeft') state.az -= k; else if (e.key === 'ArrowRight') state.az += k;
+  else if (e.key === 'ArrowUp') state.alt += k; else if (e.key === 'ArrowDown') state.alt -= k;
+  else if (e.key === '+' || e.key === '=') state.fov /= 1.15; else if (e.key === '-') state.fov *= 1.15;
+  else if (e.key === 'c') toggle('con'); else if (e.key === 'n') toggle('names'); else if (e.key === 'm') toggle('mw');
+  else if (e.key === 'h') toggle('ground'); else if (e.key === 'l') toggle('dark'); else if (e.key === ' ') cycleRate();
+  else return;
+  clampView();
+});
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+function toggle(key) {
+  state[key] = !state[key];
+  const map = { con: 'tCon', names: 'tNames', mw: 'tMw', ground: 'tGround', dark: 'tSky' };
+  $(map[key]).classList.toggle('on', key === 'dark' ? state.dark : state[key]);
+  if (key === 'dark') $('tSky').textContent = state.dark ? 'Himmel: dunkel' : 'Himmel: Berlin';
+}
+$('tCon').onclick = () => toggle('con'); $('tNames').onclick = () => toggle('names'); $('tMw').onclick = () => toggle('mw');
+$('tGround').onclick = () => toggle('ground'); $('tSky').onclick = () => toggle('dark');
+const rateLabel = r => r === 1 ? 'Echtzeit' : r < 3600 ? `${r / 60} min/s` : r === 3600 ? '1 h/s' : `${r / 3600} h/s`;
+function cycleRate() { const i = RATES.indexOf(state.rate); state.rate = RATES[(i + 1) % RATES.length]; state.playing = true; syncPlay(); }
+function syncPlay() { $('bPlay').textContent = '▶ ' + (state.rate === 1 ? '1×' : rateLabel(state.rate)); $('bPlay').classList.toggle('on', state.rate !== 1); $('rateTxt').textContent = rateLabel(state.rate); }
+$('bPlay').onclick = cycleRate;
+$('bBack').onclick = () => { state.time -= 3600e3; lastAstro = -1e15; };
+$('bFwd').onclick = () => { state.time += 3600e3; lastAstro = -1e15; };
+$('bNow').onclick = () => { state.time = Date.now(); state.rate = 1; lastAstro = -1e15; syncPlay(); };
+$('credT').onclick = e => { e.preventDefault(); const b = $('creditBox'); b.style.display = b.style.display === 'block' ? 'none' : 'block'; };
+$('infoX').onclick = () => { $('info').style.display = 'none'; selected = null; };
+const fmt = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const DIRS = ['N', 'NNO', 'NO', 'ONO', 'O', 'OSO', 'SO', 'SSO', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+const dirName = azR => DIRS[Math.round(azR / DEG / 22.5) % 16];
+
+// ---------- Beschriftungen ----------
+const labelBox = $('labels'); const pool = []; let used = 0;
+function label(text, cls, v, dx = 6, dy = -6) {
+  tmpV.copy(v).project(camera);
+  if (tmpV.z > 1 || tmpV.z < -1 || Math.abs(tmpV.x) > 1.05 || Math.abs(tmpV.y) > 1.05) return;
+  let d = pool[used];
+  if (!d) { d = document.createElement('div'); labelBox.appendChild(d); pool.push(d); }
+  used++;
+  if (d._t !== text) { d.textContent = text; d._t = text; }
+  if (d._c !== cls) { d.className = 'lb ' + cls; d._c = cls; }
+  const x = (tmpV.x + 1) / 2 * innerWidth + dx, y = (1 - tmpV.y) / 2 * innerHeight + dy;
+  d.style.transform = `translate(${x | 0}px,${y | 0}px)` + (cls === 'con' ? ' translate(-50%,-50%)' : '');
+  d.style.display = '';
+}
+const named = meta.names.filter(n => n[1]);
+const CARD = [['N', 0], ['NO', 45], ['O', 90], ['SO', 135], ['S', 180], ['SW', 225], ['W', 270], ['NW', 315]]
+  .map(([t, a]) => [t, new THREE.Vector3(Math.sin(a * DEG), 0.004, -Math.cos(a * DEG))]);
+const w = new THREE.Vector3();
+function drawLabels(lim) {
+  used = 0;
+  if (state.ground) for (const [t, v] of CARD) label(t, 'card', v, -5, -22);
+  if (state.names) {
+    const above = v => !state.ground || v.y > -0.01;
+    if (state.con) meta.cons.forEach((c, i) => { toWorld(conCenters[i], w); if (above(w)) label(c.de, 'con', w, 0, 0); });
+    const nameLim = Math.min(lim - 0.3, 1.6 + Math.max(0, Math.log2(60 / state.fov)) * 1.1);
+    const showBayer = state.fov < 20;
+    let n = 0;
+    for (const s of meta.names) {
+      if (mag[s[0]] > nameLim || n > 160) break;
+      if (!s[1] && !showBayer) continue;
+      toWorld(w.fromArray(pos, s[0] * 3), w); if (!above(w)) continue;
+      label(s[1] || s[2], '', w); n++;
+    }
+    PLANETS.forEach((p, i) => { if (plMag[i] < lim + 1) { toWorld(bodies.planets[i], w); if (above(w)) label(p[1], 'pl', w); } });
+    toWorld(bodies.moon, w); if (above(w)) label('Mond', 'pl', w, 14, -14);
+    toWorld(bodies.sun, w); if (above(w)) label('Sonne', 'pl', w, 14, -14);
+  }
+  for (let i = used; i < pool.length; i++) if (pool[i].style.display !== 'none') pool[i].style.display = 'none';
+}
+
+// ---------- Antippen: Info zum nächsten Objekt ----------
+let selected = null;
+const ray = new THREE.Vector3(), inv = new THREE.Matrix4();
+function horiz(v) { const alt = Math.asin(Math.max(-1, Math.min(1, v.y))); let az = Math.atan2(v.x, -v.z); if (az < 0) az += 2 * Math.PI; return [az, alt]; }
+function pick(cx, cy) {
+  ray.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1, 0.5).unproject(camera).normalize();
+  const thr = Math.cos(Math.max(0.15, state.fov * 0.035) * DEG);
+  let best = null, bd = thr;
+  const test = (vEq, obj) => { toWorld(vEq, w); const d = w.dot(ray); if (d > bd) { bd = d; best = obj; } };
+  test(bodies.moon, { kind: 'moon' }); test(bodies.sun, { kind: 'sun' });
+  PLANETS.forEach((p, i) => test(bodies.planets[i], { kind: 'planet', i }));
+  const v = new THREE.Vector3();
+  for (const s of meta.names) { if (mag[s[0]] > curLim + 0.3) break; test(v.fromArray(pos, s[0] * 3), { kind: 'star', s }); }
+  selected = best; showInfo();
+}
+function showInfo() {
+  if (!selected) { $('info').style.display = 'none'; return; }
+  let title, rows = [], vEq;
+  if (selected.kind === 'star') {
+    const [i, proper, lbl, ly, sp] = selected.s; vEq = new THREE.Vector3().fromArray(pos, i * 3);
+    title = proper || lbl;
+    if (proper && lbl) rows.push(['Bezeichnung', lbl]);
+    const con = lbl.split(' ').pop(); if (CON_DE[con]) rows.push(['Sternbild', CON_DE[con]]);
+    rows.push(['Helligkeit', mag[i].toFixed(2) + ' mag']);
+    if (ly) rows.push(['Entfernung', ly.toLocaleString('de-DE') + ' Lj']);
+    if (sp) rows.push(['Spektraltyp', sp]);
+  } else if (selected.kind === 'planet') {
+    const i = selected.i; vEq = bodies.planets[i]; title = PLANETS[i][1];
+    const at = A.MakeTime(new Date(state.time));
+    const ill = A.Illumination(A.Body[PLANETS[i][0]], at);
+    rows.push(['Helligkeit', ill.mag.toFixed(2) + ' mag'], ['Entfernung', (ill.geo_dist * 149.598).toFixed(1) + ' Mio. km'], ['Beleuchtet', Math.round(ill.phase_fraction * 100) + ' %']);
+  } else if (selected.kind === 'moon') {
+    vEq = bodies.moon; title = 'Mond';
+    const at = A.MakeTime(new Date(state.time)), ph = A.MoonPhase(at);
+    const pn = ph < 22.5 || ph >= 337.5 ? 'Neumond' : ph < 67.5 ? 'zunehmende Sichel' : ph < 112.5 ? 'erstes Viertel' : ph < 157.5 ? 'zunehmend' : ph < 202.5 ? 'Vollmond' : ph < 247.5 ? 'abnehmend' : ph < 292.5 ? 'letztes Viertel' : 'abnehmende Sichel';
+    rows.push(['Phase', pn], ['Beleuchtet', Math.round(moonIllum * 100) + ' %'], ['Entfernung', Math.round(A.GeoMoon(at).Length() * 149597870.7).toLocaleString('de-DE') + ' km']);
+  } else { vEq = bodies.sun; title = 'Sonne'; rows.push(['Hinweis', 'nie direkt hineinschauen']); }
+  const [az, alt] = horiz(toWorld(vEq, new THREE.Vector3()));
+  rows.push(['Azimut', (az / DEG).toFixed(1) + '° ' + dirName(az)], ['Höhe', (alt / DEG).toFixed(1) + '°' + (alt < 0 ? ' (unter dem Horizont)' : '')]);
+  $('infoBody').innerHTML = `<h2>${title}</h2>` + rows.map(([k, v]) => `<div class="row">${k}<b>${v}</b></div>`).join('');
+  $('info').style.display = 'block';
+}
+
+// ---------- Schleife ----------
+let last = performance.now(), curLim = 6, infoTick = 0;
+const dirV = new THREE.Vector3();
+function frame(now) {
+  const dt = Math.min(0.25, (now - last) / 1000); last = now;
+  if (state.playing) state.time += dt * 1000 * state.rate;
+  updateAstro(state.time);
+
+  dirV.set(Math.sin(state.az) * Math.cos(state.alt), Math.sin(state.alt), -Math.cos(state.az) * Math.cos(state.alt));
+  camera.position.set(0, 0, 0); camera.up.set(0, 1, 0); camera.lookAt(dirV);
+  if (camera.fov !== state.fov) { camera.fov = state.fov; camera.updateProjectionMatrix(); }
+
+  const sunW = toWorld(bodies.sun, new THREE.Vector3()), moonW = toWorld(bodies.moon, new THREE.Vector3());
+  const sunAlt = Math.asin(sunW.y) / DEG;
+  const t = Math.min(1, Math.max(0, (sunAlt + 18) / 18)), dayDim = t * t * (3 - 2 * t);
+  const base = state.dark ? 6.5 : 4.3;
+  const moonUp = Math.max(0, Math.min(1, moonW.y * 10 + 0.5));
+  const zoomGain = state.fov < 60 ? Math.min(5, 4 * Math.log10(60 / state.fov)) : 0;
+  const atmo = state.ground;
+  curLim = Math.min(9.5, base - (atmo ? dayDim * (base + 2.5) + moonUp * moonIllum * (state.dark ? 1.5 : 0.6) : 0) + zoomGain);
+  uni.lim.value = curLim;
+  uni.atmo.value = atmo ? 1 : 0;
+  uni.extK.value = state.dark ? 0.22 : 0.32;
+  uni.lp.value = state.dark ? 0 : 1;
+  uni.night.value = atmo ? 1 - dayDim : 1;
+  uni.mwOn.value = state.mw ? 1 : 0;
+  uni.pxScale.value = DPR * (1 + Math.min(0.6, zoomGain * 0.12));
+  uni.sunDir.value.copy(sunW);
+
+  const r = (deg) => BODY_D * Math.tan(deg * DEG);
+  moon.position.copy(moonW).multiplyScalar(BODY_D); moon.scale.setScalar(r(0.259));
+  moonMat.uniforms.center.value.copy(moon.position);
+  sun.position.copy(sunW).multiplyScalar(BODY_D); sun.scale.setScalar(r(0.267));
+  ground.visible = state.ground;
+  conLines.visible = state.con;
+  mw.visible = state.mw;
+
+  renderer.render(scene, camera);
+  drawLabels(curLim);
+
+  if (now - infoTick > 250) {
+    infoTick = now;
+    $('time').textContent = fmt.format(new Date(state.time));
+    $('view').textContent = `Blick ${dirName(state.az)} ${(state.az / DEG).toFixed(0)}° · Höhe ${(state.alt / DEG).toFixed(0)}° · Sichtfeld ${state.fov < 10 ? state.fov.toFixed(1) : state.fov.toFixed(0)}° · Grenzgröße ${curLim.toFixed(1)} mag`;
+    if (selected) showInfo();
+  }
+  requestAnimationFrame(frame);
+}
+syncPlay();
+requestAnimationFrame(frame);
+window.__stars = { state, A, eqM, bodies };
+</script>
+</body>
+</html>
