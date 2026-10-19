@@ -48,7 +48,7 @@
 <div id="labels"></div>
 <div id="top" class="panel">
   <h1>Sternenhimmel über Berlin</h1>
-  <div class="sub"><span id="time">–</span> · <span id="rateTxt">Echtzeit</span></div>
+  <div class="sub">Boxhagener Platz · <span id="time">–</span> · <span id="rateTxt">Echtzeit</span></div>
 </div>
 <div id="info" class="panel"><button class="x" id="infoX">×</button><div id="infoBody"></div></div>
 <div id="bar" class="panel">
@@ -77,7 +77,7 @@
 <script type="module">
 import * as THREE from 'three';
 const A = window.Astronomy;
-const OBS = new A.Observer(52.5200, 13.4050, 34);
+const OBS = new A.Observer(52.5105, 13.4594, 38);
 const DEG = Math.PI / 180;
 
 // ---------- Renderer, Szene, Kamera ----------
@@ -303,7 +303,7 @@ fetch('https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=TLE').then
   const l = t.trim().split('\n').map(x => x.trim());
   if (l.length >= 3 && l[1].startsWith('1 ') && l[2].startsWith('2 ')) { issRec = SAT.twoline2satrec(l[1], l[2]); passCache = null; }
 }).catch(() => {});
-const OBS_GD = { latitude: 52.52 * DEG, longitude: 13.405 * DEG, height: 0.034 };
+const OBS_GD = { latitude: 52.5105 * DEG, longitude: 13.4594 * DEG, height: 0.038 };
 function issAt(t) {
   const d = new Date(t), pv = SAT.propagate(issRec, d);
   if (!pv || !pv.position) return null;
@@ -382,11 +382,12 @@ const SK = 1024, skyline = new Uint8Array(SK);
 {
   let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   for (let i = 0; i < SK;) {
-    const w = 3 + Math.floor(rnd() * 14), hgt = rnd() < 0.08 ? 2.4 + rnd() * 2.2 : 0.5 + rnd() * 1.6;
+    const w = 3 + Math.floor(rnd() * 14), hgt = rnd() < 0.08 ? 1.8 + rnd() * 1.0 : 0.4 + rnd() * 1.1;
     for (let k = 0; k < w && i < SK; k++, i++) skyline[i] = Math.min(255, hgt / 6 * 255);
     if (rnd() < 0.25) { const g = 1 + Math.floor(rnd() * 6); for (let k = 0; k < g && i < SK; k++, i++) skyline[i] = (0.25 + rnd() * 0.2) / 6 * 255; }
   }
 }
+for (let i = 0; i < SK; i++) { const d = Math.abs(i / SK * 360 - 288.7); if (d < 4) skyline[i] = Math.min(skyline[i], 0.6 / 6 * 255); }
 const skyTex = new THREE.DataTexture(skyline, SK, 1, THREE.RedFormat, THREE.UnsignedByteType);
 skyTex.wrapS = THREE.RepeatWrapping; skyTex.magFilter = THREE.NearestFilter; skyTex.needsUpdate = true;
 const groundMat = new THREE.ShaderMaterial({
@@ -399,16 +400,16 @@ const groundMat = new THREE.ShaderMaterial({
       float alt = degrees(asin(clamp(d.y,-1.,1.)));
       float az = atan(d.x, -d.z); if (az < 0.0) az += 6.2831853;
       float hh = texture2D(sky, vec2(az/6.2831853, 0.5)).r * 6.0;
-      // Fernsehturm im Nordosten
-      float da = abs(az - radians(62.0)); da = min(da, 6.2831853-da);
+      // Fernsehturm vom Boxhagener Platz aus: Azimut 288,7°, 3,6 km entfernt, 368 m hoch
+      float da = abs(az - radians(288.7)); da = min(da, 6.2831853-da);
       float dx = degrees(da) * cos(radians(alt));
-      bool tower = (dx < 0.16 && alt < 10.8) || (dx < 0.05 && alt < 12.6) || length(vec2(dx, alt-7.4)) < 0.95;
+      bool tower = (alt < 4.0 && dx < mix(0.25, 0.08, clamp(alt/4.0,0.,1.))) || (dx < 0.03 && alt < 5.87) || length(vec2(dx, alt-3.31)) < 0.26;
       if (alt > hh && !tower) discard;
       float day = smoothstep(-0.12, 0.06, sunDir.y);
       vec3 c = mix(vec3(0.006,0.006,0.009) + lp*vec3(0.012,0.008,0.006), vec3(0.09,0.10,0.11), day);
       float win = step(0.86, fract(sin(floor(az*900.0)*31.7 + floor(alt*4.0)*17.3)*4375.5)) * step(0.3, alt) * step(alt, hh-0.15) * (1.0-day);
       c += win * vec3(0.20,0.14,0.07) * 0.5;
-      if (tower && length(vec2(dx, alt-7.4)) < 0.95) c += vec3(0.02,0.0,0.0) * step(0.5, fract(alt*1.5));
+      if (tower && length(vec2(dx, alt-3.31)) < 0.26) c += vec3(0.02,0.0,0.0) * step(0.5, fract(alt*1.5));
       gl_FragColor = vec4(c, 1.0);
     }`,
 });
