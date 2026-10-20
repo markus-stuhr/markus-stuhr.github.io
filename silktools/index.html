@@ -27,12 +27,23 @@
   .card b{display:block;font-size:16px}
   .card span{display:block;margin:4px 0 6px}
   .card em{color:var(--dim);font-size:13px;font-style:normal}
+  header{position:relative}
+  #ov{position:absolute;top:40px;right:16px;font:inherit;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer}
+  #ov:hover{border-color:var(--ink)}
+  @media (max-width:560px){#ov{position:static;margin-bottom:14px}}
+  dialog{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:24px;max-width:min(920px,calc(100vw - 32px));max-height:calc(100vh - 32px)}
+  dialog::backdrop{background:rgba(0,0,0,.75)}
+  .sheet{display:flex;flex-direction:column;gap:14px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;padding:12px;border-radius:10px;border-top:3px solid var(--c);background:var(--card)}
+  .row img{width:64px;height:64px;object-fit:contain}
+  @media (max-width:560px){.row img{width:44px;height:44px}}
   footer{max-width:1100px;margin:0 auto;padding:0 16px 40px;color:var(--dim);font-size:13px}
   footer a{color:var(--dim)}
 </style>
 </head>
 <body>
 <header>
+  <button id="ov">Übersicht</button>
   <h1>Silksong · Werkzeuge</h1>
   <p>Alle Werkzeuge aus Hollow Knight: Silksong, sortiert nach Farbe. Wie viele du gleichzeitig tragen kannst, hängt vom ausgerüsteten Wappen ab.</p>
   <div class="bar" id="bar">
@@ -44,6 +55,7 @@
   </div>
 </header>
 <main id="out"></main>
+<dialog id="dlg"><div class="sheet" id="sheet"></div></dialog>
 <footer>Daten nach <a href="https://gamingbolt.com/hollow-knight-silksong-guide-all-59-tool-locations">GamingBolt</a>, <a href="https://www.nintendolife.com/guides/hollow-knight-silksong-all-tools-list-and-locations">Nintendo Life</a> und dem <a href="https://hollowknight.wiki/w/Tool">Hollow Knight Wiki</a>, Icons vom Hollow Knight Wiki. Fundorte ohne Gewähr. Silksong © Team Cherry.</footer>
 <script>
 const GROUPS = {
@@ -131,6 +143,11 @@ document.getElementById('bar').addEventListener('click', e => {
   render();
 });
 q.addEventListener('input', render);
+const dlg = document.getElementById('dlg');
+document.getElementById('sheet').innerHTML = Object.keys(GROUPS).map(k =>
+  `<div class="row" style="--c:var(--${k})">` + TOOLS.filter(t => t[0] === k).map(t => `<img src="img/${slug(t[1])}.png" alt="${esc(t[1])}">`).join('') + '</div>').join('');
+document.getElementById('ov').addEventListener('click', () => dlg.showModal());
+dlg.addEventListener('click', () => dlg.close());
 render();
 </script>
 </body>
