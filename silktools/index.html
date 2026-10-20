@@ -22,7 +22,8 @@
   h2 small{color:var(--dim);font-size:14px;font-weight:normal}
   .desc{color:var(--dim);margin:0 0 12px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
-  .card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;padding:12px 14px}
+  .card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;padding:12px 14px;display:flex;gap:12px;align-items:flex-start}
+  .card img{width:56px;height:56px;object-fit:contain;flex:none}
   .card b{display:block;font-size:16px}
   .card span{display:block;margin:4px 0 6px}
   .card em{color:var(--dim);font-size:13px;font-style:normal}
@@ -43,7 +44,7 @@
   </div>
 </header>
 <main id="out"></main>
-<footer>Daten nach <a href="https://gamingbolt.com/hollow-knight-silksong-guide-all-59-tool-locations">GamingBolt</a>, <a href="https://www.nintendolife.com/guides/hollow-knight-silksong-all-tools-list-and-locations">Nintendo Life</a> und dem <a href="https://hollowknight.wiki/w/Tool">Hollow Knight Wiki</a>. Fundorte ohne Gewähr. Silksong © Team Cherry.</footer>
+<footer>Daten nach <a href="https://gamingbolt.com/hollow-knight-silksong-guide-all-59-tool-locations">GamingBolt</a>, <a href="https://www.nintendolife.com/guides/hollow-knight-silksong-all-tools-list-and-locations">Nintendo Life</a> und dem <a href="https://hollowknight.wiki/w/Tool">Hollow Knight Wiki</a>, Icons vom Hollow Knight Wiki. Fundorte ohne Gewähr. Silksong © Team Cherry.</footer>
 <script>
 const GROUPS = {
   red:    ['Rot', 'Aktive Werkzeuge mit begrenzten Ladungen, an der Bank mit Muschelsplittern aufgefüllt.'],
@@ -112,6 +113,7 @@ const TOOLS = [
 ];
 const out = document.getElementById('out'), q = document.getElementById('q');
 let filter = 'all';
+const slug = n => n.toLowerCase().replace(/ \(.*/, '').replace(/'/g, '').replace(/[^a-z0-9]+/g, '-');
 const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function render() {
   const term = q.value.trim().toLowerCase();
@@ -119,7 +121,7 @@ function render() {
     const list = TOOLS.filter(t => t[0] === k && (!term || t.slice(1).join(' ').toLowerCase().includes(term)));
     if (!list.length) return '';
     return `<h2 style="color:var(--${k})">${name} <small>${list.length}</small></h2><p class="desc">${desc}</p><div class="grid">` +
-      list.map(t => `<div class="card" style="--c:var(--${k})"><b>${esc(t[1])}</b><span>${esc(t[2])}</span><em>📍 ${esc(t[3])}</em></div>`).join('') + '</div>';
+      list.map(t => `<div class="card" style="--c:var(--${k})"><img src="img/${slug(t[1])}.png" alt="" loading="lazy"><div><b>${esc(t[1])}</b><span>${esc(t[2])}</span><em>📍 ${esc(t[3])}</em></div></div>`).join('') + '</div>';
   }).join('') || '<p class="desc">Nichts gefunden.</p>';
 }
 document.getElementById('bar').addEventListener('click', e => {
