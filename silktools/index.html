@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Silksong Werkzeuge</title>
+<script defer src="/analytics.js"></script>
+<style>
+  :root{--bg:#14110f;--card:#1f1a17;--ink:#ece4da;--dim:#9c9088;--line:#3a312b;--red:#e0574a;--blue:#4f9be0;--yellow:#e6b93c}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 Georgia,"Times New Roman",serif}
+  header{max-width:1100px;margin:0 auto;padding:40px 16px 16px}
+  h1{font-size:clamp(28px,5vw,44px);margin:0 0 6px;letter-spacing:.02em}
+  header p{color:var(--dim);margin:0 0 20px;max-width:640px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .bar button{font:inherit;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer}
+  .bar button.on{border-color:var(--ink)}
+  .bar button i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+  .bar input{font:inherit;flex:1;min-width:180px;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 14px}
+  main{max-width:1100px;margin:0 auto;padding:8px 16px 48px}
+  h2{font-size:20px;margin:28px 0 4px;display:flex;align-items:center;gap:10px}
+  h2 small{color:var(--dim);font-size:14px;font-weight:normal}
+  .desc{color:var(--dim);margin:0 0 12px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+  .card{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:8px;padding:12px 14px}
+  .card b{display:block;font-size:16px}
+  .card span{display:block;margin:4px 0 6px}
+  .card em{color:var(--dim);font-size:13px;font-style:normal}
+  footer{max-width:1100px;margin:0 auto;padding:0 16px 40px;color:var(--dim);font-size:13px}
+  footer a{color:var(--dim)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Silksong · Werkzeuge</h1>
+  <p>Alle Werkzeuge aus Hollow Knight: Silksong, sortiert nach Farbe. Wie viele du gleichzeitig tragen kannst, hängt vom ausgerüsteten Wappen ab.</p>
+  <div class="bar" id="bar">
+    <button data-f="all" class="on">Alle</button>
+    <button data-f="red"><i style="background:var(--red)"></i>Rot</button>
+    <button data-f="blue"><i style="background:var(--blue)"></i>Blau</button>
+    <button data-f="yellow"><i style="background:var(--yellow)"></i>Gelb</button>
+    <input id="q" type="search" placeholder="Suchen (Name, Effekt, Ort) …">
+  </div>
+</header>
+<main id="out"></main>
+<footer>Daten nach <a href="https://gamingbolt.com/hollow-knight-silksong-guide-all-59-tool-locations">GamingBolt</a>, <a href="https://www.nintendolife.com/guides/hollow-knight-silksong-all-tools-list-and-locations">Nintendo Life</a> und dem <a href="https://hollowknight.wiki/w/Tool">Hollow Knight Wiki</a>. Fundorte ohne Gewähr. Silksong © Team Cherry.</footer>
+<script>
+const GROUPS = {
+  red:    ['Rot', 'Aktive Werkzeuge mit begrenzten Ladungen, an der Bank mit Muschelsplittern aufgefüllt.'],
+  blue:   ['Blau', 'Passive Werkzeuge für Kampf und Überleben.'],
+  yellow: ['Gelb', 'Passive Werkzeuge für Erkundung und Sammeln.'],
+};
+const TOOLS = [
+  ['red','Straight Pin','Leichter Wurfstift für schnelle Angriffe','The Marrow'],
+  ['red','Threefold Pin','Mehrere flache Stifte auf einmal werfen','Greymoor'],
+  ['red','Longpin','Schwerer Stift, durchschlägt Panzer','Shellwood'],
+  ['red','Sting Shard','Klingenfalle, sticht wer sie berührt','Forge Daughter, Deep Docks'],
+  ['red','Tacks','Reißzwecken auf dem Boden','Benjin & Crull, Sinner\'s Road'],
+  ['red','Throwing Ring','Prallt zwischen Gegnern und Wänden','Shakra'],
+  ['red','Conchcutter','Spirale, die von Flächen abprallt','Coral Tower, Sands of Karak'],
+  ['red','Curveclaw','Gebogenes Knochenwerkzeug gegen Flieger','Mottled Skarr, Hunter\'s March'],
+  ['red','Curvesickle','Kreisendes Knochenwerkzeug','Far Fields'],
+  ['red','Pimpillo','Sprengbeutel, explodiert bei Aufprall','Greymoor'],
+  ['red','Snare Setter','Seidenrune als Falle','Weavenest Atla'],
+  ['red','Cogfly','Fliegender Begleiter, greift Gegner an','High Halls'],
+  ['red','Cogwork Wheel','Rotierende Klinge, die mitläuft','Twelfth Architect, Underworks'],
+  ['red','Delver\'s Drill','Bohrer, treibt dich nach unten','Underworks'],
+  ['red','Flintslate','Nadel macht Feuerschaden','Deep Docks'],
+  ['red','Flea Brew','Mehr Lauf- und Angriffstempo auf Zeit','Grishkin, Flea Caravan'],
+  ['red','Needle Phial','Lädt sich mit Flüssigkeit, sticht voll geladen','Alchemist Zylotol, Wormways'],
+  ['red','Plasmium Phial','Heilt über das Maximum hinaus','Alchemist Zylotol, Wormways'],
+  ['red','Rosary Cannon','Kanone, mit Rosenkränzen geladen','High Halls'],
+  ['red','Silkshot v1','Weber-Waffe, verschießt Hülsen mit Seide','Mount Fay'],
+  ['red','Silkshot v2','Silkshot, umgebaut von der Forge Daughter','Forge Daughter, Deep Docks'],
+  ['red','Silkshot v3','Silkshot, umgebaut vom Twelfth Architect','Twelfth Architect, Underworks'],
+  ['red','Voltvessels','Elektrokugeln, geworfen oder als Speer','Memorium'],
+  ['blue','Druid\'s Eye','Erlittener Schaden wird zu Seide','Druide'],
+  ['blue','Egg of Flealia','Seidenfähigkeiten günstiger bei voller Gesundheit','Fleamaster Mooshka, Fleatopia'],
+  ['blue','Fractured Mask','Fängt einen tödlichen Treffer ab','Mottled Skarr, Hunter\'s March'],
+  ['blue','Injector Band','Schnelleres Binden','Whiteward'],
+  ['blue','Multibinder','Längeres Binden, mehr Heilung','Frey, Bellhart'],
+  ['blue','Reserve Bind','Speichert Seide für ein weiteres Binden','Second Sentinel, High Halls'],
+  ['blue','Warding Bell','Schild während des Bindens','Far Fields'],
+  ['blue','Claw Mirror','Schadensblitz beim Binden','Trobbio, The Stage'],
+  ['blue','Claw Mirrors (Dark Mirror)','Stärkere Explosion beim Binden','Tormented Trobbio, The Stage'],
+  ['blue','Longclaw','Größere Reichweite der Nadel','Huntress, Putrified Ducts'],
+  ['blue','Pin Badge','Kürzere Aufladezeit für den Nadelstoß','Pinstress, Mount Fay'],
+  ['blue','Magma Bell','Weniger Feuer- und Magmaschaden','Forge Daughter, Deep Docks'],
+  ['blue','Memory Crystal','Stacheln bei erlittenem Treffer','Mount Fay'],
+  ['blue','Pollip Pouch','Werkzeuge vergiften Gegner','Greyroot, Shellwood'],
+  ['blue','Quick Sling','Doppelt so viele Werkzeuge pro Wurf','Bilewater'],
+  ['blue','Sawtooth Circlet','Klingen beim Umhang-Aufbauschen','Twelfth Architect, Underworks'],
+  ['blue','Spool Extender','Mehr Seidenkapazität','Jubilana, Songclave'],
+  ['blue','Weavelight','Seide regeneriert schneller','Weavenest Atla'],
+  ['blue','Volt Filament','Elektroschaden für Seidenfähigkeiten','Sands of Karak'],
+  ['blue','Snitch Pick','Harpune, stiehlt Rosenkränze und Splitter','Grindle, Blasted Steps'],
+  ['blue','Wispfire Lantern','Irrlichter verbrennen Gegner','Wisp Thicket'],
+  ['blue','Wreath of Purity','Hält Muckmaggots fern','Putrified Ducts'],
+  ['yellow','Compass','Zeigt deine Position auf der Karte','Shakra, Bone Bottom'],
+  ['yellow','Ascendant\'s Grip','An Wänden festhalten','Jubilana, Songclave'],
+  ['yellow','Scuttlebrace','Schnellere Ausweichbewegung','Twelfth Architect, Underworks'],
+  ['yellow','Silkspeed Anklets','Seide für schnelleres Sprinten','Weavenest Cindril, Far Fields'],
+  ['yellow','Weighted Belt','Weniger Rückstoß','Mort Rest'],
+  ['yellow','Barbed Bracelet','Mehr Nadelschaden, aber mehr erlittener Schaden','Sinner\'s Road'],
+  ['yellow','Magnetite Brooch','Zieht Rosenkränze an','Pebb, Bone Bottom'],
+  ['yellow','Magnetite Dice','Bringt Glück','Grindle, Blasted Steps'],
+  ['yellow','Dead Bug\'s Purse','Behält beim Tod einen Teil der Rosenkränze','Wormways'],
+  ['yellow','Thief\'s Mark','Mehr Rosenkränze, Verlust bei Treffern','Grindle, Blasted Steps'],
+  ['yellow','Shard Pendant','Mehr Muschelsplitter von Gegnern','The Marrow'],
+  ['yellow','Shell Satchel','Mehr Werkzeug-Ladungen (nur Steel Soul)','Wormways'],
+  ['yellow','Spider Strings','Stärkeres Needolin','Jubilana, Songclave'],
+];
+const out = document.getElementById('out'), q = document.getElementById('q');
+let filter = 'all';
+const esc = s => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function render() {
+  const term = q.value.trim().toLowerCase();
+  out.innerHTML = Object.entries(GROUPS).filter(([k]) => filter === 'all' || filter === k).map(([k, [name, desc]]) => {
+    const list = TOOLS.filter(t => t[0] === k && (!term || t.slice(1).join(' ').toLowerCase().includes(term)));
+    if (!list.length) return '';
+    return `<h2 style="color:var(--${k})">${name} <small>${list.length}</small></h2><p class="desc">${desc}</p><div class="grid">` +
+      list.map(t => `<div class="card" style="--c:var(--${k})"><b>${esc(t[1])}</b><span>${esc(t[2])}</span><em>📍 ${esc(t[3])}</em></div>`).join('') + '</div>';
+  }).join('') || '<p class="desc">Nichts gefunden.</p>';
+}
+document.getElementById('bar').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  filter = b.dataset.f;
+  document.querySelectorAll('#bar button').forEach(x => x.classList.toggle('on', x === b));
+  render();
+});
+q.addEventListener('input', render);
+render();
+</script>
+</body>
+</html>
