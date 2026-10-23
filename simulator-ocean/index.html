@@ -591,6 +591,10 @@ uniform vec4 uBoat;   // x, z, heading, visible
 uniform float uWindKn, uReflOn, uWakeOn;
 uniform sampler2D tWake;
 uniform vec3 uWakeBox;   // x0, z0, span (m)
+#define BOW_N 6
+uniform vec4 uBowA[BOW_N];   // stem x, z, bow direction x, z
+uniform vec4 uBowB[BOW_N];   // speed (m/s), lean (+ = starboard up)
+uniform int uBowN;
 uniform sampler2D tReflect;
 uniform mat4 uReflMat;
 uniform sampler2D tSeabed, tShore;
@@ -732,6 +736,37 @@ void main() {
   float wf = clamp(wakeFoam * (0.3 + 0.7 * pat2 + 0.5 * pat), 0.0, 1.0) * 0.6;
   col = mix(col, vec3(0.88, 0.93, 0.95) * (0.7 + 0.4 * NdL), wf);
 
+  // Bow white water: where the stem throws the water aside, a patch of broken foam
+  // along each side of the forward hull. Like the whitecaps it is a threshold on the
+  // world-anchored foam pattern, so the blobs stay in the water as the boat sails through.
+  if (dist < 600.0) {
+    float bowMask = 0.0;
+    for (int i = 0; i < BOW_N; i++) {
+      if (i >= uBowN) break;
+      vec4 A = uBowA[i]; vec4 B = uBowB[i];
+      vec2 rel = vWorld.xz - A.xy;
+      float behind = -dot(rel, A.zw);                       // m aft of the stem
+      if (behind < -3.0 || behind > 22.0) continue;
+      float c = dot(rel, vec2(-A.w, A.z));                  // + = starboard
+      float wl = ${(0.65 * 0.52 * 7.4).toFixed(2)} * pow(clamp(behind / ${(0.5 * 4.1 * 7.4).toFixed(1)}, 0.0, 1.0), 0.6);   // waterline half-beam
+      wl *= clamp(1.0 - 1.6 * max(B.y * sign(c), 0.0), 0.55, 1.0);   // high side's waterline sits further in
+      float d = abs(c) - wl;                                // m outside the hull
+      float lee = clamp(1.0 - 2.2 * B.y * sign(c), 0.25, 2.0);
+      float reach = 2.0 + 0.45 * max(behind, 0.0);          // patch widens aft
+      float m = smoothstep(-0.6, 0.3, d) * (1.0 - smoothstep(0.4 * reach, reach, d))
+              * smoothstep(-2.5, 0.5, behind) * exp(-max(behind, 0.0) / 9.0)
+              * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
+      bowMask = max(bowMask, m);
+    }
+    if (bowMask > 0.001) {
+      float pb = texture2D(tFoam, vWorld.xz / 3.3 + uTime * vec2(0.05, -0.03)).r * 0.65
+               + texture2D(tFoam, vWorld.xz / 1.4 - uTime * vec2(0.04, 0.07)).r * 0.5;
+      float th = 1.05 - 0.75 * clamp(bowMask, 0.0, 1.2);
+      float bf = smoothstep(th, th + 0.18, pb);
+      col = mix(col, vec3(0.92, 0.95, 0.97) * (0.72 + 0.38 * NdL), bf * 0.92);
+    }
+  }
+
   // Surf: breaker lines marching in to the beach, then swash on the sand
   if (dS < 70.0 * (1.0 + dist / 1200.0)) {
     // wobble the lines and break them into patches so they don't read as contour rings
@@ -798,6 +833,7 @@ const oceanMat = new THREE.ShaderMaterial({
     uWindKn: { value: 20 }, uCloudOff: { value: null },
     tReflect: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 },
     tWake: { value: null }, uWakeBox: { value: new THREE.Vector3(0, 0, 1) }, uWakeOn: { value: 0 },
+    uBowA: { value: null }, uBowB: { value: null }, uBowN: { value: 0 },
   }]),
   vertexShader: OCEAN_VERT,
   fragmentShader: OCEAN_FRAG,
@@ -808,6 +844,12 @@ oceanMat.uniforms.uWaveA.value = uWaveA;
 oceanMat.uniforms.uWaveB.value = uWaveB;
 oceanMat.uniforms.uSunDir.value = SUN_DIR;
 oceanMat.uniforms.uCloudOff.value = CLOUD_OFF;
+// Bow white water: up to 6 boats near the camera (x, z, bow dir x, z) + (speed, lean, -, -)
+const BOW_N = 6;
+const uBowA = Array.from({ length: BOW_N }, () => new THREE.Vector4());
+const uBowB = Array.from({ length: BOW_N }, () => new THREE.Vector4());
+oceanMat.uniforms.uBowA.value = uBowA;
+oceanMat.uniforms.uBowB.value = uBowB;
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
 ocean.frustumCulled = false;
@@ -3038,6 +3080,11 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float lee = clamp(1.0 - 2.2 * vLean.x * sign(vW.x), 0.25, 2.0);
       float behind = smoothstep(uHullL * 0.75, uHullL * 1.05, s);   // wash starts at the transom
       float W = vLean.y;
+      // heeled: the high (windward) side lifts out, so its waterline - and the bow wave -
+      // sits further in; only along the hull, the V further aft doesn't care about heel
+      float up = max(vLean.x * sign(vW.x), 0.0);
+      float narrow = mix(clamp(1.0 - 1.6 * up, 0.55, 1.0), 1.0, smoothstep(uHullL * 0.8, uHullL * 1.6, s));
+      au /= narrow;
       float x = au * W;                                   // metres off the track
       float go = smoothstep(0.8, 3.5, spd);
       // turbulent centre stripe: hull + keel wash, spreading and fading
@@ -3052,7 +3099,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float lam = max(6.2831 * spd * spd / 9.81, 3.0);
       float edge = smoothstep(0.45, 0.9, au) * (1.0 - smoothstep(0.9, 1.0, au));
       float div = sin(6.2831 * (s * 0.57 + x * 0.82) / (lam * 0.5));
-      float tra = cos(6.2831 * s / lam) * (1.0 - au) * smoothstep(0.0, lam, s);
+      float tra = cos(6.2831 * s / lam) * max(1.0 - au, 0.0) * smoothstep(0.0, lam, s);
       float amp = 0.32 * clamp(spd / 5.0, 0.0, 1.6) * go * exp(-age / 7.0) * (1.0 - smoothstep(0.7, 1.0, s / 160.0));
       // spreading: wave height falls off ~1/sqrt(distance from the bow), full at the hull
       float r = sqrt(s * s + x * x);
@@ -3084,7 +3131,9 @@ function wakeTrailFor(g) {
   return tr;
 }
 const _wf = new THREE.Vector3(), _wr = new THREE.Vector3();
+const _bows = [];
 function updateWakes() {
+  _bows.length = 0;
   for (const g of WAKE_SOURCES) {
     const tr = wakeTrailFor(g);
     const live = g.parent && g.visible && gameState !== 'menu';
@@ -3105,6 +3154,7 @@ function updateWakes() {
     } else if (tr.px === null) tr.ls = leanRaw;
     tr.px = sx; tr.pz = sz; tr.pt = t;
     const lean = tr.ls;
+    _bows.push({ x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - camera.position.x, sz - camera.position.z) });
     const p = tr.pts;
     const last = p[p.length - 1];
     if (last && (t < last.t || Math.hypot(sx - last.x, sz - last.z) > 80)) p.length = 0;   // reset / seek / teleport
@@ -3163,6 +3213,14 @@ function updateWakes() {
   ou.tWake.value = wakeRT.texture;
   ou.uWakeBox.value.set(wakeCenter.x - WAKE_SPAN / 2, wakeCenter.y - WAKE_SPAN / 2, WAKE_SPAN);
   ou.uWakeOn.value = 1;
+  _bows.sort((a, b) => a.d - b.d);
+  const nb = Math.min(_bows.length, BOW_N);
+  for (let i = 0; i < nb; i++) {
+    const b = _bows[i];
+    uBowA[i].set(b.x, b.z, b.fx, b.fz);
+    uBowB[i].set(b.v, b.l, 0, 0);
+  }
+  ou.uBowN.value = nb;
 }
 
 // --- Planar reflection of islands, boats and sails ---
