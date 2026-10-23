@@ -3005,9 +3005,10 @@ WAKE_SOURCES.push(boatGroup);
 // ~0.31 m per texel: coarser texels showed up as blocky wave normals
 const WAKE_SPAN = 640, WAKE_RES = 2048, WAKE_MAXP = 100, WAKE_LIFE_S = 18, WAKE_STEP = 2;
 const HULL_L = (HULL_ZSTERN - HULL_ZBOW) * M;   // the bow wave starts at the stem, the wash behind the transom
-// Half-width of the wave pattern s metres behind the stem: the bow wave hugs the hull
-// (it is pushed out by the hull's flare) until the Kelvin wedge (19.5°) takes over
-const wakeHalfWidth = (s) => Math.min(Math.max(0.3 + 0.354 * s, s < HULL_L ? hullHalfBeam(s / HULL_L) * M + 0.6 : 0), 60);
+// Half-width of the wave pattern s metres behind the stem: the bow wave hugs the hull at
+// the waterline (the round sections are only ~2/3 as wide there as at deck level) until
+// the Kelvin wedge (19.5°) takes over
+const wakeHalfWidth = (s) => Math.min(Math.max(0.354 * s, s < HULL_L ? hullHalfBeam(s / HULL_L) * M * 0.65 + 0.2 : 0), 60);
 const wakeRT = new THREE.WebGLRenderTarget(WAKE_RES, WAKE_RES, { type: THREE.HalfFloatType, depthBuffer: false });
 const wakeScene = new THREE.Scene();
 const wakeCam = new THREE.Camera();   // unused by the ribbon shader (it writes clip space itself)
