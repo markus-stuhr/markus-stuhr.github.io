@@ -353,7 +353,7 @@ camera.lookAt(0, 0, 0);
 // --- Renderer ---
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(devicePixelRatio);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // Retina at 2x costs ~1.8x the pixels for little visible gain
 document.body.appendChild(renderer.domElement);
 
 // --- Lights ---
@@ -495,9 +495,12 @@ float vnoise(vec2 p) {
   return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x),
              mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
 }
-float fbm(vec2 p) {
+float fbm(vec2 p, int oct) {
   float v = 0.0, a = 0.5;
-  for (int i = 0; i < 5; i++) { v += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+  for (int i = 0; i < 5; i++) {
+    if (i >= oct) { v += a; break; }   // missing octaves -> their mean, keeps coverage the same
+    v += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5;
+  }
   return v;
 }
 // Clear tropical sky: deep blue zenith, pale band only right at the horizon
@@ -512,21 +515,21 @@ vec3 skyBase(vec3 d) {
   return col;
 }
 // Trade-wind cumulus on a flat layer ~1.5 km up: fbm coverage, lit from the sun side
-vec4 cloudLayer(vec3 d) {
-  if (d.y < 0.012) return vec4(0.0);
+vec4 cloudLayer(vec3 d, int oct) {
+  if (d.y < 0.004) return vec4(0.0);
   vec2 p = d.xz / d.y * 1.7 + uCloudOff;
-  float n = fbm(p) + 0.25 * (vnoise(p * 0.35) - 0.5);   // low-frequency term groups puffs into fields
+  float n = fbm(p, oct) + 0.25 * (vnoise(p * 0.35) - 0.5);   // low-frequency term groups puffs into fields
   float cov = smoothstep(0.53, 0.62, n);
   if (cov <= 0.0) return vec4(0.0);
-  float nl = fbm(p + uSunDir.xz * 0.05) + 0.25 * (vnoise((p + uSunDir.xz * 0.05) * 0.35) - 0.5);
+  float nl = fbm(p + uSunDir.xz * 0.05, oct) + 0.25 * (vnoise((p + uSunDir.xz * 0.05) * 0.35) - 0.5);
   float lit = clamp(0.6 + (n - nl) * 6.0 + (n - 0.6) * 1.5, 0.0, 1.0);
   vec3 c = mix(vec3(0.42, 0.47, 0.58), vec3(1.25, 1.2, 1.12), lit);
   c += vec3(0.9, 0.8, 0.6) * pow(max(dot(d, uSunDir), 0.0), 12.0) * 0.6;  // silver lining near the sun
-  return vec4(c, cov * smoothstep(0.012, 0.09, d.y) * 0.95);
+  return vec4(c, cov * smoothstep(0.004, 0.05, d.y) * 0.95);
 }
-vec3 skyRadiance(vec3 d) {
+vec3 skyRadiance(vec3 d, int oct) {
   vec3 col = skyBase(d);
-  vec4 c = cloudLayer(d);
+  vec4 c = cloudLayer(d, oct);
   return mix(col, c.rgb, c.a);
 }
 vec3 acesFit(vec3 x) {
@@ -633,9 +636,10 @@ void main() {
   vec2 uv2 = vWorld.xz / 12.7 + vec2(-uWindDir.y, uWindDir.x) * uTime * 0.07 + uWindDir * uTime * 0.05;
   vec3 d1 = texture2D(tDetail, uv1).xyz * 2.0 - 1.0;
   vec3 d2 = texture2D(tDetail, uv2).xyz * 2.0 - 1.0;
-  float gust = fbm(vWorld.xz / 240.0 - uWindDir * uTime * 0.035);
+  float gust = fbm(vWorld.xz / 240.0 - uWindDir * uTime * 0.035, 3);
   float windF = smoothstep(6.0, 24.0, uWindKn);
   float ds = (0.10 + 0.06 * uAmp + 0.10 * windF) * (0.45 + 1.1 * gust) * exp(-dist / 1100.0);
+  vec3 nWave = normalize(n);
   n.xz += (d1.xy + 0.6 * d2.xy) * ds;
   vec3 N = normalize(n);
 
@@ -644,9 +648,10 @@ void main() {
   float NdV = max(dot(N, V), 0.0);
 
   // Reflection of the sky (reflected rays below the horizon are folded back up)
-  vec3 R = reflect(-V, N);
+  vec3 Nr = normalize(mix(nWave, N, 0.3));
+  vec3 R = reflect(-V, Nr);
   R.y = abs(R.y);
-  vec3 refl = skyRadiance(normalize(R));
+  vec3 refl = skyRadiance(normalize(R), 3);
   if (uReflOn > 0.5) {
     vec4 rc = uReflMat * vec4(vWorld.x, 0.0, vWorld.z, 1.0);
     vec2 ruv = rc.xy / rc.w + N.xz * (0.05 / (1.0 + dist / 2500.0));
@@ -792,7 +797,7 @@ const skyMat = new THREE.ShaderMaterial({
     #include <common>
     void main() {
       vec3 d = normalize(vDir);
-      vec3 col = skyRadiance(d);
+      vec3 col = skyRadiance(d, 5);
       float s = max(dot(d, uSunDir), 0.0);
       col += vec3(30.0, 26.0, 20.0) * smoothstep(0.9994, 0.9997, s);   // sun disc
       gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
@@ -2977,7 +2982,7 @@ function renderReflection() {
   ou.uReflOn.value = 0;
   if (camera.position.y <= 0.05) return;
   const pr = renderer.getPixelRatio();
-  const w = Math.max(1, Math.floor(innerWidth * pr / 2)), h = Math.max(1, Math.floor(innerHeight * pr / 2));
+  const w = Math.max(1, Math.floor(innerWidth * pr / 3)), h = Math.max(1, Math.floor(innerHeight * pr / 3)); // waves blur it anyway
   if (reflRT.width !== w || reflRT.height !== h) reflRT.setSize(w, h);
 
   // mirror the camera at y = 0 (same construction as three's Reflector)
@@ -3030,8 +3035,12 @@ renderer.render = (s, c) => {
 const clock = new THREE.Clock();
 let t = 0;
 
-function animate() {
+// 120 Hz displays would otherwise render twice as often for no visible benefit
+let lastFrame = 0;
+function animate(now) {
   requestAnimationFrame(animate);
+  if (now - lastFrame < 1000 / 62) return;
+  lastFrame = now;
   const dt = Math.min(clock.getDelta(), 0.05);
 
   // Menu: just the empty sea, slowly drifting, behind the overlay.
