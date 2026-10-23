@@ -523,7 +523,8 @@ vec3 skyBase(vec3 d) {
 // Trade-wind cumulus on a flat layer ~1.5 km up: fbm coverage, lit from the sun side
 vec4 cloudLayer(vec3 d, int oct) {
   if (d.y < 0.004) return vec4(0.0);
-  vec2 p = d.xz / d.y * 1.7 + uCloudOff;
+  // curved layer (as seen over a round earth): no endless stretching into streaks at the horizon
+  vec2 p = d.xz / (d.y + 0.12) * 1.9 + uCloudOff;
   float n = fbm(p, oct) + 0.25 * (vnoise(p * 0.35) - 0.5);   // low-frequency term groups puffs into fields
   float cov = smoothstep(0.53, 0.62, n);
   if (cov <= 0.0) return vec4(0.0);
@@ -532,6 +533,13 @@ vec4 cloudLayer(vec3 d, int oct) {
   vec3 c = mix(vec3(0.42, 0.47, 0.58), vec3(1.25, 1.2, 1.12), lit);
   c += vec3(0.9, 0.8, 0.6) * pow(max(dot(d, uSunDir), 0.0), 12.0) * 0.6;  // silver lining near the sun
   return vec4(c, cov * smoothstep(0.004, 0.05, d.y) * 0.95);
+}
+// what the water reflects: softer, fainter clouds (each ripple would otherwise flip between
+// white cloud and blue sky from pixel to pixel)
+vec3 skyReflected(vec3 d) {
+  vec3 col = skyBase(d);
+  vec4 c = cloudLayer(d, 2);
+  return mix(col, c.rgb, c.a * 0.55);
 }
 vec3 skyRadiance(vec3 d, int oct) {
   vec3 col = skyBase(d);
@@ -677,10 +685,10 @@ void main() {
   float NdV = max(dot(N, V), 0.0);
 
   // Reflection of the sky (reflected rays below the horizon are folded back up)
-  vec3 Nr = normalize(mix(nWave, N, 0.3));
+  vec3 Nr = normalize(mix(nWave, N, 0.12));
   vec3 R = reflect(-V, Nr);
   R.y = abs(R.y);
-  vec3 refl = skyRadiance(normalize(R), 3);
+  vec3 refl = skyReflected(normalize(R));
   float objA = 0.0, boatA = 0.0;   // reflection coverage by land/boats, and boat share of it
   if (uReflOn > 0.5) {
     vec4 rc = uReflMat * vec4(vWorld.x, 0.0, vWorld.z, 1.0);
@@ -3316,9 +3324,7 @@ const reflRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
 const reflCam = new THREE.PerspectiveCamera();
 const _rPlane = new THREE.Plane(), _rClip = new THREE.Vector4(), _rQ = new THREE.Vector4();
 const _rRot = new THREE.Matrix4(), _rLook = new THREE.Vector3(), _rTarget = new THREE.Vector3();
-const _rN = new THREE.Vector3(0, 1, 0), _rClear = new THREE.Color(), _rFog = new THREE.Color();
-// the target stores linear colour, so fog needs the linear version of its display value
-const _rFogLin = scene.fog.color.clone().convertSRGBToLinear();
+const _rN = new THREE.Vector3(0, 1, 0), _rClear = new THREE.Color();
 const _rBias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1);
 function renderReflection() {
   const ou = oceanMat.uniforms;
@@ -3354,7 +3360,9 @@ function renderReflection() {
   renderer.getClearColor(_rClear);
   const ca = renderer.getClearAlpha();
   ocean.visible = false; skyDome.visible = false; scene.background = null;
-  _rFog.copy(scene.fog.color); scene.fog.color.copy(_rFogLin);
+  // no fog in the mirror image: mixed in linear space it greyed the islands out; the water
+  // pixel showing the reflection gets its own distance fog anyway
+  const fog = scene.fog; scene.fog = null;
   renderer.setRenderTarget(reflRT);
   renderer.setClearColor(0x000000, 0);
   renderer.clear();
@@ -3362,7 +3370,7 @@ function renderReflection() {
   renderer.setRenderTarget(null);
   renderer.setClearColor(_rClear, ca);
   ocean.visible = true; skyDome.visible = true; scene.background = bg;
-  scene.fog.color.copy(_rFog);
+  scene.fog = fog;
 
   ou.tReflect.value = reflRT.texture;
   ou.uReflOn.value = 1;
