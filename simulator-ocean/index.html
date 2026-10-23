@@ -655,7 +655,13 @@ void main() {
   if (uReflOn > 0.5) {
     vec4 rc = uReflMat * vec4(vWorld.x, 0.0, vWorld.z, 1.0);
     vec2 ruv = rc.xy / rc.w + N.xz * (0.05 / (1.0 + dist / 2500.0));
-    vec4 ro = texture2D(tReflect, ruv);
+    // light 5-tap read: softens the 3/4-res texels without smearing the land
+    vec2 tx = 0.8 / vec2(textureSize(tReflect, 0));
+    vec4 ro = texture2D(tReflect, ruv) * 0.4
+            + texture2D(tReflect, ruv + tx * vec2( 0.7,  1.0)) * 0.15
+            + texture2D(tReflect, ruv + tx * vec2(-0.7, -1.0)) * 0.15
+            + texture2D(tReflect, ruv + tx * vec2( 1.0, -0.7)) * 0.15
+            + texture2D(tReflect, ruv + tx * vec2(-1.0,  0.7)) * 0.15;
     refl = mix(refl, ro.rgb * 0.7, ro.a);
   }
   float F = 0.02 + 0.98 * pow(1.0 - NdV, 5.0);
@@ -2966,7 +2972,7 @@ function chaseCamera() {
 
 // --- Planar reflection of islands, boats and sails ---
 // The scene (minus sky and ocean, with a transparent clear) is rendered from the camera
-// mirrored at sea level into a full-res target; an oblique near plane clips everything
+// mirrored at sea level into a 3/4-res target; an oblique near plane clips everything
 // below the water. The ocean shader lays it over its analytic sky reflection, offset by
 // the wave normals.
 const reflRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
@@ -2982,7 +2988,7 @@ function renderReflection() {
   ou.uReflOn.value = 0;
   if (camera.position.y <= 0.05) return;
   const pr = renderer.getPixelRatio();
-  const w = Math.max(1, Math.floor(innerWidth * pr)), h = Math.max(1, Math.floor(innerHeight * pr)); // full res: sharp land
+  const w = Math.max(1, Math.floor(innerWidth * pr * 0.75)), h = Math.max(1, Math.floor(innerHeight * pr * 0.75));
   if (reflRT.width !== w || reflRT.height !== h) reflRT.setSize(w, h);
 
   // mirror the camera at y = 0 (same construction as three's Reflector)
