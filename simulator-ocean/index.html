@@ -374,6 +374,9 @@ sun.position.copy(SUN_DIR).multiplyScalar(100);
 // Boat groups that leave a wake (player, race opponents, replay boats)
 const WAKE_SOURCES = [];
 
+// Strength of the fine surface ripples (1 = original look, lower = calmer surface)
+const RIPPLE = 0.6;
+
 const NW = 14;
 const G = 9.81;
 const WAVE_BASE = [];  // per wave: lambda, amplitude (at waveAmp 1), angle offset to the sea direction, phase
@@ -588,7 +591,7 @@ uniform vec4 uWaveB[NW];
 uniform sampler2D tDetail, tFoam;
 uniform vec2 uWindDir;
 uniform vec4 uBoat;   // x, z, heading, visible
-uniform float uWindKn, uReflOn, uWakeOn;
+uniform float uWindKn, uReflOn, uWakeOn, uRipple;
 uniform sampler2D tWake;
 uniform vec3 uWakeBox;   // x0, z0, span (m)
 #define BOW_N 6
@@ -647,7 +650,7 @@ void main() {
   vec3 d2 = texture2D(tDetail, uv2).xyz * 2.0 - 1.0;
   float gust = fbm(vWorld.xz / 240.0 - uWindDir * uTime * 0.035, 3);
   float windF = smoothstep(6.0, 24.0, uWindKn);
-  float ds = (0.10 + 0.06 * uAmp + 0.10 * windF) * (0.45 + 1.1 * gust) * exp(-dist / 1100.0);
+  float ds = (0.10 + 0.06 * uAmp + 0.10 * windF) * (0.45 + 1.1 * gust) * exp(-dist / 1100.0) * uRipple;
   // Boat wakes: foam (r) + Kelvin wave height (g) from the top-down wake texture
   float wakeFoam = 0.0, wakeSlick = 0.0;
   if (uWakeOn > 0.5) {
@@ -841,6 +844,7 @@ const oceanMat = new THREE.ShaderMaterial({
     tReflect: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 },
     tWake: { value: null }, uWakeBox: { value: new THREE.Vector3(0, 0, 1) }, uWakeOn: { value: 0 },
     uBowA: { value: null }, uBowB: { value: null }, uBowN: { value: 0 },
+    uRipple: { value: RIPPLE },
   }]),
   vertexShader: OCEAN_VERT,
   fragmentShader: OCEAN_FRAG,
