@@ -618,7 +618,33 @@ varying vec2 vP0;
 varying vec3 vWorld;
 ${SKY_GLSL}
 #include <common>
+#include <packing>
 #include <fog_pars_fragment>
+uniform sampler2D tSunShadow;
+uniform mat4 uSunShadowMat;
+uniform float uShadowOn;
+uniform vec2 uShadowTexel;
+// sun visibility from the boats' shadow map; 1 = lit. Each tap is a bilinearly
+// weighted depth comparison (smooth edges instead of texel steps), 4x4 taps wide.
+float shadowTap(vec2 uv, float z) {
+  vec2 st = uv / uShadowTexel - 0.5;
+  vec2 f = fract(st), b = (floor(st) + 0.5) * uShadowTexel;
+  float a = step(z, unpackRGBAToDepth(texture2D(tSunShadow, b)));
+  float c = step(z, unpackRGBAToDepth(texture2D(tSunShadow, b + vec2(uShadowTexel.x, 0.0))));
+  float d = step(z, unpackRGBAToDepth(texture2D(tSunShadow, b + vec2(0.0, uShadowTexel.y))));
+  float e = step(z, unpackRGBAToDepth(texture2D(tSunShadow, b + uShadowTexel)));
+  return mix(mix(a, c, f.x), mix(d, e, f.x), f.y);
+}
+float sunVisibility(vec3 wp) {
+  if (uShadowOn < 0.5) return 1.0;
+  vec4 sc = uSunShadowMat * vec4(wp, 1.0);
+  vec3 c = sc.xyz / sc.w;
+  if (c.x <= 0.0 || c.y <= 0.0 || c.x >= 1.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  float z = c.z - 0.0015, v = 0.0;
+  for (int y = 0; y < 2; y++) for (int x = 0; x < 2; x++)
+    v += shadowTap(c.xy + (vec2(x, y) - 0.5) * 1.5 * uShadowTexel, z);
+  return v / 4.0;
+}
 void main() {
   float dist = length(cameraPosition - vWorld);
   vec2 fw = fwidth(vP0);
@@ -717,7 +743,8 @@ void main() {
   float NdL = max(dot(N, L), 0.0);
   vec3 Hs = normalize(L + N * 0.6);
   float sss = pow(clamp(dot(V, -Hs), 0.0, 1.0), 4.0) * 2.5 * max(h + 0.35, 0.0);
-  vec3 body = deep * (0.45 + 0.55 * NdL) + scatterCol * (sss + 0.08 + 0.14 * max(h, 0.0));
+  float sunVis = sunVisibility(vWorld);   // sails/hulls shade the water: no direct sun, glint or glow
+  vec3 body = deep * (0.45 + 0.55 * NdL * sunVis) + scatterCol * (sss * sunVis + 0.08 + 0.14 * max(h, 0.0));
   // Shallows: the satellite image already shows the lagoon/reef colour seen through the water
   float lumS = dot(sat, vec3(0.3, 0.5, 0.2));
   // lagoon water is turquoise (green well above red); haze/cloud in the imagery is grey-blue
@@ -739,7 +766,7 @@ void main() {
 
   // visibility of the reflection per source: sky + clouds, land, boats
   const float REFL_SKY = 0.6, REFL_LAND = 0.6, REFL_BOAT = 0.8;
-  vec3 col = mix(body, refl, F * mix(REFL_SKY, mix(REFL_LAND, REFL_BOAT, boatA), objA)) + spec;
+  vec3 col = mix(body, refl, F * mix(REFL_SKY, mix(REFL_LAND, REFL_BOAT, boatA), objA)) * mix(0.8, 1.0, sunVis) + spec * sunVis;
 
   // Whitecaps where the crests pinch together; more of them in a rough sea
   float wc = smoothstep(9.0, 26.0, uWindKn);
@@ -805,15 +832,6 @@ void main() {
     col = mix(col, vec3(0.92, 0.95, 0.96) * (0.7 + 0.4 * NdL), clamp(surf, 0.0, 1.0) * inBox);
   }
 
-  // Soft shadow of the hull/sails on the water
-  if (uBoat.w > 0.5) {
-    vec2 rel = vWorld.xz - (uBoat.xy - L.xz / max(L.y, 0.2) * 9.0);  // cast away from the sun
-    float ch = cos(uBoat.z), sh = sin(uBoat.z);
-    vec2 loc = vec2(rel.x * ch - rel.y * sh, rel.x * sh + rel.y * ch);   // across, along the hull
-    float e = length(loc / vec2(${(1.2 * 7.4).toFixed(2)}, ${(3.4 * 7.4).toFixed(2)}));
-    col *= 1.0 - 0.45 * (1.0 - smoothstep(0.55, 1.0, e));
-  }
-
   gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
   #include <colorspace_fragment>
   #include <fog_fragment>
@@ -856,6 +874,8 @@ const oceanMat = new THREE.ShaderMaterial({
     tWake: { value: null }, uWakeBox: { value: new THREE.Vector3(0, 0, 1) }, uWakeOn: { value: 0 },
     uBowA: { value: null }, uBowB: { value: null }, uBowN: { value: 0 },
     uRipple: { value: RIPPLE },
+    tSunShadow: { value: null }, uSunShadowMat: { value: new THREE.Matrix4() }, uShadowOn: { value: 0 },
+    uShadowTexel: { value: new THREE.Vector2(1 / 4096, 1 / 4096) },
   }]),
   vertexShader: OCEAN_VERT,
   fragmentShader: OCEAN_FRAG,
@@ -3318,6 +3338,127 @@ function updateWakes() {
   ou.uBowN.value = nb;
 }
 
+// --- Sun shadows ---
+// One shadow map follows the player (±120 m, ~6 cm/texel): sails and hulls of every boat
+// cast onto each other (three's own shadow pipeline) and onto the water (the ocean
+// shader reads the map itself). It is rendered once per frame, before the reflection pass.
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.autoUpdate = false;
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -120, right: 120, top: 120, bottom: -120, near: 1, far: 900 });
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.05;
+scene.add(sun.target);
+const shadowReady = new WeakSet();
+function updateSunShadow() {
+  for (const g of WAKE_SOURCES) {
+    if (shadowReady.has(g)) continue;
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    shadowReady.add(g);
+  }
+  const p = boatGroup.position;
+  sun.target.position.set(p.x, 0, p.z);
+  sun.position.set(p.x, 0, p.z).addScaledVector(SUN_DIR, 400);
+  sun.target.updateMatrixWorld();
+  sun.updateMatrixWorld();
+  renderer.shadowMap.needsUpdate = true;
+  const ou = oceanMat.uniforms;
+  if (sun.shadow.map) {
+    ou.tSunShadow.value = sun.shadow.map.texture;
+    ou.uSunShadowMat.value.copy(sun.shadow.matrix);
+    ou.uShadowOn.value = 1;
+  }
+}
+
+// --- God rays: light shafts when a sail or hull passes in front of the sun ---
+// Occlusion pass at 1/4 res (everything black, a bright sun sprite depth-tested behind
+// it), then a radial blur towards the sun's screen position added onto the frame.
+const grRT = new THREE.WebGLRenderTarget(1, 1);
+const grBlack = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
+const grSunScene = new THREE.Scene();
+const grSun = new THREE.Sprite(new THREE.SpriteMaterial({
+  map: (() => {
+    const S = 128, c = document.createElement('canvas');
+    c.width = c.height = S;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    g.addColorStop(0, 'rgba(255,255,255,1)');
+    g.addColorStop(0.18, 'rgba(255,250,235,0.9)');
+    g.addColorStop(1, 'rgba(255,240,210,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+    return new THREE.CanvasTexture(c);
+  })(),
+  depthWrite: false, fog: false,
+}));
+grSunScene.add(grSun);
+const grQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { tOcc: { value: grRT.texture }, uSun: { value: new THREE.Vector2() }, uStrength: { value: 0 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tOcc;
+    uniform vec2 uSun;
+    uniform float uStrength;
+    varying vec2 vUv;
+    void main() {
+      const int N = 64;
+      vec2 delta = (vUv - uSun) / float(N) * 0.97;
+      vec2 uv = vUv;
+      float illum = 1.0, acc = 0.0;
+      for (int i = 0; i < N; i++) {
+        uv -= delta;
+        acc += texture2D(tOcc, uv).r * illum;
+        illum *= 0.975;
+      }
+      gl_FragColor = vec4(vec3(1.0, 0.93, 0.8) * acc / float(N) * uStrength, 1.0);
+    }`,
+  blending: THREE.AdditiveBlending, depthTest: false, depthWrite: false,
+}));
+grQuad.frustumCulled = false;
+const grQuadScene = new THREE.Scene();
+grQuadScene.add(grQuad);
+const grCam = new THREE.Camera();
+const _grP = new THREE.Vector3(), _grDir = new THREE.Vector3();
+function renderGodRays() {
+  camera.getWorldDirection(_grDir);
+  const facing = _grDir.dot(SUN_DIR);
+  if (facing < 0.3) return;
+  _grP.copy(camera.position).addScaledVector(SUN_DIR, 20000);
+  grSun.position.copy(_grP);
+  grSun.scale.setScalar(4200);
+  _grP.project(camera);
+  const sx = _grP.x * 0.5 + 0.5, sy = _grP.y * 0.5 + 0.5;
+  // fade out as the sun leaves the frame
+  const off = Math.max(Math.abs(_grP.x), Math.abs(_grP.y));
+  const strength = (1 - THREE.MathUtils.smoothstep(off, 1.0, 1.4)) * THREE.MathUtils.smoothstep(facing, 0.3, 0.6);
+  if (strength <= 0.001) return;
+  const pr = renderer.getPixelRatio();
+  const w = Math.max(1, Math.floor(innerWidth * pr / 4)), h = Math.max(1, Math.floor(innerHeight * pr / 4));
+  if (grRT.width !== w || grRT.height !== h) grRT.setSize(w, h);
+
+  const bg = scene.background, fog = scene.fog, ac = renderer.autoClear;
+  renderer.getClearColor(_rClear);
+  const ca = renderer.getClearAlpha();
+  ocean.visible = false;   // the water would only add its black depth; boats/islands occlude
+  scene.overrideMaterial = grBlack; scene.background = null; scene.fog = null;
+  renderer.setRenderTarget(grRT);
+  renderer.setClearColor(0x000000, 1);
+  renderer.clear();
+  _baseRender(scene, camera);
+  renderer.autoClear = false;
+  _baseRender(grSunScene, camera);
+  renderer.setRenderTarget(null);
+  scene.overrideMaterial = null; scene.background = bg; scene.fog = fog;
+  ocean.visible = true;
+  grQuad.material.uniforms.uSun.value.set(sx, sy);
+  grQuad.material.uniforms.uStrength.value = 1.0 * strength;
+  _baseRender(grQuadScene, grCam);
+  renderer.autoClear = ac;
+  renderer.setClearColor(_rClear, ca);
+}
+
 // --- Planar reflection of islands, boats and sails ---
 // The scene (minus sky and ocean, with a transparent clear) is rendered from the camera
 // mirrored at sea level into a 3/4-res target; an oblique near plane clips everything
@@ -3381,8 +3522,10 @@ function renderReflection() {
 // Every main-view render gets its reflection first (the sim renders from three places)
 const _baseRender = renderer.render.bind(renderer);
 renderer.render = (s, c) => {
-  if (s === scene && c === camera) { updateDetail(); updateWakes(); renderReflection(); }
+  const main = s === scene && c === camera;
+  if (main) { updateDetail(); updateWakes(); updateSunShadow(); renderReflection(); }
   _baseRender(s, c);
+  if (main) renderGodRays();
 };
 
 // --- Animate ---
