@@ -3071,7 +3071,7 @@ function wakeTrailFor(g) {
   const mesh = new THREE.Mesh(geo, wakeRibbonMat);
   mesh.frustumCulled = false;
   wakeScene.add(mesh);
-  tr = { pts: [], mesh };
+  tr = { pts: [], mesh, vs: 0, ls: 0, px: null, pz: null, pt: 0 };   // vs/ls: smoothed speed + lean
   wakeTrails.set(g, tr);
   return tr;
 }
@@ -3081,10 +3081,22 @@ function updateWakes() {
     const tr = wakeTrailFor(g);
     const live = g.parent && g.visible && gameState !== 'menu';
     tr.mesh.visible = false;
-    if (!live) { tr.pts.length = 0; continue; }
+    if (!live) { tr.pts.length = 0; tr.px = null; tr.vs = 0; continue; }
     _wf.set(0, 0, -1).applyQuaternion(g.quaternion); _wf.y = 0; _wf.normalize();   // bow direction
-    const lean = _wr.set(1, 0, 0).applyQuaternion(g.quaternion).y;                // sin(heel), + = starboard up
+    const leanRaw = _wr.set(1, 0, 0).applyQuaternion(g.quaternion).y;             // sin(heel), + = starboard up
     const sx = g.position.x + _wf.x * 2.15 * M, sz = g.position.z + _wf.z * 2.15 * M; // bow
+    // Smooth speed and heel over ~1 s: the Kelvin wavelength (2*pi*v^2/g) and the lee
+    // asymmetry come from these, and raw per-frame values (uneven frame times, rolling
+    // in the waves) made the bow waves twitch
+    if (tr.px !== null && t > tr.pt) {
+      const dtw = t - tr.pt;
+      const k = 1 - Math.exp(-dtw / 1.0);
+      const vInst = Math.min(Math.hypot(sx - tr.px, sz - tr.pz) / dtw, 30);
+      tr.vs += (vInst - tr.vs) * k;
+      tr.ls += (leanRaw - tr.ls) * k;
+    } else if (tr.px === null) tr.ls = leanRaw;
+    tr.px = sx; tr.pz = sz; tr.pt = t;
+    const lean = tr.ls;
     const p = tr.pts;
     const last = p[p.length - 1];
     if (last && (t < last.t || Math.hypot(sx - last.x, sz - last.z) > 80)) p.length = 0;   // reset / seek / teleport
@@ -3097,7 +3109,7 @@ function updateWakes() {
     while (p.length && (t - p[0].t > WAKE_LIFE_S || p.length > WAKE_MAXP - 1)) p.shift();
     // head = the live stern position, then stored points newest -> oldest
     const lpt = p[p.length - 1];
-    const headV = lpt ? (lpt.v || 0) : 0;
+    const headV = tr.vs;
     const pos = tr.mesh.geometry.attributes.position.array, aw = tr.mesh.geometry.attributes.aW.array;
     const al = tr.mesh.geometry.attributes.aLean.array;
     let n = 0, sAcc = 0, px = sx, pz = sz;
@@ -3119,7 +3131,7 @@ function updateWakes() {
       const dl = Math.hypot(dx, dz) || 1;
       if (i > 0) sAcc += Math.hypot(c.x - px, c.z - pz);
       px = c.x; pz = c.z;
-      put(c.x, c.z, t - c.t, i === 0 ? headV : c.v, c.l || 0, -dz / dl, dx / dl);
+      put(c.x, c.z, t - c.t, headV, c.l || 0, -dz / dl, dx / dl);   // whole pattern uses the current speed
     }
     if (n < 2) continue;
     tr.mesh.geometry.setDrawRange(0, (n - 1) * 6);
