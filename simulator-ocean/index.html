@@ -723,7 +723,7 @@ void main() {
   spec = min(spec, vec3(40.0));
 
   // visibility of the reflection: sky + clouds kept low, land and boats stronger
-  const float REFL_SKY = 0.35, REFL_OBJ = 0.6;
+  const float REFL_SKY = 0.6, REFL_OBJ = 0.8;
   vec3 col = mix(body, refl, F * mix(REFL_SKY, REFL_OBJ, objA)) + spec;
 
   // Whitecaps where the crests pinch together; more of them in a rough sea
