@@ -2966,7 +2966,7 @@ function chaseCamera() {
 
 // --- Planar reflection of islands, boats and sails ---
 // The scene (minus sky and ocean, with a transparent clear) is rendered from the camera
-// mirrored at sea level into a half-res target; an oblique near plane clips everything
+// mirrored at sea level into a full-res target; an oblique near plane clips everything
 // below the water. The ocean shader lays it over its analytic sky reflection, offset by
 // the wave normals.
 const reflRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
@@ -2982,7 +2982,7 @@ function renderReflection() {
   ou.uReflOn.value = 0;
   if (camera.position.y <= 0.05) return;
   const pr = renderer.getPixelRatio();
-  const w = Math.max(1, Math.floor(innerWidth * pr / 3)), h = Math.max(1, Math.floor(innerHeight * pr / 3)); // waves blur it anyway
+  const w = Math.max(1, Math.floor(innerWidth * pr)), h = Math.max(1, Math.floor(innerHeight * pr)); // full res: sharp land
   if (reflRT.width !== w || reflRT.height !== h) reflRT.setSize(w, h);
 
   // mirror the camera at y = 0 (same construction as three's Reflector)
