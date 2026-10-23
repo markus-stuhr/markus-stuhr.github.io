@@ -725,10 +725,11 @@ void main() {
   float crest = smoothstep(foamT, foamT + 0.3 * uSteep, pinch) * (0.25 + 0.9 * wc) * (0.5 + gust) * smoothstep(0.3, 0.8, uAmp);
   float pat = texture2D(tFoam, vWorld.xz / 9.0 + uWindDir * uTime * 0.12).r;
   float pat2 = texture2D(tFoam, vWorld.xz / 3.1 - uWindDir * uTime * 0.05).r;
-  float foam = clamp(crest * (pat * 1.6 + pat2 * 0.8) - 0.15 * (1.0 - crest), 0.0, 1.0);
+  // kept subtle: dense bright specks read as pixel noise rather than foam
+  float foam = clamp(crest * (pat * 1.1 + pat2 * 0.35) - 0.15 * (1.0 - crest), 0.0, 1.0) * 0.5;
   foam *= exp(-dist / 3500.0);
   col = mix(col, vec3(0.9, 0.93, 0.95) * (0.65 + 0.45 * NdL), foam);
-  float wf = clamp(wakeFoam * (0.15 + 1.4 * pat2 + 0.5 * pat), 0.0, 1.0);
+  float wf = clamp(wakeFoam * (0.3 + 0.7 * pat2 + 0.5 * pat), 0.0, 1.0) * 0.6;
   col = mix(col, vec3(0.88, 0.93, 0.95) * (0.7 + 0.4 * NdL), wf);
 
   // Surf: breaker lines marching in to the beach, then swash on the sand
