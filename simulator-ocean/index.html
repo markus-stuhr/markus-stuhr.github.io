@@ -2996,49 +2996,58 @@ function chaseCamera() {
 }
 
 // --- Boat wakes ---
-// Each boat keeps a short trail of stern positions. Every frame the trails are drawn
+// Each boat keeps a short trail of bow positions. Every frame the trails are drawn
 // top-down as ribbons (as wide as the Kelvin wedge, 19.5° half-angle) into a float
 // texture around the player: r = foam (turbulent centre stripe, fading with age),
 // g = wave height (divergent ridges along the wedge edges, transverse waves inside).
 WAKE_SOURCES.push(boatGroup);
-const WAKE_SPAN = 900, WAKE_RES = 1024, WAKE_MAXP = 160, WAKE_LIFE_S = 45, WAKE_STEP = 3;
+const WAKE_SPAN = 900, WAKE_RES = 1024, WAKE_MAXP = 100, WAKE_LIFE_S = 18, WAKE_STEP = 3;
+const HULL_L = 4.1 * M;   // the Kelvin wedge starts at the bow, the wash behind the transom
 const wakeRT = new THREE.WebGLRenderTarget(WAKE_RES, WAKE_RES, { type: THREE.HalfFloatType, depthBuffer: false });
 const wakeScene = new THREE.Scene();
 const wakeCam = new THREE.Camera();   // unused by the ribbon shader (it writes clip space itself)
 const wakeCenter = new THREE.Vector2();
 const wakeRibbonMat = new THREE.ShaderMaterial({
-  uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 } },
+  uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uHullL: { value: HULL_L } },
   vertexShader: /* glsl */`
-    attribute vec4 aW;   // u (-1..1 across), s (m behind the stern), age (s), speed (m/s)
+    attribute vec4 aW;   // u (-1..1 across, +1 = starboard), s (m behind the bow), age (s), speed (m/s)
+    attribute float aLean; // starboard side height from heel: + = starboard up (port is leeward)
     uniform vec2 uCenter;
     uniform float uHalf;
     varying vec4 vW;
+    varying float vLean;
     void main() {
       vW = aW;
+      vLean = aLean;
       gl_Position = vec4((position.x - uCenter.x) / uHalf, (position.z - uCenter.y) / uHalf, 0.0, 1.0);
     }`,
   fragmentShader: /* glsl */`
     varying vec4 vW;
+    varying float vLean;
+    uniform float uHullL;
     void main() {
       float au = abs(vW.x), s = vW.y, age = vW.z, spd = vW.w;
+      // heeled hull: the low (leeward) side pushes a bigger bow wave, the high side a smaller one
+      float lee = clamp(1.0 - 2.2 * vLean * sign(vW.x), 0.25, 2.0);
+      float behind = smoothstep(uHullL * 0.75, uHullL * 1.05, s);   // wash starts at the transom
       float W = min(2.5 + 0.354 * s, 75.0);
       float x = au * W;                                   // metres off the track
       float go = smoothstep(0.8, 3.5, spd);
       // turbulent centre stripe: hull + keel wash, spreading and fading
-      float cw = 1.8 + s * 0.03;
-      float foam = exp(-x * x / (cw * cw)) * exp(-age / 7.0) * go;
+      float cw = 1.8 + max(s - uHullL, 0.0) * 0.03;
+      float foam = exp(-x * x / (cw * cw)) * exp(-age / 2.5) * go * behind;
       // older wake: a smooth 'slick' where the turbulence flattened the ripples
-      float sw = 3.0 + s * 0.05;
-      float slick = exp(-x * x / (sw * sw)) * exp(-age / 40.0) * go;
-      // bow-wave spray along the wedge edges for the first metres
-      foam += smoothstep(0.7, 0.95, au) * (1.0 - smoothstep(0.95, 1.0, au)) * exp(-s / 14.0) * 0.7 * go;
+      float sw = 3.0 + s * 0.04;
+      float slick = exp(-x * x / (sw * sw)) * exp(-age / 9.0) * go * behind;
+      // bow-wave spray peeling off along the hull, mostly on the leeward side
+      foam += smoothstep(0.6, 0.92, au) * (1.0 - smoothstep(0.92, 1.0, au)) * exp(-s / 16.0) * 0.6 * go * lee;
       // Kelvin pattern; transverse wavelength 2*pi*v^2/g
       float lam = max(6.2831 * spd * spd / 9.81, 3.0);
       float edge = smoothstep(0.45, 0.9, au) * (1.0 - smoothstep(0.9, 1.0, au));
       float div = sin(6.2831 * (s * 0.57 + x * 0.82) / (lam * 0.5));
       float tra = cos(6.2831 * s / lam) * (1.0 - au) * smoothstep(0.0, lam, s);
-      float amp = 0.32 * clamp(spd / 5.0, 0.0, 1.6) * go * exp(-age / 28.0) * (1.0 - smoothstep(0.85, 1.0, s / 300.0));
-      float h = (edge * div * 0.7 + tra * 0.3) * amp;
+      float amp = 0.32 * clamp(spd / 5.0, 0.0, 1.6) * go * exp(-age / 7.0) * (1.0 - smoothstep(0.7, 1.0, s / 160.0));
+      float h = (edge * div * 0.7 * lee + tra * 0.3) * amp;
       gl_FragColor = vec4(foam, h, slick, 1.0);
     }`,
   blending: THREE.CustomBlending,
@@ -3052,6 +3061,7 @@ function wakeTrailFor(g) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(WAKE_MAXP * 2 * 3), 3));
   geo.setAttribute('aW', new THREE.BufferAttribute(new Float32Array(WAKE_MAXP * 2 * 4), 4));
+  geo.setAttribute('aLean', new THREE.BufferAttribute(new Float32Array(WAKE_MAXP * 2), 1));
   const idx = [];
   for (let i = 0; i < WAKE_MAXP - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
   geo.setIndex(idx);
@@ -3062,7 +3072,7 @@ function wakeTrailFor(g) {
   wakeTrails.set(g, tr);
   return tr;
 }
-const _wf = new THREE.Vector3();
+const _wf = new THREE.Vector3(), _wr = new THREE.Vector3();
 function updateWakes() {
   for (const g of WAKE_SOURCES) {
     const tr = wakeTrailFor(g);
@@ -3070,32 +3080,35 @@ function updateWakes() {
     tr.mesh.visible = false;
     if (!live) { tr.pts.length = 0; continue; }
     _wf.set(0, 0, -1).applyQuaternion(g.quaternion); _wf.y = 0; _wf.normalize();   // bow direction
-    const sx = g.position.x - _wf.x * 1.9 * M, sz = g.position.z - _wf.z * 1.9 * M;
+    const lean = _wr.set(1, 0, 0).applyQuaternion(g.quaternion).y;                // sin(heel), + = starboard up
+    const sx = g.position.x + _wf.x * 2.15 * M, sz = g.position.z + _wf.z * 2.15 * M; // bow
     const p = tr.pts;
     const last = p[p.length - 1];
     if (last && (t < last.t || Math.hypot(sx - last.x, sz - last.z) > 80)) p.length = 0;   // reset / seek / teleport
     const lp = p[p.length - 1];
-    if (!lp) p.push({ x: sx, z: sz, t, v: 0 });
+    if (!lp) p.push({ x: sx, z: sz, t, v: 0, l: lean });
     else {
       const d = Math.hypot(sx - lp.x, sz - lp.z);
-      if (d >= WAKE_STEP) p.push({ x: sx, z: sz, t, v: t > lp.t ? d / (t - lp.t) : lp.v });
+      if (d >= WAKE_STEP) p.push({ x: sx, z: sz, t, v: t > lp.t ? d / (t - lp.t) : lp.v, l: lean });
     }
     while (p.length && (t - p[0].t > WAKE_LIFE_S || p.length > WAKE_MAXP - 1)) p.shift();
     // head = the live stern position, then stored points newest -> oldest
     const lpt = p[p.length - 1];
     const headV = lpt ? (lpt.v || 0) : 0;
     const pos = tr.mesh.geometry.attributes.position.array, aw = tr.mesh.geometry.attributes.aW.array;
+    const al = tr.mesh.geometry.attributes.aLean.array;
     let n = 0, sAcc = 0, px = sx, pz = sz;
-    const put = (x, z, age, v, nx, nz) => {
+    const put = (x, z, age, v, l, nx, nz) => {
       const W = Math.min(2.5 + 0.354 * sAcc, 75);
       for (let side = -1; side <= 1; side += 2) {
         const k = n * 2 + (side > 0 ? 1 : 0);
         pos[k * 3] = x + nx * W * side; pos[k * 3 + 1] = 0; pos[k * 3 + 2] = z + nz * W * side;
         aw[k * 4] = side; aw[k * 4 + 1] = sAcc; aw[k * 4 + 2] = age; aw[k * 4 + 3] = v;
+        al[k] = l;
       }
       n++;
     };
-    const chain = [{ x: sx, z: sz, t, v: headV }];
+    const chain = [{ x: sx, z: sz, t, v: headV, l: lean }];
     for (let i = p.length - 1; i >= 0; i--) chain.push(p[i]);
     for (let i = 0; i < chain.length && n < WAKE_MAXP; i++) {
       const c = chain[i], nb = chain[Math.min(i + 1, chain.length - 1)], pb = chain[Math.max(i - 1, 0)];
@@ -3103,12 +3116,13 @@ function updateWakes() {
       const dl = Math.hypot(dx, dz) || 1;
       if (i > 0) sAcc += Math.hypot(c.x - px, c.z - pz);
       px = c.x; pz = c.z;
-      put(c.x, c.z, t - c.t, i === 0 ? headV : c.v, -dz / dl, dx / dl);
+      put(c.x, c.z, t - c.t, i === 0 ? headV : c.v, c.l || 0, -dz / dl, dx / dl);
     }
     if (n < 2) continue;
     tr.mesh.geometry.setDrawRange(0, (n - 1) * 6);
     tr.mesh.geometry.attributes.position.needsUpdate = true;
     tr.mesh.geometry.attributes.aW.needsUpdate = true;
+    tr.mesh.geometry.attributes.aLean.needsUpdate = true;
     tr.mesh.visible = true;
   }
   // texture follows the player, snapped to whole texels so it doesn't shimmer
