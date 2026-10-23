@@ -746,7 +746,7 @@ void main() {
       vec4 A = uBowA[i]; vec4 B = uBowB[i];
       vec2 rel = vWorld.xz - A.xy;
       float behind = -dot(rel, A.zw);                       // m aft of the stem
-      if (behind < -3.0 || behind > 22.0) continue;
+      if (behind < 0.0 || behind > 24.0) continue;
       float c = dot(rel, vec2(-A.w, A.z));                  // + = starboard
       float wl = ${(0.65 * 0.52 * 7.4).toFixed(2)} * pow(clamp(behind / ${(0.5 * 4.1 * 7.4).toFixed(1)}, 0.0, 1.0), 0.6);   // waterline half-beam
       wl *= clamp(1.0 - 1.6 * max(B.y * sign(c), 0.0), 0.55, 1.0);   // high side's waterline sits further in
@@ -754,7 +754,7 @@ void main() {
       float lee = clamp(1.0 - 2.2 * B.y * sign(c), 0.25, 2.0);
       float reach = 2.0 + 0.45 * max(behind, 0.0);          // patch widens aft
       float m = smoothstep(-0.6, 0.3, d) * (1.0 - smoothstep(0.4 * reach, reach, d))
-              * smoothstep(-2.5, 0.5, behind) * exp(-max(behind, 0.0) / 9.0)
+              * smoothstep(0.3, 2.5, behind) * exp(-max(behind, 0.0) / 9.0)
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
       bowMask = max(bowMask, m);
     }
@@ -3141,7 +3141,8 @@ function updateWakes() {
     if (!live) { tr.pts.length = 0; tr.px = null; tr.vs = 0; continue; }
     _wf.set(0, 0, -1).applyQuaternion(g.quaternion); _wf.y = 0; _wf.normalize();   // bow direction
     const leanRaw = _wr.set(1, 0, 0).applyQuaternion(g.quaternion).y;             // sin(heel), + = starboard up
-    const sx = g.position.x + _wf.x * 2.15 * M, sz = g.position.z + _wf.z * 2.15 * M; // bow
+    // where the stem meets the water: a little aft of the tip of the bow
+    const sx = g.position.x + _wf.x * (2.15 * M - 2), sz = g.position.z + _wf.z * (2.15 * M - 2);
     // Smooth speed and heel over ~1 s: the Kelvin wavelength (2*pi*v^2/g) and the lee
     // asymmetry come from these, and raw per-frame values (uneven frame times, rolling
     // in the waves) made the bow waves twitch
