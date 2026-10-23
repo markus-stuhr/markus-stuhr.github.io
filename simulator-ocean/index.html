@@ -1789,6 +1789,7 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
   clearTerrain();
   oceanMat.uniforms.uCoastOn.value = 0;
   window.shoreDistAt = null;
+  resetDetail();
   const SPAN = spanM;
   const clat = centerLat, clng = centerLng;
   const dLat = SPAN / 111320;
@@ -2034,6 +2035,64 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
   window.terrainElevAt = elevAt;
 }
 
+// --- Close-up imagery: zoom-16 satellite tiles (~1.2 m/px) around the boat ---
+// Near a coast, a 5x5 tile block (~3 km) centred on the boat is loaded and blended over
+// the chunk textures (soft edge); it follows the boat tile by tile. Zoom 17 would be
+// pointless here: MapTiler's imagery around the BVI is only upsampled beyond 16.
+const DETAIL_Z = 16, DETAIL_N = 5, DETAIL_TP = 512, DETAIL_NEAR = 1500;
+const DETAIL_UNI = {
+  tDetailSat: { value: null },
+  uDetailBox: { value: new THREE.Vector4(0, 0, 1, 1) },   // x0, z0, width, depth (scene m)
+  uDetailOn: { value: 0 },
+};
+const detailImgCache = new Map();   // "x/y" -> Promise<Image|null>
+let detailKey = '', detailBusy = false, detailLastCheck = 0;
+function detailTile(tx, ty) {
+  const k = tx + '/' + ty;
+  if (!detailImgCache.has(k)) {
+    if (detailImgCache.size > 120) detailImgCache.delete(detailImgCache.keys().next().value);
+    detailImgCache.set(k, loadImage(`https://api.maptiler.com/tiles/satellite-v2/${DETAIL_Z}/${tx}/${ty}.jpg?key=${MAPTILER_KEY}`));
+  }
+  return detailImgCache.get(k);
+}
+function resetDetail() {
+  detailKey = '';
+  DETAIL_UNI.uDetailOn.value = 0;
+}
+async function updateDetail() {
+  const now = performance.now();
+  if (detailBusy || now - detailLastCheck < 500 || !window.shoreDistAt) return;
+  detailLastCheck = now;
+  const bx = boatGroup.position.x, bz = boatGroup.position.z;
+  if (window.shoreDistAt(bx, bz) > DETAIL_NEAR) { DETAIL_UNI.uDetailOn.value = 0; detailKey = ''; return; }
+  const g = localToGeo(bx, bz);
+  const cx = Math.floor(lngToTile(g.lng, DETAIL_Z)), cy = Math.floor(latToTile(g.lat, DETAIL_Z));
+  const key = cx + '/' + cy + '@' + GEO_CENTER.lat + ',' + GEO_CENTER.lng;
+  if (key === detailKey) return;
+  detailBusy = true;
+  const h = DETAIL_N >> 1, x0 = cx - h, y0 = cy - h;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = DETAIL_N * DETAIL_TP;
+  const ctx = cv.getContext('2d');
+  const jobs = [];
+  for (let j = 0; j < DETAIL_N; j++) for (let i = 0; i < DETAIL_N; i++)
+    jobs.push(detailTile(x0 + i, y0 + j).then(im => { if (im) ctx.drawImage(im, i * DETAIL_TP, j * DETAIL_TP, DETAIL_TP, DETAIL_TP); }));
+  await Promise.all(jobs);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.flipY = false;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  const a = geoToLocal(tileToLat(y0, DETAIL_Z), tileToLng(x0, DETAIL_Z));
+  const b = geoToLocal(tileToLat(y0 + DETAIL_N, DETAIL_Z), tileToLng(x0 + DETAIL_N, DETAIL_Z));
+  const old = DETAIL_UNI.tDetailSat.value;
+  DETAIL_UNI.tDetailSat.value = tex;
+  DETAIL_UNI.uDetailBox.value.set(a.x, a.z, b.x - a.x, b.z - a.z);
+  DETAIL_UNI.uDetailOn.value = 1;
+  if (old) old.dispose();
+  detailKey = key;
+  detailBusy = false;
+}
+
 // Satellite-textured land with gentle relief shading from the mesh normals
 function terrainMaterial(tex) {
   const mat = new THREE.ShaderMaterial({
@@ -2041,23 +2100,34 @@ function terrainMaterial(tex) {
     vertexShader: /* glsl */`
       varying vec2 vUv;
       varying vec3 vN;
+      varying vec2 vXZ;
       #include <fog_pars_vertex>
       void main() {
         vUv = uv;
+        vXZ = (modelMatrix * vec4(position, 1.0)).xz;
         vN = normalize(mat3(modelMatrix) * normal);
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
       }`,
     fragmentShader: /* glsl */`
-      uniform sampler2D map;
+      uniform sampler2D map, tDetailSat;
       uniform vec3 uSunDir;
+      uniform vec4 uDetailBox;
+      uniform float uDetailOn;
       varying vec2 vUv;
       varying vec3 vN;
+      varying vec2 vXZ;
       #include <common>
       #include <fog_pars_fragment>
       void main() {
         vec3 c = texture2D(map, vUv).rgb;
+        if (uDetailOn > 0.5) {   // sharper close-up imagery, faded in from the block's edge
+          vec2 duv = (vXZ - uDetailBox.xy) / uDetailBox.zw;
+          vec2 e = min(duv, 1.0 - duv);
+          float w = smoothstep(0.0, 0.12, min(e.x, e.y));
+          if (w > 0.0) c = mix(c, texture2D(tDetailSat, duv).rgb, w);
+        }
         float l = 0.78 + 0.32 * dot(normalize(vN), uSunDir);
         // alpha 0.5 tags land in the reflection pass (boats write 1); the canvas has no alpha
         gl_FragColor = vec4(c * l * 1.08, 0.5);
@@ -2068,6 +2138,7 @@ function terrainMaterial(tex) {
   });
   mat.uniforms.map.value = tex;   // set after merge (merge clones textures)
   mat.uniforms.uSunDir.value = SUN_DIR;
+  Object.assign(mat.uniforms, DETAIL_UNI);   // shared by all chunks, swapped as the boat moves
   return mat;
 }
 
@@ -3293,7 +3364,7 @@ function renderReflection() {
 // Every main-view render gets its reflection first (the sim renders from three places)
 const _baseRender = renderer.render.bind(renderer);
 renderer.render = (s, c) => {
-  if (s === scene && c === camera) { updateWakes(); renderReflection(); }
+  if (s === scene && c === camera) { updateDetail(); updateWakes(); renderReflection(); }
   _baseRender(s, c);
 };
 
