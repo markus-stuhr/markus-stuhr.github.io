@@ -3054,7 +3054,11 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float div = sin(6.2831 * (s * 0.57 + x * 0.82) / (lam * 0.5));
       float tra = cos(6.2831 * s / lam) * (1.0 - au) * smoothstep(0.0, lam, s);
       float amp = 0.32 * clamp(spd / 5.0, 0.0, 1.6) * go * exp(-age / 7.0) * (1.0 - smoothstep(0.7, 1.0, s / 160.0));
-      float h = (edge * div * 0.7 * lee + tra * 0.3) * amp;
+      // spreading: wave height falls off ~1/sqrt(distance from the bow), full at the hull
+      float r = sqrt(s * s + x * x);
+      float spread = sqrt(uHullL * 0.5 / (uHullL * 0.5 + r));
+      // divergent ridges ~60 % of before (max slope ~6-9°); transverse waves faint (masked by wash)
+      float h = (edge * div * 0.42 * lee * spread + tra * 0.15 * spread) * amp;
       gl_FragColor = vec4(foam, h, slick, 1.0);
     }`,
   blending: THREE.CustomBlending,
