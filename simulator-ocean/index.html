@@ -659,7 +659,8 @@ void main() {
     inBox = smoothstep(0.0, 0.04, min(e.x, e.y));
     if (inBox > 0.0) {
       dS = texture2D(tShore, cuv).r;
-      sat = texture2D(tSeabed, cuv).rgb;
+      // blurred (mip bias): the photo's own frozen waves and glints would fight the simulated sea
+      sat = texture2D(tSeabed, cuv, 2.5).rgb;
     }
   }
   float damp = mix(1.0, mix(0.06, 1.0, smoothstep(0.0, 180.0, dS)), step(0.001, inBox));
