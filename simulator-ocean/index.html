@@ -371,6 +371,9 @@ scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x2a5a86, 1.1));
 const SUN_DIR = new THREE.Vector3(-0.55, 0.42, -0.72).normalize(); // lowish sun -> long glitter path
 sun.position.copy(SUN_DIR).multiplyScalar(100);
 
+// Boat groups that leave a wake (player, race opponents, replay boats)
+const WAKE_SOURCES = [];
+
 const NW = 14;
 const G = 9.81;
 const WAVE_BASE = [];  // per wave: lambda, amplitude (at waveAmp 1), angle offset to the sea direction, phase
@@ -585,7 +588,9 @@ uniform vec4 uWaveB[NW];
 uniform sampler2D tDetail, tFoam;
 uniform vec2 uWindDir;
 uniform vec4 uBoat;   // x, z, heading, visible
-uniform float uWindKn, uReflOn;
+uniform float uWindKn, uReflOn, uWakeOn;
+uniform sampler2D tWake;
+uniform vec3 uWakeBox;   // x0, z0, span (m)
 uniform sampler2D tReflect;
 uniform mat4 uReflMat;
 uniform sampler2D tSeabed, tShore;
@@ -639,6 +644,23 @@ void main() {
   float gust = fbm(vWorld.xz / 240.0 - uWindDir * uTime * 0.035, 3);
   float windF = smoothstep(6.0, 24.0, uWindKn);
   float ds = (0.10 + 0.06 * uAmp + 0.10 * windF) * (0.45 + 1.1 * gust) * exp(-dist / 1100.0);
+  // Boat wakes: foam (r) + Kelvin wave height (g) from the top-down wake texture
+  float wakeFoam = 0.0, wakeSlick = 0.0;
+  if (uWakeOn > 0.5) {
+    vec2 wuv = (vWorld.xz - uWakeBox.xy) / uWakeBox.z;
+    if (wuv.x > 0.0 && wuv.y > 0.0 && wuv.x < 1.0 && wuv.y < 1.0) {
+      float e = 1.0 / float(textureSize(tWake, 0).x);
+      vec4 wk = texture2D(tWake, wuv);
+      float hx = texture2D(tWake, wuv + vec2(e, 0.0)).g - texture2D(tWake, wuv - vec2(e, 0.0)).g;
+      float hz = texture2D(tWake, wuv + vec2(0.0, e)).g - texture2D(tWake, wuv - vec2(0.0, e)).g;
+      float texM = 2.0 * e * uWakeBox.z;
+      n.x -= hx / texM;
+      n.z -= hz / texM;
+      wakeFoam = wk.r;
+      wakeSlick = clamp(wk.b, 0.0, 1.0);
+    }
+  }
+  ds *= 1.0 - 0.75 * wakeSlick;   // turbulence flattens the ripples in the old wake
   vec3 nWave = normalize(n);
   n.xz += (d1.xy + 0.6 * d2.xy) * ds;
   vec3 N = normalize(n);
@@ -705,6 +727,8 @@ void main() {
   float foam = clamp(crest * (pat * 1.6 + pat2 * 0.8) - 0.15 * (1.0 - crest), 0.0, 1.0);
   foam *= exp(-dist / 3500.0);
   col = mix(col, vec3(0.9, 0.93, 0.95) * (0.65 + 0.45 * NdL), foam);
+  float wf = clamp(wakeFoam * (0.15 + 1.4 * pat2 + 0.5 * pat), 0.0, 1.0);
+  col = mix(col, vec3(0.88, 0.93, 0.95) * (0.7 + 0.4 * NdL), wf);
 
   // Surf: breaker lines marching in to the beach, then swash on the sand
   if (dS < 70.0 * (1.0 + dist / 1200.0)) {
@@ -771,6 +795,7 @@ const oceanMat = new THREE.ShaderMaterial({
     uBox: { value: new THREE.Vector4(0, 0, 1, 1) }, uCoastOn: { value: 0 },
     uWindKn: { value: 20 }, uCloudOff: { value: null },
     tReflect: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 },
+    tWake: { value: null }, uWakeBox: { value: new THREE.Vector3(0, 0, 1) }, uWakeOn: { value: 0 },
   }]),
   vertexShader: OCEAN_VERT,
   fragmentShader: OCEAN_FRAG,
@@ -1295,7 +1320,7 @@ const wakeMat = new THREE.ShaderMaterial({
 });
 const wakePoints = new THREE.Points(wakeGeo, wakeMat);
 wakePoints.frustumCulled = false;
-scene.add(wakePoints);
+// wakePoints is no longer shown: the ocean draws wakes from the wake texture (see Boat wakes)
 
 // --- Opponent boat (computer-sailed) ---
 function triGeo3(a, b, c) {
@@ -1353,6 +1378,7 @@ function makeOpponent(opts) {
   group.scale.setScalar(M); // render the model at real size (1 unit = 1 m)
   group.rotation.y = -START_HEADING;
   scene.add(group);
+  WAKE_SOURCES.push(group);
   return {
     group, mainPivot, jibPivot, oppPennPivot,
     start: { x: sx, z: sz },
@@ -2874,7 +2900,6 @@ function updateReplayFrame(dt) {
   stars.position.set(boatGroup.position.x, 0, boatGroup.position.z);
   animateWaves(t);
   updateVisuals(adt);   // V sails/pennant from boat.heading + wind
-  updateWake(t, adt);   // V wake
   // Override heel with real ADX data after updateVisuals (no smoothing for V in replay)
   { const vb = REPLAY.boats.find(rb => rb.isV); if (vb) { const sv = replaySample(vb, replay.ms); if (sv.hl !== null) heelAngle = -sv.hl * DEG; } }
   replay.seeked = false;
@@ -2970,6 +2995,139 @@ function chaseCamera() {
   camera.lookAt(boatGroup.position.x, boatGroup.position.y + 1.5 * M, boatGroup.position.z);
 }
 
+// --- Boat wakes ---
+// Each boat keeps a short trail of stern positions. Every frame the trails are drawn
+// top-down as ribbons (as wide as the Kelvin wedge, 19.5° half-angle) into a float
+// texture around the player: r = foam (turbulent centre stripe, fading with age),
+// g = wave height (divergent ridges along the wedge edges, transverse waves inside).
+WAKE_SOURCES.push(boatGroup);
+const WAKE_SPAN = 900, WAKE_RES = 1024, WAKE_MAXP = 160, WAKE_LIFE_S = 45, WAKE_STEP = 3;
+const wakeRT = new THREE.WebGLRenderTarget(WAKE_RES, WAKE_RES, { type: THREE.HalfFloatType, depthBuffer: false });
+const wakeScene = new THREE.Scene();
+const wakeCam = new THREE.Camera();   // unused by the ribbon shader (it writes clip space itself)
+const wakeCenter = new THREE.Vector2();
+const wakeRibbonMat = new THREE.ShaderMaterial({
+  uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 } },
+  vertexShader: /* glsl */`
+    attribute vec4 aW;   // u (-1..1 across), s (m behind the stern), age (s), speed (m/s)
+    uniform vec2 uCenter;
+    uniform float uHalf;
+    varying vec4 vW;
+    void main() {
+      vW = aW;
+      gl_Position = vec4((position.x - uCenter.x) / uHalf, (position.z - uCenter.y) / uHalf, 0.0, 1.0);
+    }`,
+  fragmentShader: /* glsl */`
+    varying vec4 vW;
+    void main() {
+      float au = abs(vW.x), s = vW.y, age = vW.z, spd = vW.w;
+      float W = min(2.5 + 0.354 * s, 75.0);
+      float x = au * W;                                   // metres off the track
+      float go = smoothstep(0.8, 3.5, spd);
+      // turbulent centre stripe: hull + keel wash, spreading and fading
+      float cw = 1.8 + s * 0.03;
+      float foam = exp(-x * x / (cw * cw)) * exp(-age / 7.0) * go;
+      // older wake: a smooth 'slick' where the turbulence flattened the ripples
+      float sw = 3.0 + s * 0.05;
+      float slick = exp(-x * x / (sw * sw)) * exp(-age / 40.0) * go;
+      // bow-wave spray along the wedge edges for the first metres
+      foam += smoothstep(0.7, 0.95, au) * (1.0 - smoothstep(0.95, 1.0, au)) * exp(-s / 14.0) * 0.7 * go;
+      // Kelvin pattern; transverse wavelength 2*pi*v^2/g
+      float lam = max(6.2831 * spd * spd / 9.81, 3.0);
+      float edge = smoothstep(0.45, 0.9, au) * (1.0 - smoothstep(0.9, 1.0, au));
+      float div = sin(6.2831 * (s * 0.57 + x * 0.82) / (lam * 0.5));
+      float tra = cos(6.2831 * s / lam) * (1.0 - au) * smoothstep(0.0, lam, s);
+      float amp = 0.32 * clamp(spd / 5.0, 0.0, 1.6) * go * exp(-age / 28.0) * (1.0 - smoothstep(0.85, 1.0, s / 300.0));
+      float h = (edge * div * 0.7 + tra * 0.3) * amp;
+      gl_FragColor = vec4(foam, h, slick, 1.0);
+    }`,
+  blending: THREE.CustomBlending,
+  blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendEquation: THREE.AddEquation,
+  depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+});
+const wakeTrails = new Map();   // group -> { pts: [{x,z,t,v}], mesh }
+function wakeTrailFor(g) {
+  let tr = wakeTrails.get(g);
+  if (tr) return tr;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(WAKE_MAXP * 2 * 3), 3));
+  geo.setAttribute('aW', new THREE.BufferAttribute(new Float32Array(WAKE_MAXP * 2 * 4), 4));
+  const idx = [];
+  for (let i = 0; i < WAKE_MAXP - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, wakeRibbonMat);
+  mesh.frustumCulled = false;
+  wakeScene.add(mesh);
+  tr = { pts: [], mesh };
+  wakeTrails.set(g, tr);
+  return tr;
+}
+const _wf = new THREE.Vector3();
+function updateWakes() {
+  for (const g of WAKE_SOURCES) {
+    const tr = wakeTrailFor(g);
+    const live = g.parent && g.visible && gameState !== 'menu';
+    tr.mesh.visible = false;
+    if (!live) { tr.pts.length = 0; continue; }
+    _wf.set(0, 0, -1).applyQuaternion(g.quaternion); _wf.y = 0; _wf.normalize();   // bow direction
+    const sx = g.position.x - _wf.x * 1.9 * M, sz = g.position.z - _wf.z * 1.9 * M;
+    const p = tr.pts;
+    const last = p[p.length - 1];
+    if (last && (t < last.t || Math.hypot(sx - last.x, sz - last.z) > 80)) p.length = 0;   // reset / seek / teleport
+    const lp = p[p.length - 1];
+    if (!lp) p.push({ x: sx, z: sz, t, v: 0 });
+    else {
+      const d = Math.hypot(sx - lp.x, sz - lp.z);
+      if (d >= WAKE_STEP) p.push({ x: sx, z: sz, t, v: t > lp.t ? d / (t - lp.t) : lp.v });
+    }
+    while (p.length && (t - p[0].t > WAKE_LIFE_S || p.length > WAKE_MAXP - 1)) p.shift();
+    // head = the live stern position, then stored points newest -> oldest
+    const lpt = p[p.length - 1];
+    const headV = lpt ? (lpt.v || 0) : 0;
+    const pos = tr.mesh.geometry.attributes.position.array, aw = tr.mesh.geometry.attributes.aW.array;
+    let n = 0, sAcc = 0, px = sx, pz = sz;
+    const put = (x, z, age, v, nx, nz) => {
+      const W = Math.min(2.5 + 0.354 * sAcc, 75);
+      for (let side = -1; side <= 1; side += 2) {
+        const k = n * 2 + (side > 0 ? 1 : 0);
+        pos[k * 3] = x + nx * W * side; pos[k * 3 + 1] = 0; pos[k * 3 + 2] = z + nz * W * side;
+        aw[k * 4] = side; aw[k * 4 + 1] = sAcc; aw[k * 4 + 2] = age; aw[k * 4 + 3] = v;
+      }
+      n++;
+    };
+    const chain = [{ x: sx, z: sz, t, v: headV }];
+    for (let i = p.length - 1; i >= 0; i--) chain.push(p[i]);
+    for (let i = 0; i < chain.length && n < WAKE_MAXP; i++) {
+      const c = chain[i], nb = chain[Math.min(i + 1, chain.length - 1)], pb = chain[Math.max(i - 1, 0)];
+      let dx = pb.x - nb.x, dz = pb.z - nb.z;
+      const dl = Math.hypot(dx, dz) || 1;
+      if (i > 0) sAcc += Math.hypot(c.x - px, c.z - pz);
+      px = c.x; pz = c.z;
+      put(c.x, c.z, t - c.t, i === 0 ? headV : c.v, -dz / dl, dx / dl);
+    }
+    if (n < 2) continue;
+    tr.mesh.geometry.setDrawRange(0, (n - 1) * 6);
+    tr.mesh.geometry.attributes.position.needsUpdate = true;
+    tr.mesh.geometry.attributes.aW.needsUpdate = true;
+    tr.mesh.visible = true;
+  }
+  // texture follows the player, snapped to whole texels so it doesn't shimmer
+  const tex = WAKE_SPAN / WAKE_RES;
+  wakeCenter.set(Math.round(boatGroup.position.x / tex) * tex, Math.round(boatGroup.position.z / tex) * tex);
+  const ca = renderer.getClearAlpha();
+  renderer.getClearColor(_rClear);
+  renderer.setRenderTarget(wakeRT);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear();
+  _baseRender(wakeScene, wakeCam);
+  renderer.setRenderTarget(null);
+  renderer.setClearColor(_rClear, ca);
+  const ou = oceanMat.uniforms;
+  ou.tWake.value = wakeRT.texture;
+  ou.uWakeBox.value.set(wakeCenter.x - WAKE_SPAN / 2, wakeCenter.y - WAKE_SPAN / 2, WAKE_SPAN);
+  ou.uWakeOn.value = 1;
+}
+
 // --- Planar reflection of islands, boats and sails ---
 // The scene (minus sky and ocean, with a transparent clear) is rendered from the camera
 // mirrored at sea level into a 3/4-res target; an oblique near plane clips everything
@@ -3033,7 +3191,7 @@ function renderReflection() {
 // Every main-view render gets its reflection first (the sim renders from three places)
 const _baseRender = renderer.render.bind(renderer);
 renderer.render = (s, c) => {
-  if (s === scene && c === camera) renderReflection();
+  if (s === scene && c === camera) { updateWakes(); renderReflection(); }
   _baseRender(s, c);
 };
 
@@ -3101,7 +3259,6 @@ function animate(now) {
   updateRace(sdt);     // clock only advances once the boat is moving
   updateHUD();
   updateMarkPointers();
-  updateWake(t, sdt);
   if (moving) OPPONENTS.forEach(o => updateOpponent(o, sdt));
   if (moving) {
     recordTrack(playerTrack, boatGroup.position.x, boatGroup.position.z);
