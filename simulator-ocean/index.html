@@ -3726,7 +3726,7 @@ function renderGodRays() {
 // --- Rain on the camera lens ---
 // The finished frame is copied to a texture and redrawn through a water film: drops
 // that appear and evaporate, plus drops that run down in stick-slip jerks, leaving a
-// trail of beads and wiping the drops in their path. Each drop refracts the view.
+// faint trail, wiping the drops in their path. Each drop refracts the view.
 let lensFrame = null;
 const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
   uniforms: { tFrame: { value: null }, uTime: { value: 0 }, uRain: { value: 0 }, uAspect: { value: 1 } },
@@ -3738,39 +3738,44 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
     float h21(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
     // dome profile of a water drop: flat on top, steep only at its very edge (thin rim)
     float dome(float d, float r) { return sqrt(clamp(1.0 - (d * d) / (r * r), 0.0, 1.0)); }
-    // drops that sit on the glass, fade in, and evaporate
+    // drops that sit on the glass, fade in, and evaporate; every life cycle re-rolls whether
+    // a drop appears in this cell, where and how big, so they never come back in one spot
     float sitting(vec2 q, float t) {
       vec2 g = q * 26.0;
       vec2 id = floor(g), f = fract(g) - 0.5;
-      if (h21(id + 9.1) > 0.01 + 0.04 * uRain) return 0.0;
-      vec2 p = (vec2(h21(id + 3.1), h21(id + 7.7)) - 0.5) * 0.6;
-      float life = fract(t * 0.12 + h21(id) * 7.0);
-      float size = mix(0.04, 0.14, pow(h21(id + 1.7), 2.0)) * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.75, 1.0, life));
-      float d = length(f - p);
-      return dome(d, size);
+      float s0 = t * 0.12 + h21(id) * 7.0;
+      float life = fract(s0);
+      vec2 cid = id + floor(s0) * vec2(17.3, 31.7);
+      if (h21(cid + 9.1) > 0.01 + 0.04 * uRain) return 0.0;
+      vec2 p = (vec2(h21(cid + 3.1), h21(cid + 7.7)) - 0.5) * 0.6;
+      float size = mix(0.04, 0.14, pow(h21(cid + 1.7), 2.0)) * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.75, 1.0, life));
+      return dome(length(f - p), size);
     }
-    // drops running down one column each; x = body, y = trail (wipes the sitting drops)
+    // drops running down singly; x = body, y = trail (wipes the sitting drops). Each pass
+    // down the screen re-rolls lane, size and whether there is a drop at all
     vec2 running(vec2 q, float t, float cols, float seed) {
       float cw = uAspect / cols;
       float id = floor(q.x / cw);
-      float r = h21(vec2(id, seed));
-      if (r > 0.04 + 0.1 * uRain) return vec2(0.0);
+      float r0 = h21(vec2(id, seed));
       // stick-slip: hangs, then slides a stretch, then hangs again
-      float tt = t * (0.12 + 0.18 * h21(vec2(id, seed + 1.0))) + r * 13.0;
+      float tt = t * (0.12 + 0.18 * h21(vec2(id, seed + 1.0))) + r0 * 13.0;
       float k = floor(tt), ph = fract(tt);
-      float y = 1.15 - fract((k + smoothstep(0.0, 0.3, ph)) * 0.1 + r) * 1.3;
-      // the drop keeps its lane (a new lane per slide step made it hop sideways), with a slight meander
-      float x = (id + 0.5 + (h21(vec2(id, seed + 3.0)) - 0.5) * 0.4) * cw + sin(q.y * 23.0 + r * 6.0) * 0.006;
-      float rad = mix(0.005, 0.009, h21(vec2(id, seed + 2.0)));
+      float S = (k + smoothstep(0.0, 0.3, ph)) * 0.1 + r0;
+      float y = 1.15 - fract(S) * 1.3;                       // wraps off-screen, then a new pass
+      vec2 cid = vec2(id + floor(S) * 37.0, seed);
+      float r = h21(cid);
+      if (r > 0.04 + 0.1 * uRain) return vec2(0.0);
+      // the drop keeps its lane for the whole pass (no sideways hops), with a slight meander
+      float x = (id + 0.5 + (h21(cid + 3.0) - 0.5) * 0.6) * cw + sin(q.y * 23.0 + r * 6.0) * 0.006;
+      float rad = mix(0.005, 0.009, h21(cid + 2.0));
       vec2 d = vec2(q.x - x, (q.y - y) * 0.8);
       float body = dome(length(d), rad);
-      // trail above the drop: thin film with beads, fading with height
+      // no bead chains: just a faint thin film where the drop has been
+      float trailLen = mix(0.03, 0.12, h21(cid + 5.0));
       float above = q.y - y;
-      float tr = step(0.0, above) * (1.0 - smoothstep(0.0, 0.3, above));
-      float film = smoothstep(rad * 0.45, 0.0, abs(q.x - x)) * tr;
-      vec2 bq = vec2(q.x - x, fract(above * 28.0 + r) - 0.5);
-      float bead = smoothstep(0.005, 0.0015, length(bq * vec2(1.0, 0.035))) * tr * step(0.5, h21(vec2(id, floor(above * 28.0 + r))));
-      return vec2(max(body, bead * 0.8), film + body);
+      float tr = step(0.0, above) * (1.0 - smoothstep(0.0, trailLen, above));
+      float film = smoothstep(rad * 0.35, 0.0, abs(q.x - x)) * tr;
+      return vec2(max(body, film * 0.12), film + body);
     }
     float water(vec2 q, float t) {
       vec2 a = running(q, t, 11.0, 0.0), b = running(q + vec2(0.37, 0.0), t * 0.8, 17.0, 5.0);
