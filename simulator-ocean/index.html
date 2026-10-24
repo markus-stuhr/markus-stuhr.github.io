@@ -852,7 +852,7 @@ void main() {
   // visibility of the reflection per source: sky + clouds, land, boats
   const float REFL_SKY = 0.6, REFL_LAND = 0.6, REFL_BOAT = 0.8;
   body *= mix(1.0, 0.72, uOvercast) * mix(0.08, 1.0, uDay);   // less light under a grey sky / at night
-  vec3 col = mix(body, refl, F * mix(REFL_SKY, mix(REFL_LAND, REFL_BOAT, boatA), objA)) * mix(0.8, 1.0, shade) + spec * sunVis;
+  vec3 col = mix(body, refl, F * mix(REFL_SKY, mix(REFL_LAND, REFL_BOAT, boatA), objA)) * mix(0.8, 1.0, shade) + spec * sunVis * (1.0 - objA);   // land/boats in the mirror image hide the sun's glint too
 
   // Whitecaps where the crests pinch together; more of them in a rough sea
   float wc = smoothstep(9.0, 26.0, uWindKn);
