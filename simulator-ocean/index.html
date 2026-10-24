@@ -862,7 +862,7 @@ void main() {
   foam *= exp(-dist / 3500.0);
   col = mix(col, vec3(0.9, 0.93, 0.95) * mix(0.05, 1.0, uDay) * (0.65 + 0.45 * NdL), foam);
   float wf = clamp(wakeFoam * (0.3 + 0.7 * pat2 + 0.5 * pat), 0.0, 1.0) * 0.6;
-  col = mix(col, vec3(0.88, 0.93, 0.95) * (0.7 + 0.4 * NdL), wf);
+  col = mix(col, vec3(0.88, 0.93, 0.95) * mix(0.05, 1.0, uDay) * (0.7 + 0.4 * NdL), wf);
 
   // Bow white water: where the stem throws the water aside, a patch of broken foam
   // along each side of the forward hull. Like the whitecaps it is a threshold on the
