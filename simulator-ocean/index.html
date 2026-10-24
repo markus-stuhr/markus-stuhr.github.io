@@ -99,7 +99,7 @@
       background: rgba(255,255,255,0.95);
       border-radius: 22px;
       padding: 30px 34px 26px;
-      width: min(360px, 86vw);
+      width: min(520px, 92vw);
       box-shadow: 0 20px 60px rgba(0,28,56,0.4);
       color: #14242f; text-align: center;
     }
@@ -110,6 +110,8 @@
       color: #6b7c89; margin-bottom: 7px;
     }
     .seg { display: flex; gap: 8px; }
+    .seg-wrap { flex-wrap: wrap; }
+    .seg-wrap button { flex: 1 1 14%; white-space: nowrap; }
     .seg button {
       flex: 1; padding: 9px 0; border-radius: 10px;
       border: 1.5px solid #ccd6de; background: #fff; color: #20303c;
@@ -215,6 +217,28 @@
       <div class="seg" id="segMode">
         <button data-value="race" class="active">Race</button>
         <button data-value="replay">Replay</button>
+      </div>
+    </div>
+    <div class="menu-section">
+      <div class="sec-label">Weather</div>
+      <div class="seg seg-wrap" id="segWeather">
+        <button data-value="clear">Clear</button>
+        <button data-value="few" class="active">Few clouds</button>
+        <button data-value="cloudy">Cloudy</button>
+        <button data-value="overcast">Overcast</button>
+        <button data-value="rain">Rain</button>
+        <button data-value="live">Live</button>
+      </div>
+      <div id="weatherInfo" class="replay-info" style="margin-top:8px;display:none"></div>
+    </div>
+    <div class="menu-section">
+      <div class="sec-label">Visibility</div>
+      <div class="seg" id="segVis">
+        <button data-value="0" class="active">Auto</button>
+        <button data-value="30000">30 km</button>
+        <button data-value="10000">10 km</button>
+        <button data-value="3000">3 km</button>
+        <button data-value="1000">1 km</button>
       </div>
     </div>
     <div id="raceOpts">
@@ -361,7 +385,8 @@ const sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
 sun.position.set(50, 70, 30);
 scene.add(sun);
 // Daylight ambient: bright sky above, sea-tinted bounce below
-scene.add(new THREE.HemisphereLight(0xcfe6ff, 0x2a5a86, 1.1));
+const hemi = new THREE.HemisphereLight(0xcfe6ff, 0x2a5a86, 1.1);
+scene.add(hemi);
 
 // --- Realistic ocean ---
 // Gerstner wave field (14 waves, deep-water dispersion, travelling downwind),
@@ -489,11 +514,20 @@ function makeFoamPattern() {
 
 // Clouds drift downwind; shared by the sky dome and the water's sky reflection
 const CLOUD_OFF = new THREE.Vector2();
+// Weather state seen by every shader (sky, water, land); driven by applyWeather()
+const WX_UNI = {
+  uCloudCover: { value: 0.3 },   // 0 clear .. 1 full cumulus cover
+  uOvercast: { value: 0 },       // grey stratus deck over everything
+  uSunI: { value: 1 },           // direct sunlight that gets through (glint, shadows, glow)
+  uRain: { value: 0 },
+  uHazeDist: { value: 9000 },    // aerial perspective length (half the visibility)
+};
 
 // Shared GLSL: analytic sky (also used for the water reflection) + ACES tonemap
 const SKY_GLSL = /* glsl */`
 uniform vec3 uSunDir;
 uniform vec2 uCloudOff;
+uniform float uCloudCover, uOvercast, uSunI, uRain, uHazeDist;
 float hash12(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -517,7 +551,9 @@ vec3 skyBase(vec3 d) {
   vec3 col = mix(horizon, zenith, pow(y, 0.38));
   col += vec3(0.12, 0.12, 0.12) * exp(-y * 28.0);                       // thin haze band
   float s = max(dot(d, uSunDir), 0.0);
-  col += vec3(1.0, 0.85, 0.6) * (0.25 * pow(s, 6.0) + 0.6 * pow(s, 90.0));
+  col += vec3(1.0, 0.85, 0.6) * (0.25 * pow(s, 6.0) + 0.6 * pow(s, 90.0)) * uSunI;
+  col = mix(col, vec3(0.40, 0.44, 0.50) + 0.12 * exp(-y * 6.0), uOvercast * 0.85);   // grey stratus sky
+  col = mix(col, vec3(0.27, 0.30, 0.34), uRain * 0.45);
   return col;
 }
 // Trade-wind cumulus on a flat layer ~1.5 km up: fbm coverage, lit from the sun side
@@ -526,13 +562,21 @@ vec4 cloudLayer(vec3 d, int oct) {
   // curved layer (as seen over a round earth): no endless stretching into streaks at the horizon
   vec2 p = d.xz / (d.y + 0.12) * 1.9 + uCloudOff;
   float n = fbm(p, oct) + 0.25 * (vnoise(p * 0.35) - 0.5);   // low-frequency term groups puffs into fields
-  float cov = smoothstep(0.53, 0.62, n);
-  if (cov <= 0.0) return vec4(0.0);
+  float t = mix(0.76, 0.30, uCloudCover);                  // more cover -> lower threshold
+  float cov = smoothstep(t, t + 0.09 + 0.12 * uCloudCover, n);
+  float deck = uOvercast * 0.92;                           // flat stratus sheet
+  if (cov <= 0.0 && deck <= 0.0) return vec4(0.0);
   float nl = fbm(p + uSunDir.xz * 0.05, oct) + 0.25 * (vnoise((p + uSunDir.xz * 0.05) * 0.35) - 0.5);
   float lit = clamp(0.6 + (n - nl) * 6.0 + (n - 0.6) * 1.5, 0.0, 1.0);
   vec3 c = mix(vec3(0.42, 0.47, 0.58), vec3(1.25, 1.2, 1.12), lit);
-  c += vec3(0.9, 0.8, 0.6) * pow(max(dot(d, uSunDir), 0.0), 12.0) * 0.6;  // silver lining near the sun
-  return vec4(c, cov * smoothstep(0.004, 0.05, d.y) * 0.95);
+  c += vec3(0.9, 0.8, 0.6) * pow(max(dot(d, uSunDir), 0.0), 12.0) * 0.6 * uSunI;  // silver lining near the sun
+  // under an overcast the cumulus turn grey and dark-bottomed, the deck fills the gaps
+  c = mix(c, vec3(0.50, 0.53, 0.58) * (0.75 + 0.35 * lit), uOvercast);
+  c *= 1.0 - 0.35 * uRain;
+  vec3 deckCol = vec3(0.46, 0.49, 0.54) * (1.0 - 0.3 * uRain);
+  float a = max(cov * 0.95, deck);
+  vec3 col = mix(deckCol, c, cov * 0.95 / max(a, 1e-3));
+  return vec4(col, a * smoothstep(0.004, 0.05, d.y));
 }
 // what the water reflects: softer, fainter clouds (each ripple would otherwise flip between
 // white cloud and blue sky from pixel to pixel)
@@ -687,7 +731,8 @@ void main() {
   vec3 d2 = texture2D(tDetail, uv2).xyz * 2.0 - 1.0;
   float gust = fbm(vWorld.xz / 240.0 - uWindDir * uTime * 0.035, 3);
   float windF = smoothstep(6.0, 24.0, uWindKn);
-  float ds = (0.10 + 0.06 * uAmp + 0.10 * windF) * (0.45 + 1.1 * gust) * exp(-dist / 1100.0) * uRipple;
+  float ds = (0.10 + 0.06 * uAmp + 0.10 * windF) * (0.45 + 1.1 * gust) * exp(-dist / 1100.0) * uRipple
+           * (1.0 + 1.8 * uRain);   // raindrops pock the surface
   // Boat wakes: foam (r) + Kelvin wave height (g) from the top-down wake texture
   float wakeFoam = 0.0, wakeSlick = 0.0;
   if (uWakeOn > 0.5) {
@@ -747,7 +792,10 @@ void main() {
   float NdL = max(dot(N, L), 0.0);
   vec3 Hs = normalize(L + N * 0.6);
   float sss = pow(clamp(dot(V, -Hs), 0.0, 1.0), 4.0) * 2.5 * max(h + 0.35, 0.0);
-  float sunVis = sunVisibility(vWorld);   // sails/hulls shade the water: no direct sun, glint or glow
+  // sails/hulls shade the water (no direct sun, glint or glow); clouds dim the sun itself
+  float shadowV = sunVisibility(vWorld);
+  float shade = mix(1.0, shadowV, uSunI);
+  float sunVis = shade * uSunI;
   vec3 body = deep * (0.45 + 0.55 * NdL * sunVis) + scatterCol * (sss * sunVis + 0.08 + 0.14 * max(h, 0.0));
   // Shallows: the satellite image already shows the lagoon/reef colour seen through the water
   float lumS = dot(sat, vec3(0.3, 0.5, 0.2));
@@ -771,7 +819,8 @@ void main() {
 
   // visibility of the reflection per source: sky + clouds, land, boats
   const float REFL_SKY = 0.6, REFL_LAND = 0.6, REFL_BOAT = 0.8;
-  vec3 col = mix(body, refl, F * mix(REFL_SKY, mix(REFL_LAND, REFL_BOAT, boatA), objA)) * mix(0.8, 1.0, sunVis) + spec * sunVis;
+  body *= mix(1.0, 0.72, uOvercast);   // less light in the water under a grey sky
+  vec3 col = mix(body, refl, F * mix(REFL_SKY, mix(REFL_LAND, REFL_BOAT, boatA), objA)) * mix(0.8, 1.0, shade) + spec * sunVis;
 
   // Whitecaps where the crests pinch together; more of them in a rough sea
   float wc = smoothstep(9.0, 26.0, uWindKn);
@@ -843,7 +892,7 @@ void main() {
   // aerial perspective: everything far away (land and water alike) drifts towards the
   // horizon haze colour, so distant islands and sea sit in the same air
   #ifdef USE_FOG
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 0.55 * (1.0 - exp(-vFogDepth / 9000.0)));
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 0.55 * (1.0 - exp(-vFogDepth / uHazeDist)));
   #endif
 }
 `;
@@ -896,6 +945,7 @@ oceanMat.uniforms.uWaveA.value = uWaveA;
 oceanMat.uniforms.uWaveB.value = uWaveB;
 oceanMat.uniforms.uSunDir.value = SUN_DIR;
 oceanMat.uniforms.uCloudOff.value = CLOUD_OFF;
+Object.assign(oceanMat.uniforms, WX_UNI);
 // Bow white water: up to 6 boats near the camera (x, z, bow dir x, z) + (speed, lean, -, -)
 const BOW_N = 6;
 const uBowA = Array.from({ length: BOW_N }, () => new THREE.Vector4());
@@ -926,7 +976,7 @@ const skyMat = new THREE.ShaderMaterial({
       vec3 d = normalize(vDir);
       vec3 col = skyRadiance(d, 5);
       float s = max(dot(d, uSunDir), 0.0);
-      col += vec3(30.0, 26.0, 20.0) * smoothstep(0.9994, 0.9997, s);   // sun disc
+      col += vec3(30.0, 26.0, 20.0) * smoothstep(0.9994, 0.9997, s) * uSunI * uSunI;   // sun disc
       gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
       #include <colorspace_fragment>
       gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 1.0 - smoothstep(0.0, 0.035, d.y));
@@ -937,6 +987,7 @@ const skyMat = new THREE.ShaderMaterial({
 });
 skyMat.uniforms.uSunDir.value = SUN_DIR;
 skyMat.uniforms.uCloudOff.value = CLOUD_OFF;
+Object.assign(skyMat.uniforms, WX_UNI);
 const skyDome = new THREE.Mesh(new THREE.SphereGeometry(30000, 48, 24), skyMat);
 skyDome.renderOrder = -10;
 skyDome.frustumCulled = false;
@@ -945,6 +996,7 @@ skyDome.onBeforeRender = (r, s, cam) => skyDome.position.copy(cam.position);
 
 let waveAmp = 1;   // slowly drifts within ±25% of waveBase (see updateEnvironment)
 let waveBase = 1;  // base sea state chosen in the start menu
+let seaFromOverride = null;   // live swell direction (rad, FROM) instead of the wind's
 setSeaDirection(Math.PI * 0.25);
 
 // Height of the displaced surface at world (x,z): invert the horizontal Gerstner
@@ -982,7 +1034,7 @@ function updateEnvironment(t) {
   wind.from = wind.baseFrom + (20 * Math.PI / 180) * shift; // wind veers/backs within ±20°
   const swell = 0.5 * Math.sin(t * 0.09 + 0.6) + 0.3 * Math.sin(t * 0.23 + 2.4) + 0.2 * Math.sin(t * 0.05 + 4.0);
   waveAmp = waveBase * (1 + 0.25 * swell);
-  setSeaDirection(wind.baseFrom);
+  setSeaDirection(seaFromOverride !== null ? seaFromOverride : wind.baseFrom);
 }
 
 function animateWaves(t) {
@@ -2091,6 +2143,7 @@ const DETAIL_UNI = {
   tDetailSat: { value: null },
   uDetailBox: { value: new THREE.Vector4(0, 0, 1, 1) },   // x0, z0, width, depth (scene m)
   uDetailOn: { value: 0 },
+  uLandAlpha: { value: 1 },   // 0.5 only during the reflection pass (tags land there)
 };
 const detailImgCache = new Map();   // "x/y" -> Promise<Image|null>
 let detailKey = '', detailBusy = false, detailLastCheck = 0;
@@ -2160,8 +2213,9 @@ function terrainMaterial(tex) {
     fragmentShader: /* glsl */`
       uniform sampler2D map, tDetailSat;
       uniform vec3 uSunDir;
+      uniform float uSunI, uOvercast, uHazeDist;
       uniform vec4 uDetailBox;
-      uniform float uDetailOn;
+      uniform float uDetailOn, uLandAlpha;
       varying vec2 vUv;
       varying vec3 vN;
       varying vec2 vXZ;
@@ -2175,22 +2229,23 @@ function terrainMaterial(tex) {
           float w = smoothstep(0.0, 0.12, min(e.x, e.y));
           if (w > 0.0) c = mix(c, texture2D(tDetailSat, duv).rgb, w);
         }
-        float l = 0.78 + 0.32 * dot(normalize(vN), uSunDir);
-        // alpha 0.5 tags land in the reflection pass (boats write 1); the canvas has no alpha
-        gl_FragColor = vec4(c * l * 1.08, 0.5);
+        float l = (0.78 + 0.32 * dot(normalize(vN), uSunDir) * uSunI) * (1.0 - 0.25 * uOvercast);
+        // alpha 0.5 tags land in the reflection pass (boats write 1). Elsewhere it must stay 1:
+        // the canvas does have alpha, and 0.5 there let the page show through the islands
+        gl_FragColor = vec4(c * l * 1.08, uLandAlpha);
         #include <colorspace_fragment>
         #include <fog_fragment>
         // aerial perspective: everything far away (land and water alike) drifts towards the
         // horizon haze colour, so distant islands and sea sit in the same air
         #ifdef USE_FOG
-        gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 0.55 * (1.0 - exp(-vFogDepth / 9000.0)));
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 0.55 * (1.0 - exp(-vFogDepth / uHazeDist)));
         #endif
       }`,
     fog: true,
   });
   mat.uniforms.map.value = tex;   // set after merge (merge clones textures)
   mat.uniforms.uSunDir.value = SUN_DIR;
-  Object.assign(mat.uniforms, DETAIL_UNI);   // shared by all chunks, swapped as the boat moves
+  Object.assign(mat.uniforms, DETAIL_UNI, WX_UNI);   // shared by all chunks
   return mat;
 }
 
@@ -2814,6 +2869,33 @@ function wireSeg(id) {
   return () => parseFloat(seg.querySelector('.active').dataset.value);
 }
 const getWind = wireSeg('segWind');
+wireSeg('segWeather');
+const getVis = wireSeg('segVis');
+document.getElementById('segVis').addEventListener('click', () => { visibilityOverride = getVis() || null; });
+const weatherInfo = document.getElementById('weatherInfo');
+document.getElementById('segWeather').addEventListener('click', async (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  weatherMode = b.dataset.value;
+  if (weatherMode !== 'live') {
+    weatherInfo.style.display = 'none';
+    setWeatherPreset(weatherMode);
+    return;
+  }
+  weatherInfo.style.display = '';
+  weatherInfo.textContent = 'Loading live weather…';
+  try {
+    liveWeather = await fetchLiveWeather();
+    const lw = liveWeather;
+    Object.assign(weatherTarget, weatherFromLive(lw));
+    weatherInfo.innerHTML = `Live: ${lw.windKn.toFixed(0)} kn from ${lw.windDir.toFixed(0)}°, clouds ${lw.cloud.toFixed(0)} %, rain ${lw.precip.toFixed(1)} mm/h` + (lw.vis != null ? `, visibility ${(lw.vis / 1000).toFixed(0)} km` : '') +
+      (lw.waveH != null ? `<br><small>waves ${lw.waveH.toFixed(1)} m from ${lw.waveDir.toFixed(0)}°` + (lw.wavePer ? `, ${lw.wavePer.toFixed(0)} s` : '') + ' · Open-Meteo</small>' : '<br><small>Open-Meteo</small>');
+  } catch (err) {
+    liveWeather = null;
+    weatherInfo.textContent = 'Live weather unavailable – using few clouds';
+    setWeatherPreset('few');
+  }
+});
 const getWave = wireSeg('segWave');
 wireSeg('segMode');
 wireSeg('segOrient');
@@ -2845,8 +2927,19 @@ document.getElementById('segOrient').addEventListener('click', (e) => {
 });
 
 function startGame() {
-  const windVal = getWind();
+  let windVal = getWind();
   waveBase = getWave();
+  seaFromOverride = null;
+  wind.baseFrom = Math.PI * 0.25;   // the course's design wind, unless live data says otherwise
+  if (weatherMode === 'live' && liveWeather) {
+    // live data overrides the menu's wind and sea state
+    windVal = Math.max(4, liveWeather.windKn);
+    wind.baseFrom = liveWeather.windDir * Math.PI / 180;
+    if (liveWeather.waveH != null) {
+      waveBase = THREE.MathUtils.clamp(liveWeather.waveH / 1.4, 0.3, 2.0);   // ~Hs over our 0.85 m field
+      seaFromOverride = liveWeather.waveDir * Math.PI / 180;
+    }
+  }
   wind.baseTws = windVal;
   wind.maxTws = windVal * 1.25;   // full power at the top of the gusts
   wind.from = wind.baseFrom;
@@ -3388,6 +3481,117 @@ function updateSunShadow() {
   }
 }
 
+// --- Weather ---
+// Presets (and live Open-Meteo data) set a target; applyWeather() eases the current
+// state towards it and feeds every shader, the lights, the fog and the rain.
+const WEATHER_PRESETS = {
+  // vis = typical visibility in metres (used unless the menu sets one)
+  clear:    { cover: 0.0,  overcast: 0.0,  rain: 0.0, sun: 1.0,  vis: 30000 },
+  few:      { cover: 0.3,  overcast: 0.0,  rain: 0.0, sun: 1.0,  vis: 18000 },
+  cloudy:   { cover: 0.65, overcast: 0.1,  rain: 0.0, sun: 0.8,  vis: 14000 },
+  overcast: { cover: 0.9,  overcast: 0.8,  rain: 0.0, sun: 0.12, vis: 8000 },
+  rain:     { cover: 1.0,  overcast: 1.0,  rain: 0.85, sun: 0.03, vis: 2500 },
+};
+const weather = { ...WEATHER_PRESETS.few };
+let visibilityOverride = null;   // metres from the menu, or null = the weather's own
+const weatherTarget = { ...WEATHER_PRESETS.few };
+let weatherLast = performance.now();
+// grey/rain fog sits a touch below the cloud deck's brightness, so veiled islands read darker than the sky
+const FOG_CLEAR = [0.79, 0.855, 0.92], FOG_GREY = [0.58, 0.61, 0.65], FOG_RAIN = [0.47, 0.50, 0.53];
+
+// Rain: streaks falling in a box that follows the camera, slanted by the wind
+const RAIN_N = 5000, RAIN_BOX = 140, RAIN_H = 70;
+const rainPos = new Float32Array(RAIN_N * 6);
+const rainSeed = new Float32Array(RAIN_N * 3);
+for (let i = 0; i < RAIN_N; i++) {
+  rainSeed[i * 3] = Math.random(); rainSeed[i * 3 + 1] = Math.random(); rainSeed[i * 3 + 2] = Math.random();
+}
+const rainGeo = new THREE.BufferGeometry();
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rainLines = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({
+  color: 0xc8d2dc, transparent: true, opacity: 0, depthWrite: false, fog: false,
+}));
+rainLines.frustumCulled = false;
+rainLines.visible = false;
+scene.add(rainLines);
+function updateRain(tNow) {
+  const r = weather.rain;
+  rainLines.visible = r > 0.02;
+  if (!rainLines.visible) return;
+  rainLines.material.opacity = 0.28 * r;
+  const n = Math.floor(RAIN_N * Math.min(1, r * 1.2));
+  const fall = 9;                                            // m/s
+  const wd = wind.from + Math.PI;                            // drift downwind
+  const wx = Math.sin(wd) * wind.tws * 0.25, wz = -Math.cos(wd) * wind.tws * 0.25;
+  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+  for (let i = 0; i < RAIN_N; i++) {
+    const k = i * 6;
+    if (i >= n) { rainPos[k] = rainPos[k + 3] = 1e7; continue; }
+    const ph = (rainSeed[i * 3 + 2] * RAIN_H + tNow * fall) % RAIN_H;
+    // wrap the drop's column into the box around the camera
+    const x = cx + (((rainSeed[i * 3] * RAIN_BOX + wx * tNow - cx) % RAIN_BOX) + RAIN_BOX) % RAIN_BOX - RAIN_BOX / 2;
+    const z = cz + (((rainSeed[i * 3 + 1] * RAIN_BOX + wz * tNow - cz) % RAIN_BOX) + RAIN_BOX) % RAIN_BOX - RAIN_BOX / 2;
+    const y = cy + RAIN_H * 0.5 - ph;
+    rainPos[k] = x; rainPos[k + 1] = y; rainPos[k + 2] = z;
+    rainPos[k + 3] = x - wx * 0.07; rainPos[k + 4] = y - fall * 0.07; rainPos[k + 5] = z - wz * 0.07;
+  }
+  rainGeo.attributes.position.needsUpdate = true;
+}
+
+function applyWeather() {
+  const now = performance.now();
+  const k = 1 - Math.exp(-(now - weatherLast) / 1500);       // ~1.5 s easing
+  weatherLast = now;
+  for (const key of ['cover', 'overcast', 'rain', 'sun']) weather[key] += (weatherTarget[key] - weather[key]) * k;
+  // visibility eases in log space (30 km -> 1 km should feel even)
+  const visT = visibilityOverride || weatherTarget.vis;
+  weather.vis = Math.exp(Math.log(weather.vis) + (Math.log(visT) - Math.log(weather.vis)) * k);
+  WX_UNI.uCloudCover.value = weather.cover;
+  WX_UNI.uOvercast.value = weather.overcast;
+  WX_UNI.uSunI.value = weather.sun;
+  WX_UNI.uRain.value = weather.rain;
+  sun.intensity = 1.5 * (0.15 + 0.85 * weather.sun);
+  hemi.intensity = 1.1 * (1 - 0.2 * weather.overcast - 0.15 * weather.rain);
+  // fog: a little denser and greyer under cloud, much denser in rain (display values, see fog setup)
+  const g = Math.min(1, weather.overcast), r = weather.rain;
+  const c = FOG_CLEAR.map((v, i) => { const a = v + (FOG_GREY[i] - v) * g; return a + (FOG_RAIN[i] - a) * r; });
+  scene.fog.color.setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace);
+  // visibility V: fog reaches ~90 % at V (1 - exp(-(V*d)^2) = 0.9); aerial haze scales along
+  scene.fog.density = 1.517 / weather.vis;
+  WX_UNI.uHazeDist.value = weather.vis * 0.5;
+  updateRain(now / 1000);
+}
+
+let weatherMode = 'few';
+let liveWeather = null;   // last Open-Meteo result for the current area
+function setWeatherPreset(name) {
+  Object.assign(weatherTarget, WEATHER_PRESETS[name]);
+}
+// Map Open-Meteo values onto the preset scales
+function weatherFromLive(lw) {
+  const cover = lw.cloud / 100;
+  const rain = Math.min(1, lw.precip / 3);                    // mm/h -> 0..1
+  const overcast = Math.min(1, THREE.MathUtils.smoothstep(cover, 0.7, 1.0) * 0.8 + rain * 0.4);
+  const sunI = Math.max(0.03, 1 - 0.88 * THREE.MathUtils.smoothstep(cover, 0.55, 1.0) - 0.5 * rain);
+  const vis = lw.vis != null ? THREE.MathUtils.clamp(lw.vis, 500, 40000) : 18000;
+  return { cover, overcast, rain, sun: sunI, vis };
+}
+async function fetchLiveWeather() {
+  const { lat, lng } = GEO_CENTER;
+  const q = `latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`;
+  const [wx, sea] = await Promise.all([
+    fetch(`https://api.open-meteo.com/v1/forecast?${q}&current=cloud_cover,precipitation,wind_speed_10m,wind_direction_10m,weather_code,visibility&wind_speed_unit=kn`).then(r => r.json()),
+    fetch(`https://marine-api.open-meteo.com/v1/marine?${q}&current=wave_height,wave_direction,wave_period`).then(r => r.json()).catch(() => null),
+  ]);
+  const c = wx.current, m = sea && sea.current;
+  return {
+    cloud: c.cloud_cover, precip: c.precipitation, vis: c.visibility, windKn: c.wind_speed_10m, windDir: c.wind_direction_10m,
+    waveH: m && m.wave_height != null ? m.wave_height : null,
+    waveDir: m && m.wave_direction != null ? m.wave_direction : null,
+    wavePer: m && m.wave_period != null ? m.wave_period : null,
+  };
+}
+
 // --- God rays: light shafts when a sail or hull passes in front of the sun ---
 // Occlusion pass at 1/4 res (everything black, a bright sun sprite depth-tested behind
 // it), then a radial blur towards the sun's screen position added onto the frame.
@@ -3468,10 +3672,104 @@ function renderGodRays() {
   scene.overrideMaterial = null; scene.background = bg; scene.fog = fog;
   ocean.visible = true;
   grQuad.material.uniforms.uSun.value.set(sx, sy);
-  grQuad.material.uniforms.uStrength.value = 1.0 * strength;
+  grQuad.material.uniforms.uStrength.value = 1.0 * strength * WX_UNI.uSunI.value;
   _baseRender(grQuadScene, grCam);
   renderer.autoClear = ac;
   renderer.setClearColor(_rClear, ca);
+}
+
+// --- Rain on the camera lens ---
+// The finished frame is copied to a texture and redrawn through a water film: drops
+// that appear and evaporate, plus drops that run down in stick-slip jerks, leaving a
+// trail of beads and wiping the drops in their path. Each drop refracts the view.
+let lensFrame = null;
+const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  uniforms: { tFrame: { value: null }, uTime: { value: 0 }, uRain: { value: 0 }, uAspect: { value: 1 } },
+  vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+  fragmentShader: /* glsl */`
+    uniform sampler2D tFrame;
+    uniform float uTime, uRain, uAspect;
+    varying vec2 vUv;
+    float h21(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+    // drops that sit on the glass, fade in, and evaporate
+    float sitting(vec2 q, float t) {
+      vec2 g = q * 26.0;
+      vec2 id = floor(g), f = fract(g) - 0.5;
+      if (h21(id + 9.1) > 0.02 + 0.08 * uRain) return 0.0;
+      vec2 p = (vec2(h21(id + 3.1), h21(id + 7.7)) - 0.5) * 0.6;
+      float life = fract(t * 0.12 + h21(id) * 7.0);
+      float size = mix(0.05, 0.2, pow(h21(id + 1.7), 2.0)) * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.75, 1.0, life));
+      float d = length(f - p);
+      return smoothstep(size, size * 0.25, d);
+    }
+    // drops running down one column each; x = body, y = trail (wipes the sitting drops)
+    vec2 running(vec2 q, float t, float cols, float seed) {
+      float cw = uAspect / cols;
+      float id = floor(q.x / cw);
+      float r = h21(vec2(id, seed));
+      if (r > 0.08 + 0.22 * uRain) return vec2(0.0);
+      // stick-slip: hangs, then slides a stretch, then hangs again
+      float tt = t * (0.35 + 0.5 * h21(vec2(id, seed + 1.0))) + r * 13.0;
+      float k = floor(tt), ph = fract(tt);
+      float y = 1.15 - fract((k + smoothstep(0.0, 0.3, ph)) * 0.17 + r) * 1.3;
+      float x = (id + 0.5 + (h21(vec2(id, k + seed)) - 0.5) * 0.4) * cw + sin(q.y * 23.0 + r * 6.0) * 0.006;
+      float rad = mix(0.007, 0.013, h21(vec2(id, seed + 2.0)));
+      vec2 d = vec2(q.x - x, (q.y - y) * 0.8);
+      float body = smoothstep(rad, rad * 0.35, length(d));
+      // trail above the drop: thin film with beads, fading with height
+      float above = q.y - y;
+      float tr = step(0.0, above) * (1.0 - smoothstep(0.0, 0.3, above));
+      float film = smoothstep(rad * 0.45, 0.0, abs(q.x - x)) * tr;
+      vec2 bq = vec2(q.x - x, fract(above * 28.0 + r) - 0.5);
+      float bead = smoothstep(0.005, 0.0015, length(bq * vec2(1.0, 0.035))) * tr * step(0.5, h21(vec2(id, floor(above * 28.0 + r))));
+      return vec2(max(body, bead * 0.8), film + body);
+    }
+    float water(vec2 q, float t) {
+      vec2 a = running(q, t, 11.0, 0.0), b = running(q + vec2(0.37, 0.0), t * 0.8, 17.0, 5.0);
+      float wipe = clamp(a.y + b.y, 0.0, 1.0);
+      return max(max(a.x, b.x * 0.85), sitting(q, t) * (1.0 - wipe));
+    }
+    void main() {
+      vec2 q = vec2(vUv.x * uAspect, vUv.y);
+      float t = uTime;
+      float h = water(q, t);
+      if (h < 0.01) discard;
+      float e = 0.0015;
+      vec2 n = vec2(water(q + vec2(e, 0.0), t) - h, water(q + vec2(0.0, e), t) - h) / e;
+      // a drop is a tiny lens: it shows a strongly shifted (flipped) bit of the scene,
+      // a thin darker rim and a small highlight from the bright sky above
+      vec2 uv = clamp(vUv - n * 0.012 + vec2(0.0, 0.03) * h, 0.0, 1.0);
+      vec3 c = texture2D(tFrame, uv).rgb;
+      float rim = smoothstep(0.35, 1.0, clamp(length(n) * 0.01, 0.0, 1.0));
+      vec3 nn = normalize(vec3(-n * 0.01, 1.0));
+      float spec = pow(max(dot(nn, normalize(vec3(-0.35, 0.55, 0.75))), 0.0), 60.0);
+      c = c * (1.0 - 0.3 * rim) + vec3(0.9) * spec * 0.6;
+      gl_FragColor = vec4(c, smoothstep(0.01, 0.35, h) * clamp(uRain * 1.6, 0.0, 1.0));
+    }`,
+  transparent: true, depthTest: false, depthWrite: false,
+}));
+lensQuad.frustumCulled = false;
+const lensScene = new THREE.Scene();
+lensScene.add(lensQuad);
+function renderLensRain() {
+  const r = weather.rain;
+  if (r < 0.05) return;
+  const w = renderer.domElement.width, h = renderer.domElement.height;
+  if (!lensFrame || lensFrame.image.width !== w || lensFrame.image.height !== h) {
+    if (lensFrame) lensFrame.dispose();
+    lensFrame = new THREE.FramebufferTexture(w, h);
+    lensFrame.minFilter = lensFrame.magFilter = THREE.LinearFilter;
+  }
+  renderer.copyFramebufferToTexture(lensFrame);
+  const u = lensQuad.material.uniforms;
+  u.tFrame.value = lensFrame;
+  u.uTime.value = performance.now() / 1000;
+  u.uRain.value = r;
+  u.uAspect.value = w / h;
+  const ac = renderer.autoClear;
+  renderer.autoClear = false;
+  _baseRender(lensScene, grCam);
+  renderer.autoClear = ac;
 }
 
 // --- Planar reflection of islands, boats and sails ---
@@ -3522,6 +3820,7 @@ function renderReflection() {
   // no fog in the mirror image: mixed in linear space it greyed the islands out; the water
   // pixel showing the reflection gets its own distance fog anyway
   const fog = scene.fog; scene.fog = null;
+  DETAIL_UNI.uLandAlpha.value = 0.5;
   renderer.setRenderTarget(reflRT);
   renderer.setClearColor(0x000000, 0);
   renderer.clear();
@@ -3530,6 +3829,7 @@ function renderReflection() {
   renderer.setClearColor(_rClear, ca);
   ocean.visible = true; skyDome.visible = true; scene.background = bg;
   scene.fog = fog;
+  DETAIL_UNI.uLandAlpha.value = 1;
 
   ou.tReflect.value = reflRT.texture;
   ou.uReflOn.value = 1;
@@ -3538,9 +3838,9 @@ function renderReflection() {
 const _baseRender = renderer.render.bind(renderer);
 renderer.render = (s, c) => {
   const main = s === scene && c === camera;
-  if (main) { updateDetail(); updateWakes(); updateSunShadow(); renderReflection(); }
+  if (main) { applyWeather(); updateDetail(); updateWakes(); updateSunShadow(); renderReflection(); }
   _baseRender(s, c);
-  if (main) renderGodRays();
+  if (main) { renderGodRays(); renderLensRain(); }
 };
 
 // --- Animate ---
