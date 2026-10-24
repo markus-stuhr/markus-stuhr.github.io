@@ -614,6 +614,9 @@ vec4 cloudLayer(vec3 d, int oct) {
 vec3 skyReflected(vec3 d, float lift) {
   d = normalize(vec3(d.x, max(d.y, 0.0) + lift, d.z));
   vec3 col = skyBase(d) - vec3(0.12) * exp(-d.y * 28.0);   // without the haze band
+  // ...and without the wide glow around the sun: mirrored over a rippled sea it lit up the
+  // whole distant water against the light; the glint (spec) draws the sun's own path
+  col -= vec3(1.0, 0.85, 0.6) * 0.2 * pow(max(dot(d, uSunDir), 0.0), 8.0) * uSunI;
   vec4 c = cloudLayer(d, 2);
   return mix(col, c.rgb, c.a * 0.55);
 }
@@ -820,7 +823,7 @@ void main() {
   vec3 scatterCol = vec3(0.02, 0.30, 0.30);
   float NdL = max(dot(N, L), 0.0);
   vec3 Hs = normalize(L + N * 0.6);
-  float sss = pow(clamp(dot(V, -Hs), 0.0, 1.0), 4.0) * 2.5 * max(h + 0.35, 0.0);
+  float sss = pow(clamp(dot(V, -Hs), 0.0, 1.0), 4.0) * 2.5 * max(h + 0.35, 0.0) * exp(-dist / 1500.0);   // crest glow only nearby
   // sails/hulls shade the water (no direct sun, glint or glow); clouds dim the sun itself
   float shadowV = sunVisibility(vWorld);
   float shade = mix(1.0, shadowV, uSunI);
@@ -836,7 +839,7 @@ void main() {
 
   // Sun glint: GGX, roughened with distance so far glitter aggregates into a path
   // far glitter widens only a little: a broad lobe at full strength whited out the whole horizon
-  float rough = clamp(0.04 + 0.03 * gust * windF + dist / 30000.0 + foot * 0.01, 0.0, 0.16);
+  float rough = clamp(0.04 + 0.03 * gust * windF + dist / 80000.0 + foot * 0.005, 0.0, 0.09);
   float a2 = rough * rough;
   vec3 H = normalize(L + V);
   float NdH = max(dot(N, H), 0.0);
@@ -844,7 +847,7 @@ void main() {
   float D = a2 / (3.14159 * dd * dd);
   float Fh = 0.02 + 0.98 * pow(1.0 - max(dot(H, V), 0.0), 5.0);
   vec3 spec = vec3(9.0, 8.0, 6.5) * mix(vec3(1.0), vec3(1.0, 0.55, 0.3), uDusk) * D * Fh * NdL / max(4.0 * NdV * max(dot(N, L), 0.05), 0.05);
-  spec = min(spec, vec3(40.0)) * mix(1.0, 0.3, smoothstep(1500.0, 9000.0, dist));
+  spec = min(spec, vec3(40.0)) * mix(1.0, 0.15, smoothstep(800.0, 6000.0, dist));
 
   // visibility of the reflection per source: sky + clouds, land, boats
   const float REFL_SKY = 0.6, REFL_LAND = 0.6, REFL_BOAT = 0.8;
