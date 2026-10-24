@@ -3781,7 +3781,14 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       vec2 q = vec2(vUv.x * uAspect, vUv.y);
       float t = uTime;
       float h = water(q, t);
-      if (h < 0.01) discard;
+      float vis = clamp(uRain * 1.6, 0.0, 1.0);
+      if (h < 0.01) {
+        // soft shadow each drop casts down-right on the glass
+        float hs = water(q + vec2(-0.0025, 0.0035), t);
+        if (hs < 0.01) discard;
+        gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.0, 0.6, hs) * 0.16 * vis);
+        return;
+      }
       float e = 0.0015;
       vec2 n = vec2(water(q + vec2(e, 0.0), t) - h, water(q + vec2(0.0, e), t) - h) / e;
       n *= min(1.0, 3.0 / max(length(n), 1e-3));   // the dome's edge is near-vertical: cap the bend (max ~6 % of the screen)
@@ -3801,7 +3808,10 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       float edgeLine = smoothstep(0.0, 0.12, h) * (1.0 - smoothstep(0.12, 0.32, h));
       float lightSide = clamp(dot(-nd, normalize(vec2(-0.6, 0.8))), 0.0, 1.0);
       c += vec3(0.95) * edgeLine * (0.08 + 0.32 * lightSide);
-      gl_FragColor = vec4(c, smoothstep(0.0, 0.12, h) * clamp(uRain * 1.6, 0.0, 1.0));
+      // contour: a fine darker line on the side turned away from the light
+      float shadowSide = clamp(dot(-nd, normalize(vec2(0.6, -0.8))), 0.0, 1.0);
+      c *= 1.0 - edgeLine * (0.12 + 0.38 * shadowSide);
+      gl_FragColor = vec4(c, smoothstep(0.0, 0.12, h) * vis);
     }`,
   transparent: true, depthTest: false, depthWrite: false,
 }));
