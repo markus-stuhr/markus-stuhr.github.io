@@ -633,7 +633,11 @@ vec3 acesFit(vec3 x) {
 // sun, violet-blue opposite, grey under overcast, dark at night.
 vec3 fogSky(vec3 v) {
   vec3 d = normalize(vec3(v.x, 0.0, v.z) + vec3(0.0, 0.03 * length(v.xz) + 1e-4, 0.0));
-  return pow(acesFit(skyBase(d) * 1.1), vec3(1.0 / 2.2));
+  vec3 c = skyBase(d);
+  // under overcast / rain the horizon is the cloud deck, a touch darker - not the clear sky
+  vec3 deck = vec3(0.46, 0.49, 0.54) * (1.0 - 0.3 * uRain) * mix(0.04, 1.0, uDay) * 0.9;
+  c = mix(c, deck, clamp(uOvercast * 0.92 + uRain * 0.3, 0.0, 1.0));
+  return pow(acesFit(c * 1.1), vec3(1.0 / 2.2));
 }
 `;
 
@@ -4106,13 +4110,17 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       float tt = t * (0.12 + 0.18 * h21(vec2(id, seed + 1.0))) + r0 * 13.0;
       float k = floor(tt), ph = fract(tt);
       float S = (k + smoothstep(0.0, 0.3, ph)) * 0.1 + r0;
-      float y = 1.15 - fract(S) * 1.3;                       // wraps off-screen, then a new pass
       vec2 cid = vec2(id + floor(S) * 37.0, seed);
+      // each pass starts at a random spot on the glass (not at the top edge) and slides off
+      // the bottom; it appears gently, as if it had just gathered there
+      float y0 = mix(0.15, 1.0, h21(cid + 6.0));
+      float y = y0 - fract(S) * (y0 + 0.12);
+      float born = smoothstep(0.0, 0.04, fract(S));
       float r = h21(cid);
       if (r > 0.012 + 0.03 * uRain) return vec2(0.0);   // only a few run; most just sit
       // the drop keeps its lane for the whole pass (no sideways hops), with a slight meander
       float x = (id + 0.5 + (h21(cid + 3.0) - 0.5) * 0.6) * cw + sin(q.y * 23.0 + r * 6.0) * 0.006;
-      float rad = mix(0.005, 0.009, h21(cid + 2.0));
+      float rad = max(mix(0.0025, 0.0045, h21(cid + 2.0)) * born, 1e-4);   // half the earlier size
       vec2 d = vec2(q.x - x, (q.y - y) * 0.8);
       float body = dome(length(d), rad);
       // no bead chains: just a faint thin film where the drop has been
