@@ -611,13 +611,16 @@ vec4 cloudLayer(vec3 d, int oct) {
 // white cloud and blue sky from pixel to pixel)
 // lift: a wind-roughened sea tilts the mirror directions up on average, so grazing views
 // see more of the blue sky above the horizon instead of only the pale horizon band
-vec3 skyReflected(vec3 d, float lift) {
-  d = normalize(vec3(d.x, max(d.y, 0.0) + lift, d.z));
+vec3 skyReflected(vec3 dIn, float lift) {
+  // the lift only brightens/darkens the sky colour; clouds are looked up in the true mirror
+  // direction, otherwise distant water showed clouds from much higher up the sky
+  vec3 dTrue = normalize(vec3(dIn.x, max(dIn.y, 0.0), dIn.z));
+  vec3 d = normalize(vec3(dIn.x, max(dIn.y, 0.0) + lift, dIn.z));
   vec3 col = skyBase(d) - vec3(0.12) * exp(-d.y * 28.0);   // without the haze band
   // ...and without the wide glow around the sun: mirrored over a rippled sea it lit up the
   // whole distant water against the light; the glint (spec) draws the sun's own path
   col -= vec3(1.0, 0.85, 0.6) * 0.2 * pow(max(dot(d, uSunDir), 0.0), 8.0) * uSunI;
-  vec4 c = cloudLayer(d, 2);
+  vec4 c = cloudLayer(dTrue, 2);
   return mix(col, c.rgb, c.a * 0.55);
 }
 vec3 skyRadiance(vec3 d, int oct) {
