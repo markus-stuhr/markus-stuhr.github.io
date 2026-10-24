@@ -556,7 +556,7 @@ vec3 skyBase(vec3 d) {
   vec3 col = mix(horizon, zenith, pow(y, 0.38));
   col += vec3(0.12, 0.12, 0.12) * exp(-y * 28.0);                       // thin haze band
   float s = max(dot(d, uSunDir), 0.0);
-  col += vec3(1.0, 0.85, 0.6) * (0.25 * pow(s, 6.0) + 0.6 * pow(s, 90.0)) * uSunI;
+  col += vec3(1.0, 0.85, 0.6) * (0.25 * pow(s, 6.0) + 0.5 * pow(s, 400.0)) * uSunI;   // wide glow + tight halo
   col = mix(col, vec3(0.40, 0.44, 0.50) + 0.12 * exp(-y * 6.0), uOvercast * 0.85);   // grey stratus sky
   col = mix(col, vec3(0.27, 0.30, 0.34), uRain * 0.45);
   return col;
@@ -981,7 +981,7 @@ const skyMat = new THREE.ShaderMaterial({
       vec3 d = normalize(vDir);
       vec3 col = skyRadiance(d, 5);
       float s = max(dot(d, uSunDir), 0.0);
-      col += vec3(30.0, 26.0, 20.0) * smoothstep(0.9994, 0.9997, s) * uSunI * uSunI;   // sun disc
+      col += vec3(30.0, 26.0, 20.0) * smoothstep(0.99993, 0.99997, s) * uSunI * uSunI;   // sun disc, ~0.5° radius
       gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
       #include <colorspace_fragment>
       gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 1.0 - smoothstep(0.0, 0.035, d.y));
