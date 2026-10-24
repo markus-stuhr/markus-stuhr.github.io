@@ -335,12 +335,14 @@
 <script type="importmap">
 {
   "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js"
+    "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
   }
 }
 </script>
 <script type="module">
 import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
 
 // Cache map tiles + libraries so reloads don't refetch everything
 if ('serviceWorker' in navigator) {
@@ -392,6 +394,128 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // Retina at 2x costs ~1.8x the pixels for little visible gain
 document.body.appendChild(renderer.domElement);
+
+// ===================== WebXR (Quest) =====================
+// Pattern from simulator-vr (see Vault "WebXR Learnings"): the headset owns the camera, so it
+// rides in a dolly parked diagonally above/behind the boat; on desktop the dolly stays at
+// the origin and the normal chase camera works unchanged.
+renderer.xr.enabled = true;
+renderer.xr.setFoveation(1);                 // cheaper pixels at the edges
+renderer.xr.setFramebufferScaleFactor(0.9);  // a little under native: the ocean shader is heavy
+const vrButton = VRButton.createButton(renderer);
+vrButton.style.zIndex = '30';                // above the start-menu overlay
+vrButton.style.bottom = '124px';             // clear of the HUD / replay bar
+document.body.appendChild(vrButton);
+const dolly = new THREE.Group();
+dolly.add(camera);
+scene.add(dolly);
+let vrSteer = 0;       // right thumbstick X -> rudder
+let followYaw = null;  // smoothed chase yaw
+let vrOrbitYaw = 0;    // left thumbstick X -> orbit offset
+let vrBtnA = false, vrBtnB = false, vrBtnX = false;
+renderer.xr.addEventListener('sessionstart', () => {
+  if (gameState === 'menu') startGame();     // the DOM menu is invisible inside VR
+  camZoom = 0.6;
+  followYaw = null;
+  vrOrbitYaw = 0;
+  setVRQuality(true);
+});
+renderer.xr.addEventListener('sessionend', () => {
+  dolly.position.set(0, 0, 0);
+  dolly.rotation.set(0, 0, 0);
+  vrSteer = 0;
+  setVRQuality(false);
+});
+// Lighter paths for the Quest: fewer per-pixel waves/cloud octaves/shadow and reflection
+// taps (uVR in the shaders), a smaller shadow map; god rays and lens drops are skipped
+function setVRQuality(on) {
+  WX_UNI.uVR.value = on ? 1 : 0;
+  const size = on ? 2048 : 4096;
+  if (sun.shadow.mapSize.x !== size) {
+    sun.shadow.mapSize.set(size, size);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+    oceanMat.uniforms.uShadowTexel.value.set(1 / size, 1 / size);
+  }
+  fpsPanel.visible = on && fpsPanelOn;
+}
+function pollVRInput(dt) {
+  vrSteer = 0;
+  const session = renderer.xr.getSession();
+  if (!session) return;
+  for (const src of session.inputSources) {
+    const gp = src.gamepad;
+    if (!gp) continue;
+    if (src.handedness === 'right') {
+      const x = gp.axes[2] ?? 0;               // xr-standard: thumbstick on axes 2/3
+      if (Math.abs(x) > 0.15) vrSteer = x;
+      const a = gp.buttons[4]?.pressed ?? false;   // A: restart race / play-pause replay
+      if (a && !vrBtnA) {
+        if (gameState === 'racing') restartRace();
+        else if (gameState === 'replay') document.getElementById('rpPlay').click();
+      }
+      vrBtnA = a;
+      const b = gp.buttons[5]?.pressed ?? false;   // B: fps panel on/off
+      if (b && !vrBtnB) { fpsPanelOn = !fpsPanelOn; fpsPanel.visible = fpsPanelOn; }
+      vrBtnB = b;
+      // replay: right stick Y scrubs (push forward = ahead)
+      const y = gp.axes[3] ?? 0;
+      if (gameState === 'replay' && Math.abs(y) > 0.3) {
+        replay.ms = Math.max(0, Math.min(replay.duration, replay.ms - y * 60000 * dt * 3));
+        replay.seeked = true;
+      }
+    } else if (src.handedness === 'left') {
+      const x = gp.axes[2] ?? 0;               // orbit around the boat
+      if (Math.abs(x) > 0.15) vrOrbitYaw -= x * 1.5 * dt;
+      const y = gp.axes[3] ?? 0;               // push forward = zoom in
+      if (Math.abs(y) > 0.3) camZoom = Math.max(0.15, Math.min(6, camZoom * Math.exp(y * 1.2 * dt)));
+      const xb = gp.buttons[4]?.pressed ?? false;  // X: recentre the orbit behind the boat
+      if (xb && !vrBtnX) vrOrbitYaw = 0;
+      vrBtnX = xb;
+    }
+  }
+}
+// Chase rig: level (no pitch/roll), yaw eased behind the boat, fixed height - comfort rules
+function updateVRDolly(dt) {
+  const targetYaw = boatGroup.rotation.y;
+  if (followYaw === null) followYaw = targetYaw;
+  followYaw += normAngle(targetYaw - followYaw) * (1 - Math.pow(0.1, dt));
+  const effYaw = followYaw + vrOrbitYaw;
+  const h = -effYaw;
+  const dist = CAM_DIST * camZoom;
+  dolly.position.set(
+    boatGroup.position.x - Math.sin(h) * dist * Math.cos(CAM_BASE_ELEV),
+    dist * Math.sin(CAM_BASE_ELEV),
+    boatGroup.position.z + Math.cos(h) * dist * Math.cos(CAM_BASE_ELEV)
+  );
+  dolly.rotation.y = effYaw;
+}
+// Frame-rate panel in front of the rig (B toggles): the only way to judge the Quest's load
+let fpsPanelOn = true;
+const fpsCanvas = document.createElement('canvas');
+fpsCanvas.width = 256; fpsCanvas.height = 64;
+const fpsTex = new THREE.CanvasTexture(fpsCanvas);
+const fpsPanel = new THREE.Mesh(new THREE.PlaneGeometry(0.32, 0.08),
+  new THREE.MeshBasicMaterial({ map: fpsTex, transparent: true, depthTest: false, fog: false }));
+fpsPanel.position.set(0, 1.15, -1.2);   // just below eye height in local-floor space
+fpsPanel.renderOrder = 999;
+fpsPanel.visible = false;
+dolly.add(fpsPanel);
+let fpsFrames = 0, fpsLast = performance.now();
+function updateFpsPanel() {
+  fpsFrames++;
+  const now = performance.now();
+  if (now - fpsLast < 500) return;
+  const fps = fpsFrames * 1000 / (now - fpsLast);
+  fpsFrames = 0; fpsLast = now;
+  const ctx = fpsCanvas.getContext('2d');
+  ctx.clearRect(0, 0, 256, 64);
+  ctx.fillStyle = 'rgba(8,22,40,0.7)'; ctx.fillRect(0, 0, 256, 64);
+  ctx.fillStyle = fps >= 68 ? '#6ee7a0' : fps >= 55 ? '#ffd166' : '#ff6b6b';
+  ctx.font = 'bold 34px monospace';
+  ctx.fillText(`${fps.toFixed(0)} fps`, 18, 44);
+  fpsTex.needsUpdate = true;
+}
+// =========================================================
 
 // --- Lights ---
 const sun = new THREE.DirectionalLight(0xfff4e0, 1.5);
@@ -536,6 +660,7 @@ const WX_UNI = {
   uHazeDist: { value: 9000 },    // aerial perspective length (half the visibility)
   uDay: { value: 1 },            // 0 night .. 1 full daylight (from the sun's elevation)
   uDusk: { value: 0 },           // warm low-sun / twilight tint
+  uVR: { value: 0 },             // 1 inside a VR session: lighter shader paths for the Quest
 };
 
 // Shared GLSL value noise (sky, clouds, water, beach surf)
@@ -553,7 +678,7 @@ float vnoise(vec2 p) {
 const SKY_GLSL = /* glsl */`
 uniform vec3 uSunDir;
 uniform vec2 uCloudOff;
-uniform float uCloudCover, uOvercast, uSunI, uRain, uHazeDist, uDay, uDusk;
+uniform float uCloudCover, uOvercast, uSunI, uRain, uHazeDist, uDay, uDusk, uVR;
 ${NOISE_GLSL}
 float fbm(vec2 p, int oct) {
   float v = 0.0, a = 0.5;
@@ -620,7 +745,7 @@ vec3 skyReflected(vec3 dIn, float lift) {
   // ...and without the wide glow around the sun: mirrored over a rippled sea it lit up the
   // whole distant water against the light; the glint (spec) draws the sun's own path
   col -= vec3(1.0, 0.85, 0.6) * 0.2 * pow(max(dot(d, uSunDir), 0.0), 8.0) * uSunI;
-  vec4 c = cloudLayer(dTrue, 2);
+  vec4 c = cloudLayer(dTrue, uVR > 0.5 ? 1 : 2);
   return mix(col, c.rgb, c.a * 0.55);
 }
 vec3 skyRadiance(vec3 d, int oct) {
@@ -731,6 +856,7 @@ float sunVisibility(vec3 wp) {
   vec3 c = sc.xyz / sc.w;
   if (c.x <= 0.0 || c.y <= 0.0 || c.x >= 1.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
   float z = c.z - 0.0015, v = 0.0;
+  if (uVR > 0.5) return shadowTap(c.xy, z);   // VR: one bilinear group (4 taps) instead of 16
   for (int y = 0; y < 2; y++) for (int x = 0; x < 2; x++)
     v += shadowTap(c.xy + (vec2(x, y) - 0.5) * 1.5 * uShadowTexel, z);
   return v / 4.0;
@@ -758,6 +884,7 @@ void main() {
   vec3 n = vec3(0.0, 1.0, 0.0);
   float pinch = 0.0;
   for (int i = 0; i < NW; i++) {
+    if (uVR > 0.5 && i >= 8) break;   // VR: only the 8 longest waves per pixel
     vec4 a = uWaveA[i]; vec4 b = uWaveB[i];
     float lambda = 6.2831853 / a.z;
     float fade = smoothstep(1.5 * foot, 6.0 * foot, lambda);   // per-pixel band limit -> no shimmer
@@ -817,7 +944,8 @@ void main() {
     vec2 ruv = rc.xy / rc.w + N.xz * (0.05 / (1.0 + dist / 2500.0));
     // light 5-tap read: softens the 3/4-res texels without smearing the land
     vec2 tx = 0.8 / vec2(textureSize(tReflect, 0));
-    vec4 ro = texture2D(tReflect, ruv) * 0.4
+    vec4 ro = texture2D(tReflect, ruv);
+    if (uVR < 0.5) ro = ro * 0.4
             + texture2D(tReflect, ruv + tx * vec2( 0.7,  1.0)) * 0.15
             + texture2D(tReflect, ruv + tx * vec2(-0.7, -1.0)) * 0.15
             + texture2D(tReflect, ruv + tx * vec2( 1.0, -0.7)) * 0.15
@@ -1033,7 +1161,7 @@ const skyMat = new THREE.ShaderMaterial({
     #include <common>
     void main() {
       vec3 d = normalize(vDir);
-      vec3 col = skyRadiance(d, 5);
+      vec3 col = skyRadiance(d, uVR > 0.5 ? 3 : 5);
       float s = max(dot(d, uSunDir), 0.0);
       col += vec3(30.0, 26.0, 20.0) * mix(vec3(1.0), vec3(1.0, 0.55, 0.3), uDusk)
            * smoothstep(0.999985, 0.999992, s) * uSunI * uSunI;   // sun disc, real size (~0.27° radius)
@@ -1056,7 +1184,7 @@ const skyDome = new THREE.Mesh(new THREE.SphereGeometry(30000, 48, 24), skyMat);
 skyDome.renderOrder = -10;
 skyDome.frustumCulled = false;
 scene.add(skyDome);
-skyDome.onBeforeRender = (r, s, cam) => skyDome.position.copy(cam.position);
+skyDome.onBeforeRender = (r, s, cam) => skyDome.position.setFromMatrixPosition(cam.matrixWorld);
 
 let waveAmp = 1;   // slowly drifts within ±25% of waveBase (see updateEnvironment)
 let waveBase = 1;  // base sea state chosen in the start menu
@@ -2513,6 +2641,8 @@ function updateBoat(dt) {
   let rudderTarget = 0;
   if (left)  rudderTarget -= boat.maxRudder;
   if (right) rudderTarget += boat.maxRudder;
+  rudderTarget += vrSteer * boat.maxRudder;   // right thumbstick (VR), proportional
+  rudderTarget = Math.max(-boat.maxRudder, Math.min(boat.maxRudder, rudderTarget));
   boat.rudder += (rudderTarget - boat.rudder) * (1 - Math.pow(0.02, dt)); // eases like a tiller
 
   // The rudder only bites when the boat has way on. Bow turns with the helm,
@@ -3312,7 +3442,7 @@ function updateReplayFrame(dt) {
   const slider = document.getElementById('rpSeek');
   if (!slider.matches(':active')) slider.value = String(Math.round(replay.ms / replay.duration * 1000));
   document.getElementById('rpTime').textContent = `${fmtClock(replay.ms)} / ${fmtClock(replay.duration)}`;
-  chaseCamera();
+  if (renderer.xr.isPresenting) updateVRDolly(dt); else chaseCamera();
   renderer.render(scene, camera);
 }
 
@@ -3498,7 +3628,7 @@ function updateWakes() {
     } else if (tr.px === null) tr.ls = leanRaw;
     tr.px = sx; tr.pz = sz; tr.pt = t;
     const lean = tr.ls;
-    _bows.push({ x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - camera.position.x, sz - camera.position.z) });
+    _bows.push({ x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - CAM_W.x, sz - CAM_W.z) });
     const p = tr.pts;
     const last = p[p.length - 1];
     // reset on restart, seek or teleport: also any jump faster than a boat can sail (>20 m/s), or
@@ -3552,11 +3682,12 @@ function updateWakes() {
   wakeCenter.set(Math.round(boatGroup.position.x / tex) * tex, Math.round(boatGroup.position.z / tex) * tex);
   const ca = renderer.getClearAlpha();
   renderer.getClearColor(_rClear);
+  const prevRT = renderer.getRenderTarget();
   renderer.setRenderTarget(wakeRT);
   renderer.setClearColor(0x000000, 0);
   renderer.clear();
-  _baseRender(wakeScene, wakeCam);
-  renderer.setRenderTarget(null);
+  passRender(wakeScene, wakeCam);
+  renderer.setRenderTarget(prevRT);
   renderer.setClearColor(_rClear, ca);
   const ou = oceanMat.uniforms;
   ou.tWake.value = wakeRT.texture;
@@ -3790,7 +3921,7 @@ function updateRain(tNow) {
   const fall = 9;                                            // m/s
   const wd = wind.from + Math.PI;                            // drift downwind
   const wx = Math.sin(wd) * wind.tws * 0.25, wz = -Math.cos(wd) * wind.tws * 0.25;
-  const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z;
+  const cx = CAM_W.x, cy = CAM_W.y, cz = CAM_W.z;
   for (let i = 0; i < RAIN_N; i++) {
     const k = i * 6;
     if (i >= n) { rainPos[k] = rainPos[k + 3] = 1e7; continue; }
@@ -4041,7 +4172,7 @@ function renderGodRays() {
   camera.getWorldDirection(_grDir);
   const facing = _grDir.dot(SUN_DIR);
   if (facing < 0.3) return;
-  _grP.copy(camera.position).addScaledVector(SUN_DIR, 20000);
+  _grP.copy(CAM_W).addScaledVector(SUN_DIR, 20000);
   grSun.position.copy(_grP);
   grSun.scale.setScalar(2000);   // light source for the rays: ~3° radius
   _grP.project(camera);
@@ -4214,16 +4345,17 @@ const _rBias = new THREE.Matrix4().set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5
 function renderReflection() {
   const ou = oceanMat.uniforms;
   ou.uReflOn.value = 0;
-  if (camera.position.y <= 0.05) return;
+  if (CAM_W.y <= 0.05) return;
   const pr = renderer.getPixelRatio();
-  const w = Math.max(1, Math.floor(innerWidth * pr * 0.75)), h = Math.max(1, Math.floor(innerHeight * pr * 0.75));
+  const w = inVR ? 1024 : Math.max(1, Math.floor(innerWidth * pr * 0.75));
+  const h = inVR ? 768 : Math.max(1, Math.floor(innerHeight * pr * 0.75));   // VR: one mono pass at about half an eye
   if (reflRT.width !== w || reflRT.height !== h) reflRT.setSize(w, h);
 
   // mirror the camera at y = 0 (same construction as three's Reflector)
   camera.updateMatrixWorld();
   _rRot.extractRotation(camera.matrixWorld);
-  reflCam.position.set(camera.position.x, -camera.position.y, camera.position.z);
-  _rLook.set(0, 0, -1).applyMatrix4(_rRot).add(camera.position);
+  reflCam.position.set(CAM_W.x, -CAM_W.y, CAM_W.z);
+  _rLook.set(0, 0, -1).applyMatrix4(_rRot).add(CAM_W);
   _rTarget.set(_rLook.x, -_rLook.y, _rLook.z);
   reflCam.up.set(0, 1, 0).applyMatrix4(_rRot).reflect(_rN);
   reflCam.lookAt(_rTarget);
@@ -4248,11 +4380,12 @@ function renderReflection() {
   // fog stays on: the terrain shader converts its fog mix for this linear target, so mirrored
   // islands get the same haze as the islands themselves (without it they looked stronger)
   DETAIL_UNI.uLandAlpha.value = 0.5;
+  const prevRT = renderer.getRenderTarget();
   renderer.setRenderTarget(reflRT);
   renderer.setClearColor(0x000000, 0);
   renderer.clear();
-  _baseRender(scene, reflCam);
-  renderer.setRenderTarget(null);
+  passRender(scene, reflCam);
+  renderer.setRenderTarget(prevRT);
   renderer.setClearColor(_rClear, ca);
   ocean.visible = true; skyDome.visible = true; scene.background = bg;
   DETAIL_UNI.uLandAlpha.value = 1;
@@ -4262,17 +4395,32 @@ function renderReflection() {
 }
 // Every main-view render gets its reflection first (the sim renders from three places)
 const _baseRender = renderer.render.bind(renderer);
+// Off-screen passes run with XR switched off, like three's own Reflector: otherwise XR
+// would swap in the headset cameras for our pass cameras
+function passRender(s, c) {
+  const xrOn = renderer.xr.enabled;
+  renderer.xr.enabled = false;
+  _baseRender(s, c);
+  renderer.xr.enabled = xrOn;
+}
+const CAM_W = new THREE.Vector3();   // camera position in the world (in VR it sits in the dolly)
+let inVR = false;
 renderer.render = (s, c) => {
   const main = s === scene && c === camera;
   if (main) {
+    inVR = renderer.xr.isPresenting;
+    if (inVR) { dolly.updateMatrixWorld(true); renderer.xr.updateCamera(camera); }   // this frame's head pose
+    camera.updateMatrixWorld();
+    CAM_W.setFromMatrixPosition(camera.matrixWorld);
     // near plane follows the camera height: from high up a fixed 0.1 m near plane left too
-    // little depth precision to separate shallow shores from the water (flickering edges)
-    const near = THREE.MathUtils.clamp(camera.position.y * 0.05, 0.1, 40);
+    // little depth precision to separate shallow shores from the water (flickering edges).
+    // In VR it stays fixed: changing it re-configures the XR session every time
+    const near = inVR ? 2 : THREE.MathUtils.clamp(CAM_W.y * 0.05, 0.1, 40);
     if (Math.abs(camera.near - near) > camera.near * 0.1) { camera.near = near; camera.updateProjectionMatrix(); }
     applyWeather(); updateDetail(); updateWakes(); updateSunShadow(); renderReflection();
   }
   _baseRender(s, c);
-  if (main) { renderGodRays(); renderLensRain(); }
+  if (main && !inVR) { renderGodRays(); renderLensRain(); }   // screen-space effects: not in stereo
 };
 
 // --- Animate ---
@@ -4282,10 +4430,14 @@ let t = 0;
 // 120 Hz displays would otherwise render twice as often for no visible benefit
 let lastFrame = 0;
 function animate(now) {
-  requestAnimationFrame(animate);
-  if (now - lastFrame < 1000 / 62) return;
-  lastFrame = now;
+  // XR drives the loop; on desktop 120 Hz displays are capped to 60 fps
+  if (!renderer.xr.isPresenting) {
+    if (now - lastFrame < 1000 / 62) return;
+    lastFrame = now;
+  }
   const dt = Math.min(clock.getDelta(), 0.05);
+  pollVRInput(dt);
+  if (renderer.xr.isPresenting && fpsPanel.visible) updateFpsPanel();
 
   // Menu: just the empty sea, slowly drifting, behind the overlay.
   if (gameState === 'menu') {
@@ -4295,8 +4447,10 @@ function animate(now) {
     stars.position.set(0, 0, 0);
     updateEnvironment(t);
     animateWaves(t);
-    camera.position.set(Math.sin(menuYaw) * 3 * M, 5.5 * M, Math.cos(menuYaw) * 3 * M);
-    camera.lookAt(Math.sin(menuYaw + 0.5) * 60 * M, 3 * M, Math.cos(menuYaw + 0.5) * 60 * M);
+    if (!renderer.xr.isPresenting) {
+      camera.position.set(Math.sin(menuYaw) * 3 * M, 5.5 * M, Math.cos(menuYaw) * 3 * M);
+      camera.lookAt(Math.sin(menuYaw + 0.5) * 60 * M, 3 * M, Math.cos(menuYaw + 0.5) * 60 * M);
+    }
     renderer.render(scene, camera);
     return;
   }
@@ -4372,7 +4526,7 @@ function animate(now) {
     }
   });
 
-  chaseCamera();
+  if (renderer.xr.isPresenting) updateVRDolly(dt); else chaseCamera();
 
   renderer.render(scene, camera);
 }
@@ -4380,7 +4534,7 @@ function animate(now) {
 // Start on the menu: empty sea behind the overlay.
 document.body.classList.add('menu');
 setWorldVisible(false);
-animate();
+renderer.setAnimationLoop(animate);   // instead of requestAnimationFrame: XR drives the loop in VR
 </script>
 </body>
 </html>
