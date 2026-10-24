@@ -3775,7 +3775,7 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       float above = q.y - y;
       float tr = step(0.0, above) * (1.0 - smoothstep(0.0, trailLen, above));
       float film = smoothstep(rad, rad * 0.6, abs(q.x - x)) * tr;   // as wide as the drop
-      return vec2(max(body, film * 0.12), film + body);
+      return vec2(max(body, film * 0.016), film + body);   // film height -> ~5 % visibility
     }
     float water(vec2 q, float t) {
       vec2 a = running(q, t, 11.0, 0.0), b = running(q + vec2(0.37, 0.0), t * 0.8, 17.0, 5.0);
