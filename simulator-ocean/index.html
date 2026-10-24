@@ -3748,7 +3748,7 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       vec2 cid = id + floor(s0) * vec2(17.3, 31.7);
       if (h21(cid + 9.1) > 0.015 + 0.06 * uRain) return 0.0;
       vec2 p = (vec2(h21(cid + 3.1), h21(cid + 7.7)) - 0.5) * 0.6;
-      float size = mix(0.04, 0.14, pow(h21(cid + 1.7), 2.0)) * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.75, 1.0, life));
+      float size = mix(0.04, 0.105, pow(h21(cid + 1.7), 2.0)) * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.75, 1.0, life));
       return dome(length(f - p), size);
     }
     // drops running down singly; x = body, y = trail (wipes the sitting drops). Each pass
