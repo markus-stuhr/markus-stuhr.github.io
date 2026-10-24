@@ -571,7 +571,7 @@ vec3 skyBase(vec3 d) {
   vec3 col = mix(horizon, zenith, pow(y, 0.38));
   col += vec3(0.12, 0.12, 0.12) * exp(-y * 28.0);                       // thin haze band
   float s = max(dot(d, uSunDir), 0.0);
-  col += vec3(1.0, 0.85, 0.6) * (0.25 * pow(s, 6.0) + 0.5 * pow(s, 400.0)) * uSunI;   // wide glow + tight halo
+  col += vec3(1.0, 0.85, 0.6) * (0.2 * pow(s, 8.0) + 0.35 * pow(s, 1500.0)) * uSunI;   // wide glow + tight halo
   col = mix(col, vec3(0.40, 0.44, 0.50) + 0.12 * exp(-y * 6.0), uOvercast * 0.85);   // grey stratus sky
   col = mix(col, vec3(0.27, 0.30, 0.34), uRain * 0.45);
   // time of day: deep blue-black night, warm glow along the horizon towards a low sun
@@ -1019,7 +1019,7 @@ const skyMat = new THREE.ShaderMaterial({
       vec3 col = skyRadiance(d, 5);
       float s = max(dot(d, uSunDir), 0.0);
       col += vec3(30.0, 26.0, 20.0) * mix(vec3(1.0), vec3(1.0, 0.55, 0.3), uDusk)
-           * smoothstep(0.99993, 0.99997, s) * uSunI * uSunI;   // sun disc, ~0.5° radius
+           * smoothstep(0.999985, 0.999992, s) * uSunI * uSunI;   // sun disc, real size (~0.27° radius)
       // stars at night (hidden by cloud and by the haze near the horizon)
       col += starsCol(d, uStarRot) * smoothstep(0.35, 0.0, uDay) * (1.0 - uCloudCover * 0.85) * (1.0 - uOvercast);
       gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
@@ -3484,7 +3484,12 @@ function updateWakes() {
     _bows.push({ x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - camera.position.x, sz - camera.position.z) });
     const p = tr.pts;
     const last = p[p.length - 1];
-    if (last && (t < last.t || Math.hypot(sx - last.x, sz - last.z) > 80)) p.length = 0;   // reset / seek / teleport
+    // reset on restart, seek or teleport: also any jump faster than a boat can sail (>20 m/s), or
+    // movement while the clock stands still - scrubbing the replay drew straight lines otherwise
+    if (last) {
+      const jump = Math.hypot(sx - last.x, sz - last.z), dtt = t - last.t;
+      if (t < last.t || jump > 80 || (jump > 4 && jump / Math.max(dtt, 1e-3) > 20)) { p.length = 0; tr.px = null; tr.vs = 0; }
+    }
     const lp = p[p.length - 1];
     if (!lp) p.push({ x: sx, z: sz, t, v: 0, l: lean });
     else {
@@ -4021,7 +4026,7 @@ function renderGodRays() {
   if (facing < 0.3) return;
   _grP.copy(camera.position).addScaledVector(SUN_DIR, 20000);
   grSun.position.copy(_grP);
-  grSun.scale.setScalar(4200);
+  grSun.scale.setScalar(2000);   // light source for the rays: ~3° radius
   _grP.project(camera);
   const sx = _grP.x * 0.5 + 0.5, sy = _grP.y * 0.5 + 0.5;
   // fade out as the sun leaves the frame
