@@ -3908,7 +3908,13 @@ function renderReflection() {
 const _baseRender = renderer.render.bind(renderer);
 renderer.render = (s, c) => {
   const main = s === scene && c === camera;
-  if (main) { applyWeather(); updateDetail(); updateWakes(); updateSunShadow(); renderReflection(); }
+  if (main) {
+    // near plane follows the camera height: from high up a fixed 0.1 m near plane left too
+    // little depth precision to separate shallow shores from the water (flickering edges)
+    const near = THREE.MathUtils.clamp(camera.position.y * 0.05, 0.1, 40);
+    if (Math.abs(camera.near - near) > camera.near * 0.1) { camera.near = near; camera.updateProjectionMatrix(); }
+    applyWeather(); updateDetail(); updateWakes(); updateSunShadow(); renderReflection();
+  }
   _baseRender(s, c);
   if (main) { renderGodRays(); renderLensRain(); }
 };
