@@ -3746,7 +3746,7 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       float s0 = t * 0.12 + h21(id) * 7.0;
       float life = fract(s0);
       vec2 cid = id + floor(s0) * vec2(17.3, 31.7);
-      if (h21(cid + 9.1) > 0.01 + 0.04 * uRain) return 0.0;
+      if (h21(cid + 9.1) > 0.015 + 0.06 * uRain) return 0.0;
       vec2 p = (vec2(h21(cid + 3.1), h21(cid + 7.7)) - 0.5) * 0.6;
       float size = mix(0.04, 0.14, pow(h21(cid + 1.7), 2.0)) * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.75, 1.0, life));
       return dome(length(f - p), size);
@@ -3764,7 +3764,7 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       float y = 1.15 - fract(S) * 1.3;                       // wraps off-screen, then a new pass
       vec2 cid = vec2(id + floor(S) * 37.0, seed);
       float r = h21(cid);
-      if (r > 0.04 + 0.1 * uRain) return vec2(0.0);
+      if (r > 0.012 + 0.03 * uRain) return vec2(0.0);   // only a few run; most just sit
       // the drop keeps its lane for the whole pass (no sideways hops), with a slight meander
       float x = (id + 0.5 + (h21(cid + 3.0) - 0.5) * 0.6) * cw + sin(q.y * 23.0 + r * 6.0) * 0.006;
       float rad = mix(0.005, 0.009, h21(cid + 2.0));
@@ -3791,7 +3791,7 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
         // soft shadow each drop casts down-right on the glass
         float hs = water(q + vec2(-0.0025, 0.0035), t);
         if (hs < 0.01) discard;
-        gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.0, 0.6, hs) * 0.16 * vis);
+        gl_FragColor = vec4(0.0, 0.0, 0.0, smoothstep(0.0, 0.6, hs) * 0.06 * vis);
         return;
       }
       float e = 0.0015;
@@ -3815,7 +3815,7 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       c += vec3(0.95) * edgeLine * (0.08 + 0.32 * lightSide);
       // contour: a fine darker line on the side turned away from the light
       float shadowSide = clamp(dot(-nd, normalize(vec2(0.6, -0.8))), 0.0, 1.0);
-      c *= 1.0 - edgeLine * (0.12 + 0.38 * shadowSide);
+      c *= 1.0 - edgeLine * (0.05 + 0.17 * shadowSide);
       gl_FragColor = vec4(c, smoothstep(0.0, 0.12, h) * vis);
     }`,
   transparent: true, depthTest: false, depthWrite: false,
