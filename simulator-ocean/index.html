@@ -240,7 +240,7 @@
         <button data-value="sunset">Sunset</button>
         <button data-value="night">Night</button>
       </div>
-      <div class="replay-info" style="margin-top:6px"><small>Replay uses the race's real time, Live the current time</small></div>
+      <div class="replay-info" style="margin-top:6px"><small>Replay uses the race's real time, Live the current time · night lights © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</small></div>
     </div>
     <div class="menu-section">
       <div class="sec-label">Visibility</div>
@@ -1949,6 +1949,7 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
   const txMin = Math.floor(lngToTile(lngW, SZ)), txMax = Math.floor(lngToTile(lngE, SZ));
   const tyMin = Math.floor(latToTile(latN, SZ)), tyMax = Math.floor(latToTile(latS, SZ));
   const nx = txMax - txMin + 1, ny = tyMax - tyMin + 1;
+  window.terrainBBox = { s: tileToLat(tyMax + 1, SZ), n: tileToLat(tyMin, SZ), w: tileToLng(txMin, SZ), e: tileToLng(txMax + 1, SZ) };
 
   // --- DEM (terrain-RGB) + satellite mosaic on one shared 512 px/tile pixel grid ---
   const TP = 512;
@@ -3584,6 +3585,147 @@ function updateSunShadow() {
   }
 }
 
+// --- Night lights from OpenStreetMap ---
+// When dusk falls, buildings, roads, marinas and piers of the terrain area are fetched once
+// from Overpass and turned into glowing points: warm windows (not every house is lit), orange
+// street lamps every ~30 m, brighter white clusters at marinas/piers. Additive sprites that
+// fade with fog; the reflection pass mirrors them into the water.
+const nightLights = { mesh: null, key: '', loading: false };
+const nightLightMat = new THREE.ShaderMaterial({
+  uniforms: { uOn: { value: 0 }, uPx: { value: 1 }, uFogD: { value: 0.0001 } },
+  vertexShader: /* glsl */`
+    attribute vec3 color;
+    attribute float aSize;
+    uniform float uPx, uFogD;
+    varying vec3 vCol;
+    varying float vFade;
+    void main() {
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * mv;
+      float d = -mv.z;
+      gl_PointSize = clamp(aSize * uPx * 260.0 / d, 2.2 * uPx, 22.0 * uPx);   // far lights stay visible pinpoints
+      vFade = exp(-pow(d * uFogD, 2.0));
+      vCol = color;
+    }`,
+  fragmentShader: /* glsl */`
+    uniform float uOn;
+    varying vec3 vCol;
+    varying float vFade;
+    void main() {
+      vec2 p = gl_PointCoord * 2.0 - 1.0;
+      float r = dot(p, p);
+      float a = (exp(-r * 9.0) + exp(-r * 2.2) * 0.3) * uOn * vFade;
+      if (a < 0.01) discard;
+      gl_FragColor = vec4(vCol * a * 2.2, a);
+    }`,
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+});
+// Overpass is often busy: try a few public instances, each with a time limit
+async function overpass(q) {
+  const hosts = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter',
+                 'https://overpass.private.coffee/api/interpreter'];
+  for (const url of hosts) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 25000);
+    try {
+      const res = await fetch(url, { method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctl.signal,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+      if (res.ok) { const j = await res.json(); clearTimeout(timer); return j; }
+    } catch (e) { /* next host */ }
+    clearTimeout(timer);
+  }
+  throw new Error('overpass unavailable');
+}
+function buildNightLights(pos, col, size, key) {
+  if (nightLights.mesh) { scene.remove(nightLights.mesh); nightLights.mesh.geometry.dispose(); }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('aSize', new THREE.Float32BufferAttribute(size, 1));
+  nightLights.mesh = new THREE.Points(geo, nightLightMat);
+  nightLights.mesh.frustumCulled = false;
+  scene.add(nightLights.mesh);
+  nightLights.key = key;
+}
+// OSM features -> compact lists: buildings [lat,lon], lamps [lat,lon] every ~30 m along
+// roads, marinas/piers [lat,lon,isMarina]. The BVI area ships pre-extracted
+// (osm-lights-bvi.json, © OpenStreetMap contributors, ODbL); elsewhere Overpass is asked.
+function osmToLightLists(data) {
+  const B = [], L = [], M = [];
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (const el of data.elements) {
+    const t = el.tags || {};
+    const c = el.center || (el.lat !== undefined ? { lat: el.lat, lon: el.lon } : null);
+    if (t.leisure === 'marina' || t.man_made === 'pier') { if (c) M.push([c.lat, c.lon, t.leisure === 'marina' ? 1 : 0]); }
+    else if (t.building) { if (c && t.building !== 'ruins') B.push([c.lat, c.lon]); }
+    else if (t.highway && el.geometry) {
+      if (t.highway === 'service' && rnd() > 0.35) continue;      // most service tracks unlit
+      let carry = rnd() * 30;
+      for (let i = 1; i < el.geometry.length; i++) {
+        const g0 = el.geometry[i - 1], g1 = el.geometry[i];
+        const len = Math.hypot((g1.lon - g0.lon) * 111320 * Math.cos(g0.lat * Math.PI / 180), (g1.lat - g0.lat) * 111320);
+        for (let d = carry; d < len; d += 30) L.push([g0.lat + (g1.lat - g0.lat) * d / len, g0.lon + (g1.lon - g0.lon) * d / len]);
+        carry = ((carry - len) % 30 + 30) % 30;
+      }
+    }
+  }
+  return { buildings: B, lamps: L, marinas: M };
+}
+function lightsFromLists(lists, key) {
+  const pos = [], col = [], size = [];
+  let seed = 1;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const b = window.terrainBBox;
+  const add = (lat, lng, h, c, sz, onWater) => {
+    if (lat < b.s || lat > b.n || lng < b.w || lng > b.e) return;
+    const elev = window.terrainElevAt(lat, lng);
+    if (elev <= 0.2 && !onWater) return;                         // misplaced in the sea
+    const p = geoToLocal(lat, lng);
+    pos.push(p.x, Math.max(elev, 0.3) + h, p.z);
+    col.push(c[0], c[1], c[2]);
+    size.push(sz);
+  };
+  const WARM = [1.0, 0.72, 0.4], LAMP = [1.0, 0.58, 0.22], WHITE = [0.92, 0.95, 1.0];
+  for (const [lat, lon] of lists.buildings) if (rnd() < 0.7) add(lat, lon, 2.5 + rnd() * 3, WARM, 2.0 + rnd() * 1.2, false);
+  for (const [lat, lon] of lists.lamps) add(lat, lon, 6, LAMP, 2.6, false);
+  for (const [lat, lon, isMarina] of lists.marinas) {
+    const n = isMarina ? 14 : 4, rad = isMarina ? 70 : 25;
+    for (let i = 0; i < n; i++) {
+      const a = rnd() * Math.PI * 2, r = Math.sqrt(rnd()) * rad;
+      add(lat + Math.sin(a) * r / 111320, lon + Math.cos(a) * r / (111320 * Math.cos(lat * Math.PI / 180)),
+          2 + rnd() * 4, rnd() < 0.7 ? WHITE : WARM, 3.2 + rnd() * 1.5, true);
+    }
+  }
+  buildNightLights(pos, col, size, key);
+}
+async function loadNightLights() {
+  const b = window.terrainBBox;
+  if (!b || !window.terrainElevAt || nightLights.loading) return;
+  const key = [b.s, b.w, b.n, b.e].map(v => v.toFixed(3)).join(',');
+  if (nightLights.key === key) return;
+  nightLights.loading = true;
+  try {
+    let lists = null;
+    try {
+      const pre = await (await fetch('osm-lights-bvi.json')).json();
+      const [S, W, N, E] = pre.bbox;
+      if (b.s >= S && b.n <= N && b.w >= W && b.e <= E) lists = pre;
+    } catch (e) { /* no bundled data */ }
+    if (!lists) {
+      const bb = `${b.s.toFixed(4)},${b.w.toFixed(4)},${b.n.toFixed(4)},${b.e.toFixed(4)}`;
+      lists = osmToLightLists(await overpass(`[out:json][timeout:60];` +
+        `(way["building"](${bb});node["building"](${bb}););out center qt;` +
+        `way["highway"~"^(primary|secondary|tertiary|residential|unclassified|living_street|service)$"](${bb});out geom qt;` +
+        `(nwr["leisure"="marina"](${bb});way["man_made"="pier"](${bb}););out center qt;`));
+    }
+    lightsFromLists(lists, key);
+  } catch (err) {
+    nightLights.key = key;   // don't hammer Overpass on failure; lights simply stay off here
+  }
+  nightLights.loading = false;
+}
+
 // --- Weather ---
 // Presets (and live Open-Meteo data) set a target; applyWeather() eases the current
 // state towards it and feeds every shader, the lights, the fog and the rain.
@@ -3724,6 +3866,9 @@ function applyWeather() {
   WX_UNI.uSunI.value = weather.sun * up;
   WX_UNI.uDay.value = day;
   WX_UNI.uDusk.value = dusk;
+  // night lights switch on through dusk (fetched the first time it gets dark here)
+  nightLightMat.uniforms.uOn.value = 1 - ss(day, 0.15, 0.7);
+  if (day < 0.75) loadNightLights();
   sun.intensity = 1.5 * (0.15 + 0.85 * weather.sun) * up;
   sun.color.setRGB(1, 0.96 - 0.36 * dusk, 0.88 - 0.48 * dusk);
   hemi.intensity = 1.1 * (1 - 0.2 * weather.overcast - 0.15 * weather.rain) * (0.06 + 0.94 * day);
@@ -3734,6 +3879,8 @@ function applyWeather() {
   scene.fog.color.setRGB(c[0] * dimF * (1 + 0.18 * dusk), c[1] * dimF * (1 - 0.04 * dusk), c[2] * dimF * (1 - 0.22 * dusk), THREE.LinearSRGBColorSpace);
   // visibility V: fog reaches ~90 % at V (1 - exp(-(V*d)^2) = 0.9); aerial haze scales along
   scene.fog.density = 1.517 / weather.vis;
+  nightLightMat.uniforms.uFogD.value = scene.fog.density;
+  nightLightMat.uniforms.uPx.value = renderer.getPixelRatio();
   WX_UNI.uHazeDist.value = weather.vis * 0.5;
   updateRain(now / 1000);
 }
