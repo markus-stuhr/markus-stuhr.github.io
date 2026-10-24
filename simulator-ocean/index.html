@@ -3736,6 +3736,8 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
     uniform float uTime, uRain, uAspect;
     varying vec2 vUv;
     float h21(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
+    // dome profile of a water drop: flat on top, steep only at its very edge (thin rim)
+    float dome(float d, float r) { return sqrt(clamp(1.0 - (d * d) / (r * r), 0.0, 1.0)); }
     // drops that sit on the glass, fade in, and evaporate
     float sitting(vec2 q, float t) {
       vec2 g = q * 26.0;
@@ -3743,9 +3745,9 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       if (h21(id + 9.1) > 0.01 + 0.04 * uRain) return 0.0;
       vec2 p = (vec2(h21(id + 3.1), h21(id + 7.7)) - 0.5) * 0.6;
       float life = fract(t * 0.12 + h21(id) * 7.0);
-      float size = mix(0.05, 0.2, pow(h21(id + 1.7), 2.0)) * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.75, 1.0, life));
+      float size = mix(0.04, 0.14, pow(h21(id + 1.7), 2.0)) * smoothstep(0.0, 0.06, life) * (1.0 - smoothstep(0.75, 1.0, life));
       float d = length(f - p);
-      return smoothstep(size, size * 0.25, d);
+      return dome(d, size);
     }
     // drops running down one column each; x = body, y = trail (wipes the sitting drops)
     vec2 running(vec2 q, float t, float cols, float seed) {
@@ -3759,9 +3761,9 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       float y = 1.15 - fract((k + smoothstep(0.0, 0.3, ph)) * 0.1 + r) * 1.3;
       // the drop keeps its lane (a new lane per slide step made it hop sideways), with a slight meander
       float x = (id + 0.5 + (h21(vec2(id, seed + 3.0)) - 0.5) * 0.4) * cw + sin(q.y * 23.0 + r * 6.0) * 0.006;
-      float rad = mix(0.007, 0.013, h21(vec2(id, seed + 2.0)));
+      float rad = mix(0.005, 0.009, h21(vec2(id, seed + 2.0)));
       vec2 d = vec2(q.x - x, (q.y - y) * 0.8);
-      float body = smoothstep(rad, rad * 0.35, length(d));
+      float body = dome(length(d), rad);
       // trail above the drop: thin film with beads, fading with height
       float above = q.y - y;
       float tr = step(0.0, above) * (1.0 - smoothstep(0.0, 0.3, above));
@@ -3782,20 +3784,24 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       if (h < 0.01) discard;
       float e = 0.0015;
       vec2 n = vec2(water(q + vec2(e, 0.0), t) - h, water(q + vec2(0.0, e), t) - h) / e;
+      n *= min(1.0, 3.0 / max(length(n), 1e-3));   // the dome's edge is near-vertical: cap the bend (max ~6 % of the screen)
       // a drop is a tiny lens: it shows a strongly shifted (flipped) bit of the scene,
       // a thin darker rim and a small highlight from the bright sky above
-      // glass-like refraction: strong offset along the drop's slope, with slight chromatic
-      // dispersion (red bends a little less than blue) for that lens look
-      vec2 off = -n * 0.035 + vec2(0.0, 0.04) * h;
+      // "Liquid glass" look (after Apple's UI material): clear, slightly magnifying centre,
+      // strong bending only in the narrow rim (where the dome is steep), a little chromatic
+      // dispersion there, and a thin bright edge catching light from the upper left
+      float bevel = 1.0 - smoothstep(0.0, 0.55, h);          // 1 at the rim, 0 in the flat centre
+      vec2 off = -n * 0.02 * (0.35 + 0.65 * bevel);
+      float disp = 0.03 + 0.1 * bevel;                        // dispersion grows towards the rim
       vec3 c = vec3(
-        texture2D(tFrame, clamp(vUv + off * 0.94, 0.0, 1.0)).r,
+        texture2D(tFrame, clamp(vUv + off * (1.0 - disp), 0.0, 1.0)).r,
         texture2D(tFrame, clamp(vUv + off, 0.0, 1.0)).g,
-        texture2D(tFrame, clamp(vUv + off * 1.07, 0.0, 1.0)).b);
-      float rim = smoothstep(0.35, 1.0, clamp(length(n) * 0.01, 0.0, 1.0));
-      vec3 nn = normalize(vec3(-n * 0.01, 1.0));
-      float spec = pow(max(dot(nn, normalize(vec3(-0.35, 0.55, 0.75))), 0.0), 60.0);
-      c = c * (1.0 - 0.05 * rim) + vec3(0.9) * spec * 0.3;   // barely-there rim, soft glint
-      gl_FragColor = vec4(c, smoothstep(0.02, 0.6, h) * clamp(uRain * 1.6, 0.0, 1.0));
+        texture2D(tFrame, clamp(vUv + off * (1.0 + disp), 0.0, 1.0)).b);
+      vec2 nd = length(n) > 1e-3 ? normalize(n) : vec2(0.0);
+      float edgeLine = smoothstep(0.0, 0.12, h) * (1.0 - smoothstep(0.12, 0.32, h));
+      float lightSide = clamp(dot(-nd, normalize(vec2(-0.6, 0.8))), 0.0, 1.0);
+      c += vec3(0.95) * edgeLine * (0.08 + 0.32 * lightSide);
+      gl_FragColor = vec4(c, smoothstep(0.0, 0.12, h) * clamp(uRain * 1.6, 0.0, 1.0));
     }`,
   transparent: true, depthTest: false, depthWrite: false,
 }));
