@@ -232,6 +232,17 @@
       <div id="weatherInfo" class="replay-info" style="margin-top:8px;display:none"></div>
     </div>
     <div class="menu-section">
+      <div class="sec-label">Time of Day</div>
+      <div class="seg seg-wrap" id="segTime">
+        <button data-value="morning">Morning</button>
+        <button data-value="noon">Noon</button>
+        <button data-value="afternoon" class="active">Afternoon</button>
+        <button data-value="sunset">Sunset</button>
+        <button data-value="night">Night</button>
+      </div>
+      <div class="replay-info" style="margin-top:6px"><small>Replay uses the race's real time, Live the current time</small></div>
+    </div>
+    <div class="menu-section">
       <div class="sec-label">Visibility</div>
       <div class="seg" id="segVis">
         <button data-value="0" class="active">Auto</button>
@@ -395,7 +406,7 @@ scene.add(hemi);
 // evaluated on the GPU for the mesh and per pixel for the normals, plus two
 // scrolling detail-normal maps, crest foam, subsurface glow and a GGX sun glint.
 // waveHeight() inverts the same field on the CPU so boat/marks/wake sit exactly on it.
-const SUN_DIR = new THREE.Vector3(-0.55, 0.42, -0.72).normalize(); // lowish sun -> long glitter path
+const SUN_DIR = new THREE.Vector3(-0.55, 0.42, -0.72).normalize(); // updated every frame from date/time/place (sunDirection)
 sun.position.copy(SUN_DIR).multiplyScalar(100);
 
 // Boat groups that leave a wake (player, race opponents, replay boats)
@@ -523,6 +534,8 @@ const WX_UNI = {
   uSunI: { value: 1 },           // direct sunlight that gets through (glint, shadows, glow)
   uRain: { value: 0 },
   uHazeDist: { value: 9000 },    // aerial perspective length (half the visibility)
+  uDay: { value: 1 },            // 0 night .. 1 full daylight (from the sun's elevation)
+  uDusk: { value: 0 },           // warm low-sun / twilight tint
 };
 
 // Shared GLSL value noise (sky, clouds, water, beach surf)
@@ -540,7 +553,7 @@ float vnoise(vec2 p) {
 const SKY_GLSL = /* glsl */`
 uniform vec3 uSunDir;
 uniform vec2 uCloudOff;
-uniform float uCloudCover, uOvercast, uSunI, uRain, uHazeDist;
+uniform float uCloudCover, uOvercast, uSunI, uRain, uHazeDist, uDay, uDusk;
 ${NOISE_GLSL}
 float fbm(vec2 p, int oct) {
   float v = 0.0, a = 0.5;
@@ -561,6 +574,13 @@ vec3 skyBase(vec3 d) {
   col += vec3(1.0, 0.85, 0.6) * (0.25 * pow(s, 6.0) + 0.5 * pow(s, 400.0)) * uSunI;   // wide glow + tight halo
   col = mix(col, vec3(0.40, 0.44, 0.50) + 0.12 * exp(-y * 6.0), uOvercast * 0.85);   // grey stratus sky
   col = mix(col, vec3(0.27, 0.30, 0.34), uRain * 0.45);
+  // time of day: deep blue-black night, warm glow along the horizon towards a low sun
+  vec3 night = mix(vec3(0.012, 0.02, 0.045), vec3(0.003, 0.006, 0.02), pow(y, 0.5));
+  col = mix(night * (1.0 - 0.5 * uOvercast), col, uDay);
+  float az = max(dot(normalize(d.xz + 1e-4), normalize(uSunDir.xz + 1e-4)), 0.0);
+  vec3 glow = vec3(1.0, 0.42, 0.12) * (0.2 + 0.95 * pow(az, 4.0)) * exp(-y * 7.0)
+            + vec3(0.28, 0.12, 0.18) * exp(-y * 2.5) * 0.35;   // orange band + violet upper twilight
+  col += glow * uDusk * (1.0 - 0.7 * uOvercast);
   return col;
 }
 // Trade-wind cumulus on a flat layer ~1.5 km up: fbm coverage, lit from the sun side
@@ -583,6 +603,8 @@ vec4 cloudLayer(vec3 d, int oct) {
   vec3 deckCol = vec3(0.46, 0.49, 0.54) * (1.0 - 0.3 * uRain);
   float a = max(cov * 0.95, deck);
   vec3 col = mix(deckCol, c, cov * 0.95 / max(a, 1e-3));
+  col *= mix(0.04, 1.0, uDay);
+  col = mix(col, col * vec3(1.45, 0.78, 0.55), uDusk * 0.85);   // lit pink-orange by a low sun
   return vec4(col, a * smoothstep(0.004, 0.05, d.y));
 }
 // what the water reflects: softer, fainter clouds (each ripple would otherwise flip between
@@ -821,12 +843,12 @@ void main() {
   float dd = NdH * NdH * (a2 - 1.0) + 1.0;
   float D = a2 / (3.14159 * dd * dd);
   float Fh = 0.02 + 0.98 * pow(1.0 - max(dot(H, V), 0.0), 5.0);
-  vec3 spec = vec3(9.0, 8.0, 6.5) * D * Fh * NdL / max(4.0 * NdV * max(dot(N, L), 0.05), 0.05);
+  vec3 spec = vec3(9.0, 8.0, 6.5) * mix(vec3(1.0), vec3(1.0, 0.55, 0.3), uDusk) * D * Fh * NdL / max(4.0 * NdV * max(dot(N, L), 0.05), 0.05);
   spec = min(spec, vec3(40.0)) * mix(1.0, 0.3, smoothstep(1500.0, 9000.0, dist));
 
   // visibility of the reflection per source: sky + clouds, land, boats
   const float REFL_SKY = 0.6, REFL_LAND = 0.6, REFL_BOAT = 0.8;
-  body *= mix(1.0, 0.72, uOvercast);   // less light in the water under a grey sky
+  body *= mix(1.0, 0.72, uOvercast) * mix(0.08, 1.0, uDay);   // less light under a grey sky / at night
   vec3 col = mix(body, refl, F * mix(REFL_SKY, mix(REFL_LAND, REFL_BOAT, boatA), objA)) * mix(0.8, 1.0, shade) + spec * sunVis;
 
   // Whitecaps where the crests pinch together; more of them in a rough sea
@@ -838,7 +860,7 @@ void main() {
   // kept subtle: dense bright specks read as pixel noise rather than foam
   float foam = clamp(crest * (pat * 1.1 + pat2 * 0.35) - 0.15 * (1.0 - crest), 0.0, 1.0) * 0.5;
   foam *= exp(-dist / 3500.0);
-  col = mix(col, vec3(0.9, 0.93, 0.95) * (0.65 + 0.45 * NdL), foam);
+  col = mix(col, vec3(0.9, 0.93, 0.95) * mix(0.05, 1.0, uDay) * (0.65 + 0.45 * NdL), foam);
   float wf = clamp(wakeFoam * (0.3 + 0.7 * pat2 + 0.5 * pat), 0.0, 1.0) * 0.6;
   col = mix(col, vec3(0.88, 0.93, 0.95) * (0.7 + 0.4 * NdL), wf);
 
@@ -870,7 +892,7 @@ void main() {
                + texture2D(tFoam, vWorld.xz / 11.0 - uTime * vec2(0.02, 0.03)).r * 0.4;
       float th = 1.05 - 0.7 * clamp(bowMask, 0.0, 1.2);
       float bf = smoothstep(th, th + 0.35, pb);
-      col = mix(col, vec3(0.92, 0.95, 0.97) * (0.72 + 0.38 * NdL), bf * 0.55);
+      col = mix(col, vec3(0.92, 0.95, 0.97) * mix(0.05, 1.0, uDay) * (0.72 + 0.38 * NdL), bf * 0.55);
     }
   }
 
@@ -890,7 +912,7 @@ void main() {
     float swash = smoothstep(9.0 * wid, 0.0, dS) * (0.55 + 0.45 * sin(uTime * 0.6 + dS * 0.45 + n2 * 6.0 + ph * 6.2832));
     float surf = (line * zone * patchy * 1.3 + swash) * smoothstep(0.1, 0.9, uAmp + 0.3);
     surf *= 0.55 + 0.9 * pat;
-    col = mix(col, vec3(0.92, 0.95, 0.96) * (0.7 + 0.4 * NdL), clamp(surf, 0.0, 1.0) * inBox);
+    col = mix(col, vec3(0.92, 0.95, 0.96) * mix(0.05, 1.0, uDay) * (0.7 + 0.4 * NdL), clamp(surf, 0.0, 1.0) * inBox);
   }
 
   gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
@@ -983,7 +1005,12 @@ const skyMat = new THREE.ShaderMaterial({
       vec3 d = normalize(vDir);
       vec3 col = skyRadiance(d, 5);
       float s = max(dot(d, uSunDir), 0.0);
-      col += vec3(30.0, 26.0, 20.0) * smoothstep(0.99993, 0.99997, s) * uSunI * uSunI;   // sun disc, ~0.5° radius
+      col += vec3(30.0, 26.0, 20.0) * mix(vec3(1.0), vec3(1.0, 0.55, 0.3), uDusk)
+           * smoothstep(0.99993, 0.99997, s) * uSunI * uSunI;   // sun disc, ~0.5° radius
+      // stars at night (hidden by cloud and by the haze near the horizon)
+      vec2 sc = floor(vec2(atan(d.z, d.x) * 170.0, asin(clamp(d.y, -1.0, 1.0)) * 340.0));
+      float st = step(0.9968, hash12(sc)) * (0.35 + 0.65 * hash12(sc + 7.3));
+      col += vec3(st) * (1.0 - uDay) * (1.0 - uCloudCover * 0.85) * (1.0 - uOvercast) * smoothstep(0.03, 0.2, d.y);
       gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
       #include <colorspace_fragment>
       gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 1.0 - smoothstep(0.0, 0.035, d.y));
@@ -2223,7 +2250,7 @@ function terrainMaterial(tex) {
     fragmentShader: /* glsl */`
       uniform sampler2D map, tDetailSat;
       uniform vec3 uSunDir;
-      uniform float uSunI, uOvercast, uHazeDist;
+      uniform float uSunI, uOvercast, uHazeDist, uDay, uDusk;
       uniform vec4 uDetailBox;
       uniform float uDetailOn, uLandAlpha;
       uniform sampler2D tShore, tFoam;
@@ -2268,7 +2295,8 @@ function terrainMaterial(tex) {
             }
           }
         }
-        float l = (0.78 + 0.32 * dot(normalize(vN), uSunDir) * uSunI) * (1.0 - 0.25 * uOvercast);
+        float l = (0.78 + 0.32 * dot(normalize(vN), uSunDir) * uSunI) * (1.0 - 0.25 * uOvercast) * mix(0.06, 1.0, uDay);
+        c *= mix(vec3(1.0), vec3(1.18, 0.84, 0.66), uDusk * uSunI);   // warm low sunlight
         // alpha 0.5 tags land in the reflection pass (boats write 1). Elsewhere it must stay 1:
         // the canvas does have alpha, and 0.5 there let the page show through the islands
         gl_FragColor = vec4(c * l * 1.08, uLandAlpha);
@@ -2918,6 +2946,11 @@ function wireSeg(id) {
 const getWind = wireSeg('segWind');
 wireSeg('segWeather');
 const getVis = wireSeg('segVis');
+wireSeg('segTime');
+document.getElementById('segTime').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b) timeOfDay = b.dataset.value;
+});
 document.getElementById('segVis').addEventListener('click', () => { visibilityOverride = getVis() || null; });
 const weatherInfo = document.getElementById('weatherInfo');
 document.getElementById('segWeather').addEventListener('click', async (e) => {
@@ -3595,6 +3628,62 @@ function updateRain(tNow) {
   rainGeo.attributes.position.needsUpdate = true;
 }
 
+// --- Sun position (astronomical, accurate to a fraction of a degree) ---
+// Scene axes: north = -z, east = +x, up = +y.
+function sunDirection(ms, lat, lng, out) {
+  const rad = Math.PI / 180;
+  const d = ms / 86400000 - 10957.5;                       // days since J2000.0
+  const g = (357.529 + 0.98560028 * d) * rad;
+  const q = 280.459 + 0.98564736 * d;
+  const L = (q + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * rad;
+  const e = (23.439 - 0.00000036 * d) * rad;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(L), Math.cos(L));
+  const dec = Math.asin(Math.sin(e) * Math.sin(L));
+  const gmst = (18.697374558 + 24.06570982441908 * d) % 24;
+  const H = (gmst * 15 + lng) * rad - ra;                   // local hour angle
+  const la = lat * rad;
+  const alt = Math.asin(Math.sin(la) * Math.sin(dec) + Math.cos(la) * Math.cos(dec) * Math.cos(H));
+  const az = Math.atan2(-Math.sin(H), Math.tan(dec) * Math.cos(la) - Math.sin(la) * Math.cos(H));   // from north, east +
+  return out.set(Math.cos(alt) * Math.sin(az), Math.sin(alt), -Math.cos(alt) * Math.cos(az));
+}
+// Menu time presets are defined by the sun, not the clock, so they look right in any season:
+// the time of day is solved for today at the race area
+let timeOfDay = 'afternoon';
+let timePresetMs = null, timePresetKey = '';
+const TIME_PRESETS = {
+  morning:   { elev: 15, rising: true },
+  noon:      { noon: true },
+  afternoon: { elev: 32, rising: false },
+  sunset:    { elev: 1.5, rising: false },
+  night:     { afterSunset: 2.5 },   // hours after sunset
+};
+function solveTimePreset(name) {
+  const n = new Date();
+  const day0 = Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()) - Math.round(GEO_CENTER.lng / 15) * 3600e3;   // local midnight
+  const p = TIME_PRESETS[name], v = new THREE.Vector3();
+  const elevAt = (ms) => Math.asin(sunDirection(ms, GEO_CENTER.lat, GEO_CENTER.lng, v).y) * 180 / Math.PI;
+  let best = day0 + 12 * 3600e3, bestErr = Infinity, sunsetMs = null;
+  for (let m = 0; m < 24 * 60; m += 2) {
+    const ms = day0 + m * 60e3, e = elevAt(ms), rising = elevAt(ms + 60e3) > e;
+    if (sunsetMs === null && !rising && e < 0 && elevAt(ms - 120e3) >= 0) sunsetMs = ms;
+    let err;
+    if (p.noon) err = -e;
+    else if (p.elev !== undefined) err = rising === p.rising ? Math.abs(e - p.elev) : Infinity;
+    else continue;
+    if (err < bestErr) { bestErr = err; best = ms; }
+  }
+  if (p.afterSunset) best = (sunsetMs || day0 + 18 * 3600e3) + p.afterSunset * 3600e3;
+  return best;
+}
+// Replay: the race's recorded clock; Live: now; otherwise today at the chosen sun position
+function simTimeMs() {
+  if (gameState === 'replay' && histStart) return histStart + replay.ms;
+  if (weatherMode === 'live') return Date.now();
+  const key = timeOfDay + '@' + GEO_CENTER.lat.toFixed(2) + ',' + GEO_CENTER.lng.toFixed(2);
+  if (key !== timePresetKey) { timePresetMs = solveTimePreset(timeOfDay); timePresetKey = key; }
+  return timePresetMs;
+}
+
 function applyWeather() {
   const now = performance.now();
   const k = 1 - Math.exp(-(now - weatherLast) / 1500);       // ~1.5 s easing
@@ -3605,14 +3694,24 @@ function applyWeather() {
   weather.vis = Math.exp(Math.log(weather.vis) + (Math.log(visT) - Math.log(weather.vis)) * k);
   WX_UNI.uCloudCover.value = weather.cover;
   WX_UNI.uOvercast.value = weather.overcast;
-  WX_UNI.uSunI.value = weather.sun;
   WX_UNI.uRain.value = weather.rain;
-  sun.intensity = 1.5 * (0.15 + 0.85 * weather.sun);
-  hemi.intensity = 1.1 * (1 - 0.2 * weather.overcast - 0.15 * weather.rain);
+  // time of day: sun position, daylight and the warm low-sun tint
+  sunDirection(simTimeMs(), GEO_CENTER.lat, GEO_CENTER.lng, SUN_DIR);
+  const elev = SUN_DIR.y, ss = THREE.MathUtils.smoothstep;
+  const up = ss(elev, -0.02, 0.06);                          // sun above the horizon
+  const day = ss(elev, -0.16, 0.1);                          // civil twilight .. day
+  const dusk = ss(elev, -0.14, 0.02) * (1 - ss(elev, 0.06, 0.32));
+  WX_UNI.uSunI.value = weather.sun * up;
+  WX_UNI.uDay.value = day;
+  WX_UNI.uDusk.value = dusk;
+  sun.intensity = 1.5 * (0.15 + 0.85 * weather.sun) * up;
+  sun.color.setRGB(1, 0.96 - 0.36 * dusk, 0.88 - 0.48 * dusk);
+  hemi.intensity = 1.1 * (1 - 0.2 * weather.overcast - 0.15 * weather.rain) * (0.06 + 0.94 * day);
   // fog: a little denser and greyer under cloud, much denser in rain (display values, see fog setup)
   const g = Math.min(1, weather.overcast), r = weather.rain;
   const c = FOG_CLEAR.map((v, i) => { const a = v + (FOG_GREY[i] - v) * g; return a + (FOG_RAIN[i] - a) * r; });
-  scene.fog.color.setRGB(c[0], c[1], c[2], THREE.LinearSRGBColorSpace);
+  const dimF = 0.05 + 0.95 * day;
+  scene.fog.color.setRGB(c[0] * dimF * (1 + 0.18 * dusk), c[1] * dimF * (1 - 0.04 * dusk), c[2] * dimF * (1 - 0.22 * dusk), THREE.LinearSRGBColorSpace);
   // visibility V: fog reaches ~90 % at V (1 - exp(-(V*d)^2) = 0.9); aerial haze scales along
   scene.fog.density = 1.517 / weather.vis;
   WX_UNI.uHazeDist.value = weather.vis * 0.5;
