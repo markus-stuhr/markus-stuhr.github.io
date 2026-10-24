@@ -729,7 +729,7 @@ void main() {
             + texture2D(tReflect, ruv + tx * vec2(-0.7, -1.0)) * 0.15
             + texture2D(tReflect, ruv + tx * vec2( 1.0, -0.7)) * 0.15
             + texture2D(tReflect, ruv + tx * vec2(-1.0,  0.7)) * 0.15;
-    objA = clamp(ro.a * 2.0, 0.0, 1.0);             // coverage: land writes 0.5, boats 1
+    objA = clamp(ro.a * 2.0, 0.0, 1.0) * exp(-dist / 6000.0);   // coverage (land 0.5, boats 1), fading far out
     boatA = clamp(ro.a * 2.0 - 1.0, 0.0, 1.0);      // 0 = land, 1 = boat
     refl = mix(refl, ro.rgb * 0.7, objA);
   }
@@ -754,7 +754,8 @@ void main() {
   body = mix(body, sat * (0.85 + 0.3 * NdL) + scatterCol * sss * 0.25, shallow);
 
   // Sun glint: GGX, roughened with distance so far glitter aggregates into a path
-  float rough = clamp(0.04 + 0.03 * gust * windF + dist / 9000.0 + foot * 0.01, 0.0, 0.5);
+  // far glitter widens only a little: a broad lobe at full strength whited out the whole horizon
+  float rough = clamp(0.04 + 0.03 * gust * windF + dist / 30000.0 + foot * 0.01, 0.0, 0.16);
   float a2 = rough * rough;
   vec3 H = normalize(L + V);
   float NdH = max(dot(N, H), 0.0);
@@ -762,7 +763,7 @@ void main() {
   float D = a2 / (3.14159 * dd * dd);
   float Fh = 0.02 + 0.98 * pow(1.0 - max(dot(H, V), 0.0), 5.0);
   vec3 spec = vec3(9.0, 8.0, 6.5) * D * Fh * NdL / max(4.0 * NdV * max(dot(N, L), 0.05), 0.05);
-  spec = min(spec, vec3(40.0));
+  spec = min(spec, vec3(40.0)) * mix(1.0, 0.3, smoothstep(1500.0, 9000.0, dist));
 
   // visibility of the reflection per source: sky + clouds, land, boats
   const float REFL_SKY = 0.6, REFL_LAND = 0.6, REFL_BOAT = 0.8;
@@ -835,6 +836,11 @@ void main() {
   gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
   #include <colorspace_fragment>
   #include <fog_fragment>
+  // aerial perspective: everything far away (land and water alike) drifts towards the
+  // horizon haze colour, so distant islands and sea sit in the same air
+  #ifdef USE_FOG
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 0.55 * (1.0 - exp(-vFogDepth / 9000.0)));
+  #endif
 }
 `;
 
@@ -2170,6 +2176,11 @@ function terrainMaterial(tex) {
         gl_FragColor = vec4(c * l * 1.08, 0.5);
         #include <colorspace_fragment>
         #include <fog_fragment>
+        // aerial perspective: everything far away (land and water alike) drifts towards the
+        // horizon haze colour, so distant islands and sea sit in the same air
+        #ifdef USE_FOG
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, 0.55 * (1.0 - exp(-vFogDepth / 9000.0)));
+        #endif
       }`,
     fog: true,
   });
