@@ -306,6 +306,8 @@
     <div class="rp-panel"><div class="rp-label">TWS</div><div class="rp-value"><span id="rpTws">0</span><small> kn</small></div></div>
     <div class="rp-panel"><div class="rp-label">TWA</div><div class="rp-value"><span id="rpTwa">0°</span></div></div>
     <div class="rp-panel"><div class="rp-label">Heel</div><div class="rp-value"><span id="rpHeel">0°</span></div></div>
+    <div class="rp-panel"><div class="rp-label">Clouds</div><div class="rp-value"><span id="rpCloud">–</span><small> %</small></div></div>
+    <div class="rp-panel"><div class="rp-label">Waves</div><div class="rp-value"><span id="rpWave">–</span><small> m</small></div></div>
   </div>
   <div id="rpCtrlRow">
     <button id="rpPlay">⏸</button>
@@ -2975,6 +2977,8 @@ function startGame() {
   let windVal = getWind();
   waveBase = getWave();
   seaFromOverride = null;
+  histWx = null;   // a previous replay's recorded weather no longer applies
+  if (weatherMode !== 'live') setWeatherPreset(weatherMode);
   wind.baseFrom = Math.PI * 0.25;   // the course's design wind, unless live data says otherwise
   if (weatherMode === 'live' && liveWeather) {
     // live data overrides the menu's wind and sea state
@@ -3043,6 +3047,13 @@ async function startReplay() {
     if (vb.rig)   mastMat.color.setHex(parseInt(vb.rig.slice(1),  16));
   }
   await buildCaribbean(cLat, cLng, span, vRoute);
+  // the recorded day's weather and sea state (falls back to the menu's weather if unavailable)
+  histWx = null; histLast = 0;
+  histStart = data.start || RACE_START_UTC[getRace()] || 0;
+  if (histStart) {
+    try { histWx = await fetchHistoricalWeather(cLat, cLng, histStart, data.count * data.dt * 1000); }
+    catch (err) { histWx = null; }
+  }
 
   // build per-boat projected tracks + headings + speeds
   REPLAY = { dtms: data.dt * 1000, count: data.count, wind: data.wind, boats: [] };
@@ -3228,6 +3239,7 @@ function updateReplayFrame(dt) {
       g.position.y = baseY;
     }
   });
+  applyHistoricalWeather();
   // Replay HUD
   document.getElementById('rpSog').textContent  = (Math.abs(boat.speed) * 1.94).toFixed(1);
   document.getElementById('rpTws').textContent  = wind.tws.toFixed(1);
@@ -3605,6 +3617,55 @@ function applyWeather() {
   scene.fog.density = 1.517 / weather.vis;
   WX_UNI.uHazeDist.value = weather.vis * 0.5;
   updateRain(now / 1000);
+}
+
+// Replay: the recorded day's hourly weather + sea (Open-Meteo historical forecast + marine)
+// interpolated along the replay clock. Race-1 files carry no date: their start comes from
+// the ADX export (20 Mar 2026, 15:39:40 UTC); newer files have data.start.
+const RACE_START_UTC = {
+  'maxi-and-maxi-gp-race-1': Date.UTC(2026, 2, 20, 15, 39, 40),
+  'performance-race-1': Date.UTC(2026, 2, 20, 15, 39, 40),   // assumed: same day and start as the Maxi race
+};
+let histWx = null, histStart = 0, histLast = 0;
+async function fetchHistoricalWeather(lat, lng, startMs, durMs) {
+  const day = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const q = `latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}&start_date=${day(startMs)}&end_date=${day(startMs + durMs)}`;
+  const [wx, sea] = await Promise.all([
+    fetch(`https://historical-forecast-api.open-meteo.com/v1/forecast?${q}&hourly=cloud_cover,precipitation,wind_speed_10m,wind_direction_10m,visibility&wind_speed_unit=kn`).then(r => r.json()),
+    fetch(`https://marine-api.open-meteo.com/v1/marine?${q}&hourly=wave_height,wave_direction,wave_period`).then(r => r.json()).catch(() => null),
+  ]);
+  const h = wx.hourly, m = sea && sea.hourly;
+  return {
+    times: h.time.map(t => Date.parse(t + 'Z')),
+    cloud: h.cloud_cover, precip: h.precipitation, vis: h.visibility,
+    windKn: h.wind_speed_10m, windDir: h.wind_direction_10m,
+    waveH: m ? m.wave_height : null, waveDir: m ? m.wave_direction : null, wavePer: m ? m.wave_period : null,
+  };
+}
+// values at a moment (linear between hours, directions the short way round)
+function histAt(hw, ms) {
+  const T = hw.times;
+  let i = 0;
+  while (i < T.length - 2 && T[i + 1] <= ms) i++;
+  const f = THREE.MathUtils.clamp((ms - T[i]) / (T[i + 1] - T[i]), 0, 1);
+  const lin = (a) => (a && a[i] != null && a[i + 1] != null) ? a[i] + (a[i + 1] - a[i]) * f : (a ? a[i] : null);
+  const ang = (a) => (a && a[i] != null && a[i + 1] != null) ? (a[i] + ((((a[i + 1] - a[i]) % 360) + 540) % 360 - 180) * f + 360) % 360 : null;
+  return { cloud: lin(hw.cloud), precip: lin(hw.precip), vis: lin(hw.vis), windKn: lin(hw.windKn), windDir: ang(hw.windDir),
+           waveH: lin(hw.waveH), waveDir: ang(hw.waveDir), wavePer: lin(hw.wavePer) };
+}
+function applyHistoricalWeather() {
+  if (!histWx) return;
+  const now = performance.now();
+  if (now - histLast < 1000) return;
+  histLast = now;
+  const lw = histAt(histWx, histStart + replay.ms);
+  Object.assign(weatherTarget, weatherFromLive(lw));
+  if (lw.waveH != null) {
+    waveBase = THREE.MathUtils.clamp(lw.waveH / 1.4, 0.3, 2.0);
+    seaFromOverride = lw.waveDir * Math.PI / 180;
+  }
+  document.getElementById('rpCloud').textContent = lw.cloud.toFixed(0);
+  document.getElementById('rpWave').textContent = lw.waveH != null ? lw.waveH.toFixed(1) : '–';
 }
 
 let weatherMode = 'few';
