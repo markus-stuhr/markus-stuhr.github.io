@@ -3877,7 +3877,7 @@ function applyWeather() {
   const c = FOG_CLEAR.map((v, i) => { const a = v + (FOG_GREY[i] - v) * g; return a + (FOG_RAIN[i] - a) * r; });
   // towards night the fog goes to a very dark blue. Measured: the fog colour ends up sRGB-
   // encoded on screen, so a plain 5 % of the day colour still showed as a grey band (0.22)
-  const dk = [0.0015, 0.0025, 0.006], dd = day * day;
+  const dk = [0.0036, 0.008, 0.028], dd = day * day;   // ~ the night sky just above the horizon (12/22/48)
   const fogC = [c[0] * (1 + 0.18 * dusk), c[1] * (1 - 0.04 * dusk), c[2] * (1 - 0.22 * dusk)].map((v, i) => dk[i] + (v - dk[i]) * dd);
   scene.fog.color.setRGB(fogC[0], fogC[1], fogC[2], THREE.LinearSRGBColorSpace);
   // visibility V: fog reaches ~90 % at V (1 - exp(-(V*d)^2) = 0.9); aerial haze scales along
