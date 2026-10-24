@@ -1312,5 +1312,54 @@ window.REZEPTE = [
           "Wer keinen Koriander mag, nimmt glatte Petersilie.",
           "Ca. 340 kcal pro Portion."
       ]
+  },
+  {
+      "id": "rinderpilz",
+      "neu": true,
+      "titel": "Bandnudeln mit Rinderfilet und braunen Champignons",
+      "kategorie": "Italienisch",
+      "bild": "img/rinderpilz.svg",
+      "emoji": "🍝",
+      "farbe": ["#8a5a3c", "#f3e6d4"],
+      "portionen": "4 Portionen",
+      "zeit": "30 Min.",
+      "teaser": "Zarte Rinderfiletstreifen und braune Champignons in einer Weißwein-Sahnesauce mit Rosmarin, Thymian und einem Hauch Zitronenschale – zu Tagliatelle oder Pappardelle.",
+      "tags": ["Rind", "Pasta", "schnell"],
+      "abschnitte": [
+          {
+              "titel": "Pasta",
+              "zutaten": [
+                  ["500 g", "Bandnudeln (Tagliatelle, Pappardelle oder Fettuccine)"],
+                  ["500 g", "Rinderfilet"],
+                  ["300 g", "Braune Champignons"],
+                  ["1 EL", "Olivenöl"],
+                  ["2", "Schalotten"],
+                  ["1", "Knoblauchzehe"],
+                  ["1 EL", "Butter"],
+                  ["1 TL", "Mehl"],
+                  ["100 ml", "Weißwein"],
+                  ["100 ml", "Gemüsebrühe oder Kalbsfond"],
+                  ["300 ml", "Kochsahne"],
+                  ["½ TL", "Rosmarin"],
+                  ["½ TL", "Thymian"],
+                  ["1 Stück", "Zitronenschale (klein)"],
+                  ["", "Salz, Pfeffer"]
+              ],
+              "schritte": [
+                  {"t": "Vorbereiten", "x": "Nudelwasser aufsetzen. Schalotten schälen und fein hacken, Knoblauch schälen und hacken. Champignons putzen und je nach Größe vierteln oder in Scheiben schneiden. Rinderfilet in dünne Scheiben schneiden."},
+                  {"t": "Filet anbraten", "x": "Olivenöl in einer großen Pfanne erhitzen und das Filet darin anbraten, bis es leicht gebräunt, aber noch saftig ist. Herausnehmen und warm halten.", "z": "2 Min."},
+                  {"t": "Champignons", "x": "Butter in die Pfanne geben, Schalotten, Knoblauch und Champignons darin anbraten.", "z": "2 Min."},
+                  {"t": "Ablöschen", "x": "Mit Mehl bestäuben, kurz anschwitzen und mit dem Weißwein ablöschen. Wein reduzieren lassen, dann Brühe oder Fond zugeben und ebenfalls etwas einkochen. Inzwischen die Nudeln al dente kochen."},
+                  {"t": "Sahnesauce", "x": "Sahne angießen, Rosmarin, Thymian und Zitronenschale zugeben und köcheln lassen.", "z": "3 Min."},
+                  {"t": "Abschmecken", "x": "Filet zurück in die Sauce geben, mit Salz und Pfeffer abschmecken und warm halten. Wer mag, gibt etwas Parmesan dazu."},
+                  {"t": "Vermengen", "x": "Etwa 2 EL Nudelwasser zur Sauce geben, mit der Pasta vermengen und heiß servieren."}
+              ]
+          }
+      ],
+      "tipps": [
+          "Wir machen es nur mit braunen Champignons – die sind aromatischer als weiße und behalten beim Braten mehr Biss.",
+          "Das Filet nur kurz anbraten, es gart in der Sauce nach.",
+          "Zitronenschale vor dem Servieren wieder herausfischen."
+      ]
   }
 ];
