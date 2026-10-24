@@ -523,11 +523,8 @@ const WX_UNI = {
   uHazeDist: { value: 9000 },    // aerial perspective length (half the visibility)
 };
 
-// Shared GLSL: analytic sky (also used for the water reflection) + ACES tonemap
-const SKY_GLSL = /* glsl */`
-uniform vec3 uSunDir;
-uniform vec2 uCloudOff;
-uniform float uCloudCover, uOvercast, uSunI, uRain, uHazeDist;
+// Shared GLSL value noise (sky, clouds, water, beach surf)
+const NOISE_GLSL = /* glsl */`
 float hash12(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p);
@@ -535,6 +532,14 @@ float vnoise(vec2 p) {
   return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x),
              mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
 }
+`;
+
+// Shared GLSL: analytic sky (also used for the water reflection) + ACES tonemap
+const SKY_GLSL = /* glsl */`
+uniform vec3 uSunDir;
+uniform vec2 uCloudOff;
+uniform float uCloudCover, uOvercast, uSunI, uRain, uHazeDist;
+${NOISE_GLSL}
 float fbm(vec2 p, int oct) {
   float v = 0.0, a = 0.5;
   for (int i = 0; i < 5; i++) {
@@ -2201,10 +2206,13 @@ function terrainMaterial(tex) {
       varying vec2 vUv;
       varying vec3 vN;
       varying vec2 vXZ;
+      varying float vY;
       #include <fog_pars_vertex>
       void main() {
         vUv = uv;
-        vXZ = (modelMatrix * vec4(position, 1.0)).xz;
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vXZ = wp.xz;
+        vY = wp.y;
         vN = normalize(mat3(modelMatrix) * normal);
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mvPosition;
@@ -2216,9 +2224,14 @@ function terrainMaterial(tex) {
       uniform float uSunI, uOvercast, uHazeDist;
       uniform vec4 uDetailBox;
       uniform float uDetailOn, uLandAlpha;
+      uniform sampler2D tShore, tFoam;
+      uniform vec4 uBox;
+      uniform float uCoastOn, uTime, uAmp;
       varying vec2 vUv;
       varying vec3 vN;
       varying vec2 vXZ;
+      varying float vY;
+      ${NOISE_GLSL}
       #include <common>
       #include <fog_pars_fragment>
       void main() {
@@ -2228,6 +2241,30 @@ function terrainMaterial(tex) {
           vec2 e = min(duv, 1.0 - duv);
           float w = smoothstep(0.0, 0.12, min(e.x, e.y));
           if (w > 0.0) c = mix(c, texture2D(tDetailSat, duv).rgb, w);
+        }
+        // Swash running up the beach, in step with the ocean's surf (same phase noise): a
+        // foam fringe that climbs a few metres and draws back, wet darker sand behind it.
+        // Covers the stepped edge where the land mesh meets the water. Low shores only.
+        if (uCoastOn > 0.5) {
+          vec2 cuv = (vXZ - uBox.xy) / uBox.zw;
+          if (cuv.x > 0.0 && cuv.y > 0.0 && cuv.x < 1.0 && cuv.y < 1.0) {
+            float sd = texture2D(tShore, cuv).r;            // metres; negative on land
+            if (sd > -14.0) {
+              float n1 = texture2D(tFoam, vXZ / 140.0).r;
+              float n2 = texture2D(tFoam, vXZ / 47.0 + 0.37).r;
+              float ph = vnoise(vXZ / 110.0) * 2.0 + vnoise(vXZ / 37.0 + 5.3) * 0.5;
+              float cyc = 0.5 + 0.5 * sin(uTime * 0.6 + n2 * 6.0 + ph * 6.2832);
+              float sea = smoothstep(0.1, 0.9, uAmp + 0.3);
+              float reach = (1.5 + 6.0 * n1) * cyc * sea;          // how far up it runs now
+              float low = 1.0 - smoothstep(1.5, 4.0, vY);          // not up cliffs
+              float wet = smoothstep(-(reach + 4.0) * 1.2, -reach * 0.5, sd) * low;
+              float edge = smoothstep(-reach - 1.2, -reach + 0.4, sd) * (1.0 - smoothstep(-reach + 0.4, 2.0, sd) * 0.55);
+              float pat = texture2D(tFoam, vXZ / 3.1 - uTime * vec2(0.02, 0.03)).r;
+              float foam = clamp(edge * (0.35 + 1.3 * pat), 0.0, 1.0) * low * (0.4 + 0.6 * n1);
+              c *= 1.0 - 0.32 * wet;
+              c = mix(c, vec3(0.9, 0.93, 0.95), foam * 0.85);
+            }
+          }
         }
         float l = (0.78 + 0.32 * dot(normalize(vN), uSunDir) * uSunI) * (1.0 - 0.25 * uOvercast);
         // alpha 0.5 tags land in the reflection pass (boats write 1). Elsewhere it must stay 1:
@@ -2252,6 +2289,8 @@ function terrainMaterial(tex) {
   mat.uniforms.map.value = tex;   // set after merge (merge clones textures)
   mat.uniforms.uSunDir.value = SUN_DIR;
   Object.assign(mat.uniforms, DETAIL_UNI, WX_UNI);   // shared by all chunks
+  const ou = oceanMat.uniforms;   // the ocean's coast data, foam pattern, sim time and sea state
+  Object.assign(mat.uniforms, { tShore: ou.tShore, uBox: ou.uBox, uCoastOn: ou.uCoastOn, tFoam: ou.tFoam, uTime: ou.uTime, uAmp: ou.uAmp });
   return mat;
 }
 
@@ -3745,8 +3784,13 @@ const lensQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderM
       vec2 n = vec2(water(q + vec2(e, 0.0), t) - h, water(q + vec2(0.0, e), t) - h) / e;
       // a drop is a tiny lens: it shows a strongly shifted (flipped) bit of the scene,
       // a thin darker rim and a small highlight from the bright sky above
-      vec2 uv = clamp(vUv - n * 0.012 + vec2(0.0, 0.03) * h, 0.0, 1.0);
-      vec3 c = texture2D(tFrame, uv).rgb;
+      // glass-like refraction: strong offset along the drop's slope, with slight chromatic
+      // dispersion (red bends a little less than blue) for that lens look
+      vec2 off = -n * 0.035 + vec2(0.0, 0.04) * h;
+      vec3 c = vec3(
+        texture2D(tFrame, clamp(vUv + off * 0.94, 0.0, 1.0)).r,
+        texture2D(tFrame, clamp(vUv + off, 0.0, 1.0)).g,
+        texture2D(tFrame, clamp(vUv + off * 1.07, 0.0, 1.0)).b);
       float rim = smoothstep(0.35, 1.0, clamp(length(n) * 0.01, 0.0, 1.0));
       vec3 nn = normalize(vec3(-n * 0.01, 1.0));
       float spec = pow(max(dot(nn, normalize(vec3(-0.35, 0.55, 0.75))), 0.0), 60.0);
