@@ -451,8 +451,8 @@ $('btnPgn').onclick = () => { navigator.clipboard.writeText(pgn()); $('btnPgn').
 
 // ---------- Brett ----------
 // Figurensätze aus lila (lichess), Lizenzen siehe Fußzeile
-const PIECE_SETS = { maestro: 'Maestro', staunty: 'Staunty', merida: 'Merida', california: 'California', tatiana: 'Tatiana', cardinal: 'Cardinal', alpha: 'Alpha', chessnut: 'Chessnut', cburnett: 'Klassisch' };
-let pieceSet = PIECE_SETS[ls('chess.pieces')] ? ls('chess.pieces') : 'maestro';
+const PIECE_SETS = { tatiana: 'Tatiana', maestro: 'Maestro', staunty: 'Staunty', merida: 'Merida', california: 'California', cardinal: 'Cardinal', alpha: 'Alpha', chessnut: 'Chessnut', cburnett: 'Klassisch' };
+let pieceSet = PIECE_SETS[ls('chess.pieces')] ? ls('chess.pieces') : 'tatiana';
 $('optPieces').innerHTML = Object.entries(PIECE_SETS).map(([k, v]) => `<option value="${k}"${k === pieceSet ? ' selected' : ''}>${v}</option>`).join('');
 $('optPieces').onchange = () => { pieceSet = $('optPieces').value; ls('chess.pieces', pieceSet); render(); };
 
