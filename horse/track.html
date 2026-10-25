@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>Belmont Park — Bahnkarte</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script defer src="/analytics.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; font-family: ui-rounded, -apple-system, system-ui, sans-serif; color: #2b2116; }
+  #map { position: fixed; inset: 0; }
+  #panel {
+    position: fixed; left: 16px; top: 16px; max-width: 300px; z-index: 2;
+    background: rgba(255, 248, 234, 0.9); border-radius: 12px; padding: 12px 14px;
+    box-shadow: 0 4px 18px rgba(60, 40, 10, 0.15); font-size: 13px; line-height: 1.5;
+  }
+  #panel h1 { font-size: 17px; margin: 0 0 6px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+  button { margin-top: 8px; border: 0; border-radius: 8px; padding: 6px 10px; background: #2b2116; color: #fff8ea; font: inherit; cursor: pointer; }
+  #stats { margin-top: 6px; opacity: 0.8; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="panel">
+  <h1>Belmont Park</h1>
+  <div class="row"><span class="sw" style="background:#b98a55"></span> Hauptbahn (Sand), 1,5 Meilen</div>
+  <div class="row"><span class="sw" style="background:#5e9a45"></span> Grasbahn</div>
+  <div class="row"><span class="sw" style="background:#fff;border:2px solid #222"></span> Innenkante</div>
+  <div id="stats"></div>
+  <button id="aerial">Luftbild an</button>
+</div>
+<script>
+// Kartenansicht der Bahngeometrie aus OpenStreetMap, zur Kontrolle vor dem 3D-Bau
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://tiles.openfreemap.org/styles/liberty',
+  center: [-73.7218, 40.7150],
+  zoom: 15.4,
+  pitch: 0,
+  bearing: 0,
+  attributionControl: false,
+});
+map.addControl(new maplibregl.NavigationControl(), 'top-right');
+map.addControl(new maplibregl.AttributionControl({
+  compact: true,
+  customAttribution: 'Bahnen © OpenStreetMap contributors (ODbL) · Luftbild © Esri, Maxar, Earthstar Geographics',
+}));
+
+// Länge einer Linie in Metern (lokal flach genähert, reicht für eine Rennbahn)
+function lengthM(coords) {
+  const k = Math.cos(coords[0][1] * Math.PI / 180) * 111320;
+  let L = 0;
+  for (let i = 1; i < coords.length; i++) {
+    L += Math.hypot((coords[i][0] - coords[i - 1][0]) * k, (coords[i][1] - coords[i - 1][1]) * 111320);
+  }
+  return L;
+}
+
+map.on('load', async () => {
+  const data = await (await fetch('belmont.geojson')).json();
+  map.addSource('esri', {
+    type: 'raster', tileSize: 256, maxzoom: 19,
+    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+  });
+  map.addLayer({ id: 'esri', type: 'raster', source: 'esri', layout: { visibility: 'none' } });
+  map.addSource('tracks', { type: 'geojson', data });
+  map.addLayer({
+    id: 'tracks-fill', type: 'fill', source: 'tracks', filter: ['==', '$type', 'Polygon'],
+    paint: { 'fill-color': ['match', ['get', 'surface'], 'dirt', '#b98a55', '#5e9a45'], 'fill-opacity': 0.75 },
+  });
+  map.addLayer({
+    id: 'rail', type: 'line', source: 'tracks', filter: ['==', ['get', 'role'], 'rail'],
+    paint: { 'line-color': '#ffffff', 'line-width': 3 },
+  });
+  const rail = data.features.find((f) => f.properties.role === 'rail').geometry.coordinates;
+  const L = lengthM(rail);
+  document.getElementById('stats').textContent = `Innenkante: ${Math.round(L)} m = ${(L / 1609.34).toFixed(3)} Meilen`;
+
+  const btn = document.getElementById('aerial');
+  btn.onclick = () => {
+    const on = map.getLayoutProperty('esri', 'visibility') !== 'visible';
+    map.setLayoutProperty('esri', 'visibility', on ? 'visible' : 'none');
+    map.setPaintProperty('tracks-fill', 'fill-opacity', on ? 0.35 : 0.75);
+    btn.textContent = on ? 'Luftbild aus' : 'Luftbild an';
+  };
+});
+</script>
+</body>
+</html>
