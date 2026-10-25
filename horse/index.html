@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<title>Horse — Reitsimulator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#a9d3ee" />
+<script defer src="/analytics.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #a9d3ee;
+    font-family: ui-rounded, -apple-system, system-ui, sans-serif; color: #2b2116;
+    user-select: none; -webkit-user-select: none; overscroll-behavior: none;
+  }
+  canvas { display: block; touch-action: none; }
+  #hud { position: fixed; left: 16px; top: 16px; pointer-events: none; }
+  .panel {
+    background: rgba(255, 248, 234, 0.82); border-radius: 12px; padding: 10px 14px;
+    box-shadow: 0 4px 18px rgba(60, 40, 10, 0.15); backdrop-filter: blur(6px);
+  }
+  #gait { font-size: 22px; font-weight: 700; }
+  #speed { font-size: 13px; opacity: 0.7; margin-top: 2px; }
+  #gears { display: flex; gap: 4px; margin-top: 8px; }
+  #gears span { width: 22px; height: 6px; border-radius: 3px; background: rgba(80, 50, 20, 0.18); }
+  #gears span.on { background: #b5651d; }
+  #help { position: fixed; right: 16px; top: 16px; font-size: 12px; line-height: 1.6; pointer-events: none; }
+  #help b { display: inline-block; min-width: 54px; }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; }
+  #touch { position: fixed; inset: auto 0 0 0; display: none; justify-content: space-between; padding: 16px; pointer-events: none; }
+  #touch .grp { display: flex; gap: 10px; pointer-events: auto; }
+  #touch button {
+    width: 64px; height: 64px; border-radius: 50%; border: 0; font-size: 24px;
+    background: rgba(255, 248, 234, 0.75); color: #2b2116; touch-action: none;
+  }
+  @media (pointer: coarse) { #touch { display: flex; } #help { display: none; } }
+</style>
+</head>
+<body>
+<div id="loading">Pferd wird gesattelt …</div>
+<div id="hud" class="panel">
+  <div id="gait">Stehen</div>
+  <div id="speed">0.0 km/h</div>
+  <div id="gears"><span></span><span></span><span></span><span></span><span></span></div>
+</div>
+<div id="help" class="panel">
+  <div><b>W / ↑</b> schneller</div>
+  <div><b>S / ↓</b> langsamer</div>
+  <div><b>A D ← →</b> lenken</div>
+  <div><b>Leertaste</b> springen</div>
+  <div><b>Maus</b> Kamera drehen</div>
+</div>
+<div id="touch">
+  <div class="grp"><button data-k="left">◀</button><button data-k="right">▶</button></div>
+  <div class="grp"><button data-k="down">▼</button><button data-k="jump">⤒</button><button data-k="up">▲</button></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.167.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
+
+// Gangarten: Clip, Zielgeschwindigkeit in m/s, Geschwindigkeit bei timeScale 1
+const GAITS = [
+  { name: 'Stehen', clip: 'Idle',   speed: 0,    ref: 1 },
+  { name: 'Schritt', clip: 'Walk',  speed: 1.7,  ref: 1.7 },
+  { name: 'Trab',    clip: 'Trot',  speed: 3.8,  ref: 3.8 },
+  { name: 'Galopp',  clip: 'Gallop', speed: 6.5, ref: 9.5 },
+  { name: 'Renngalopp', clip: 'Gallop', speed: 12, ref: 11 },
+];
+const HORSE_SCALE = 0.36;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xa9d3ee);
+scene.fog = new THREE.Fog(0xa9d3ee, 60, 260);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 600);
+
+scene.add(new THREE.HemisphereLight(0xdff1ff, 0x6b8a3a, 1.1));
+const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 120 });
+scene.add(sun, sun.target);
+
+// Gelände: sanfte Hügel aus Perlin-Rauschen
+const noise = new ImprovedNoise();
+function heightAt(x, z) {
+  return noise.noise(x * 0.012, 0, z * 0.012) * 9 + noise.noise(x * 0.05, 3, z * 0.05) * 1.2;
+}
+const SIZE = 600, SEG = 200;
+const groundGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG).rotateX(-Math.PI / 2);
+const pos = groundGeo.attributes.position, colors = [];
+const cA = new THREE.Color(0x7fae4a), cB = new THREE.Color(0xa7c25a), c = new THREE.Color();
+for (let i = 0; i < pos.count; i++) {
+  const x = pos.getX(i), z = pos.getZ(i), h = heightAt(x, z);
+  pos.setY(i, h);
+  c.lerpColors(cA, cB, THREE.MathUtils.clamp(0.5 + noise.noise(x * 0.03, 7, z * 0.03), 0, 1));
+  colors.push(c.r, c.g, c.b);
+}
+groundGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+groundGeo.computeVertexNormals();
+const ground = new THREE.Mesh(groundGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Bäume und Felsen als Instanzen
+function scatter(parts, count, minDist, yOff, scaleRange) {
+  const meshes = parts.map(([geo, mat]) => {
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    scene.add(mesh);
+    return mesh;
+  });
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
+  for (let i = 0; i < count; i++) {
+    let x, z;
+    do { x = (Math.random() - 0.5) * SIZE * 0.9; z = (Math.random() - 0.5) * SIZE * 0.9; } while (Math.hypot(x, z) < minDist);
+    const k = scaleRange[0] + Math.random() * (scaleRange[1] - scaleRange[0]);
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * 6.28);
+    m.compose(p.set(x, heightAt(x, z) + yOff * k, z), q, s.set(k, k, k));
+    for (const mesh of meshes) mesh.setMatrixAt(i, m);
+  }
+}
+const trunk = new THREE.CylinderGeometry(0.25, 0.35, 3, 6).translate(0, 0, 0);
+const crown = new THREE.IcosahedronGeometry(1.8, 0).translate(0, 2.6, 0);
+scatter([
+  [trunk, new THREE.MeshStandardMaterial({ color: 0x6b4a2b, flatShading: true })],
+  [crown, new THREE.MeshStandardMaterial({ color: 0x4f8a3a, flatShading: true })],
+], 260, 15, 1.4, [0.8, 1.6]);
+scatter([[new THREE.DodecahedronGeometry(0.8, 0), new THREE.MeshStandardMaterial({ color: 0x9a9488, flatShading: true })]], 120, 8, 0.2, [0.4, 1.4]);
+
+// Pferd
+const horse = new THREE.Group();
+scene.add(horse);
+let mixer, actions = {}, current = null;
+const state = { gait: 0, speed: 0, heading: 0, jumping: false, camYaw: 0 };
+
+const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/');
+new GLTFLoader().setDRACOLoader(draco).load('horse.glb', (gltf) => {
+  const model = gltf.scene;
+  model.scale.setScalar(HORSE_SCALE);
+  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  horse.add(model);
+  mixer = new THREE.AnimationMixer(model);
+  for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
+  const jump = actions.Gallop_Jump;
+  jump.setLoop(THREE.LoopOnce, 1);
+  jump.clampWhenFinished = true;
+  mixer.addEventListener('finished', (e) => {
+    if (e.action === jump) { state.jumping = false; playGait(true); }
+  });
+  playGait(true);
+  document.getElementById('loading').remove();
+  window.__horse = { state, actions, horse };
+});
+
+function playGait(force) {
+  const g = GAITS[state.gait];
+  const next = actions[g.clip];
+  if (!next || (next === current && !force)) return;
+  next.reset().play();
+  if (current && current !== next) next.crossFadeFrom(current, 0.35, true);
+  current = next;
+}
+
+// Eingabe
+const keys = {};
+function press(k) {
+  if (k === 'up' && state.gait < GAITS.length - 1) { state.gait++; if (!state.jumping) playGait(); }
+  if (k === 'down' && state.gait > 0) { state.gait--; if (!state.jumping) playGait(); }
+  if (k === 'jump' && !state.jumping && state.gait >= 2 && actions.Gallop_Jump) {
+    state.jumping = true;
+    const j = actions.Gallop_Jump;
+    j.reset().play();
+    j.crossFadeFrom(current, 0.15, true);
+    current = j;
+  }
+}
+const MAP = { KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right', Space: 'jump' };
+addEventListener('keydown', (e) => {
+  const k = MAP[e.code]; if (!k) return;
+  e.preventDefault();
+  if (!e.repeat && (k === 'up' || k === 'down' || k === 'jump')) press(k);
+  keys[k] = true;
+});
+addEventListener('keyup', (e) => { const k = MAP[e.code]; if (k) keys[k] = false; });
+for (const b of document.querySelectorAll('#touch button')) {
+  const k = b.dataset.k;
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[k] = true; if (k !== 'left' && k !== 'right') press(k); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(ev, () => { keys[k] = false; });
+}
+let drag = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { drag = e.clientX; });
+addEventListener('pointerup', () => { drag = null; });
+addEventListener('pointermove', (e) => {
+  if (drag === null) return;
+  state.camYaw -= (e.clientX - drag) * 0.006; drag = e.clientX;
+});
+
+// HUD
+const elGait = document.getElementById('gait'), elSpeed = document.getElementById('speed');
+const gears = [...document.querySelectorAll('#gears span')];
+
+const clock = new THREE.Clock();
+const camPos = new THREE.Vector3(0, 6, -10), look = new THREE.Vector3();
+const fwd = new THREE.Vector3();
+
+function tick() {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const g = GAITS[state.gait];
+  const target = state.jumping ? Math.max(state.speed, 6) : g.speed;
+  state.speed += (target - state.speed) * Math.min(1, dt * 1.6);
+
+  const steer = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
+  const turnRate = state.speed < 0.2 ? 0.9 : 1.6 / (1 + state.speed * 0.12);
+  state.heading += steer * turnRate * dt;
+
+  fwd.set(Math.sin(state.heading), 0, Math.cos(state.heading));
+  horse.position.addScaledVector(fwd, state.speed * dt);
+  const lim = SIZE * 0.45;
+  horse.position.x = THREE.MathUtils.clamp(horse.position.x, -lim, lim);
+  horse.position.z = THREE.MathUtils.clamp(horse.position.z, -lim, lim);
+
+  // Höhe und Neigung aus dem Gelände
+  const x = horse.position.x, z = horse.position.z;
+  horse.position.y = heightAt(x, z);
+  const pitch = Math.atan2(heightAt(x + fwd.x, z + fwd.z) - heightAt(x - fwd.x, z - fwd.z), 2);
+  horse.rotation.set(0, 0, 0);
+  horse.rotateY(state.heading);
+  horse.rotateX(-pitch);
+
+  // Animation an die Bodengeschwindigkeit koppeln, damit die Hufe nicht rutschen
+  if (mixer) {
+    if (!state.jumping && current) current.timeScale = state.gait === 0 ? 1 : Math.max(0.4, state.speed / g.ref);
+    mixer.update(dt);
+  }
+
+  // Verfolgerkamera
+  state.camYaw *= 1 - Math.min(1, dt * (drag === null ? 0.8 : 0));
+  const yaw = state.heading + Math.PI + state.camYaw;
+  const dist = 9 + state.speed * 0.25;
+  const want = new THREE.Vector3(x + Math.sin(yaw) * dist, 0, z + Math.cos(yaw) * dist);
+  want.y = Math.max(heightAt(want.x, want.z) + 1.5, horse.position.y + 3.6);
+  camPos.lerp(want, Math.min(1, dt * 4));
+  camera.position.copy(camPos);
+  look.set(x, horse.position.y + 1.6, z);
+  camera.lookAt(look);
+
+  sun.position.set(x + 30, horse.position.y + 50, z + 20);
+  sun.target.position.copy(horse.position);
+
+  elGait.textContent = state.jumping ? 'Sprung!' : g.name;
+  elSpeed.textContent = (state.speed * 3.6).toFixed(1) + ' km/h';
+  gears.forEach((s, i) => s.classList.toggle('on', i < state.gait));
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+}
+tick();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
