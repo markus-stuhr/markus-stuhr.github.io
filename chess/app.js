@@ -314,39 +314,127 @@ $('chart').addEventListener('click', (e) => {
 });
 
 // ---------- Speichern ----------
+// Partien landen lokal (Offline-Puffer) und in der Datenbank auf api.illstyles.de (D1).
+// Zugriff nur mit Familien-Token (Header X-Chess-Token), Spielername wählt man im Verlauf.
 const STORE = 'chess.games.v1';
-function loadAll() { try { return JSON.parse(localStorage.getItem(STORE)) || []; } catch { return []; } }
+const API = (() => { try { return localStorage.getItem('chess.api') || 'https://api.illstyles.de'; } catch { return 'https://api.illstyles.de'; } })();
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } };
+let token = ls('chess.token') || '';
+let playerName = ls('chess.player') || '';
+let remote = null; // Partienliste vom Server, null = nicht verbunden
+
+function loadAll() {
+  let all; try { all = JSON.parse(localStorage.getItem(STORE)) || []; } catch { all = []; }
+  // altes Format (vor der Datenbank): Farbe stand in player, Züge auf oberster Ebene
+  return all.map((g) => g.data ? g : {
+    id: 'local-' + g.date, player: playerName || 'Spieler', color: g.player, date: g.date, level: g.level, result: g.result,
+    reason: g.reason, acc: g.acc, opening: g.opening, moves: g.sans.length, data: { sans: g.sans, evals: g.evals, cls: g.cls },
+  });
+}
+function storeAll(all) { try { localStorage.setItem(STORE, JSON.stringify(all.slice(0, 100))); } catch {} }
+
+async function api(path, opts = {}) {
+  const r = await fetch(API + '/chess/' + path, { ...opts, headers: { 'X-Chess-Token': token, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  if (r.status === 401) throw Object.assign(new Error('unauthorized'), { auth: true });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
 function saveGame() {
   const all = loadAll();
   all.unshift({
-    date: G.date, level: G.level, player: G.player, result: G.result, reason: G.reason, sans: G.sans,
-    evals: G.evals.map(({ cp, mate, mateFor, best, second }) => ({ cp, mate, mateFor, best, second })),
-    cls: G.cls, acc: accuracyOf(G.player), opening: openingName(n()),
+    id: (crypto.randomUUID?.() || String(Math.random()).slice(2) + Date.now()), player: playerName || 'Spieler', color: G.player,
+    date: G.date, level: G.level, result: G.result, reason: G.reason, acc: accuracyOf(G.player), opening: openingName(n()), moves: n(),
+    data: { sans: G.sans, evals: G.evals.map(({ cp, mate, mateFor, best, second }) => ({ cp, mate, mateFor, best, second })), cls: G.cls, hints: G.hints },
+    synced: false,
   });
-  try { localStorage.setItem(STORE, JSON.stringify(all.slice(0, 50))); } catch {}
+  storeAll(all);
+  sync();
+}
+
+// Ungesendete Partien hochladen, danach Liste vom Server holen
+async function sync() {
+  if (!token) { renderHistory(); return; }
+  const all = loadAll();
+  try {
+    for (const g of all.filter((x) => !x.synced)) {
+      const { synced, ...rec } = g; void synced;
+      await api('games', { method: 'POST', body: JSON.stringify(rec) });
+      g.synced = true;
+    }
+    storeAll(all);
+    remote = await api('games' + (playerName ? '?player=' + encodeURIComponent(playerName) : ''));
+    $('dbState').textContent = 'Datenbank verbunden'; $('dbState').className = 'db ok';
+    if (!$('playerSel').dataset.loaded) loadPlayers();
+  } catch (e) {
+    remote = null;
+    $('dbState').textContent = e.auth ? 'Token ungültig' : 'Offline – lokal gespeichert';
+    $('dbState').className = 'db err';
+  }
   renderHistory();
 }
-function renderHistory() {
-  const all = loadAll();
-  $('history').innerHTML = all.length ? all.map((g, i) => {
-    const won = (g.result === '1-0' && g.player === 'w') || (g.result === '0-1' && g.player === 'b');
-    const res = g.result === '½-½' ? '½' : won ? 'Sieg' : 'Niederlage';
-    const d = new Date(g.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-    return `<li data-i="${i}"><span><span class="res">${res}</span> vs ${LEVELS[g.level].name} <span class="meta">(${g.player === 'w' ? '♔' : '♚'}, ${Math.ceil(g.sans.length / 2)} Züge)</span></span><span class="meta">${g.acc != null ? g.acc.toFixed(0) + ' % · ' : ''}${d}</span></li>`;
-  }).join('') : '<li class="meta">Noch keine Partien</li>';
+
+async function loadPlayers() {
+  try {
+    const list = await api('players');
+    const names = [...new Set([...list.map((p) => p.player), playerName].filter(Boolean))];
+    $('playerSel').innerHTML = names.map((nm) => `<option${nm === playerName ? ' selected' : ''}>${esc(nm)}</option>`).join('') + '<option value="__new">Neuer Spieler …</option>';
+    $('playerSel').dataset.loaded = 1;
+  } catch {}
 }
-$('history').addEventListener('click', (e) => {
-  const li = e.target.closest('li[data-i]'); if (!li) return;
-  const g = loadAll()[+li.dataset.i];
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function renderHistory() {
+  const local = loadAll().filter((g) => !playerName || g.player === playerName);
+  // Server-Liste plus lokal noch nicht hochgeladene
+  const list = remote ? [...local.filter((g) => !g.synced), ...remote] : local;
+  const stats = { w: 0, d: 0, l: 0 };
+  $('history').innerHTML = list.length ? list.map((g) => {
+    const won = (g.result === '1-0' && g.color === 'w') || (g.result === '0-1' && g.color === 'b');
+    const res = g.result === '½-½' ? '½' : won ? 'Sieg' : 'Niederlage';
+    stats[g.result === '½-½' ? 'd' : won ? 'w' : 'l']++;
+    const d = new Date(g.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    return `<li data-id="${esc(g.id)}"><span><span class="res">${res}</span> vs ${LEVELS[g.level].name} <span class="meta">(${g.color === 'w' ? '♔' : '♚'}, ${Math.ceil(g.moves / 2)} Züge)</span></span><span class="meta">${g.acc != null ? g.acc.toFixed(0) + ' % · ' : ''}${d}${g.synced === false && token ? ' ⏳' : ''}</span></li>`;
+  }).join('') : '<li class="meta">Noch keine Partien</li>';
+  $('histStats').textContent = list.length ? `${stats.w} Siege · ${stats.d} Remis · ${stats.l} Niederlagen` : '';
+}
+
+$('history').addEventListener('click', async (e) => {
+  const li = e.target.closest('li[data-id]'); if (!li) return;
+  const id = li.dataset.id;
+  let g = loadAll().find((x) => x.id === id);
+  if (!g) { try { g = await api('games/' + encodeURIComponent(id)); } catch { return; } }
   gen++;
   const c = new Chess(); const fens = [c.fen()], ucis = [];
-  for (const s of g.sans) { const m = c.move(s); fens.push(c.fen()); ucis.push(m.from + m.to + (m.promotion || '')); }
-  G = { ...g, fens, ucis, over: true, saved: true, thinking: false };
+  for (const s of g.data.sans) { const m = c.move(s); fens.push(c.fen()); ucis.push(m.from + m.to + (m.promotion || '')); }
+  G = {
+    date: g.date, level: g.level, player: g.color, result: g.result, reason: g.reason, sans: g.data.sans, evals: g.data.evals, cls: g.data.cls,
+    hints: g.data.hints || 0, fens, ucis, over: true, saved: true, thinking: false,
+  };
   view = n(); selected = null;
   showReview();
-  setFeedback(null, `${g.result} – ${g.reason}`, `Gespeicherte Partie gegen ${LEVELS[g.level].name}. Klicke auf Züge oder die Kurve.`);
+  setFeedback(null, `${g.result} – ${g.reason}`, `${g.player} gegen ${LEVELS[g.level].name}. Klicke auf Züge oder die Kurve.`);
   refresh();
 });
+
+$('playerSel').onchange = () => {
+  let v = $('playerSel').value;
+  if (v === '__new') {
+    v = (prompt('Name des Spielers:') || '').trim().slice(0, 40);
+    if (!v) { $('playerSel').value = playerName; return; }
+    $('playerSel').insertAdjacentHTML('afterbegin', `<option>${esc(v)}</option>`);
+    $('playerSel').value = v;
+  }
+  playerName = v; ls('chess.player', v); sync();
+};
+$('btnToken').onclick = () => {
+  const t = prompt('Familien-Token für die Partie-Datenbank:', token);
+  if (t == null) return;
+  token = t.trim(); ls('chess.token', token);
+  $('playerSel').dataset.loaded = ''; sync();
+};
+if (playerName) $('playerSel').innerHTML = `<option>${esc(playerName)}</option><option value="__new">Neuer Spieler …</option>`;
+else $('playerSel').innerHTML = '<option value="">– Spieler wählen –</option><option value="__new">Neuer Spieler …</option>';
 
 function pgn() {
   const head = `[Event "markusstuhr.de/chess"]\n[Date "${new Date(G.date).toISOString().slice(0, 10).replace(/-/g, '.')}"]\n[White "${G.player === 'w' ? 'Spieler' : 'Stockfish ' + LEVELS[G.level].name}"]\n[Black "${G.player === 'b' ? 'Spieler' : 'Stockfish ' + LEVELS[G.level].name}"]\n[Result "${(G.result || '*').replace('½-½', '1/2-1/2')}"]\n\n`;
@@ -519,7 +607,7 @@ function renderPlayers() {
   const me = G.player;
   const accMe = G.over ? accuracyOf(me) : null, accOp = G.over ? accuracyOf(me === 'w' ? 'b' : 'w') : null;
   const fmt = (a) => (a != null ? `<span class="acc-mini">${a.toFixed(1).replace('.', ',')} %</span>` : '');
-  $('plBottom').innerHTML = `${me === 'w' ? '♔' : '♚'} Du ${fmt(accMe)}`;
+  $('plBottom').innerHTML = `${me === 'w' ? '♔' : '♚'} ${esc(playerName || 'Du')} ${fmt(accMe)}`;
   $('plTop').innerHTML = `${me === 'w' ? '♚' : '♔'} ${L.name} <span class="acc-mini">(${L.elo})</span> ${fmt(accOp)} ${G.thinking ? '<span class="thinking">denkt …</span>' : ''}`;
 }
 
@@ -587,7 +675,7 @@ $('dlgNew').addEventListener('close', () => {
   newGame(lvl, col);
 });
 
-renderHistory();
+sync();
 G = { level: lastLevel, player: 'w', fens: [new Chess().fen()], sans: [], ucis: [], evals: [], cls: [], over: false, thinking: false, idle: true };
 refresh();
 window.__chess = { get G() { return G; }, playMove, newGame };

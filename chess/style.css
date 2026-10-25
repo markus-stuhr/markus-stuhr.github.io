@@ -93,3 +93,8 @@ dialog::backdrop { background: rgba(0,0,0,.6); }
 .promo button { width: 64px; height: 64px; background-size: 90%; background-position: center; background-repeat: no-repeat; }
 footer { max-width: 1180px; margin: 0 auto; padding: 8px 16px 24px; color: var(--muted); font-size: 12px; }
 footer a { color: var(--muted); }
+.hist-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.hist-head select { flex: 1; background: #1f2126; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px; font: inherit; }
+.db { font-size: 12px; color: var(--muted); }
+.db.ok { color: var(--accent); } .db.err { color: var(--mistake); }
+#histStats { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
