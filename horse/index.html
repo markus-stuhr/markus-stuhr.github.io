@@ -389,19 +389,45 @@ function buildBridle(head) {
   // Zügel werden jedes Bild zwischen Gebiss und Händen neu aufgebaut
   tack.reinMat = leather;
   tack.reins = [null, null];
+  addNeckGuides(head.parent);
 }
-const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _m = new THREE.Vector3();
+
+// Stützpunkte, damit die Zügel außen am Hals entlanglaufen statt hindurch.
+// Gemessen im Pferderaum (Meter): halbe Halsbreite und Kammhöhe über dem jeweiligen Halsknochen.
+const NECK = [['Neck3', 0.15, 0.38], ['Neck2', 0.18, 0.37]];
+function addNeckGuides(anyBone) {
+  let root = anyBone;
+  while (root.parent && !root.parent.isScene && root.parent !== horse) root = root.parent;
+  tack.guides = [[], []];
+  const p = new THREE.Vector3();
+  for (const [name, half, crest] of NECK) {
+    const bone = root.getObjectByName(name);
+    [1, -1].forEach((side, i) => {
+      // seitlich knapp außerhalb, auf halber Höhe zwischen Knochen und Mähnenkamm
+      horse.updateMatrixWorld(true);
+      bone.getWorldPosition(p);
+      horse.worldToLocal(p);
+      p.x += side * (half + 0.035);
+      p.y += crest * 0.55;
+      horse.localToWorld(p);
+      const o = new THREE.Object3D();
+      bone.add(o);
+      o.position.copy(bone.worldToLocal(p.clone()));
+      tack.guides[i].push(o);
+    });
+  }
+}
+const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 function updateReins() {
   if (!tack.bitAnchors || !rider.bones) return;
   ['LeftHand', 'RightHand'].forEach((name, i) => {
     // linke Hand (+x) gehört zum Gebissring auf der linken Seite des Pferdes; im Kopfraum ist x gespiegelt
     tack.bitAnchors[1 - i].getWorldPosition(_a);
     rider.bones[name].getWorldPosition(_b);
-    // leicht durchhängend: Mitte etwas nach unten
-    _m.addVectors(_a, _b).multiplyScalar(0.5);
-    _m.y -= 0.06;
-    const curve = new THREE.QuadraticBezierCurve3(_a.clone(), _m.clone(), _b.clone());
-    const geo = new THREE.TubeGeometry(curve, 16, 0.008, 5, false);
+    // Gebiss, außen am Hals hoch, dann zur Hand
+    const pts = [_a.clone(), ...tack.guides[i].map((o) => o.getWorldPosition(new THREE.Vector3())), _b.clone()];
+    const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    const geo = new THREE.TubeGeometry(curve, 32, 0.008, 5, false);
     if (!tack.reins[i]) {
       tack.reins[i] = new THREE.Mesh(geo, tack.reinMat);
       tack.reins[i].castShadow = true;
