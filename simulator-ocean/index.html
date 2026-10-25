@@ -1927,7 +1927,7 @@ scene.add(windNeedle);
 // green abeam (fastest). The needle above then reads the wind against it.
 {
   const seg = 120;
-  const g = new THREE.RingGeometry(RING_R - 0.168, RING_R - 0.08, seg, 1); // narrow band (40 % of the earlier width)
+  const g = new THREE.RingGeometry(RING_R - 0.212, RING_R - 0.08, seg, 1); // narrow band (60 % of the original width)
   const pos = g.attributes.position;
   // colour ramp by efficiency: red (no-go) -> orange -> dark green (close-hauled) -> bright green (reach)
   const stops = [
