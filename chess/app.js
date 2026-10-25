@@ -605,7 +605,12 @@ function renderMoves() {
   }
   void startBlack;
   const box = $('moves'); box.innerHTML = h;
-  box.querySelector('.cur')?.scrollIntoView({ block: 'nearest' });
+  // nur die Zugliste selbst scrollen, nie die Seite (scrollIntoView ließ mobil die Ansicht springen)
+  const curEl = box.querySelector('.cur');
+  if (curEl) {
+    if (box.scrollWidth > box.clientWidth) box.scrollLeft = curEl.offsetLeft - box.clientWidth / 2;
+    else box.scrollTop = curEl.offsetTop - box.offsetTop - box.clientHeight / 2;
+  }
   updateChartCursor();
 }
 $('moves').addEventListener('click', (e) => { const m = e.target.closest('.mv'); if (m) go(+m.dataset.k); });
