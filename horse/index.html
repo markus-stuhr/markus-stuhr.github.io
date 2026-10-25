@@ -71,6 +71,7 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 // Gangarten: Clip, Zielgeschwindigkeit in m/s, Geschwindigkeit bei timeScale 1
 const GAITS = [
@@ -153,9 +154,7 @@ scatter([
 scatter([[new THREE.DodecahedronGeometry(0.8, 0), new THREE.MeshStandardMaterial({ color: 0x9a9488, flatShading: true })]], 120, 8, 0.2, [0.4, 1.4]);
 
 // Pferd
-const horse = new THREE.Group();
-scene.add(horse);
-let mixer, actions = {}, current = null;
+let mixer, actions = {}, current = null, horse = null, rider = null;
 const state = { gait: 0, speed: 0, heading: 0, jumping: false, camYaw: 0, zoom: 1 };
 
 const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/');
@@ -165,15 +164,16 @@ const load = (url) => new Promise((ok, fail) => loader.load(url, ok, undefined, 
 // Sitz: Lage des Sattels im Modellraum des Pferdes (Einheiten vor HORSE_SCALE)
 const SEAT = { pos: new THREE.Vector3(0, 3.05, -0.15) };
 const SADDLE_Y = 0.6;
-const rider = { pose: {}, root: null };
+const ASSETS = {};
+const racers = [];
 
 Promise.all([load('horse.glb'), load('jockey.glb')]).then(([gltf, riderGltf]) => {
-  const model = gltf.scene;
-  model.scale.setScalar(HORSE_SCALE);
-  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; smooth(o); } });
-  horse.add(model);
-  mixer = new THREE.AnimationMixer(model);
-  for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
+  // Glätten einmal an der Vorlage, die Klone teilen sich die Geometrie
+  gltf.scene.traverse((o) => { if (o.isMesh) smooth(o); });
+  Object.assign(ASSETS, { horse: gltf, jockey: riderGltf });
+  const me = makeRacer({ number: 7, silks: ['#0d5c33', '#f2c200'] });
+  scene.add(me.group);
+  ({ group: horse, mixer, actions, rider } = me);
   const jump = actions.Gallop_Jump;
   jump.setLoop(THREE.LoopOnce, 1);
   jump.clampWhenFinished = true;
@@ -181,16 +181,38 @@ Promise.all([load('horse.glb'), load('jockey.glb')]).then(([gltf, riderGltf]) =>
     if (e.action === jump) { state.jumping = false; playGait(true); }
   });
   playGait(true);
-  mixer.update(0);
-  model.updateMatrixWorld(true);
-  mountRider(model, riderGltf);
-  buildBridle(model.getObjectByName('Head'));
   document.getElementById('loading').remove();
-  window.__horse = { state, actions, horse, rider, SEAT, camera, JOCKEY };
+  window.__horse = { state, actions, horse, rider, SEAT, camera, JOCKEY, racers, makeRacer, scene };
+  onAssetsReady();
 });
 
+// Wird nach dem Laden der Modelle aufgerufen; hier hängt sich die Rennbahn ein
+function onAssetsReady() {}
+
+// Ein komplettes Gespann: Pferd, Jockey in eigenen Farben, Sattel mit Nummer, Zaumzeug und Zügel
+function makeRacer({ number, silks }) {
+  const group = new THREE.Group();
+  const model = cloneSkinned(ASSETS.horse.scene);
+  model.userData.isHorseModel = true;
+  model.scale.setScalar(HORSE_SCALE);
+  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  group.add(model);
+  const r = { group, model, number, rider: { root: null }, tack: { stirrups: [], leathers: [] } };
+  r.mixer = new THREE.AnimationMixer(model);
+  r.actions = {};
+  for (const clip of ASSETS.horse.animations) r.actions[clip.name] = r.mixer.clipAction(clip);
+  r.actions.Idle.play();
+  r.mixer.update(0);
+  group.updateMatrixWorld(true);
+  mountRider(r, cloneSkinned(ASSETS.jockey.scene), silks);
+  buildBridle(r, model.getObjectByName('Head'));
+  racers.push(r);
+  return r;
+}
+
 // Sattel und Reiter hängen am Rückenknochen und schwingen dadurch mit
-function mountRider(model, gltf) {
+function mountRider(r, man, silks) {
+  const model = r.model;
   const torso = model.getObjectByName('Torso');
   const seat = new THREE.Group();
   seat.position.copy(SEAT.pos);
@@ -198,17 +220,18 @@ function mountRider(model, gltf) {
   model.updateMatrixWorld(true);
   torso.attach(seat);
 
-  seat.add(buildSaddle());
+  seat.add(buildSaddle(r));
 
-  const man = gltf.scene;
   man.traverse((o) => {
     if (!o.isMesh) return;
     o.castShadow = true; o.receiveShadow = true;
     // MPFB exportiert alles mit Alpha-Blending; ohne Tiefenschreiben scheint das Pferd durch den Jockey
-    const m = o.material;
+    const m = o.material = o.material.clone();
     m.transparent = false;
     m.depthWrite = true;
     m.alphaTest = /eyebrow/i.test(o.name + m.name) ? 0.5 : 0;
+    if (/casualsuit/i.test(o.name)) recolorSilks(m, silks);
+    if (/Helmet|Peak/.test(o.name)) m.color.set(silks[0]);
     m.needsUpdate = true;
   });
   // Sitz liegt im skalierten Pferderaum, der Jockey soll in Metern bleiben
@@ -218,14 +241,34 @@ function mountRider(model, gltf) {
   seat.add(holder);
   const bones = {};
   man.traverse((o) => { if (o.isBone) bones[o.name.replace('mixamorig', '')] = o; });
-  rider.root = holder;
-  rider.bones = bones;
-  rider.rest = Object.fromEntries(Object.entries(bones).map(([k, b]) => [k, b.quaternion.clone()]));
-  poseJockey(0);
+  Object.assign(r.rider, { root: holder, bones, rest: Object.fromEntries(Object.entries(bones).map(([k, b]) => [k, b.quaternion.clone()])) });
+  poseJockey(r.rider, 0);
   // Gesäß knapp über die Sitzfläche bringen
   holder.updateMatrixWorld(true);
   const hip = holder.worldToLocal(bones.Hips.getWorldPosition(new THREE.Vector3()));
   holder.position.set(0, -hip.y + JOCKEY.hipLift, -hip.z + JOCKEY.hipBack);
+}
+
+// Rennfarben: die Jockeytextur ist grün-gelb (silks.py); Grün wird zur ersten, Gold zur zweiten Farbe,
+// die weiße Hose bleibt. Helligkeit des Originals bleibt erhalten, damit die Falten sichtbar sind.
+function recolorSilks(m, [a, b]) {
+  const c1 = new THREE.Color(a), c2 = new THREE.Color(b);
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.silkA = { value: c1 };
+    sh.uniforms.silkB = { value: c2 };
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', 'uniform vec3 silkA;\nuniform vec3 silkB;\n#include <common>')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+{
+  vec3 t = diffuseColor.rgb;
+  float lum = dot(t, vec3(0.299, 0.587, 0.114));
+  float green = smoothstep(0.02, 0.12, t.g - t.r);
+  float gold = smoothstep(0.1, 0.3, t.r - t.b) * (1.0 - green);
+  float shade = clamp(lum / 0.35, 0.4, 1.4);
+  vec3 col = mix(t, silkA * shade * 0.9, green);
+  diffuseColor.rgb = mix(col, silkB * clamp(lum / 0.6, 0.4, 1.2), gold);
+}`);
+  };
 }
 
 // Jockeyhaltung: kurze Bügel, Knie hoch, Oberkörper flach nach vorn, Hände am Mähnenkamm.
@@ -249,20 +292,20 @@ const JOCKEY = {
 };
 const AXES = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
 const _q = new THREE.Quaternion(), _p = new THREE.Quaternion(), _r = new THREE.Quaternion();
-function rotateInRiderSpace(bone, axis, angle) {
+function rotateInRiderSpace(rd, bone, axis, angle) {
   // Achse aus dem Jockey-Raum in den Elternraum des Knochens bringen
-  rider.root.updateMatrixWorld(true);
-  rider.root.getWorldQuaternion(_r);
+  rd.root.updateMatrixWorld(true);
+  rd.root.getWorldQuaternion(_r);
   bone.parent.getWorldQuaternion(_p);
   const a = AXES[axis].clone().applyQuaternion(_r).applyQuaternion(_p.invert());
   bone.quaternion.premultiply(_q.setFromAxisAngle(a, angle));
 }
 // lean: zusätzliches Vorbeugen bei Tempo (0..1)
-function poseJockey(lean) {
-  const b = rider.bones;
-  for (const [k, q] of Object.entries(rider.rest)) b[k].quaternion.copy(q);
-  for (const [name, axis, angle] of JOCKEY.pose) if (b[name]) rotateInRiderSpace(b[name], axis, angle);
-  if (lean) { rotateInRiderSpace(b.Spine1, 'x', 0.25 * lean); rotateInRiderSpace(b.Head, 'x', -0.25 * lean); }
+function poseJockey(rd, lean) {
+  const b = rd.bones;
+  for (const [k, q] of Object.entries(rd.rest)) b[k].quaternion.copy(q);
+  for (const [name, axis, angle] of JOCKEY.pose) if (b[name]) rotateInRiderSpace(rd, b[name], axis, angle);
+  if (lean) { rotateInRiderSpace(rd, b.Spine1, 'x', 0.25 * lean); rotateInRiderSpace(rd, b.Head, 'x', -0.25 * lean); }
   // Fäuste: Fingerglieder um ihre lokale x-Achse beugen; negativ = zur Handfläche (bei beiden Händen gleich), Daumen weniger
   for (const side of ['Left', 'Right']) {
     for (const f of ['Index', 'Middle', 'Ring', 'Pinky', 'Thumb']) {
@@ -278,7 +321,6 @@ function poseJockey(lean) {
 
 // Rennsattel: flache Lederschale auf weißer Schabracke mit Startnummer,
 // die Bügel folgen jedes Bild den Füßen des Jockeys
-const tack = { stirrups: [], leathers: [] };
 // Abwicklung der Schabracke: u läuft einmal über den Rücken, die Flanken liegen bei u≈0.2 und u≈0.8
 const CLOTH = { start: Math.PI * 0.35, len: Math.PI * 1.3, r: 0.62 };
 function numberCloth(n) {
@@ -295,11 +337,12 @@ function numberCloth(n) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-function buildSaddle() {
+function buildSaddle(r) {
+  const tack = r.tack;
   const g = new THREE.Group();
   const leather = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.55 });
   const metal = new THREE.MeshStandardMaterial({ color: 0xc9c4b8, metalness: 0.85, roughness: 0.3 });
-  const clothMat = new THREE.MeshStandardMaterial({ map: numberCloth(7), roughness: 0.9, side: THREE.DoubleSide });
+  const clothMat = new THREE.MeshStandardMaterial({ map: numberCloth(r.number), roughness: 0.9, side: THREE.DoubleSide });
   // Schabracke: Zylinderausschnitt, Achse längs zum Pferd, hängt über beide Flanken
   const cloth = new THREE.Mesh(new THREE.CylinderGeometry(CLOTH.r, CLOTH.r, 1.2, 40, 1, true, CLOTH.start, CLOTH.len), clothMat);
   cloth.rotation.x = Math.PI / 2;
@@ -373,7 +416,7 @@ function headSurface(head) {
   const v = new THREE.Vector3();
   head.parent.updateMatrixWorld(true);
   let root = head;
-  while (root.parent && root.parent !== horse) root = root.parent;
+  while (!root.userData.isHorseModel) root = root.parent;
   root.traverse((m) => {
     if (!m.isSkinnedMesh) return;
     const pos = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex, sw = m.geometry.attributes.skinWeight;
@@ -435,7 +478,7 @@ function headSurface(head) {
 // und können nicht durch den Kopf stechen. Maße wie in headSurface: +y zum Maul, +z nach oben.
 function paintHeadstall(head) {
   let root = head;
-  while (root.parent && root.parent !== horse) root = root.parent;
+  while (!root.userData.isHorseModel) root = root.parent;
   const v = new THREE.Vector3();
   root.traverse((m) => {
     if (!m.isSkinnedMesh) return;
@@ -481,7 +524,8 @@ float band(float d, float w) { return 1.0 - smoothstep(w * 0.75, w, abs(d)); }
   });
 }
 
-function buildBridle(head) {
+function buildBridle(r, head) {
+  const tack = r.tack;
   const g = new THREE.Group();
   const leather = new THREE.MeshStandardMaterial({ color: 0x1c120b, roughness: 0.5 });
   const metal = new THREE.MeshStandardMaterial({ color: 0xd9d6cf, metalness: 0.9, roughness: 0.25 });
@@ -506,15 +550,14 @@ function buildBridle(head) {
   // Zügel werden jedes Bild zwischen Gebiss und Händen neu aufgebaut
   tack.reinMat = leather;
   tack.reins = [null, null, null];
-  addNeckGuides(head.parent);
+  addNeckGuides(r, head.parent);
 }
 
 // Stützpunkte, damit die Zügel außen am Hals entlanglaufen statt hindurch.
 // Gemessen im Pferderaum (Meter): halbe Halsbreite und Kammhöhe über dem Halsknochen.
 const NECK = [['Neck2', 0.18, 0.37]];
-function addNeckGuides(anyBone) {
-  let root = anyBone;
-  while (root.parent && !root.parent.isScene && root.parent !== horse) root = root.parent;
+function addNeckGuides(r, anyBone) {
+  const root = r.model, tack = r.tack, horse = r.group;
   tack.guides = [[], []];
   const p = new THREE.Vector3();
   for (const [name, half, crest] of NECK) {
@@ -535,9 +578,10 @@ function addNeckGuides(anyBone) {
   }
 }
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
-function updateReins() {
-  if (!tack.bitAnchors || !rider.bones) return;
-  const fists = ['Left', 'Right'].map((side) => fistPoint(side));
+function updateReins(r) {
+  const tack = r.tack;
+  if (!tack.bitAnchors || !r.rider.bones) return;
+  const fists = ['Left', 'Right'].map((side) => fistPoint(r.rider, side));
   ['Left', 'Right'].forEach((side, i) => {
     // linke Hand (+x) gehört zum Gebissring auf der linken Seite des Pferdes; im Kopfraum ist x gespiegelt
     tack.bitAnchors[1 - i].getWorldPosition(_a);
@@ -546,14 +590,14 @@ function updateReins() {
     const pts = [_a.clone(), ...tack.guides[i].map((o) => o.getWorldPosition(new THREE.Vector3())), _b.clone()];
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
     const geo = new THREE.TubeGeometry(curve, 32, 0.008, 5, false);
-    setRein(i, geo);
+    setRein(tack, i, geo);
   });
   // Zügelbrücke: das Zügelende läuft durch beide Fäuste und hängt dazwischen leicht durch
   const mid = fists[0].clone().add(fists[1]).multiplyScalar(0.5);
   mid.y -= 0.07;
-  setRein(2, new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(fists[0], mid, fists[1]), 12, 0.008, 5, false));
+  setRein(tack, 2, new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(fists[0], mid, fists[1]), 12, 0.008, 5, false));
 }
-function setRein(i, geo) {
+function setRein(tack, i, geo) {
   if (!tack.reins[i]) {
     tack.reins[i] = new THREE.Mesh(geo, tack.reinMat);
     tack.reins[i].castShadow = true;
@@ -564,19 +608,20 @@ function setRein(i, geo) {
   }
 }
 // Mitte der Faust: zwischen Handwurzel und Mittelfinger-Grundgelenk, etwas Richtung Fingerspitzen
-function fistPoint(side) {
-  const b = rider.bones;
+function fistPoint(rd, side) {
+  const b = rd.bones;
   const p = b[side + 'Hand'].getWorldPosition(new THREE.Vector3());
   const k = b[side + 'HandMiddle1'].getWorldPosition(new THREE.Vector3());
   return p.lerp(k, 1.25);
 }
 
 const _foot = new THREE.Vector3(), _dir = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
-function updateTack() {
-  if (!rider.bones) return;
+function updateTack(r) {
+  const tack = r.tack;
+  if (!r.rider.bones) return;
   ['LeftToeBase', 'RightToeBase'].forEach((name, i) => {
     // Bügel sitzt unter dem Fußballen
-    tack.group.worldToLocal(rider.bones[name].getWorldPosition(_foot));
+    tack.group.worldToLocal(r.rider.bones[name].getWorldPosition(_foot));
     _foot.y -= 0.12;
     const st = tack.stirrups[i];
     st.position.copy(_foot);
@@ -658,6 +703,7 @@ const fwd = new THREE.Vector3();
 
 function tick() {
   const dt = Math.min(clock.getDelta(), 0.05);
+  if (!horse) { requestAnimationFrame(tick); return; }
   const g = GAITS[state.gait];
   const target = state.jumping ? Math.max(state.speed, 6) : g.speed;
   state.speed += (target - state.speed) * Math.min(1, dt * 1.6);
@@ -684,8 +730,12 @@ function tick() {
   if (mixer) {
     if (!state.jumping && current) current.timeScale = state.gait === 0 ? 1 : Math.max(0.4, state.speed / g.ref);
     mixer.update(dt);
-    if (rider.bones) poseJockey(Math.min(1, state.speed / 12));
-    updateTack();
+  }
+  for (const r of racers) {
+    if (r.group !== horse) continue;
+    poseJockey(r.rider, Math.min(1, state.speed / 12));
+    updateTack(r);
+    updateReins(r);
   }
 
   // Verfolgerkamera (state.freeCam: Debug, Kamera wird von außen gesetzt)
@@ -708,7 +758,6 @@ function tick() {
   elSpeed.textContent = (state.speed * 3.6).toFixed(1) + ' km/h';
   gears.forEach((s, i) => s.classList.toggle('on', i < state.gait));
 
-  updateReins();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }

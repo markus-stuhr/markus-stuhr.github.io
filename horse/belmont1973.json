@@ -1,0 +1,26 @@
+{
+  "race": "105. Belmont Stakes",
+  "date": "1973-06-09",
+  "track": "Belmont Park, Elmont NY",
+  "surface": "dirt",
+  "condition": "fast",
+  "distance_m": 2414,
+  "source": "https://en.wikipedia.org/wiki/1973_Belmont_Stakes (Charts: Chicago Tribune, Los Angeles Times, New York Times, 10.06.1973)",
+  "note": "Zwischenzeiten des Führenden in Sekunden; Abstände der anderen Pferde in Längen (1 Länge ≈ 2,4 m) am Ziel, Rennverlauf aus dem Rennbericht nachempfunden",
+  "fractions": [
+    { "m": 0, "t": 0 },
+    { "m": 402.3, "t": 23.6 },
+    { "m": 804.7, "t": 46.2 },
+    { "m": 1207.0, "t": 69.8 },
+    { "m": 1609.3, "t": 94.2 },
+    { "m": 2011.7, "t": 119.0 },
+    { "m": 2414.0, "t": 144.0 }
+  ],
+  "field": [
+    { "name": "Secretariat", "post": 1, "jockey": "Ron Turcotte", "silks": ["#1f4aa8", "#ffffff"], "behind": [0, 0, 0, 0, 0, 0, 0] },
+    { "name": "Sham", "post": 5, "jockey": "Laffit Pincay Jr.", "silks": ["#ffffff", "#c8102e"], "behind": [0, 0.5, 1, 6, 20, 35, 45.25] },
+    { "name": "Twice a Prince", "post": 4, "jockey": "Braulio Baeza", "silks": ["#f2c200", "#0a3d2a"], "behind": [0, 6, 10, 14, 20, 26, 31] },
+    { "name": "My Gallant", "post": 3, "jockey": "Ángel Cordero Jr.", "silks": ["#d4502a", "#1b1b1b"], "behind": [0, 5, 8, 12, 19, 26, 31.5] },
+    { "name": "Pvt. Smiles", "post": 2, "jockey": "Dan Gargan", "silks": ["#6a2c8f", "#f2f2f2"], "behind": [0, 4, 9, 15, 25, 36, 44.5] }
+  ]
+}
