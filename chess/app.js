@@ -422,7 +422,10 @@ function fillPlayers(names) {
   $('playerSel').innerHTML = (playerName ? '' : '<option value="">– Spieler wählen –</option>')
     + names.map((nm) => `<option${nm === playerName ? ' selected' : ''}>${esc(nm)}</option>`).join('');
 }
-function setPlayer(v) { playerName = v; ls('chess.player', v); refresh(); sync(); }
+function setPlayer(v) { playerName = v; ls('chess.player', v); updateChip(); refresh(); sync(); }
+function updateChip() { $('playerChip').textContent = playerName || 'Spieler wählen'; }
+// Safari mit „Alle Cookies blockieren“ oder privatem Modus speichert evtl. nichts → sichtbar machen
+const storageOk = (() => { try { localStorage.setItem('chess.t', 1); localStorage.removeItem('chess.t'); return true; } catch { return false; } })();
 $('playerSel').onchange = () => setPlayer($('playerSel').value);
 $('btnAddPlayer').onclick = () => { $('newPlayer').hidden = false; $('newPlayerName').value = ''; $('newPlayerName').focus(); };
 $('newPlayerCancel').onclick = () => { $('newPlayer').hidden = true; };
@@ -442,6 +445,8 @@ $('btnToken').onclick = () => {
   $('playerSel').dataset.loaded = ''; sync();
 };
 fillPlayers([]);
+updateChip();
+if (!storageOk) { $('dbState').textContent = 'Browser speichert nichts (privater Modus / Cookies blockiert?)'; $('dbState').className = 'db err'; }
 
 function pgn() {
   const head = `[Event "markusstuhr.de/chess"]\n[Date "${new Date(G.date).toISOString().slice(0, 10).replace(/-/g, '.')}"]\n[White "${G.player === 'w' ? 'Spieler' : 'Stockfish ' + LEVELS[G.level].name}"]\n[Black "${G.player === 'b' ? 'Spieler' : 'Stockfish ' + LEVELS[G.level].name}"]\n[Result "${(G.result || '*').replace('½-½', '1/2-1/2')}"]\n\n`;
@@ -678,6 +683,7 @@ $('levels').innerHTML = LEVELS.map((l, i) => `<label><input type="radio" name="l
 let lastLevel = 2;
 try { lastLevel = +(localStorage.getItem('chess.level') ?? 2); } catch {}
 $('levels').querySelectorAll('input')[lastLevel].checked = true;
+$('btnPlayer').onclick = () => { $('dlgHistory').showModal(); sync(); };
 $('btnHistory').onclick = () => { $('dlgHistory').showModal(); sync(); };
 $('btnHistoryClose').onclick = () => $('dlgHistory').close();
 $('btnNew').onclick = () => $('dlgNew').showModal();
