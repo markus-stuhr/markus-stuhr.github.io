@@ -34,6 +34,19 @@
     background: rgba(255, 248, 234, 0.75); color: #2b2116; touch-action: none;
   }
   @media (pointer: coarse) { #touch { display: flex; } #help { display: none; } }
+  #mode { position: fixed; left: 50%; top: 16px; transform: translateX(-50%); }
+  #mode a { color: inherit; text-decoration: none; font-weight: 700; }
+  #racehud { position: fixed; left: 16px; top: 112px; display: none; min-width: 190px; pointer-events: none; }
+  #racehud .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #racehud .row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
+  #stamina { height: 6px; border-radius: 3px; background: rgba(80, 50, 20, 0.18); margin-top: 6px; overflow: hidden; }
+  #stamina div { height: 100%; width: 100%; background: #3a8a4a; }
+  #banner { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 700; display: none; text-align: center; }
+  #results { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; min-width: 300px; pointer-events: auto; }
+  #results table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  #results td { padding: 3px 6px; font-variant-numeric: tabular-nums; }
+  #results tr.me td { font-weight: 700; color: #b5651d; }
+  #results button { margin-top: 10px; border: 0; border-radius: 8px; padding: 7px 12px; background: #2b2116; color: #fff8ea; font: inherit; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -50,7 +63,19 @@
   <div><b>Leertaste</b> springen</div>
   <div><b>Maus</b> Kamera drehen</div>
   <div><b>Rad</b> Zoom</div>
+  <div class="raceonly"><b>Enter</b> Start</div>
+  <div class="raceonly"><b>C</b> Kamera wechseln</div>
 </div>
+<div id="mode" class="panel"></div>
+<div id="racehud" class="panel">
+  <div class="big" id="rtime">0:00.0</div>
+  <div class="row"><span>Platz</span><span id="rplace">–</span></div>
+  <div class="row"><span>Noch</span><span id="rleft">2414 m</span></div>
+  <div class="row"><span>Ausdauer</span><span></span></div>
+  <div id="stamina"><div></div></div>
+</div>
+<div id="banner" class="panel"></div>
+<div id="results" class="panel"></div>
 <div id="touch">
   <div class="grp"><button data-k="left">◀</button><button data-k="right">▶</button></div>
   <div class="grp"><button data-k="down">▼</button><button data-k="jump">⤒</button><button data-k="up">▲</button></div>
@@ -72,6 +97,10 @@ import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { buildBelmont, leaderModel, behindModel, RACE_M } from './race.js';
+
+// ?rennen öffnet die Rennbahn Belmont Park statt der Wiese
+const RACE = new URLSearchParams(location.search).has('rennen');
 
 // Gangarten: Clip, Zielgeschwindigkeit in m/s, Geschwindigkeit bei timeScale 1
 const GAITS = [
@@ -81,6 +110,8 @@ const GAITS = [
   { name: 'Galopp',  clip: 'Gallop', speed: 6.5, ref: 12 },
   { name: 'Renngalopp', clip: 'Gallop', speed: 12, ref: 14 },
 ];
+// Auf der Rennbahn: Vollblut-Tempo. Secretariat lief 1973 im Schnitt 16,8 m/s
+if (RACE) Object.assign(GAITS[3], { speed: 13, ref: 14 }), Object.assign(GAITS[4], { speed: 17.5, ref: 15 });
 const HORSE_SCALE = 0.5;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -93,8 +124,8 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xa9d3ee);
-scene.fog = new THREE.Fog(0xa9d3ee, 60, 260);
-const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 600);
+scene.fog = RACE ? new THREE.Fog(0xa9d3ee, 400, 2600) : new THREE.Fog(0xa9d3ee, 60, 260);
+const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, RACE ? 4000 : 600);
 
 scene.add(new THREE.HemisphereLight(0xdff1ff, 0x6b8a3a, 1.1));
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
@@ -106,12 +137,15 @@ sun.shadow.normalBias = 0.03;
 Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 120 });
 scene.add(sun, sun.target);
 
-// Gelände: sanfte Hügel aus Perlin-Rauschen
+// Gelände: sanfte Hügel aus Perlin-Rauschen, auf der Rennbahn flach
 const noise = new ImprovedNoise();
 function heightAt(x, z) {
+  if (RACE) return 0;
   return noise.noise(x * 0.012, 0, z * 0.012) * 9 + noise.noise(x * 0.05, 3, z * 0.05) * 1.2;
 }
-const SIZE = 600, SEG = 200;
+const SIZE = RACE ? 2600 : 600, SEG = RACE ? 60 : 200;
+// Bereich ohne Bäume: um den Startpunkt auf der Wiese, auf der Rennbahn das ganze Gelände samt Tribüne
+const keepOut = (x, z, minDist) => RACE ? Math.abs(x) < 620 && Math.abs(z) < 360 : Math.hypot(x, z) < minDist;
 const groundGeo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG).rotateX(-Math.PI / 2);
 const pos = groundGeo.attributes.position, colors = [];
 const cA = new THREE.Color(0x7fae4a), cB = new THREE.Color(0xa7c25a), c = new THREE.Color();
@@ -138,7 +172,7 @@ function scatter(parts, count, minDist, yOff, scaleRange) {
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
   for (let i = 0; i < count; i++) {
     let x, z;
-    do { x = (Math.random() - 0.5) * SIZE * 0.9; z = (Math.random() - 0.5) * SIZE * 0.9; } while (Math.hypot(x, z) < minDist);
+    do { x = (Math.random() - 0.5) * SIZE * 0.9; z = (Math.random() - 0.5) * SIZE * 0.9; } while (keepOut(x, z, minDist));
     const k = scaleRange[0] + Math.random() * (scaleRange[1] - scaleRange[0]);
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * 6.28);
     m.compose(p.set(x, heightAt(x, z) + yOff * k, z), q, s.set(k, k, k));
@@ -150,7 +184,7 @@ const crown = new THREE.IcosahedronGeometry(1.8, 0).translate(0, 2.6, 0);
 scatter([
   [trunk, new THREE.MeshStandardMaterial({ color: 0x6b4a2b, flatShading: true })],
   [crown, new THREE.MeshStandardMaterial({ color: 0x4f8a3a, flatShading: true })],
-], 260, 15, 1.4, [0.8, 1.6]);
+], RACE ? 900 : 260, 15, 1.4, [0.8, 1.6]);
 scatter([[new THREE.DodecahedronGeometry(0.8, 0), new THREE.MeshStandardMaterial({ color: 0x9a9488, flatShading: true })]], 120, 8, 0.2, [0.4, 1.4]);
 
 // Pferd
@@ -182,12 +216,14 @@ Promise.all([load('horse.glb'), load('jockey.glb')]).then(([gltf, riderGltf]) =>
   });
   playGait(true);
   document.getElementById('loading').remove();
-  window.__horse = { state, actions, horse, rider, SEAT, camera, JOCKEY, racers, makeRacer, scene };
+  window.__horse = { state, actions, horse, rider, SEAT, camera, JOCKEY, racers, makeRacer, scene, race };
   onAssetsReady();
 });
 
 // Wird nach dem Laden der Modelle aufgerufen; hier hängt sich die Rennbahn ein
-function onAssetsReady() {}
+function onAssetsReady() {
+  if (RACE) setupRace();
+}
 
 // Ein komplettes Gespann: Pferd, Jockey in eigenen Farben, Sattel mit Nummer, Zaumzeug und Zügel
 function makeRacer({ number, silks }) {
@@ -655,9 +691,181 @@ function playGait(force) {
   current = next;
 }
 
+// ------------------------------------------------------------- Rennen ----
+// Geister laufen nach den Zwischenzeiten von 1973, der Spieler startet aus Box 6 mit Nummer 7.
+const race = { phase: 'off', t: 0, track: null, ghosts: [], cam: 0, player: { s: 0, lane: 0, stamina: 1, d: 0, finish: null } };
+// Reisespur (Abstand zur Innenkante) nach dem Start, aus dem Rennbericht: Twice a Prince an der Innenkante,
+// Sham außen neben Secretariat im frühen Duell
+const CRUISE = { 'Secretariat': 1.6, 'Sham': 3.4, 'Twice a Prince': 1.2, 'My Gallant': 4.6, 'Pvt. Smiles': 2.8 };
+const CLIP_REF = { Idle: 1, Walk: 2.3, Trot: 5, Gallop: 14 };
+
+async function setupRace() {
+  const [track, data] = await Promise.all([buildBelmont(scene), fetch('belmont1973.json').then((r) => r.json())]);
+  Object.assign(race, { track, data, k: track.L / RACE_M, lead: leaderModel(data.fractions) });
+  for (const h of data.field) {
+    const r = makeRacer({ number: h.post, silks: h.silks });
+    scene.add(r.group);
+    Object.assign(r, { info: h, behind: behindModel(data.fractions, h.behind), lane0: track.gate.laneOf(h.post), cruise: CRUISE[h.name] });
+    race.ghosts.push(r);
+  }
+  document.getElementById('racehud').style.display = 'block';
+  toGate();
+}
+
+function toGate() {
+  const { track } = race;
+  Object.assign(race, { phase: 'gate', t: 0 });
+  Object.assign(race.player, { s: track.finishS, lane: track.gate.laneOf(6), stamina: 1, d: 0, finish: null });
+  state.gait = 0; state.speed = 0; playGait(true);
+  for (const r of race.ghosts) Object.assign(r, { d: 0, v: 0, finish: null, clip: null });
+  track.gate.open(0);
+  document.getElementById('results').style.display = 'none';
+  banner('Startbox – <b>Enter</b> oder <b>▲</b> zum Start');
+}
+
+function banner(html, ms) {
+  const el = document.getElementById('banner');
+  el.innerHTML = html;
+  el.style.display = html ? 'block' : 'none';
+  clearTimeout(banner.t);
+  if (ms) banner.t = setTimeout(() => { el.style.display = 'none'; }, ms);
+}
+
+function startRace() {
+  if (race.phase !== 'gate') return;
+  race.phase = 'countdown';
+  race.t = -3;
+}
+
+function setClip(r, name) {
+  if (r.clip === name) return;
+  const next = r.actions[name];
+  next.reset().play();
+  if (r.clip) next.crossFadeFrom(r.actions[r.clip], 0.3, true);
+  r.clip = name;
+}
+
+function clipFor(v) { return v < 0.3 ? 'Idle' : v < 2.6 ? 'Walk' : v < 6 ? 'Trot' : 'Gallop'; }
+
+function fmt(t) {
+  const m = Math.floor(t / 60), s = t - m * 60;
+  return `${m}:${s.toFixed(1).padStart(4, '0')}`;
+}
+
+// Strecke in Bahnmetern: s = Start + Rennmeter × k (die Innenkante ist etwas kürzer als die offiziellen 1,5 Meilen)
+function raceStep(dt) {
+  const { track, player: p } = race;
+  if (race.phase === 'countdown') {
+    race.t += dt;
+    banner(race.t < 0 ? `<span style="font-size:48px">${Math.ceil(-race.t)}</span>` : 'Los!', race.t < 0 ? 0 : 900);
+    if (race.t >= 0) { race.phase = 'run'; }
+  } else if (race.phase === 'run' || race.phase === 'done') {
+    race.t += dt;
+  }
+  const running = race.phase === 'run' || race.phase === 'done';
+  track.gate.open(running ? race.t * 2 : 0);
+
+  // Geister
+  for (const r of race.ghosts) {
+    let v = 0;
+    if (running) {
+      if (r.finish === null) {
+        const L = race.lead(race.t);
+        r.d = Math.max(0, L.d - r.behind(L.d));
+        v = L.v;
+        if (r.d >= RACE_M) r.finish = race.t;
+      } else {
+        // nach dem Ziel austraben
+        r.v = Math.max(3, r.v - 1.4 * dt);
+        r.d += r.v * dt;
+        v = r.v;
+      }
+    }
+    r.v = v;
+    const lane = r.lane0 + (r.cruise - r.lane0) * THREE.MathUtils.smoothstep(r.d, 0, 300);
+    placeOnTrack(r.group, track.finishS + r.d * race.k, lane);
+    setClip(r, clipFor(v));
+    r.actions[r.clip].timeScale = v < 0.3 ? 1 : Math.max(0.5, v / CLIP_REF[r.clip]);
+    r.mixer.update(dt);
+  }
+
+  // Spieler: folgt der Bahn, A/D wechseln die Spur, Ausdauer begrenzt den Renngalopp
+  if (running) {
+    const g = GAITS[state.gait];
+    if (state.gait === 4) p.stamina = Math.max(0, p.stamina - dt / 110);
+    else if (state.gait === 3) p.stamina = Math.max(0, p.stamina - dt / 420);
+    else p.stamina = Math.min(1, p.stamina + dt / 40);
+    // erschöpft: Höchsttempo sinkt bis auf 78 %
+    const tired = 0.78 + 0.22 * Math.min(1, p.stamina / 0.25);
+    const target = g.speed * (state.gait >= 3 ? tired : 1);
+    state.speed += (target - state.speed) * Math.min(1, dt * 0.9);
+  } else {
+    state.speed = 0;
+  }
+  const steer = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+  if (running) p.lane = THREE.MathUtils.clamp(p.lane + steer * 2.2 * dt, 0.7, track.width - 0.7);
+  p.s += state.speed * dt;
+  p.d = (p.s - track.finishS) / race.k;
+  if (running && p.finish === null && p.d >= RACE_M) {
+    p.finish = race.t;
+    race.phase = 'done';
+    // nach dem Ziel austraben lassen
+    state.gait = 2;
+    playGait();
+    setTimeout(showResults, 2500);
+  }
+  const heading = placeOnTrack(horse, p.s, p.lane);
+  state.heading = heading;
+
+  // Anzeige
+  const all = [...race.ghosts.map((r) => r.d), p.d];
+  const place = 1 + all.filter((d) => d > p.d + 0.01).length;
+  document.getElementById('rtime').textContent = fmt(Math.max(0, race.t));
+  document.getElementById('rplace').textContent = `${place} / ${all.length}`;
+  document.getElementById('rleft').textContent = `${Math.max(0, Math.round(RACE_M - p.d))} m`;
+  const bar = document.querySelector('#stamina div');
+  bar.style.width = `${p.stamina * 100}%`;
+  bar.style.background = p.stamina > 0.25 ? '#3a8a4a' : '#c8502a';
+  drawBoard();
+}
+
+function placeOnTrack(obj, s, lane) {
+  const { pos, dir } = race.track.pointAt(s, lane);
+  obj.position.copy(pos);
+  const h = Math.atan2(dir.x, dir.z);
+  obj.rotation.set(0, h, 0);
+  return h;
+}
+
+// Anzeigetafel: Rennzeit und die offiziellen Zwischenzeiten, sobald der Führende sie passiert
+function drawBoard() {
+  const now = Math.floor(race.t * 10);
+  if (drawBoard.last === now) return;
+  drawBoard.last = now;
+  const lead = race.phase === 'run' || race.phase === 'done' ? race.lead(race.t).d : 0;
+  const names = ['1/4', '1/2', '3/4', '1', '1 1/4', 'Ziel'];
+  const passed = race.data.fractions.slice(1).map((f, i) => (lead >= f.m ? `${names[i]} ${fmt(f.t).replace(/^0:/, '')}` : null)).filter(Boolean);
+  race.track.board.draw([`ZEIT  ${fmt(Math.max(0, race.t))}`, passed.slice(0, 3).join('  '), passed.slice(3).join('  ')]);
+}
+
+function showResults() {
+  const rows = [...race.ghosts.map((r) => ({ name: r.info.name, jockey: r.info.jockey, t: r.finish })), { name: 'Du (Nr. 7)', jockey: '', t: race.player.finish, me: true }]
+    .sort((a, b) => (a.t ?? 1e9) - (b.t ?? 1e9));
+  const best = rows[0].t;
+  const el = document.getElementById('results');
+  el.innerHTML = `<b>Belmont Stakes 1973</b><table>${rows.map((r, i) =>
+    `<tr class="${r.me ? 'me' : ''}"><td>${i + 1}.</td><td>${r.name}</td><td>${r.t ? fmt(r.t) : '–'}</td><td>${i && r.t ? '+' + (r.t - best).toFixed(1) + ' s' : ''}</td></tr>`).join('')}</table>
+    <div style="font-size:12px;opacity:.7;margin-top:6px">Secretariats 2:24 ist bis heute Bahnrekord über 1,5 Meilen auf Sand.</div>
+    <button id="again">Nochmal</button>`;
+  el.style.display = 'block';
+  document.getElementById('again').onclick = toGate;
+}
+
 // Eingabe
 const keys = {};
 function press(k) {
+  if (RACE && race.phase === 'gate' && k === 'up') { startRace(); return; }
+  if (RACE && k === 'jump') return;
   if (k === 'up' && state.gait < GAITS.length - 1) { state.gait++; if (!state.jumping) playGait(); }
   if (k === 'down' && state.gait > 0) { state.gait--; if (!state.jumping) playGait(); }
   if (k === 'jump' && !state.jumping && state.gait >= 2 && actions.Gallop_Jump) {
@@ -676,6 +884,11 @@ addEventListener('keydown', (e) => {
   keys[k] = true;
 });
 addEventListener('keyup', (e) => { const k = MAP[e.code]; if (k) keys[k] = false; });
+addEventListener('keydown', (e) => {
+  if (!RACE || !race.track) return;
+  if (e.code === 'Enter') startRace();
+  if (e.code === 'KeyC') race.cam = (race.cam + 1) % (race.ghosts.length + 1);
+});
 for (const b of document.querySelectorAll('#touch button')) {
   const k = b.dataset.k;
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); keys[k] = true; if (k !== 'left' && k !== 'right') press(k); });
@@ -702,21 +915,27 @@ const camPos = new THREE.Vector3(0, 6, -10), look = new THREE.Vector3();
 const fwd = new THREE.Vector3();
 
 function tick() {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  // state.warp: Zeitraffer zum Testen (Debug)
+  const dt = Math.min(clock.getDelta(), 0.05) * (state.warp || 1);
   if (!horse) { requestAnimationFrame(tick); return; }
   const g = GAITS[state.gait];
-  const target = state.jumping ? Math.max(state.speed, 6) : g.speed;
-  state.speed += (target - state.speed) * Math.min(1, dt * 1.6);
+  if (RACE && race.track) {
+    raceStep(dt);
+    fwd.set(Math.sin(state.heading), 0, Math.cos(state.heading));
+  } else if (!RACE) {
+    const target = state.jumping ? Math.max(state.speed, 6) : g.speed;
+    state.speed += (target - state.speed) * Math.min(1, dt * 1.6);
 
-  const steer = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
-  const turnRate = state.speed < 0.2 ? 0.9 : 1.6 / (1 + state.speed * 0.12);
-  state.heading += steer * turnRate * dt;
+    const steer = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
+    const turnRate = state.speed < 0.2 ? 0.9 : 1.6 / (1 + state.speed * 0.12);
+    state.heading += steer * turnRate * dt;
 
-  fwd.set(Math.sin(state.heading), 0, Math.cos(state.heading));
-  horse.position.addScaledVector(fwd, state.speed * dt);
-  const lim = SIZE * 0.45;
-  horse.position.x = THREE.MathUtils.clamp(horse.position.x, -lim, lim);
-  horse.position.z = THREE.MathUtils.clamp(horse.position.z, -lim, lim);
+    fwd.set(Math.sin(state.heading), 0, Math.cos(state.heading));
+    horse.position.addScaledVector(fwd, state.speed * dt);
+    const lim = SIZE * 0.45;
+    horse.position.x = THREE.MathUtils.clamp(horse.position.x, -lim, lim);
+    horse.position.z = THREE.MathUtils.clamp(horse.position.z, -lim, lim);
+  }
 
   // Höhe und Neigung aus dem Gelände
   const x = horse.position.x, z = horse.position.z;
@@ -732,8 +951,8 @@ function tick() {
     mixer.update(dt);
   }
   for (const r of racers) {
-    if (r.group !== horse) continue;
-    poseJockey(r.rider, Math.min(1, state.speed / 12));
+    const v = r.group === horse ? state.speed : r.v || 0;
+    poseJockey(r.rider, Math.min(1, v / 12));
     updateTack(r);
     updateReins(r);
   }
@@ -741,13 +960,17 @@ function tick() {
   // Verfolgerkamera (state.freeCam: Debug, Kamera wird von außen gesetzt)
   if (!state.freeCam) {
     if (drag === null && state.speed > 0.5) state.camYaw *= 1 - Math.min(1, dt * 0.8);
-    const yaw = state.heading + Math.PI + state.camYaw;
-    const dist = (10 + state.speed * 0.25) * state.zoom;
-    const want = new THREE.Vector3(x + Math.sin(yaw) * dist, 0, z + Math.cos(yaw) * dist);
-    want.y = Math.max(heightAt(want.x, want.z) + 1.5, horse.position.y + 1.6 + 2.4 * state.zoom);
+    // im Rennen schaltet C die Kamera auf eines der anderen Pferde
+    const tgt = RACE && race.cam ? race.ghosts[race.cam - 1].group : horse;
+    const tv = RACE && race.cam ? race.ghosts[race.cam - 1].v : state.speed;
+    const tx = tgt.position.x, tz = tgt.position.z;
+    const yaw = tgt.rotation.y + Math.PI + state.camYaw;
+    const dist = (10 + tv * 0.25) * state.zoom;
+    const want = new THREE.Vector3(tx + Math.sin(yaw) * dist, 0, tz + Math.cos(yaw) * dist);
+    want.y = Math.max(heightAt(want.x, want.z) + 1.5, tgt.position.y + 1.6 + 2.4 * state.zoom);
     camPos.lerp(want, Math.min(1, dt * 4));
     camera.position.copy(camPos);
-    look.set(x, horse.position.y + 2.0, z);
+    look.set(tx, tgt.position.y + 2.0, tz);
     camera.lookAt(look);
   }
 
@@ -761,6 +984,8 @@ function tick() {
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
+document.getElementById('mode').innerHTML = RACE ? '<a href="./">🌳 Zur Wiese</a>' : '<a href="?rennen">🏇 Zur Rennbahn</a>';
+for (const el of document.querySelectorAll('.raceonly')) el.style.display = RACE ? 'block' : 'none';
 tick();
 
 addEventListener('resize', () => {
