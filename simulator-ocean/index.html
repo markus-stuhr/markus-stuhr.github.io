@@ -1770,6 +1770,16 @@ const OPPONENTS = window.__opps = [   // __opps: console checks
 ];
 OPPONENTS.forEach((o, i) => { o.slot = [110, -110, -200][i]; });   // metres along the start line
 
+// Before the gun the AI boats reach back and forth behind the start line (turning at two
+// points 140 m either side of their slot); for the last 9 s they head for the line.
+function preStartTarget(o) {
+  if (race.state !== 'pre' || mp.active || race.gun < 9) return null;
+  const a = startSpot(o.slot + 140), b = startSpot(o.slot - 140);
+  if (o.preLeg === undefined) o.preLeg = 0;
+  const p = o.preLeg ? b : a;
+  if (Math.hypot(p.x - o.group.position.x, p.z - o.group.position.z) < 40) o.preLeg ^= 1;
+  return p;
+}
 function updateOpponent(o, dt) {
   const st = o.state, group = o.group;
   const bx = group.position.x, bz = group.position.z;
@@ -1786,7 +1796,7 @@ function updateOpponent(o, dt) {
   // Pick a desired heading toward the next mark, tacking upwind when needed
   let desiredH = st.heading;
   if (!st.done) {
-    const m = COURSE[st.nextMark];
+    const m = preStartTarget(o) || COURSE[st.nextMark];
     const bearing = Math.atan2(m.x - bx, -(m.z - bz)); // heading that points at the mark
     const twaDirect = normAngle(wind.from - bearing) * 180 / Math.PI;
     const NOGO = 42;
@@ -1850,8 +1860,7 @@ function updateOpponent(o, dt) {
   // Same sailing physics as the player
   const twa2 = normAngle(wind.from - st.heading) * 180 / Math.PI;
   const eff2 = sailEfficiency(twa2);
-  const waiting = race.state === 'pre' && !mp.active;   // luffing behind the line until the gun
-  const target = st.maxSpeed * (wind.tws / wind.maxTws) * eff2 * (st.done || waiting ? 0 : 1);
+  const target = st.maxSpeed * (wind.tws / wind.maxTws) * eff2 * (st.done ? 0 : 1);
   st.speed += (target - st.speed) * (target > st.speed ? 0.85 : 0.45) * dt;
   const steerage = 0.35 + 0.65 * Math.min(Math.abs(st.speed) / st.maxSpeed, 1);
   st.heading = normAngle(st.heading + st.rudder * 0.25 * steerage * dt); // slow, heavy maxi turn rate
@@ -2531,7 +2540,7 @@ const COURSE = [
   { x:  1500, z: 1800 },  // 1 — windward mark, 1.5 km upwind of the line
   { x:  -300, z:  600 },  // 2 — leeward mark
   { x:  1800, z: 1500 },  // 3 — windward again (offset mark)
-  { x:   250, z: 1000 },  // Finish — the middle of the start line
+  { x:     0, z: 1250 },  // Finish — off the pin end, clear of the start line
 ];
 // Start line: 400 m across the design wind (from SE), 1.3 km out from the islands.
 // Committee boat at the starboard end, pin buoy at the port end; the fleet waits
@@ -2636,14 +2645,14 @@ const startLineGroup = new THREE.Group();
   cb.add(cbHull, cbCabin, cbMast, flag);
   cb.position.set(L.x + L.lx * (L.half + 6), 0, L.z + L.lz * (L.half + 6));
   cb.rotation.y = Math.atan2(L.ux, L.uz);   // bow into the wind
-  const lineGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(pin.position.x, 0.12 * M, pin.position.z),
-    new THREE.Vector3(L.x + L.lx * L.half, 0.12 * M, L.z + L.lz * L.half)]);
-  const line = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({
-    color: 0xffd400, dashSize: 6, gapSize: 4, transparent: true, opacity: 0.8, depthWrite: false }));
-  line.computeLineDistances();
+  // the line itself: an upright translucent strip, red until the gun, then green
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(L.half * 2, 4), new THREE.MeshBasicMaterial({
+    color: 0xff2a2a, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false }));
+  line.position.set(L.x, 1.6, L.z);
+  line.rotation.y = Math.atan2(L.ux, L.uz);   // plane normal = upwind -> spans along the line
+  line.renderOrder = 5;
   startLineGroup.add(pin, cb, line);
-  startLineGroup.userData = { pin, cb };
+  startLineGroup.userData = { pin, cb, line };
   scene.add(startLineGroup);
 }
 
@@ -2692,7 +2701,7 @@ function restartRace() {
   clearTrack(playerTrack);
   OPPONENTS.forEach(o => {
     Object.assign(o.state, { heading: START_HEADING, speed: 0, rudder: 0, nextMark: 0, done: false, tack: undefined });
-    o.sailAngle = 0; o.heel = 0;
+    o.sailAngle = 0; o.heel = 0; o.preLeg = undefined;
     const p = startSpot(o.slot);
     o.group.position.set(p.x, 0.3 * M, p.z);
     o.group.rotation.y = -START_HEADING;
@@ -2833,6 +2842,7 @@ function updateRace(dt) {
     }
   }
   race.side = side;
+  startLineGroup.userData.line.material.color.setHex(race.state === 'pre' && !mp.active ? 0xff2a2a : 0x33dd66);
   if (race.state === 'racing') race.time += dt;
 
   if (race.state !== 'done' && race.started) {
