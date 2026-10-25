@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Schach</title>
 <link rel="stylesheet" href="style.css">
 <script src="/analytics.js" defer></script>
@@ -15,6 +15,7 @@
     <button id="btnHistory">Partien</button>
     <button id="btnNew" class="primary">Neue Partie</button>
   </div>
+  <button id="btnMenu" class="menu-btn" aria-label="Menü">☰</button>
 </header>
 
 <main>
@@ -45,7 +46,7 @@
       <button id="btnResign">Aufgeben</button>
     </div>
 
-    <div class="card">
+    <div class="card movecard">
       <div class="opening" id="opening">–</div>
       <div class="moves" id="moves"></div>
     </div>
@@ -118,6 +119,15 @@
     <div class="set-row"><span>Live-Bewertung während der Partie</span><label class="switch"><input type="checkbox" id="optLive" checked><i></i></label></div>
   </section>
   <div class="dlg-actions"><button id="btnSettingsClose" class="primary">Fertig</button></div>
+</dialog>
+
+<dialog id="dlgMenu" class="modal sheet">
+  <div class="dlg-head"><h2>Menü</h2><button class="x" id="btnMenuX" title="Schließen">✕</button></div>
+  <nav class="menu-list">
+    <button data-act="new" class="primary">＋ Neue Partie</button>
+    <button data-act="history">📋 Partien</button>
+    <button data-act="player">👤 <span id="menuPlayer">Spieler</span> &amp; Einstellungen</button>
+  </nav>
 </dialog>
 
 <dialog id="dlgPromo"><div class="promo" id="promo"></div></dialog>

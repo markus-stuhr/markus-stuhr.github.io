@@ -423,7 +423,7 @@ function fillPlayers(names) {
     + names.map((nm) => `<option${nm === playerName ? ' selected' : ''}>${esc(nm)}</option>`).join('');
 }
 function setPlayer(v) { playerName = v; ls('chess.player', v); updateChip(); refresh(); sync(); }
-function updateChip() { $('playerChip').textContent = playerName || 'Spieler wählen'; $('histWho').textContent = playerName ? `Partien von ${playerName} – Spieler wechseln über 👤 oben rechts.` : 'Alle Partien – Spieler wählen über 👤 oben rechts.'; }
+function updateChip() { $('playerChip').textContent = $('menuPlayer').textContent = playerName || 'Spieler wählen'; $('histWho').textContent = playerName ? `Partien von ${playerName} – Spieler wechseln über 👤 oben rechts.` : 'Alle Partien – Spieler wählen über 👤 oben rechts.'; }
 // Safari mit „Alle Cookies blockieren“ oder privatem Modus speichert evtl. nichts → sichtbar machen
 const storageOk = (() => { try { localStorage.setItem('chess.t', 1); localStorage.removeItem('chess.t'); return true; } catch { return false; } })();
 $('playerSel').onchange = () => setPlayer($('playerSel').value);
@@ -687,6 +687,13 @@ $('btnPlayer').onclick = () => { $('dlgSettings').showModal(); sync(); };
 $('btnSettingsClose').onclick = $('btnSettingsX').onclick = () => $('dlgSettings').close();
 $('btnHistory').onclick = () => { $('dlgHistory').showModal(); sync(); };
 $('btnHistoryClose').onclick = $('btnHistoryX').onclick = () => $('dlgHistory').close();
+$('btnMenu').onclick = () => $('dlgMenu').showModal();
+$('btnMenuX').onclick = () => $('dlgMenu').close();
+$('dlgMenu').querySelector('.menu-list').onclick = (e) => {
+  const act = e.target.closest('button')?.dataset.act; if (!act) return;
+  $('dlgMenu').close();
+  ({ new: $('btnNew'), history: $('btnHistory'), player: $('btnPlayer') })[act].click();
+};
 $('btnNew').onclick = () => $('dlgNew').showModal();
 $('dlgNew').addEventListener('close', () => {
   if ($('dlgNew').returnValue !== 'ok') return;
