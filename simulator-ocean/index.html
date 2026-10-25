@@ -1927,7 +1927,7 @@ scene.add(windNeedle);
 // green abeam (fastest). The needle above then reads the wind against it.
 {
   const seg = 120;
-  const g = new THREE.RingGeometry(RING_R - 0.30, RING_R - 0.08, seg, 1); // narrow band
+  const g = new THREE.RingGeometry(RING_R - 0.168, RING_R - 0.08, seg, 1); // narrow band (40 % of the earlier width)
   const pos = g.attributes.position;
   // colour ramp by efficiency: red (no-go) -> orange -> dark green (close-hauled) -> bright green (reach)
   const stops = [
@@ -2965,17 +2965,18 @@ function updateMarkPointers() {
     const len = Math.hypot(dx, dz) || 1;
     const ux = dx / len, uz = dz / len;
     const ang = Math.atan2(ux, uz);            // tip points outward
-    // Already-rounded marks show as a hollow outline triangle; others stay filled green.
-    tri.visible = !passed;
-    outline.visible = passed;
-    label.visible = next; // only the current target shows its number
+    // All marks are equal-size outline triangles; only the next one is filled and numbered.
+    // Rounded marks stay as faint outlines.
+    tri.visible = next;
+    outline.visible = !next;
+    outline.material.opacity = passed ? 0.3 : 0.8;
+    label.visible = next;
     tri.position.set(ux * R, 0.05, uz * R);   // compass is world-aligned (rot 0)
     tri.rotation.y = ang;
     outline.position.set(ux * R, 0.05, uz * R);
     outline.rotation.y = ang;
     label.position.set(ux * (R + 0.35), 0.3, uz * (R + 0.35)); // number just outside the triangle
     tri.material.color.setHex(0x33ff88); // all buoy arrows green
-    tri.scale.setScalar(next ? 2.0 : 1.0);
     tri.renderOrder = next ? 8 : 6; // current target always draws over the other arrows
     tri.material.opacity = 0.95;
     label.material.opacity = 0.95;
@@ -3517,11 +3518,14 @@ function floatPlayerBoat() {
   boatGroup.position.y = hC - 0.06 * M;
   boatGroup.rotation.x = Math.atan2(hF - hA, 2 * L);
   boatGroup.rotation.z = Math.atan2(hR - hL, 2 * B) + heelAngle;
-  windRing.position.set(bx, hC + 0.05 * M, bz);
+  // rings float clear of the waves (they used to get washed over): a metre above the local
+  // surface plus headroom for the crests in a bigger sea
+  const ringY = hC + 1.0 + 0.6 * waveAmp;
+  windRing.position.set(bx, ringY, bz);
   windRing.rotation.y = boatGroup.rotation.y;
-  windNeedle.position.set(bx, hC + 0.07 * M, bz);
+  windNeedle.position.set(bx, ringY + 0.02 * M, bz);
   windNeedle.rotation.y = -wind.from;
-  compassRing.position.set(bx, hC + 0.05 * M, bz);
+  compassRing.position.set(bx, ringY, bz);
   boatShadow.position.set(bx - 0.5 * M, hC + 0.04 * M, bz - 0.3 * M);
   boatShadow.rotation.y = boatGroup.rotation.y;
 }
