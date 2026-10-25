@@ -3521,13 +3521,6 @@ function floatPlayerBoat() {
   // rings float clear of the waves (they used to get washed over): a metre above the local
   // surface plus headroom for the crests in a bigger sea
   const ringY = hC + 1.0 + 0.6 * waveAmp;
-  // zooming out, the rings shrink less and less instead of with the boat: a smooth growth
-  // with camera distance (≈1 up close, ~x1.3 at 250 m, ~x2.7 at 1 km), so they stay readable
-  const camDist = Math.hypot(CAM_W.x - bx, CAM_W.y - ringY, CAM_W.z - bz);
-  const ringScale = M * Math.pow(1 + (camDist / 250) ** 2, 0.35);
-  windRing.scale.setScalar(ringScale);
-  windNeedle.scale.setScalar(ringScale);
-  compassRing.scale.setScalar(ringScale);
   windRing.position.set(bx, ringY, bz);
   windRing.rotation.y = boatGroup.rotation.y;
   windNeedle.position.set(bx, ringY + 0.02 * M, bz);
@@ -4454,6 +4447,14 @@ renderer.render = (s, c) => {
     if (inVR) { dolly.updateMatrixWorld(true); renderer.xr.updateCamera(camera); }   // this frame's head pose
     camera.updateMatrixWorld();
     CAM_W.setFromMatrixPosition(camera.matrixWorld);
+    // zooming out, the rings shrink less and less instead of with the boat: a smooth growth
+    // with camera distance (≈1 up close, ~x1.3 at 250 m, ~x2.7 at 1 km). Computed here, from
+    // this frame's camera and the boat (not the bobbing ring), so it doesn't jitter
+    const camDist = CAM_W.distanceTo(boatGroup.position);
+    const ringScale = M * Math.pow(1 + (camDist / 250) ** 2, 0.35);
+    windRing.scale.setScalar(ringScale);
+    windNeedle.scale.setScalar(ringScale);
+    compassRing.scale.setScalar(ringScale);
     // near plane follows the camera height: from high up a fixed 0.1 m near plane left too
     // little depth precision to separate shallow shores from the water (flickering edges).
     // In VR it stays fixed: changing it re-configures the XR session every time
