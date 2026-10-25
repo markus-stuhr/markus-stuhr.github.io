@@ -3521,6 +3521,13 @@ function floatPlayerBoat() {
   // rings float clear of the waves (they used to get washed over): a metre above the local
   // surface plus headroom for the crests in a bigger sea
   const ringY = hC + 1.0 + 0.6 * waveAmp;
+  // zoomed far out the rings stop shrinking with the boat: beyond ~250 m they grow with the
+  // camera distance, so they keep roughly their on-screen size and stay readable
+  const camDist = Math.hypot(CAM_W.x - bx, CAM_W.y - ringY, CAM_W.z - bz);
+  const ringScale = M * Math.max(1, camDist / 250);
+  windRing.scale.setScalar(ringScale);
+  windNeedle.scale.setScalar(ringScale);
+  compassRing.scale.setScalar(ringScale);
   windRing.position.set(bx, ringY, bz);
   windRing.rotation.y = boatGroup.rotation.y;
   windNeedle.position.set(bx, ringY + 0.02 * M, bz);
