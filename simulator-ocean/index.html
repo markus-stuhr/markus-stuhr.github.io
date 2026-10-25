@@ -1696,7 +1696,7 @@ function triGeo3(a, b, c) {
   g.computeVertexNormals();
   return g;
 }
-const START_HEADING = Math.PI * 0.65; // start facing SE — toward first mark, away from islands
+const START_HEADING = Math.PI * 0.45; // start close-hauled on starboard toward the windward mark
 const OPP_JH = new THREE.Vector3(0, 4.63, 1.64);
 const oppJibAxis = OPP_JH.clone().normalize();
 
@@ -1754,10 +1754,10 @@ function makeOpponent(opts) {
   };
 }
 
-const OPPONENTS = [
+const OPPONENTS = window.__opps = [   // __opps: console checks
   makeOpponent({ hull: 0x8c9aa6, sail: 0xcfd6de, rig: 0xbbbbbb, track: 0x8c9aa6, dot: 0x8c9aa6, x: 20,  z: 0 }),
   makeOpponent({ hull: 0x9a4634, sail: 0xe4d8c8, rig: 0x7a3a2c, track: 0x9a4634, dot: 0x9a4634, x: -22, z: 4 }),
-  makeOpponent({ hull: 0x3a6a4c, sail: 0xd2dccb, rig: 0x2e5238, track: 0x3a6a4c, dot: 0x3a6a4c, x: 38,  z: -8 }),
+  makeOpponent({ hull: 0x7cc4ec, sail: 0xd6e2ea, rig: 0x4a86aa, track: 0x7cc4ec, dot: 0x7cc4ec, x: 38,  z: -8 }),
 ];
 
 function updateOpponent(o, dt) {
@@ -1768,7 +1768,7 @@ function updateOpponent(o, dt) {
   if (!st.done) {
     const m = COURSE[st.nextMark];
     if (Math.hypot(m.x - bx, m.z - bz) < MARK_RADIUS) {
-      st.nextMark++;
+      st.nextMark++; st.tack = undefined;
       if (st.nextMark >= COURSE.length) st.done = true;
     }
   }
@@ -1782,10 +1782,13 @@ function updateOpponent(o, dt) {
     const NOGO = 42;
     if (Math.abs(twaDirect) >= NOGO) {
       desiredH = bearing;                       // can lay it directly
-    } else {                                    // upwind: beat on the favoured tack
+    } else {                                    // upwind: hold a tack until the other one lays the mark
       const hS = wind.from - NOGO * Math.PI / 180;
       const hP = wind.from + NOGO * Math.PI / 180;
-      desiredH = Math.abs(normAngle(hS - bearing)) < Math.abs(normAngle(hP - bearing)) ? hS : hP;
+      if (st.tack === undefined) st.tack = Math.abs(normAngle(hS - bearing)) < Math.abs(normAngle(hP - bearing)) ? 0 : 1;
+      const other = st.tack ? hS : hP;
+      if (Math.abs(normAngle(other - bearing)) < 6 * Math.PI / 180) st.tack ^= 1;   // reached the layline
+      desiredH = st.tack ? hP : hS;
     }
   }
 
@@ -1812,7 +1815,7 @@ function updateOpponent(o, dt) {
 
   // Land avoidance: sample elevation in front and to the sides; steer away if too shallow
   if (window.terrainElevAt) {
-    const LAND_MARGIN = -5;   // metres — avoid shallower than 5 m depth
+    const LAND_MARGIN = 0;    // elevAt is 0 on water, >= 0.4 m on land
     const PROBE = 60 * M;     // look 60 m ahead
     const fwdX = Math.sin(st.heading), fwdZ = -Math.cos(st.heading);
     const geo_f  = localToGeo(bx + fwdX * PROBE,          bz + fwdZ * PROBE);
@@ -2511,13 +2514,13 @@ function terrainMaterial(tex) {
 }
 
 // --- Regatta course: rounding marks in order ---
-// Race course — symmetric triangle in the southern North Sound, clear of all islands.
-// All marks south of start (lat < 18.4807), well within open water.
+// Race course — windward/leeward in the open water south-east of the start, laid for the
+// south-easterly trade wind (wind.baseFrom = 135°): beat, run, beat, short reach to finish.
 const COURSE = [
-  { x:  1400, z:  600 },  // A — SE  1.5 km (leeward gate)
-  { x:     0, z: 2400 },  // B — S   2.4 km (southern mark)
-  { x: -1400, z:  600 },  // C — SW  1.5 km (windward mark)
-  { x:     0, z:  300 },  // Finish  — slightly south of start
+  { x:  1500, z: 1800 },  // 1 — windward mark, 2.3 km SE
+  { x:  -300, z:  600 },  // 2 — leeward mark
+  { x:  1800, z: 1500 },  // 3 — windward again (offset mark)
+  { x:     0, z:  300 },  // Finish — just south of the start
 ];
 const MARK_RADIUS = 30; // metres: how close you must get to round a mark
 
@@ -2592,8 +2595,8 @@ COURSE.forEach((m, i) => {
 
 // --- Wind ---
 const wind = {
-  baseFrom: Math.PI * 0.25, // nominal direction wind blows FROM
-  from: Math.PI * 0.25,  // current wind direction (oscillates within ±20° of base)
+  baseFrom: Math.PI * 0.75, // nominal direction wind blows FROM (SE trades)
+  from: Math.PI * 0.75,  // current wind direction (oscillates within ±20° of base)
   baseTws: 20,           // nominal true wind speed in knots
   tws: 20,               // current true wind speed (drifts within ±25% of base)
   maxTws: 25,
@@ -2630,7 +2633,7 @@ function restartRace() {
   // reset the opponents too
   clearTrack(playerTrack);
   OPPONENTS.forEach(o => {
-    Object.assign(o.state, { heading: START_HEADING, speed: 0, rudder: 0, nextMark: 0, done: false });
+    Object.assign(o.state, { heading: START_HEADING, speed: 0, rudder: 0, nextMark: 0, done: false, tack: undefined });
     o.sailAngle = 0; o.heel = 0;
     o.group.position.set(o.start.x, 0.3 * M, o.start.z);
     o.group.rotation.y = -START_HEADING;
@@ -2944,15 +2947,18 @@ const markPointers = COURSE.map((m, i) => {
   return { tri, outline, label };
 });
 
-// Opponent indicators on the compass: a triangle each, like the mark pointers
-OPPONENTS.forEach(o => {
-  const dot = new THREE.Mesh(markTriGeo, new THREE.MeshBasicMaterial({
-    color: o.dotColor, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+// Other boats on the compass: a small dot in the boat's colour (AI and multiplayer boats),
+// created on first use
+const oppDotGeo = new THREE.CircleGeometry(0.1, 16).rotateX(-Math.PI / 2);
+function compassDot(o) {
+  if (o.dot) return o.dot;
+  const dot = new THREE.Mesh(oppDotGeo, new THREE.MeshBasicMaterial({
+    color: o.dotColor, transparent: true, opacity: 0.95, depthWrite: false,
   }));
   dot.renderOrder = 6;
   compassRing.add(dot);
-  o.dot = dot;
-});
+  return (o.dot = dot);
+}
 
 function updateMarkPointers() {
   const bx = boatGroup.position.x, bz = boatGroup.position.z;
@@ -2984,13 +2990,14 @@ function updateMarkPointers() {
   });
 
   // opponent boat bearings
-  OPPONENTS.forEach(o => {
+  for (const o of [...OPPONENTS, ...[...mp.remotes.values()].map(r => r.o)]) {
+    const dot = compassDot(o);
+    dot.visible = o.group.visible && !!o.group.parent;
+    if (!dot.visible) continue;
     const odx = o.group.position.x - bx, odz = o.group.position.z - bz;
     const ol = Math.hypot(odx, odz) || 1;
-    const oux = odx / ol, ouz = odz / ol;
-    o.dot.position.set(oux * R, 0.06, ouz * R);
-    o.dot.rotation.y = Math.atan2(oux, ouz); // tip points outward, like the marks
-  });
+    dot.position.set(odx / ol * R, 0.06, odz / ol * R);
+  }
 }
 
 function spawnFoam(t, x, z, perpX, perpZ) {
@@ -3204,7 +3211,7 @@ function startGame() {
   seaFromOverride = null;
   histWx = null;   // a previous replay's recorded weather no longer applies
   if (weatherMode !== 'live') setWeatherPreset(weatherMode);
-  wind.baseFrom = Math.PI * 0.25;   // the course's design wind, unless live data says otherwise
+  wind.baseFrom = Math.PI * 0.75;   // the course's design wind, unless live data says otherwise
   if (weatherMode === 'live' && liveWeather) {
     // live data overrides the menu's wind and sea state
     windVal = Math.max(4, liveWeather.windKn);
@@ -4766,6 +4773,7 @@ function mpRemoveRemote(id) {
   const r = mp.remotes.get(id);
   if (!r) return;
   scene.remove(r.o.group); scene.remove(r.o.tag);
+  if (r.o.dot) compassRing.remove(r.o.dot);
   const i = WAKE_SOURCES.indexOf(r.o.group);
   if (i >= 0) WAKE_SOURCES.splice(i, 1);
   mp.remotes.delete(id);
