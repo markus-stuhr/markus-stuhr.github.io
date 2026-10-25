@@ -152,7 +152,7 @@ export async function buildBelmont(scene) {
   const finishS = (homeStart * path.step + 334) % path.L;
 
   const track = {
-    group, L: path.L, width, finishS, path, homeStart,
+    group, L: path.L, width, finishS, path, outerPath, homeStart,
     // Punkt bei Strecke s (Meter entlang der Innenkante) und Abstand lane zur Innenkante
     pointAt(s, lane, target = new THREE.Vector3()) {
       const L = path.L, n = path.pts.length;
@@ -343,9 +343,16 @@ function buildGate(group, track) {
     }
   }
   group.add(g);
+  const home = g.position.clone();
   return {
     group: g,
     open(t) { for (const d of doors) d.rotation.y = (d.userData.side ? 1 : -1) * front * Math.min(1, t) * 1.6; },
+    // nach dem Start wird die Maschine wie echt über die Außenkante von der Bahn gezogen
+    clear(t) {
+      const k = THREE.MathUtils.smoothstep(t, 6, 20);
+      g.position.copy(home).addScaledVector(nrm, k * (track.width + 25));
+      g.visible = k < 1;
+    },
     laneOf: (post) => 0.4 + (post - 0.5) * w,
   };
 }

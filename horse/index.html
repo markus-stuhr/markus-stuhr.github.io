@@ -41,6 +41,8 @@
   #racehud .row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
   #stamina { height: 6px; border-radius: 3px; background: rgba(80, 50, 20, 0.18); margin-top: 6px; overflow: hidden; }
   #stamina div { height: 100%; width: 100%; background: #3a8a4a; }
+  #minimap { position: fixed; right: 16px; bottom: 16px; display: none; border-radius: 12px; background: rgba(255, 248, 234, 0.82); box-shadow: 0 4px 18px rgba(60, 40, 10, 0.15); }
+  @media (pointer: coarse) { #minimap { bottom: 100px; } }
   #banner { position: fixed; left: 50%; top: 38%; transform: translate(-50%, -50%); font-size: 26px; font-weight: 700; display: none; text-align: center; }
   #results { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); display: none; min-width: 300px; pointer-events: auto; }
   #results table { border-collapse: collapse; width: 100%; font-size: 14px; }
@@ -74,6 +76,7 @@
   <div class="row"><span>Ausdauer</span><span></span></div>
   <div id="stamina"><div></div></div>
 </div>
+<canvas id="minimap" width="440" height="260"></canvas>
 <div id="banner" class="panel"></div>
 <div id="results" class="panel"></div>
 <div id="touch">
@@ -709,6 +712,7 @@ async function setupRace() {
     race.ghosts.push(r);
   }
   document.getElementById('racehud').style.display = 'block';
+  setupMinimap();
   toGate();
 }
 
@@ -764,6 +768,7 @@ function raceStep(dt) {
   }
   const running = race.phase === 'run' || race.phase === 'done';
   track.gate.open(running ? race.t * 2 : 0);
+  track.gate.clear(running ? race.t : 0);
 
   // Geister
   for (const r of race.ghosts) {
@@ -827,6 +832,7 @@ function raceStep(dt) {
   bar.style.width = `${p.stamina * 100}%`;
   bar.style.background = p.stamina > 0.25 ? '#3a8a4a' : '#c8502a';
   drawBoard();
+  drawMinimap();
 }
 
 function placeOnTrack(obj, s, lane) {
@@ -835,6 +841,64 @@ function placeOnTrack(obj, s, lane) {
   const h = Math.atan2(dir.x, dir.z);
   obj.rotation.set(0, h, 0);
   return h;
+}
+
+// Minikarte rechts unten: Draufsicht, Norden oben (Weltkoordinaten x = Osten, z = Süden passen direkt
+// zur Bildschirmrichtung). Bahnflächen einmal vorzeichnen, Punkte für jedes Pferd jedes Bild.
+const minimap = { el: null, bg: null, map: null };
+function setupMinimap() {
+  const el = document.getElementById('minimap');
+  const W = el.width, H = el.height, pad = 22;
+  const { track } = race;
+  const outer = track.outerPath ? track.outerPath.pts : track.path.pts;
+  let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+  for (const q of outer) { x0 = Math.min(x0, q.p.x); x1 = Math.max(x1, q.p.x); z0 = Math.min(z0, q.p.z); z1 = Math.max(z1, q.p.z); }
+  const sc = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (z1 - z0));
+  const ox = (W - (x1 - x0) * sc) / 2 - x0 * sc, oz = (H - (z1 - z0) * sc) / 2 - z0 * sc;
+  minimap.map = (x, z) => [ox + x * sc, oz + z * sc];
+  // Hintergrund: Sandring zwischen Außen- und Innenkante, Grasbahn innen, Ziellinie und Tribüne
+  const bg = document.createElement('canvas');
+  bg.width = W; bg.height = H;
+  const g = bg.getContext('2d');
+  const ring = (pts, off = 0) => {
+    g.beginPath();
+    pts.forEach((q, i) => {
+      const [u, v] = minimap.map(q.p.x + q.nrm.x * off, q.p.z + q.nrm.z * off);
+      i ? g.lineTo(u, v) : g.moveTo(u, v);
+    });
+    g.closePath();
+  };
+  ring(outer); g.fillStyle = '#b98a55'; g.fill();
+  ring(track.path.pts); g.fillStyle = '#6fa452'; g.fill();
+  g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.stroke();
+  const f = track.pointAt(track.finishS, 0), f2 = track.pointAt(track.finishS, track.width);
+  const [a, b] = minimap.map(f.pos.x, f.pos.z), [c, d] = minimap.map(f2.pos.x, f2.pos.z);
+  g.strokeStyle = '#fff'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(a, b); g.lineTo(c, d); g.stroke();
+  const s1 = track.pointAt(track.finishS - 220, track.width + 22), s2 = track.pointAt(track.finishS + 140, track.width + 22);
+  const [e, h] = minimap.map(s1.pos.x, s1.pos.z), [k, l] = minimap.map(s2.pos.x, s2.pos.z);
+  g.strokeStyle = '#2f5d45'; g.lineWidth = 7; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(e, h); g.lineTo(k, l); g.stroke();
+  g.fillStyle = '#2b2116'; g.font = 'bold 13px ui-rounded, system-ui, sans-serif';
+  g.fillText('Belmont Park', 10, 18);
+  minimap.bg = bg;
+  minimap.el = el;
+  el.style.display = 'block';
+}
+function drawMinimap() {
+  if (!minimap.el) return;
+  const g = minimap.el.getContext('2d');
+  g.clearRect(0, 0, minimap.el.width, minimap.el.height);
+  g.drawImage(minimap.bg, 0, 0);
+  const dot = (obj, fill, ring, r, label) => {
+    const [u, v] = minimap.map(obj.position.x, obj.position.z);
+    g.beginPath(); g.arc(u, v, r, 0, Math.PI * 2);
+    g.fillStyle = fill; g.fill();
+    g.lineWidth = 2; g.strokeStyle = ring; g.stroke();
+    if (label) { g.fillStyle = '#2b2116'; g.font = 'bold 10px ui-rounded, system-ui, sans-serif'; g.fillText(label, u + r + 2, v + 3); }
+  };
+  for (const r of race.ghosts) dot(r.group, r.info.silks[0], r.info.silks[1], 5, String(r.info.post));
+  dot(horse, '#f2c200', '#ffffff', 7.5, '7');
 }
 
 // Anzeigetafel: Rennzeit und die offiziellen Zwischenzeiten, sobald der Führende sie passiert
