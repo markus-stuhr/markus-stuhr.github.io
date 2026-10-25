@@ -353,39 +353,113 @@ function buildSaddleLeather(leather) {
   return g;
 }
 
-// Zaumzeug am Kopfknochen. Kopfraum (gemessen): +y zum Maul, +z nach oben, x quer;
-// Querschnitt des Kopfes: Stirn bei y≈0.3 (Breite ±0.34), Nasenrücken y≈0.8 (±0.17), Maulwinkel y≈1.0.
-const BRIDLE = { bit: [new THREE.Vector3(0.17, 1.0, -0.13), new THREE.Vector3(-0.17, 1.0, -0.13)] };
-function strap(points, mat, radius = 0.018, closed = false) {
-  const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)), closed);
-  return new THREE.Mesh(new THREE.TubeGeometry(curve, points.length * 8, radius, 6, closed), mat);
+// Zaumzeug am Kopfknochen. Kopfraum: +y zum Maul, +z nach oben, x quer (gegenüber dem Pferd gespiegelt).
+// Die Riemen werden auf die echte Kopfoberfläche gelegt: Punkte werden als (y, Winkel um die Kopfachse)
+// beschrieben, Winkel 0 = oben, ±π/2 = Seiten, π = unten; der Radius kommt aus den Kopf-Vertices.
+function headSurface(head) {
+  const pts = [];
+  const v = new THREE.Vector3();
+  head.parent.updateMatrixWorld(true);
+  let root = head;
+  while (root.parent && root.parent !== horse) root = root.parent;
+  root.traverse((m) => {
+    if (!m.isSkinnedMesh) return;
+    const pos = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex, sw = m.geometry.attributes.skinWeight;
+    const hi = m.skeleton.bones.indexOf(head);
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0;
+      for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === hi) w += sw.getComponent(i, k);
+      if (w < 0.6) continue;
+      v.fromBufferAttribute(pos, i);
+      m.applyBoneTransform(i, v);
+      m.localToWorld(v);
+      head.worldToLocal(v);
+      pts.push(v.clone());
+    }
+  });
+  // Radiustabelle über (y, Winkel): je Zelle der äußerste Vertex, danach geglättet,
+  // damit einzelne Kanten des Low-Poly-Kopfes keine Dellen in die Riemen machen
+  const Y0 = 0.1, Y1 = 1.15, NY = 22, NA = 32;
+  const cz = new Float32Array(NY), R = Array.from({ length: NY }, () => new Float32Array(NA));
+  const cell = (y) => Math.max(0, Math.min(NY - 1, Math.round((y - Y0) / (Y1 - Y0) * (NY - 1))));
+  for (let k = 0; k < NY; k++) {
+    let lo = 9, hi = -9;
+    const y = Y0 + (Y1 - Y0) * k / (NY - 1);
+    for (const p of pts) if (Math.abs(p.y - y) < 0.07) { lo = Math.min(lo, p.z); hi = Math.max(hi, p.z); }
+    cz[k] = lo < hi ? (lo + hi) / 2 : 0;
+  }
+  for (const p of pts) {
+    const k = cell(p.y);
+    const a = (Math.atan2(p.x, p.z - cz[k]) + Math.PI) / (Math.PI * 2) * NA;
+    const ai = Math.floor(a) % NA;
+    R[k][ai] = Math.max(R[k][ai], Math.hypot(p.x, p.z - cz[k]));
+  }
+  // Lücken füllen und zweimal weichzeichnen (Winkel zyklisch, y begrenzt)
+  for (let pass = 0; pass < 3; pass++) {
+    const S = R.map((row) => row.slice());
+    for (let k = 0; k < NY; k++) for (let a = 0; a < NA; a++) {
+      let sum = 0, n = 0;
+      for (let dk = -1; dk <= 1; dk++) for (let da = -1; da <= 1; da++) {
+        const kk = k + dk; if (kk < 0 || kk >= NY) continue;
+        const v = R[kk][(a + da + NA) % NA]; if (v > 0) { sum += v; n++; }
+      }
+      S[k][a] = n ? (pass === 0 && R[k][a] > 0 ? Math.max(R[k][a], sum / n) : sum / n) : 0;
+    }
+    S.forEach((row, k) => R[k].set(row));
+  }
+  const lerp = (a, b, t) => a + (b - a) * t;
+  return (y, angle, gap = 0.02) => {
+    const fy = Math.max(0, Math.min(NY - 1.001, (y - Y0) / (Y1 - Y0) * (NY - 1)));
+    const k = Math.floor(fy), ty = fy - k;
+    const fa = ((angle + Math.PI) / (Math.PI * 2) * NA + NA) % NA;
+    const a = Math.floor(fa), ta = fa - a, a2 = (a + 1) % NA;
+    const r = lerp(lerp(R[k][a], R[k][a2], ta), lerp(R[k + 1][a], R[k + 1][a2], ta), ty);
+    const c = lerp(cz[k], cz[k + 1], ty);
+    return new THREE.Vector3(Math.sin(angle) * (r + gap), y, c + Math.cos(angle) * (r + gap));
+  };
 }
-function ring(n, fn) {
-  return Array.from({ length: n }, (_, i) => fn(i / n * Math.PI * 2));
+function strapAlong(surface, from, to, steps, mat, radius = 0.018, closed = false) {
+  const pts = [];
+  const n = closed ? steps : steps + 1;
+  for (let i = 0; i < n; i++) {
+    const t = i / steps;
+    pts.push(surface(from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t));
+  }
+  const curve = new THREE.CatmullRomCurve3(pts, closed, 'centripetal');
+  return new THREE.Mesh(new THREE.TubeGeometry(curve, steps * 6, radius, 6, closed), mat);
 }
 function buildBridle(head) {
   const g = new THREE.Group();
   const leather = new THREE.MeshStandardMaterial({ color: 0x1c120b, roughness: 0.5 });
   const metal = new THREE.MeshStandardMaterial({ color: 0xd9d6cf, metalness: 0.9, roughness: 0.25 });
-  // Nasenriemen um den Nasenrücken
-  g.add(strap(ring(16, (a) => [Math.cos(a) * 0.2, 0.78, -0.01 + Math.sin(a) * 0.22]), leather, 0.02, true));
-  // Stirnriemen über die Stirn unter den Ohren
-  g.add(strap([[0.36, 0.3, 0.05], [0.26, 0.33, 0.3], [0, 0.34, 0.4], [-0.26, 0.33, 0.3], [-0.36, 0.3, 0.05]], leather));
-  // Genickstück hinter den Ohren, an den Seiten in die Backenstücke bis zum Gebiss
+  const surf = headSurface(head);
+  const PI = Math.PI;
+  // Nasenriemen rund um den Nasenrücken
+  g.add(strapAlong(surf, [0.78, -PI], [0.78, PI], 16, leather, 0.02, true));
+  // Stirnriemen über die Stirn
+  g.add(strapAlong(surf, [0.33, -1.5], [0.33, 1.5], 8, leather));
+  // Genickstück hinter den Ohren
+  g.add(strapAlong(surf, [0.2, -1.6], [0.2, 1.6], 8, leather));
+  // Kehlriemen unter dem Kiefer
+  g.add(strapAlong(surf, [0.26, 1.7], [0.3, PI], 4, leather, 0.014));
+  g.add(strapAlong(surf, [0.26, -1.7], [0.3, -PI], 4, leather, 0.014));
+  const bits = [];
   for (const sx of [1, -1]) {
-    g.add(strap([[0, 0.18, 0.4], [sx * 0.28, 0.2, 0.3], [sx * 0.37, 0.28, 0.0], [sx * 0.3, 0.55, -0.14], [sx * 0.21, 0.82, -0.14], [sx * 0.17, 0.98, -0.13]], leather));
+    // Backenstück vom Genick an der Kopfseite entlang bis zum Maulwinkel
+    g.add(strapAlong(surf, [0.2, sx * 1.6], [0.98, sx * 2.0], 8, leather));
+    const bit = surf(1.0, sx * 2.05, 0.03);
+    bits.push(bit);
     const bitRing = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 6, 16), metal);
-    bitRing.position.copy(BRIDLE.bit[sx > 0 ? 0 : 1]);
-    bitRing.rotation.y = Math.PI / 2;
+    bitRing.position.copy(bit);
+    bitRing.rotation.y = PI / 2;
     g.add(bitRing);
   }
-  // Kehlriemen unter dem Kiefer
-  g.add(strap([[0.36, 0.28, -0.02], [0.2, 0.3, -0.3], [0, 0.32, -0.38], [-0.2, 0.3, -0.3], [-0.36, 0.28, -0.02]], leather, 0.014));
   // Gebissstange quer durchs Maul
-  g.add(strap([BRIDLE.bit[0].toArray(), BRIDLE.bit[1].toArray()], metal, 0.012));
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(bits[0], bits[1]), 2, 0.012, 6), metal));
   g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
   head.add(g);
-  tack.bitAnchors = BRIDLE.bit.map((p) => { const o = new THREE.Object3D(); o.position.copy(p); head.add(o); return o; });
+  // bits[0] liegt bei Kopf-x > 0, also auf der rechten Pferdeseite (Kopfraum gespiegelt)
+  tack.bitAnchors = bits.map((p) => { const o = new THREE.Object3D(); o.position.copy(p); head.add(o); return o; });
   // Zügel werden jedes Bild zwischen Gebiss und Händen neu aufgebaut
   tack.reinMat = leather;
   tack.reins = [null, null];
@@ -393,8 +467,8 @@ function buildBridle(head) {
 }
 
 // Stützpunkte, damit die Zügel außen am Hals entlanglaufen statt hindurch.
-// Gemessen im Pferderaum (Meter): halbe Halsbreite und Kammhöhe über dem jeweiligen Halsknochen.
-const NECK = [['Neck3', 0.15, 0.38], ['Neck2', 0.18, 0.37]];
+// Gemessen im Pferderaum (Meter): halbe Halsbreite und Kammhöhe über dem Halsknochen.
+const NECK = [['Neck2', 0.18, 0.37]];
 function addNeckGuides(anyBone) {
   let root = anyBone;
   while (root.parent && !root.parent.isScene && root.parent !== horse) root = root.parent;
@@ -403,12 +477,12 @@ function addNeckGuides(anyBone) {
   for (const [name, half, crest] of NECK) {
     const bone = root.getObjectByName(name);
     [1, -1].forEach((side, i) => {
-      // seitlich knapp außerhalb, auf halber Höhe zwischen Knochen und Mähnenkamm
+      // seitlich knapp außerhalb, nahe am Mähnenkamm
       horse.updateMatrixWorld(true);
       bone.getWorldPosition(p);
       horse.worldToLocal(p);
-      p.x += side * (half + 0.035);
-      p.y += crest * 0.55;
+      p.x += side * (half + 0.04);
+      p.y += crest * 0.8;
       horse.localToWorld(p);
       const o = new THREE.Object3D();
       bone.add(o);
