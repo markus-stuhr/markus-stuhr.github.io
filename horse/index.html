@@ -56,7 +56,7 @@
 <div id="hud" class="panel">
   <div id="gait">Stehen</div>
   <div id="speed">0.0 km/h</div>
-  <div id="gears"><span></span><span></span><span></span><span></span><span></span></div>
+  <div id="gears"><span></span><span></span><span></span></div>
 </div>
 <div id="help" class="panel">
   <div><b>W / ↑</b> schneller</div>
@@ -109,12 +109,11 @@ const RACE = new URLSearchParams(location.search).has('rennen');
 const GAITS = [
   { name: 'Stehen', clip: 'Idle',   speed: 0,    ref: 1 },
   { name: 'Schritt', clip: 'Walk',  speed: 1.7,  ref: 2.3 },
-  { name: 'Trab',    clip: 'Trot',  speed: 3.8,  ref: 5.0 },
   { name: 'Galopp',  clip: 'Gallop', speed: 6.5, ref: 12 },
   { name: 'Renngalopp', clip: 'Gallop', speed: 12, ref: 14 },
 ];
 // Auf der Rennbahn: Vollblut-Tempo. Secretariat lief 1973 im Schnitt 16,8 m/s
-if (RACE) Object.assign(GAITS[3], { speed: 13, ref: 14 }), Object.assign(GAITS[4], { speed: 17.5, ref: 15 });
+if (RACE) Object.assign(GAITS[2], { speed: 13, ref: 14 }), Object.assign(GAITS[3], { speed: 17.5, ref: 15 });
 const HORSE_SCALE = 0.5;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -700,7 +699,7 @@ const race = { phase: 'off', t: 0, track: null, ghosts: [], cam: 0, player: { s:
 // Reisespur (Abstand zur Innenkante) nach dem Start, aus dem Rennbericht: Twice a Prince an der Innenkante,
 // Sham außen neben Secretariat im frühen Duell
 const CRUISE = { 'Secretariat': 1.6, 'Sham': 3.4, 'Twice a Prince': 1.2, 'My Gallant': 4.6, 'Pvt. Smiles': 2.8 };
-const CLIP_REF = { Idle: 1, Walk: 2.3, Trot: 5, Gallop: 14 };
+const CLIP_REF = { Idle: 1, Walk: 2.3, Gallop: 14 };
 
 async function setupRace() {
   const [track, data] = await Promise.all([buildBelmont(scene), fetch('belmont1973.json').then((r) => r.json())]);
@@ -749,7 +748,8 @@ function setClip(r, name) {
   r.clip = name;
 }
 
-function clipFor(v) { return v < 0.3 ? 'Idle' : v < 2.6 ? 'Walk' : v < 6 ? 'Trot' : 'Gallop'; }
+// kein Trab: vom Schritt direkt in den Galopp
+function clipFor(v) { return v < 0.3 ? 'Idle' : v < 2.6 ? 'Walk' : 'Gallop'; }
 
 function fmt(t) {
   const m = Math.floor(t / 60), s = t - m * 60;
@@ -780,8 +780,8 @@ function raceStep(dt) {
         v = L.v;
         if (r.d >= RACE_M) r.finish = race.t;
       } else {
-        // nach dem Ziel austraben
-        r.v = Math.max(3, r.v - 1.4 * dt);
+        // nach dem Ziel bis in den Schritt auslaufen
+        r.v = Math.max(1.8, r.v - 1.4 * dt);
         r.d += r.v * dt;
         v = r.v;
       }
@@ -797,12 +797,12 @@ function raceStep(dt) {
   // Spieler: folgt der Bahn, A/D wechseln die Spur, Ausdauer begrenzt den Renngalopp
   if (running) {
     const g = GAITS[state.gait];
-    if (state.gait === 4) p.stamina = Math.max(0, p.stamina - dt / 110);
-    else if (state.gait === 3) p.stamina = Math.max(0, p.stamina - dt / 420);
+    if (state.gait === 3) p.stamina = Math.max(0, p.stamina - dt / 110);
+    else if (state.gait === 2) p.stamina = Math.max(0, p.stamina - dt / 420);
     else p.stamina = Math.min(1, p.stamina + dt / 40);
     // erschöpft: Höchsttempo sinkt bis auf 78 %
     const tired = 0.78 + 0.22 * Math.min(1, p.stamina / 0.25);
-    const target = g.speed * (state.gait >= 3 ? tired : 1);
+    const target = g.speed * (state.gait >= 2 ? tired : 1);
     state.speed += (target - state.speed) * Math.min(1, dt * 0.9);
   } else {
     state.speed = 0;
@@ -814,8 +814,8 @@ function raceStep(dt) {
   if (running && p.finish === null && p.d >= RACE_M) {
     p.finish = race.t;
     race.phase = 'done';
-    // nach dem Ziel austraben lassen
-    state.gait = 2;
+    // nach dem Ziel im Schritt auslaufen lassen
+    state.gait = 1;
     playGait();
     setTimeout(showResults, 2500);
   }
