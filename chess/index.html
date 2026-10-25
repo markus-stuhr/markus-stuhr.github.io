@@ -13,6 +13,7 @@
   <div class="hdr-actions">
     <button id="btnPlayer" title="Spieler wechseln">👤 <span id="playerChip">Spieler wählen</span></button>
     <button id="btnHistory">Partien</button>
+    <button id="btnSettings" title="Einstellungen">⚙︎</button>
     <button id="btnNew" class="primary">Neue Partie</button>
   </div>
 </header>
@@ -43,8 +44,6 @@
       <button id="btnHint">Tipp</button>
       <button id="btnUndo">Zug zurück</button>
       <button id="btnResign">Aufgeben</button>
-      <select id="optPieces" title="Figuren"></select>
-      <label class="toggle"><input type="checkbox" id="optLive" checked> Live-Bewertung</label>
     </div>
 
     <div class="card">
@@ -82,6 +81,15 @@
 
 <dialog id="dlgHistory" class="dlg-history">
       <h2>Partien</h2>
+      <p class="meta" id="histWho"></p>
+      <div class="meta" id="histStats"></div>
+      <ul class="history" id="history"></ul>
+      <div class="dlg-actions"><button id="btnHistoryClose">Schließen</button></div>
+</dialog>
+
+<dialog id="dlgSettings" class="dlg-history">
+  <h2>Einstellungen</h2>
+  <div class="set-row"><span>Spieler</span></div>
       <div class="hist-head">
         <select id="playerSel"></select>
         <button id="btnAddPlayer" title="Neuen Spieler anlegen">＋</button>
@@ -93,9 +101,9 @@
         <button class="primary">Anlegen</button>
         <button type="button" id="newPlayerCancel">Abbrechen</button>
       </form>
-      <div class="meta" id="histStats"></div>
-      <ul class="history" id="history"></ul>
-      <div class="dlg-actions"><button id="btnHistoryClose">Schließen</button></div>
+  <div class="set-row"><span>Figuren</span><select id="optPieces"></select></div>
+  <div class="set-row"><span>Live-Bewertung</span><label class="toggle"><input type="checkbox" id="optLive" checked> während der Partie zeigen</label></div>
+  <div class="dlg-actions"><button id="btnSettingsClose" class="primary">Fertig</button></div>
 </dialog>
 
 <dialog id="dlgPromo"><div class="promo" id="promo"></div></dialog>

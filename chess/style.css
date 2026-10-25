@@ -118,3 +118,6 @@ footer a { color: var(--muted); }
 .hdr-actions { display: flex; gap: 8px; }
 .dlg-history { width: min(560px, calc(100vw - 32px)); }
 #optPieces { background: #1f2126; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px; font: inherit; }
+.set-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 14px 0 6px; }
+.set-row > span { font-weight: 600; }
+.set-row .toggle { margin-left: 0; }
