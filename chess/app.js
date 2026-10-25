@@ -450,6 +450,12 @@ function pgn() {
 $('btnPgn').onclick = () => { navigator.clipboard.writeText(pgn()); $('btnPgn').textContent = 'Kopiert ✓'; setTimeout(() => ($('btnPgn').textContent = 'PGN kopieren'), 1500); };
 
 // ---------- Brett ----------
+// Figurensätze aus lila (lichess), Lizenzen siehe Fußzeile
+const PIECE_SETS = { maestro: 'Maestro', staunty: 'Staunty', merida: 'Merida', california: 'California', tatiana: 'Tatiana', cardinal: 'Cardinal', alpha: 'Alpha', chessnut: 'Chessnut', cburnett: 'Klassisch' };
+let pieceSet = PIECE_SETS[ls('chess.pieces')] ? ls('chess.pieces') : 'maestro';
+$('optPieces').innerHTML = Object.entries(PIECE_SETS).map(([k, v]) => `<option value="${k}"${k === pieceSet ? ' selected' : ''}>${v}</option>`).join('');
+$('optPieces').onchange = () => { pieceSet = $('optPieces').value; ls('chess.pieces', pieceSet); render(); };
+
 const squares = {};
 function buildBoard() {
   boardEl.innerHTML = '';
@@ -500,7 +506,7 @@ function render() {
     d.classList.toggle('check', !!p && p.type === 'k' && p.color === c.turn() && c.inCheck());
     if (p) {
       const el = document.createElement('div');
-      el.className = 'pc'; el.style.backgroundImage = `url(pieces/${p.color}${p.type.toUpperCase()}.svg)`;
+      el.className = 'pc'; el.style.backgroundImage = `url(pieces/${pieceSet}/${p.color}${p.type.toUpperCase()}.svg)`;
       d.appendChild(el);
     }
   }
@@ -566,7 +572,7 @@ function choosePromotion(color) {
     const box = $('promo'); box.innerHTML = '';
     for (const p of ['q', 'r', 'b', 'n']) {
       const b = document.createElement('button');
-      b.style.backgroundImage = `url(pieces/${color}${p.toUpperCase()}.svg)`;
+      b.style.backgroundImage = `url(pieces/${pieceSet}/${color}${p.toUpperCase()}.svg)`;
       b.title = PNAME[p];
       b.onclick = () => { $('dlgPromo').close(); res(p); };
       box.appendChild(b);
