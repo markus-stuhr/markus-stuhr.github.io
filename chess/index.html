@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schach</title>
+<link rel="stylesheet" href="style.css">
+<script src="/analytics.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>♞ Schach</h1>
+  <div class="hdr-actions">
+    <button id="btnNew" class="primary">Neue Partie</button>
+  </div>
+</header>
+
+<main>
+  <section class="board-col">
+    <div class="player top" id="plTop"></div>
+    <div class="board-wrap">
+      <div class="evalbar" id="evalbar"><div class="evalfill" id="evalfill"></div><span id="evaltxt">0.0</span></div>
+      <div class="board" id="board"></div>
+    </div>
+    <div class="player bottom" id="plBottom"></div>
+    <div class="nav" id="nav">
+      <button data-nav="start" title="Anfang">⏮</button>
+      <button data-nav="prev" title="Zurück">◀</button>
+      <button data-nav="next" title="Vor">▶</button>
+      <button data-nav="end" title="Ende">⏭</button>
+    </div>
+  </section>
+
+  <section class="side-col">
+    <div class="card feedback" id="feedback">
+      <div class="fb-head"><span class="badge" id="fbBadge"></span><span id="fbTitle">Bereit</span></div>
+      <p id="fbText">Wähle einen Gegner und starte eine Partie.</p>
+    </div>
+
+    <div class="card controls" id="gameControls">
+      <button id="btnHint">Tipp</button>
+      <button id="btnUndo">Zug zurück</button>
+      <button id="btnResign">Aufgeben</button>
+      <label class="toggle"><input type="checkbox" id="optLive" checked> Live-Bewertung</label>
+    </div>
+
+    <div class="card">
+      <div class="opening" id="opening">–</div>
+      <div class="moves" id="moves"></div>
+    </div>
+
+    <div class="card review" id="review" hidden>
+      <h2>Auswertung</h2>
+      <svg id="chart" viewBox="0 0 600 140" preserveAspectRatio="none"></svg>
+      <div class="acc" id="acc"></div>
+      <table class="counts" id="counts"></table>
+      <button id="btnPgn">PGN kopieren</button>
+    </div>
+
+    <div class="card">
+      <h2>Letzte Partien</h2>
+      <ul class="history" id="history"></ul>
+    </div>
+  </section>
+</main>
+
+<dialog id="dlgNew">
+  <form method="dialog">
+    <h2>Neue Partie</h2>
+    <div class="levels" id="levels"></div>
+    <div class="colors">
+      <label><input type="radio" name="color" value="w" checked> Weiß</label>
+      <label><input type="radio" name="color" value="b"> Schwarz</label>
+      <label><input type="radio" name="color" value="r"> Zufall</label>
+    </div>
+    <div class="dlg-actions">
+      <button value="cancel" formnovalidate>Abbrechen</button>
+      <button value="ok" class="primary">Los geht's</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlgPromo"><div class="promo" id="promo"></div></dialog>
+
+<footer>Engine: <a href="https://stockfishchess.org">Stockfish 18</a> (GPLv3) · Figuren: cburnett (CC BY-SA 3.0) · Eröffnungen: <a href="https://github.com/lichess-org/chess-openings">lichess chess-openings</a> (CC0) · Bewertungsformeln nach Lichess</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
