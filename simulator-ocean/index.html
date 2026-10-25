@@ -2107,6 +2107,7 @@ async function buildCaribbean(centerLat, centerLng, spanM, routePts) {
   oceanMat.uniforms.uCoastOn.value = 0;
   window.shoreDistAt = null;
   resetDetail();
+  birdPickAt = null;   // seabirds pick islands of the new area
   const SPAN = spanM;
   const clat = centerLat, clng = centerLng;
   const dLat = SPAN / 111320;
@@ -3914,6 +3915,157 @@ async function loadNightLights() {
   nightLights.loading = false;
 }
 
+// --- Seabirds circling over the islands ---
+// Gull model and flight from the fishing game (fish/index.html): slim body, two-part wings
+// whose outer half lags behind, flapping with glides, banking into the turn. Here they are
+// frigatebird-sized and soar 60-140 m above the hills of islands 0.6-2.5 km from the boat;
+// a bird that the camera gets within 300 m of moves on to another island. Not at night.
+function smoothNormals(geo, tol = 1e-4) {
+  const pos = geo.attributes.position;
+  const idx = geo.index ? geo.index.array : null;
+  const count = idx ? idx.length : pos.count;
+  const acc = new Map(), normals = new Float32Array(pos.count * 3);
+  const key = (i) => [pos.getX(i), pos.getY(i), pos.getZ(i)].map(v => Math.round(v / tol)).join(',');
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(),
+    ab = new THREE.Vector3(), ac = new THREE.Vector3(), n = new THREE.Vector3();
+  for (let f = 0; f < count; f += 3) {
+    const i0 = idx ? idx[f] : f, i1 = idx ? idx[f + 1] : f + 1, i2 = idx ? idx[f + 2] : f + 2;
+    a.fromBufferAttribute(pos, i0); b.fromBufferAttribute(pos, i1); c.fromBufferAttribute(pos, i2);
+    n.copy(ab.subVectors(b, a)).cross(ac.subVectors(c, a));
+    for (const i of [i0, i1, i2]) {
+      const k = key(i);
+      (acc.get(k) || acc.set(k, new THREE.Vector3()).get(k)).add(n);
+    }
+  }
+  for (let i = 0; i < pos.count; i++) {
+    const e = acc.get(key(i));
+    if (!e) continue;
+    n.copy(e).normalize();
+    normals.set([n.x, n.y, n.z], i * 3);
+  }
+  geo.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+  return geo;
+}
+const gullBody = new THREE.MeshLambertMaterial({ color: 0xf2efe8 });
+const gullDark = new THREE.MeshLambertMaterial({ color: 0x9aa2ab });
+function makeGull() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), gullBody);
+  body.scale.set(0.3, 0.3, 1.0);
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), gullBody);
+  head.scale.set(0.38, 0.38, 0.48);
+  head.position.set(0, 0.05, 0.5);
+  g.add(head);
+  const beak = new THREE.Mesh(smoothNormals(new THREE.ConeGeometry(0.04, 0.18, 8)), gullDark);
+  beak.rotation.x = Math.PI / 2;
+  beak.position.set(0, 0.04, 0.68);
+  g.add(beak);
+  const tail = new THREE.Mesh(smoothNormals(new THREE.ConeGeometry(0.13, 0.42, 6)), gullBody);
+  tail.rotation.set(-Math.PI / 2, Math.PI / 4, 0);
+  tail.position.set(0, 0.02, -0.6);
+  tail.scale.set(1, 1, 0.3);
+  g.add(tail);
+  const wingPart = (pts, depth) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]);
+    sh.closePath();
+    return smoothNormals(new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false, curveSegments: 8 }).rotateX(-Math.PI / 2));
+  };
+  const innerGeo = wingPart([[0, 0.24], [0.72, 0.12], [0.72, -0.2], [0.16, -0.3]], 0.03);
+  const outerGeo = wingPart([[0, 0.12], [0.62, 0.0], [0.66, -0.05], [0, -0.2]], 0.025);
+  const wings = [-1, 1].map(side => {
+    const shoulder = new THREE.Group();
+    const inner = new THREE.Mesh(innerGeo, gullBody);
+    inner.scale.x = side;
+    shoulder.add(inner);
+    const elbow = new THREE.Group();
+    elbow.position.x = side * 0.72;
+    const outer = new THREE.Mesh(outerGeo, gullBody);
+    outer.scale.x = side;
+    const tip = new THREE.Mesh(smoothNormals(new THREE.BoxGeometry(0.26, 0.028, 0.12)), gullDark);
+    tip.position.set(side * 0.52, 0.005, -0.03);
+    elbow.add(outer, tip);
+    shoulder.add(elbow);
+    shoulder.userData.elbow = elbow;
+    g.add(shoulder);
+    return shoulder;
+  });
+  return { g, wings };
+}
+const birds = []; window.__birds = birds;   // for console checks
+for (let i = 0; i < 9; i++) {
+  const { g, wings } = makeGull();
+  g.scale.setScalar(1.6 + Math.random() * 0.6);   // ~4-5 m span: a far-off frigatebird still reads
+  g.visible = false;
+  scene.add(g);
+  birds.push({ obj: g, wings, flap: 1.6 + Math.random() * 1.0, phFlap: Math.random() * 6.28,
+    cx: 0, cz: 0, r: 0, y: 0, sp: 0, ph: Math.random() * 6.28, drift: Math.random() * 6.28, placed: false });
+}
+var birdIslands = [], birdPickAt = null, birdLast = performance.now();   // var: the terrain build resets birdPickAt before this line runs
+// island hill tops 0.6-2.5 km around the boat (sampled from the terrain)
+function pickBirdIslands() {
+  birdIslands = [];
+  if (!window.terrainElevAt) return;
+  const bx = boatGroup.position.x, bz = boatGroup.position.z;
+  for (let r = 600; r <= 2500; r += 150) for (let a = 0; a < Math.PI * 2; a += 150 / r) {
+    const x = bx + Math.cos(a) * r, z = bz + Math.sin(a) * r;
+    const g = localToGeo(x, z);
+    const e = window.terrainElevAt(g.lat, g.lng);
+    if (e > 20) birdIslands.push({ x, z, e });
+  }
+  if (birdIslands.length) birdPickAt = { x: bx, z: bz };   // else retry once the terrain is in
+}
+function placeBird(b) {
+  if (!birdIslands.length) { b.placed = false; return; }
+  const isl = birdIslands[Math.floor(Math.random() * birdIslands.length)];
+  b.cx = isl.x; b.cz = isl.z;
+  b.r = 60 + Math.random() * 160;
+  b.y = isl.e + 60 + Math.random() * 80;
+  b.sp = (0.05 + Math.random() * 0.05) * (Math.random() < 0.5 ? -1 : 1);
+  b.placed = true;
+  b.obj.position.set(0, 0, 0);
+}
+function updateBirds() {
+  const now = performance.now();
+  const dt = Math.min((now - birdLast) / 1000, 0.1);
+  birdLast = now;
+  const show = gameState !== 'menu' && WX_UNI.uDay.value > 0.35 && weather.rain < 0.6;
+  const bx = boatGroup.position.x, bz = boatGroup.position.z;
+  if (show && (!birdPickAt || Math.hypot(bx - birdPickAt.x, bz - birdPickAt.z) > 1200)) {
+    pickBirdIslands();
+    birds.forEach(placeBird);
+  }
+  for (const b of birds) {
+    b.obj.visible = show && b.placed;
+    if (!b.obj.visible) continue;
+    b.ph += dt * b.sp;
+    b.drift += dt * 0.03;
+    const cx = b.cx + Math.sin(b.drift) * 60, cz = b.cz + Math.cos(b.drift * 0.7) * 60;   // wandering centre
+    const x = cx + Math.cos(b.ph) * b.r, z = cz + Math.sin(b.ph) * b.r;
+    const y = b.y + Math.sin(b.ph * 1.7) * 3;
+    if (Math.hypot(x - CAM_W.x, y - CAM_W.y, z - CAM_W.z) < 300) { placeBird(b); continue; }   // never up close
+    const prev = b.obj.position;
+    if (prev.lengthSq() > 0) {
+      const yaw = Math.atan2(x - prev.x, z - prev.z);
+      const d = Math.atan2(Math.sin(yaw - b.obj.rotation.y), Math.cos(yaw - b.obj.rotation.y));
+      b.obj.rotation.y += d * Math.min(1, dt * 4);
+      b.obj.rotation.z = THREE.MathUtils.lerp(b.obj.rotation.z, -0.3 * Math.sign(b.sp), Math.min(1, dt * 2));
+    }
+    b.obj.position.set(x, y, z);
+    // wing beats with glides; the outer wing follows a little late
+    b.phFlap += dt * b.flap;
+    const glide = Math.max(0, Math.sin(b.phFlap * 0.12));
+    const amp = 0.1 + 0.5 * (1 - glide);
+    const swing = Math.sin(b.phFlap) * amp, lag = Math.sin(b.phFlap - 0.7) * amp * 0.85;
+    b.wings[0].rotation.z = -swing;
+    b.wings[1].rotation.z = swing;
+    b.wings[0].userData.elbow.rotation.z = -lag;
+    b.wings[1].userData.elbow.rotation.z = lag;
+  }
+}
+
 // --- Weather ---
 // Presets (and live Open-Meteo data) set a target; applyWeather() eases the current
 // state towards it and feeds every shader, the lights, the fog and the rain.
@@ -4460,7 +4612,7 @@ renderer.render = (s, c) => {
     // In VR it stays fixed: changing it re-configures the XR session every time
     const near = inVR ? 2 : THREE.MathUtils.clamp(CAM_W.y * 0.05, 0.1, 40);
     if (Math.abs(camera.near - near) > camera.near * 0.1) { camera.near = near; camera.updateProjectionMatrix(); }
-    applyWeather(); updateDetail(); updateWakes(); updateSunShadow(); renderReflection();
+    applyWeather(); updateBirds(); updateDetail(); updateWakes(); updateSunShadow(); renderReflection();
   }
   _baseRender(s, c);
   if (main && !inVR) { renderGodRays(); renderLensRain(); }   // screen-space effects: not in stereo
