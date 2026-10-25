@@ -902,6 +902,10 @@ void main() {
     if (inBox > 0.0) {
       dS = texture2D(tShore, cuv).r;
       sat = texture2D(tSeabed, cuv).rgb;
+      // Some imagery tiles tint deep water purple (red above green under a blue cast):
+      // pull red down to the green level there; sand and reefs (red > blue) stay as they are
+      float purple = smoothstep(0.0, 0.06, sat.b - sat.r) * smoothstep(0.0, 0.03, sat.r - sat.g);
+      sat.r = mix(sat.r, min(sat.r, sat.g * 0.85), purple);
     }
   }
   float damp = mix(1.0, mix(0.06, 1.0, smoothstep(0.0, 180.0, dS)), step(0.001, inBox));
