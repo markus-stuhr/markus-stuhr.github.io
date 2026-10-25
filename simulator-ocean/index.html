@@ -111,6 +111,15 @@
     }
     .seg { display: flex; gap: 8px; }
     .seg-wrap { flex-wrap: wrap; }
+    .mp-input { padding: 9px 10px; border-radius: 10px; border: 1.5px solid #ccd6de; background: #fff; font: inherit; font-size: 14px; color: #14242f; min-width: 0; }
+    .mp-players { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; justify-content: center; }
+    .mp-players span { padding: 4px 10px; border-radius: 999px; color: #fff; font-size: 13px; font-weight: 600; }
+    #startBtn:disabled { background: #9aa9b5; cursor: default; }
+    #mpResults { position: fixed; top: 92px; right: 16px; z-index: 12; display: none; min-width: 200px;
+      background: rgba(8,22,40,0.78); color: #e8f1f8; border-radius: 14px; padding: 12px 16px; font-size: 14px; }
+    #mpResults h3 { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: #9fc0db; margin-bottom: 6px; }
+    #mpResults .row { display: flex; gap: 10px; align-items: center; padding: 2px 0; }
+    #mpResults .dot { width: 10px; height: 10px; border-radius: 50%; }
     .seg-wrap button { flex: 1 1 14%; white-space: nowrap; }
     .seg button {
       flex: 1; padding: 9px 0; border-radius: 10px;
@@ -216,7 +225,23 @@
       <div class="sec-label">Mode</div>
       <div class="seg" id="segMode">
         <button data-value="race" class="active">Race</button>
+        <button data-value="multi">Multiplayer</button>
         <button data-value="replay">Replay</button>
+      </div>
+    </div>
+    <div id="mpOpts" style="display:none">
+      <div class="menu-section">
+        <div class="sec-label">Multiplayer</div>
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input id="mpName" placeholder="Your name" maxlength="20" class="mp-input" style="flex:1.3">
+          <input id="mpCode" placeholder="Room code" maxlength="8" class="mp-input" style="flex:1;text-transform:uppercase">
+        </div>
+        <div class="seg">
+          <button id="mpCreate">Create race</button>
+          <button id="mpJoin">Join</button>
+        </div>
+        <div id="mpStatus" class="replay-info" style="margin-top:8px">Create a race and share the code, or join one.</div>
+        <div id="mpPlayers" class="mp-players"></div>
       </div>
     </div>
     <div class="menu-section">
@@ -310,6 +335,7 @@
   </div>
 </div>
 <div id="countdown"></div>
+<div id="mpResults"><h3>Finish</h3><div id="mpResultRows"></div></div>
 <div id="loading">Loading map…</div>
 <div id="replayBar">
   <div id="rpDataRow">
@@ -414,7 +440,7 @@ let followYaw = null;  // smoothed chase yaw
 let vrOrbitYaw = 0;    // left thumbstick X -> orbit offset
 let vrBtnA = false, vrBtnB = false, vrBtnX = false;
 renderer.xr.addEventListener('sessionstart', () => {
-  if (gameState === 'menu') startGame();     // the DOM menu is invisible inside VR
+  if (gameState === 'menu' && getMode() !== 'multi') startGame();   // the DOM menu is invisible inside VR; multiplayer waits for the host
   camZoom = 0.6;
   followYaw = null;
   vrOrbitYaw = 0;
@@ -2589,7 +2615,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
 
 window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyR') restartRace();
+  if (e.code === 'KeyR' && !mp.active) restartRace();   // no solo restart in a shared race
 });
 
 function restartRace() {
@@ -2727,6 +2753,7 @@ function updateRace(dt) {
       if (race.nextMark >= COURSE.length) {
         race.state = 'done';
         elRaceMsg.textContent = '🏁 Finish!';
+        if (mp.active) mpSend({ t: 'finish', time: race.time });
         if (bestTime === null || race.time < bestTime) {
           bestTime = race.time;
           localStorage.setItem('sim_best_time', String(bestTime));
@@ -3160,6 +3187,8 @@ document.getElementById('segMode').addEventListener('click', (e) => {
   const replay = getMode() === 'replay';
   document.getElementById('raceOpts').style.display = replay ? 'none' : '';
   document.getElementById('replayOpts').style.display = replay ? '' : 'none';
+  document.getElementById('mpOpts').style.display = getMode() === 'multi' ? '' : 'none';
+  mpSyncStartButton();
 });
 // toggle Data-only options when orientation mode changes
 document.getElementById('segOrient').addEventListener('click', (e) => {
@@ -3467,7 +3496,9 @@ document.getElementById('rpSpeed').addEventListener('click', (e) => {
 });
 
 document.getElementById('startBtn').addEventListener('click', () => {
-  if (getMode() === 'replay') startReplay(); else startGame();
+  if (getMode() === 'replay') startReplay();
+  else if (getMode() === 'multi') mpRequestStart();
+  else { mp.active = false; mpRemoveAllRemotes(); mpEl('mpResults').style.display = 'none'; startGame(); }
 });
 
 // Sit boatGroup (the detailed boat — player or replay's "V") on the wave surface,
@@ -4423,6 +4454,209 @@ renderer.render = (s, c) => {
   if (main && !inVR) { renderGodRays(); renderLensRain(); }   // screen-space effects: not in stereo
 };
 
+// ===================== MULTIPLAYER =====================
+// Rooms live on api.illstyles.de (Cloudflare Worker + one Durable Object per room code):
+// the room relays positions, starts the race at a shared server time and collects finish
+// times. Everyone sails their own boat locally; the others are dead-reckoned between
+// updates and eased onto their reported track. Same start moment = same wind and waves.
+const MP_WS = location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+  ? 'ws://localhost:8787/race/' : 'wss://api.illstyles.de/race/';
+const mp = { ws: null, code: '', id: null, host: false, players: [], room: null, active: false,
+             offset: 0, bestRtt: Infinity, remotes: new Map(), sendT: 0 };
+const mpNow = () => Date.now() + mp.offset;   // server clock
+const mpEl = (id) => document.getElementById(id);
+try { mpEl('mpName').value = localStorage.getItem('mpName') || ''; } catch (e) { /* storage blocked */ }
+
+function mpSend(o) { if (mp.ws && mp.ws.readyState === 1) mp.ws.send(JSON.stringify(o)); }
+function mpStatus(txt) { mpEl('mpStatus').textContent = txt; }
+function mpSyncStartButton() {
+  const b = mpEl('startBtn');
+  if (getMode() !== 'multi') { b.disabled = false; b.textContent = 'Start'; return; }
+  if (!mp.ws) { b.disabled = true; b.textContent = 'Create or join a race'; }
+  else if (mp.host) { b.disabled = false; b.textContent = `Start race (${mp.players.length} sailor${mp.players.length === 1 ? '' : 's'})`; }
+  else { b.disabled = true; b.textContent = 'Waiting for the host to start…'; }
+}
+function mpRenderPlayers() {
+  mpEl('mpPlayers').innerHTML = mp.players.map(p =>
+    `<span style="background:#${p.color.toString(16).padStart(6, '0')}">${p.name.replace(/[<>&]/g, '')}${p.host ? ' ★' : ''}${p.id === mp.id ? ' (you)' : ''}</span>`).join('');
+}
+function mpConnect(code) {
+  const name = (mpEl('mpName').value || '').trim() || 'Sailor';
+  try { localStorage.setItem('mpName', name); } catch (e) { /* storage blocked */ }
+  if (mp.ws) { mp.ws.onclose = null; mp.ws.close(); }
+  mp.code = code; mp.id = null; mp.players = []; mp.room = null; mp.bestRtt = Infinity;
+  mpStatus(`Connecting to ${code}…`);
+  const ws = new WebSocket(MP_WS + code);
+  mp.ws = ws;
+  ws.onopen = () => {
+    mpSend({ t: 'hello', name });
+    for (let i = 0; i < 4; i++) setTimeout(() => mpSend({ t: 'ping', c: Date.now() }), i * 250);
+  };
+  ws.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch (err) { return; } mpOnMessage(m); };
+  ws.onclose = () => {
+    if (mp.ws !== ws) return;
+    mp.ws = null; mp.players = []; mpRenderPlayers();
+    mpStatus('Disconnected.'); mpSyncStartButton();
+  };
+  ws.onerror = () => mpStatus('Could not reach the race server.');
+  mpSyncStartButton();
+}
+function mpOnMessage(m) {
+  if (m.t === 'pong') {
+    const now = Date.now(), rtt = now - m.c;
+    if (rtt < mp.bestRtt) { mp.bestRtt = rtt; mp.offset = m.now - (m.c + rtt / 2); }   // NTP-style
+  } else if (m.t === 'welcome') {
+    mp.id = m.id;
+    if (!isFinite(mp.bestRtt)) mp.offset = m.now - Date.now();
+    mpStatus(`Room ${mp.code} · share this code`);
+    if (m.room && m.room.startAt > mpNow()) mpBeginRace(m.room);   // joined during the countdown
+  } else if (m.t === 'players') {
+    mp.players = m.list;
+    mp.host = !!m.list.find(p => p.id === mp.id && p.host);
+    mpRenderPlayers(); mpSyncStartButton();
+    for (const id of [...mp.remotes.keys()]) if (!m.list.some(p => p.id === id)) mpRemoveRemote(id);
+  } else if (m.t === 'start') {
+    mpBeginRace(m.room);
+  } else if (m.t === 'pos') {
+    mpOnPos(m.id, m.p);
+  } else if (m.t === 'left') {
+    mpRemoveRemote(m.id);
+  } else if (m.t === 'results') {
+    mpShowResults(m.results);
+  }
+}
+mpEl('mpCreate').addEventListener('click', () => {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 5; i++) code += abc[Math.floor(Math.random() * abc.length)];
+  mpEl('mpCode').value = code;
+  mpConnect(code);
+});
+mpEl('mpJoin').addEventListener('click', () => {
+  const code = (mpEl('mpCode').value || '').trim().toUpperCase();
+  if (!/^[A-Z0-9]{4,8}$/.test(code)) { mpStatus('Enter the room code (4–8 letters/digits).'); return; }
+  mpConnect(code);
+});
+
+// Host: send the race settings; the room answers everyone with a start time ~6 s ahead
+function mpRequestStart() {
+  if (!mp.host) return;
+  const val = (id) => document.querySelector(`#${id} .active`)?.dataset.value;
+  mpSend({ t: 'start', config: {
+    wind: val('segWind'), wave: val('segWave'), weather: weatherMode, time: timeOfDay, vis: val('segVis'),
+    live: weatherMode === 'live' ? liveWeather : null,
+  } });
+}
+// Everyone: take over the host's settings, then a countdown to the shared start
+function mpBeginRace(room) {
+  mp.room = room;
+  const c = room.config || {};
+  const pick = (id, v) => { const b = v != null && document.querySelector(`#${id} button[data-value="${v}"]`); if (b) b.click(); };
+  pick('segWind', c.wind); pick('segWave', c.wave); pick('segVis', c.vis); pick('segTime', c.time);
+  if (c.weather === 'live' && c.live) { weatherMode = 'live'; liveWeather = c.live; Object.assign(weatherTarget, weatherFromLive(c.live)); }
+  else pick('segWeather', c.weather);
+  mpRemoveAllRemotes();
+  mp.active = true;
+  mpEl('mpResults').style.display = 'none';
+  startGame();
+  OPPONENTS.forEach(o => { o.group.visible = false; o.track.line.visible = false; });
+  // line up along the start line in join order (25 m apart, alternating sides)
+  const slot = Math.max(0, mp.players.findIndex(p => p.id === mp.id));
+  const off = (slot % 2 ? -1 : 1) * Math.ceil(slot / 2) * 25;
+  boatGroup.position.x += Math.cos(START_HEADING) * off;
+  boatGroup.position.z += Math.sin(START_HEADING) * off;
+  gameState = 'countdown';
+  countdownTimer = (room.startAt - mpNow()) / 1000;
+}
+
+// --- remote boats ---
+function makeNameTag(name, color) {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = 'rgba(8,22,40,0.65)';
+  ctx.beginPath(); ctx.roundRect(4, 8, 248, 48, 24); ctx.fill();
+  ctx.fillStyle = '#' + color.toString(16).padStart(6, '0');
+  ctx.beginPath(); ctx.arc(32, 32, 10, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.font = 'bold 28px system-ui, sans-serif';
+  ctx.fillText(name, 52, 42);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, fog: false }));
+  sp.scale.set(24, 6, 1);
+  sp.renderOrder = 998;
+  return sp;
+}
+function mpOnPos(id, p) {
+  if (!p || id === mp.id) return;
+  let r = mp.remotes.get(id);
+  if (!r) {
+    const info = mp.players.find(q => q.id === id) || { name: 'Sailor', color: 0x888888 };
+    const o = makeOpponent({ hull: info.color, sail: 0xe9edf1, rig: 0x2a2f35, track: info.color, dot: info.color, x: p.x / M, z: p.z / M });
+    o.tag = makeNameTag(info.name, info.color);
+    scene.add(o.tag);
+    r = { o, last: null, disp: { x: p.x, z: p.z, h: p.h } };
+    mp.remotes.set(id, r);
+  }
+  r.last = { ...p, at: performance.now() };
+}
+function mpRemoveRemote(id) {
+  const r = mp.remotes.get(id);
+  if (!r) return;
+  scene.remove(r.o.group); scene.remove(r.o.tag);
+  const i = WAKE_SOURCES.indexOf(r.o.group);
+  if (i >= 0) WAKE_SOURCES.splice(i, 1);
+  mp.remotes.delete(id);
+}
+function mpRemoveAllRemotes() { for (const id of [...mp.remotes.keys()]) mpRemoveRemote(id); }
+
+function mpFrame(dt) {
+  // send our boat ~6x per second
+  mp.sendT -= dt;
+  if (mp.sendT <= 0) {
+    mp.sendT = 0.16;
+    const g = boatGroup.position;
+    mpSend({ t: 'pos', p: { x: +g.x.toFixed(2), z: +g.z.toFixed(2), h: +boat.heading.toFixed(4), v: +boat.speed.toFixed(3),
+      he: +heelAngle.toFixed(3), sa: +sailAngle.toFixed(3), m: race.nextMark } });
+  }
+  // remote boats: predict from the last report (speed is in sim time), ease the display there
+  const now = performance.now();
+  const k = 1 - Math.exp(-dt * 6);
+  for (const r of mp.remotes.values()) {
+    const L = r.last;
+    if (!L) continue;
+    const age = Math.min((now - L.at) / 1000, 1.5) * (gameState === 'racing' ? SIM_SPEED : 0);
+    const px = L.x + Math.sin(L.h) * L.v * age, pz = L.z - Math.cos(L.h) * L.v * age;
+    const jump = Math.hypot(px - r.disp.x, pz - r.disp.z) > 60;   // way off (lag spike): snap
+    r.disp.x = jump ? px : r.disp.x + (px - r.disp.x) * k;
+    r.disp.z = jump ? pz : r.disp.z + (pz - r.disp.z) * k;
+    r.disp.h = jump ? L.h : r.disp.h + normAngle(L.h - r.disp.h) * k;
+    mpPoseRemote(r, L);
+  }
+}
+function mpPoseRemote(r, L) {
+  const o = r.o, g = o.group, h = r.disp.h;
+  const bx = r.disp.x, bz = r.disp.z;
+  g.position.x = bx; g.position.z = bz;
+  g.rotation.y = -h;
+  const fwdX = Math.sin(h), fwdZ = -Math.cos(h), rgtX = Math.cos(h), rgtZ = Math.sin(h);
+  const L2 = 1.9 * M, B2 = 0.46 * M;
+  const hC = waveHeight(bx, bz, t);
+  g.position.y = hC - 0.06 * M;
+  g.rotation.x = Math.atan2(waveHeight(bx + fwdX * L2, bz + fwdZ * L2, t) - waveHeight(bx - fwdX * L2, bz - fwdZ * L2, t), 2 * L2);
+  g.rotation.z = Math.atan2(waveHeight(bx + rgtX * B2, bz + rgtZ * B2, t) - waveHeight(bx - rgtX * B2, bz - rgtZ * B2, t), 2 * B2) + (L.he || 0);
+  o.sailAngle += ((L.sa || 0) - o.sailAngle) * 0.2;
+  o.mainPivot.rotation.y = o.sailAngle;
+  o.jibPivot.quaternion.setFromAxisAngle(oppJibAxis, o.sailAngle * 0.85);
+  o.tag.position.set(bx, hC + 48, bz);
+}
+function mpShowResults(results) {
+  mpEl('mpResults').style.display = 'block';
+  mpEl('mpResultRows').innerHTML = results.map((r, i) =>
+    `<div class="row"><b>${i + 1}.</b><span class="dot" style="background:#${r.color.toString(16).padStart(6, '0')}"></span>` +
+    `<span style="flex:1">${r.name.replace(/[<>&]/g, '')}${r.id === mp.id ? ' (you)' : ''}</span><span>${fmtTime(r.time)}</span></div>`).join('');
+}
+mpSyncStartButton();
+// =======================================================
+
 // --- Animate ---
 const clock = new THREE.Clock();
 let t = 0;
@@ -4466,9 +4700,11 @@ function animate(now) {
     countdownTimer -= dt;
     const n = Math.ceil(countdownTimer);
     document.getElementById('countdown').textContent = n > 0 ? String(n) : 'Go!';
+    if (mp.active) countdownTimer = (mp.room.startAt - mpNow()) / 1000;   // the room's shared start
     if (countdownTimer <= 0) {
       gameState = 'racing';
       document.getElementById('countdown').style.display = 'none';
+      if (mp.active) { t = 0; race.state = 'racing'; race.time = 0; }   // same wind/waves clock for everyone
     }
   }
 
@@ -4493,11 +4729,12 @@ function animate(now) {
   updateRace(sdt);     // clock only advances once the boat is moving
   updateHUD();
   updateMarkPointers();
-  if (moving) OPPONENTS.forEach(o => updateOpponent(o, sdt));
+  if (moving && !mp.active) OPPONENTS.forEach(o => updateOpponent(o, sdt));
   if (moving) {
     recordTrack(playerTrack, boatGroup.position.x, boatGroup.position.z);
-    OPPONENTS.forEach(o => recordTrack(o.track, o.group.position.x, o.group.position.z));
+    if (!mp.active) OPPONENTS.forEach(o => recordTrack(o.track, o.group.position.x, o.group.position.z));
   }
+  if (mp.active) mpFrame(dt);
   updateTrackHeights(playerTrack);
   OPPONENTS.forEach(o => updateTrackHeights(o.track));
 
