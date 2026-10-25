@@ -70,6 +70,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { ParametricGeometry } from 'three/addons/geometries/ParametricGeometry.js';
 
 // Gangarten: Clip, Zielgeschwindigkeit in m/s, Geschwindigkeit bei timeScale 1
 const GAITS = [
@@ -291,12 +292,9 @@ function buildSaddle() {
   cloth.rotation.x = Math.PI / 2;
   cloth.position.set(0, -CLOTH.r + 0.02, 0.05);
   g.add(cloth);
-  // Sattelschale: flach, kurz
-  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.32), leather);
-  shell.scale.set(1.0, 0.5, 1.35);
-  shell.position.set(0, -0.08, -0.05);
-  g.add(shell);
-  for (const side of [-1, 1]) {
+  g.add(buildSaddleLeather(leather));
+  // Reihenfolge wie in updateTack: zuerst links (+x, Blickrichtung +z), dann rechts
+  for (const side of [1, -1]) {
     const stirrup = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.025, 6, 14), metal);
     const strap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1, 0.08), leather);
     g.add(stirrup, strap);
@@ -309,6 +307,51 @@ function buildSaddle() {
   tack.group = g;
   return g;
 }
+// Sattelleder folgt der Rückenrundung (Zylinder um die Längsachse wie die Schabracke).
+// u läuft von hinten nach vorn, v quer über den Rücken; Winkel 0 = Rückenmitte.
+function saddlePoint(angle, z, lift, target) {
+  const r = CLOTH.r + 0.015 + lift;
+  return target.set(Math.sin(angle) * r, Math.cos(angle) * r - CLOTH.r + 0.02, z);
+}
+function buildSaddleLeather(leather) {
+  const g = new THREE.Group();
+  const LEN = 0.78, Z0 = -0.05;
+  // Sitz: vertieft in der Mitte, Vorderzwiesel höher als Hinterzwiesel, Ränder abgerundet
+  const seat = new ParametricGeometry((u, v, t) => {
+    const z = Z0 + (u - 0.5) * LEN * (1 - 0.25 * Math.abs(v - 0.5) * 2);
+    const width = 0.55 - 0.18 * Math.pow(Math.abs(u - 0.5) * 2, 2);
+    const angle = (v - 0.5) * 2 * width;
+    const front = Math.max(0, u - 0.62) / 0.38, back = Math.max(0, 0.32 - u) / 0.32;
+    const centre = Math.cos(Math.min(1, Math.abs(angle) / width) * Math.PI / 2);
+    const lift = 0.02 + centre * (0.11 * front * front + 0.07 * back * back);
+    saddlePoint(angle, z, lift, t);
+  }, 24, 16);
+  g.add(new THREE.Mesh(seat, leather));
+  // Sattelblätter: hängen seitlich herab, vorn nach vorn ausgestellt wie beim Rennsattel
+  for (const side of [1, -1]) {
+    const flap = new ParametricGeometry((u, v, t) => {
+      const angle = side * (0.45 + v * 0.75);
+      const reach = 0.42 + v * 0.12;
+      const z = Z0 + 0.06 + (u - 0.5) * reach + v * 0.12;
+      saddlePoint(angle, z, 0.012, t);
+    }, 10, 10);
+    g.add(new THREE.Mesh(flap, leather));
+  }
+  // Naht als heller Rand um den Sitz
+  const stitch = new THREE.MeshStandardMaterial({ color: 0xd8c39a, roughness: 0.6 });
+  const pts = [];
+  for (let i = 0; i <= 64; i++) {
+    const a = i / 64 * Math.PI * 2;
+    const u = 0.5 + 0.5 * Math.cos(a), v = 0.5 + 0.5 * Math.sin(a);
+    const p = new THREE.Vector3();
+    seat.parameters.func(u, v, p);
+    pts.push(p.multiplyScalar(1.004));
+  }
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 96, 0.008, 5, true), stitch));
+  leather.side = THREE.DoubleSide;
+  return g;
+}
+
 const _foot = new THREE.Vector3(), _dir = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 function updateTack() {
   if (!rider.bones) return;
