@@ -411,6 +411,7 @@ $('history').addEventListener('click', async (e) => {
     hints: g.data.hints || 0, fens, ucis, over: true, saved: true, thinking: false,
   };
   view = n(); selected = null;
+  $('dlgHistory').close();
   showReview();
   setFeedback(null, `${g.result} – ${g.reason}`, `${g.player} gegen ${LEVELS[g.level].name}. Klicke auf Züge oder die Kurve.`);
   refresh();
@@ -671,6 +672,8 @@ $('levels').innerHTML = LEVELS.map((l, i) => `<label><input type="radio" name="l
 let lastLevel = 2;
 try { lastLevel = +(localStorage.getItem('chess.level') ?? 2); } catch {}
 $('levels').querySelectorAll('input')[lastLevel].checked = true;
+$('btnHistory').onclick = () => { $('dlgHistory').showModal(); sync(); };
+$('btnHistoryClose').onclick = () => $('dlgHistory').close();
 $('btnNew').onclick = () => $('dlgNew').showModal();
 $('dlgNew').addEventListener('close', () => {
   if ($('dlgNew').returnValue !== 'ok') return;
@@ -681,7 +684,7 @@ $('dlgNew').addEventListener('close', () => {
   newGame(lvl, col);
 });
 
-sync();
 G = { level: lastLevel, player: 'w', fens: [new Chess().fen()], sans: [], ucis: [], evals: [], cls: [], over: false, thinking: false, idle: true };
 refresh();
+sync().then(() => { if (G.idle) $('history').querySelector('li[data-id]')?.click(); });
 window.__chess = { get G() { return G; }, playMove, newGame };

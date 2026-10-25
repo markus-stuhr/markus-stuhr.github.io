@@ -74,7 +74,7 @@ main { display: grid; grid-template-columns: minmax(0, 640px) minmax(280px, 1fr)
 .counts td:nth-child(2) { text-align: center; }
 #chart { width: 100%; height: 120px; background: #1f2126; border-radius: 6px; cursor: pointer; }
 
-.history { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.history { list-style: none; margin: 0 0 12px; padding: 0; max-height: 60vh; overflow-y: auto; }
 .history li { padding: 6px 4px; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
 .history li:hover { background: #2f3238; }
 .history .res { font-weight: 700; }
@@ -115,3 +115,5 @@ footer a { color: var(--muted); }
   body > footer { display: none; }
   .moves { max-height: none; }
 }
+.hdr-actions { display: flex; gap: 8px; }
+.dlg-history { width: min(560px, calc(100vw - 32px)); }

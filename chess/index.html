@@ -11,6 +11,7 @@
 <header>
   <h1>♞ Schach</h1>
   <div class="hdr-actions">
+    <button id="btnHistory">Partien</button>
     <button id="btnNew" class="primary">Neue Partie</button>
   </div>
 </header>
@@ -57,22 +58,6 @@
       <button id="btnPgn">PGN kopieren</button>
     </div>
 
-    <div class="card">
-      <h2>Partien</h2>
-      <div class="hist-head">
-        <select id="playerSel"></select>
-        <button id="btnAddPlayer" title="Neuen Spieler anlegen">＋</button>
-        <button id="btnToken" title="Datenbank verbinden">🔑</button>
-        <span class="db" id="dbState">Nur lokal</span>
-      </div>
-      <form class="new-player" id="newPlayer" hidden>
-        <input id="newPlayerName" maxlength="40" placeholder="Name des Spielers" autocomplete="off">
-        <button class="primary">Anlegen</button>
-        <button type="button" id="newPlayerCancel">Abbrechen</button>
-      </form>
-      <div class="meta" id="histStats"></div>
-      <ul class="history" id="history"></ul>
-    </div>
     <footer>Engine: <a href="https://stockfishchess.org">Stockfish 18</a> (GPLv3) · Figuren: cburnett (CC BY-SA 3.0) · Eröffnungen: <a href="https://github.com/lichess-org/chess-openings">lichess chess-openings</a> (CC0) · Bewertungsformeln nach Lichess</footer>
   </section>
 </main>
@@ -91,6 +76,24 @@
       <button value="ok" class="primary">Los geht's</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="dlgHistory" class="dlg-history">
+      <h2>Partien</h2>
+      <div class="hist-head">
+        <select id="playerSel"></select>
+        <button id="btnAddPlayer" title="Neuen Spieler anlegen">＋</button>
+        <button id="btnToken" title="Datenbank verbinden">🔑</button>
+        <span class="db" id="dbState">Nur lokal</span>
+      </div>
+      <form class="new-player" id="newPlayer" hidden>
+        <input id="newPlayerName" maxlength="40" placeholder="Name des Spielers" autocomplete="off">
+        <button class="primary">Anlegen</button>
+        <button type="button" id="newPlayerCancel">Abbrechen</button>
+      </form>
+      <div class="meta" id="histStats"></div>
+      <ul class="history" id="history"></ul>
+      <div class="dlg-actions"><button id="btnHistoryClose">Schließen</button></div>
 </dialog>
 
 <dialog id="dlgPromo"><div class="promo" id="promo"></div></dialog>
