@@ -186,7 +186,7 @@ Promise.all([load('horse.glb'), load('jockey.glb')]).then(([gltf, riderGltf]) =>
   mountRider(model, riderGltf);
   buildBridle(model.getObjectByName('Head'));
   document.getElementById('loading').remove();
-  window.__horse = { state, actions, horse, rider, SEAT, camera };
+  window.__horse = { state, actions, horse, rider, SEAT, camera, JOCKEY };
 });
 
 // Sattel und Reiter hängen am Rückenknochen und schwingen dadurch mit
@@ -232,6 +232,7 @@ function mountRider(model, gltf) {
 // Winkel um Achsen im Jockey-Raum (x = links, y = oben, z = vorn), angewendet von der Hüfte nach außen.
 const JOCKEY = {
   hipLift: 0.85, hipBack: 0,
+  fingerCurl: -1.3, thumbCurl: -0.5,
   pose: [
     ['Hips', 'x', 0.5], ['Spine', 'x', 0.3], ['Spine1', 'x', 0.25], ['Spine2', 'x', 0.15],
     ['Neck', 'x', -0.45], ['Head', 'x', -0.45],
@@ -243,7 +244,7 @@ const JOCKEY = {
     ['LeftArm', 'z', -0.9], ['RightArm', 'z', 0.9],
     ['LeftArm', 'x', -0.9], ['RightArm', 'x', -0.9],
     ['LeftForeArm', 'x', -0.9], ['RightForeArm', 'x', -0.9],
-    ['LeftForeArm', 'y', -0.6], ['RightForeArm', 'y', 0.6],
+    ['LeftForeArm', 'y', -0.2], ['RightForeArm', 'y', 0.2],
   ],
 };
 const AXES = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
@@ -262,6 +263,17 @@ function poseJockey(lean) {
   for (const [k, q] of Object.entries(rider.rest)) b[k].quaternion.copy(q);
   for (const [name, axis, angle] of JOCKEY.pose) if (b[name]) rotateInRiderSpace(b[name], axis, angle);
   if (lean) { rotateInRiderSpace(b.Spine1, 'x', 0.25 * lean); rotateInRiderSpace(b.Head, 'x', -0.25 * lean); }
+  // Fäuste: Fingerglieder um ihre lokale x-Achse beugen; negativ = zur Handfläche (bei beiden Händen gleich), Daumen weniger
+  for (const side of ['Left', 'Right']) {
+    for (const f of ['Index', 'Middle', 'Ring', 'Pinky', 'Thumb']) {
+      for (let k = 1; k <= 3; k++) {
+        const bone = b[side + 'Hand' + f + k];
+        if (!bone) continue;
+        const c = f === 'Thumb' ? JOCKEY.thumbCurl : JOCKEY.fingerCurl;
+        bone.rotateOnAxis(AXES.x, c);
+      }
+    }
+  }
 }
 
 // Rennsattel: flache Lederschale auf weißer Schabracke mit Startnummer,
@@ -418,35 +430,66 @@ function headSurface(head) {
     return new THREE.Vector3(Math.sin(angle) * (r + gap), y, c + Math.cos(angle) * (r + gap));
   };
 }
-function strapAlong(surface, from, to, steps, mat, radius = 0.018, closed = false) {
-  const pts = [];
-  const n = closed ? steps : steps + 1;
-  for (let i = 0; i < n; i++) {
-    const t = i / steps;
-    pts.push(surface(from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t));
-  }
-  const curve = new THREE.CatmullRomCurve3(pts, closed, 'centripetal');
-  return new THREE.Mesh(new THREE.TubeGeometry(curve, steps * 6, radius, 6, closed), mat);
+// Kopfgeschirr als Bemalung: jeder Vertex trägt seine Ruheposition im Kopfknochen-Raum
+// (Attribut headPos, w = Kopfgewicht), der Fragment-Shader zeichnet daraus Riemenbänder. So folgen sie der Haut
+// und können nicht durch den Kopf stechen. Maße wie in headSurface: +y zum Maul, +z nach oben.
+function paintHeadstall(head) {
+  let root = head;
+  while (root.parent && root.parent !== horse) root = root.parent;
+  const v = new THREE.Vector3();
+  root.traverse((m) => {
+    if (!m.isSkinnedMesh) return;
+    const pos = m.geometry.attributes.position, si = m.geometry.attributes.skinIndex, sw = m.geometry.attributes.skinWeight;
+    const hi = m.skeleton.bones.indexOf(head);
+    // alle Vertices bekommen ihre Kopfraum-Position, w = Kopfgewicht: so bleibt der Wert über
+    // Dreiecke am Übergang zum Hals stetig, und die Bemalung blendet über das Gewicht aus
+    const hp = new Float32Array(pos.count * 4);
+    let any = false;
+    for (let i = 0; i < pos.count; i++) {
+      let w = 0;
+      for (let k = 0; k < 4; k++) if (si.getComponent(i, k) === hi) w += sw.getComponent(i, k);
+      v.fromBufferAttribute(pos, i);
+      m.applyBoneTransform(i, v);
+      m.localToWorld(v);
+      head.worldToLocal(v);
+      hp.set([v.x, v.y, v.z, w], i * 4);
+      if (w > 0.3) any = true;
+    }
+    if (!any) return;
+    m.geometry.setAttribute('headPos', new THREE.BufferAttribute(hp, 4));
+    m.material = m.material.clone();
+    m.material.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', 'attribute vec4 headPos;\nvarying vec4 vHead;\n#include <common>')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvHead = headPos;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `varying vec4 vHead;
+float band(float d, float w) { return 1.0 - smoothstep(w * 0.75, w, abs(d)); }
+#include <common>`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+{
+  float y = vHead.y;
+  float a = atan(vHead.x, vHead.z);
+  float aa = abs(a);
+  float s = band(y - 0.78, 0.035);                                  // Nasenriemen
+  s = max(s, band(y - 0.33, 0.03) * step(aa, 1.5));                 // Stirnriemen
+  s = max(s, band(y - 0.2, 0.035) * step(aa, 1.7));                 // Genickstück
+  s *= smoothstep(0.25, 0.55, vHead.w);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.07, 0.045, 0.03), s);
+}`);
+    };
+  });
 }
+
 function buildBridle(head) {
   const g = new THREE.Group();
   const leather = new THREE.MeshStandardMaterial({ color: 0x1c120b, roughness: 0.5 });
   const metal = new THREE.MeshStandardMaterial({ color: 0xd9d6cf, metalness: 0.9, roughness: 0.25 });
   const surf = headSurface(head);
   const PI = Math.PI;
-  // Nasenriemen rund um den Nasenrücken
-  g.add(strapAlong(surf, [0.78, -PI], [0.78, PI], 16, leather, 0.02, true));
-  // Stirnriemen über die Stirn
-  g.add(strapAlong(surf, [0.33, -1.5], [0.33, 1.5], 8, leather));
-  // Genickstück hinter den Ohren
-  g.add(strapAlong(surf, [0.2, -1.6], [0.2, 1.6], 8, leather));
-  // Kehlriemen unter dem Kiefer
-  g.add(strapAlong(surf, [0.26, 1.7], [0.3, PI], 4, leather, 0.014));
-  g.add(strapAlong(surf, [0.26, -1.7], [0.3, -PI], 4, leather, 0.014));
+  paintHeadstall(head);
   const bits = [];
   for (const sx of [1, -1]) {
-    // Backenstück vom Genick an der Kopfseite entlang bis zum Maulwinkel
-    g.add(strapAlong(surf, [0.2, sx * 1.6], [0.98, sx * 2.0], 8, leather));
     const bit = surf(1.0, sx * 2.05, 0.03);
     bits.push(bit);
     const bitRing = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 6, 16), metal);
@@ -462,7 +505,7 @@ function buildBridle(head) {
   tack.bitAnchors = bits.map((p) => { const o = new THREE.Object3D(); o.position.copy(p); head.add(o); return o; });
   // Zügel werden jedes Bild zwischen Gebiss und Händen neu aufgebaut
   tack.reinMat = leather;
-  tack.reins = [null, null];
+  tack.reins = [null, null, null];
   addNeckGuides(head.parent);
 }
 
@@ -494,23 +537,38 @@ function addNeckGuides(anyBone) {
 const _a = new THREE.Vector3(), _b = new THREE.Vector3();
 function updateReins() {
   if (!tack.bitAnchors || !rider.bones) return;
-  ['LeftHand', 'RightHand'].forEach((name, i) => {
+  const fists = ['Left', 'Right'].map((side) => fistPoint(side));
+  ['Left', 'Right'].forEach((side, i) => {
     // linke Hand (+x) gehört zum Gebissring auf der linken Seite des Pferdes; im Kopfraum ist x gespiegelt
     tack.bitAnchors[1 - i].getWorldPosition(_a);
-    rider.bones[name].getWorldPosition(_b);
+    _b.copy(fists[i]);
     // Gebiss, außen am Hals hoch, dann zur Hand
     const pts = [_a.clone(), ...tack.guides[i].map((o) => o.getWorldPosition(new THREE.Vector3())), _b.clone()];
     const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
     const geo = new THREE.TubeGeometry(curve, 32, 0.008, 5, false);
-    if (!tack.reins[i]) {
-      tack.reins[i] = new THREE.Mesh(geo, tack.reinMat);
-      tack.reins[i].castShadow = true;
-      scene.add(tack.reins[i]);
-    } else {
-      tack.reins[i].geometry.dispose();
-      tack.reins[i].geometry = geo;
-    }
+    setRein(i, geo);
   });
+  // Zügelbrücke: das Zügelende läuft durch beide Fäuste und hängt dazwischen leicht durch
+  const mid = fists[0].clone().add(fists[1]).multiplyScalar(0.5);
+  mid.y -= 0.07;
+  setRein(2, new THREE.TubeGeometry(new THREE.QuadraticBezierCurve3(fists[0], mid, fists[1]), 12, 0.008, 5, false));
+}
+function setRein(i, geo) {
+  if (!tack.reins[i]) {
+    tack.reins[i] = new THREE.Mesh(geo, tack.reinMat);
+    tack.reins[i].castShadow = true;
+    scene.add(tack.reins[i]);
+  } else {
+    tack.reins[i].geometry.dispose();
+    tack.reins[i].geometry = geo;
+  }
+}
+// Mitte der Faust: zwischen Handwurzel und Mittelfinger-Grundgelenk, etwas Richtung Fingerspitzen
+function fistPoint(side) {
+  const b = rider.bones;
+  const p = b[side + 'Hand'].getWorldPosition(new THREE.Vector3());
+  const k = b[side + 'HandMiddle1'].getWorldPosition(new THREE.Vector3());
+  return p.lerp(k, 1.25);
 }
 
 const _foot = new THREE.Vector3(), _dir = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
