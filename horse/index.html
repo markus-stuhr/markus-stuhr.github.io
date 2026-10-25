@@ -184,8 +184,9 @@ Promise.all([load('horse.glb'), load('jockey.glb')]).then(([gltf, riderGltf]) =>
   mixer.update(0);
   model.updateMatrixWorld(true);
   mountRider(model, riderGltf);
+  buildBridle(model.getObjectByName('Head'));
   document.getElementById('loading').remove();
-  window.__horse = { state, actions, horse, rider, SEAT };
+  window.__horse = { state, actions, horse, rider, SEAT, camera };
 });
 
 // Sattel und Reiter hängen am Rückenknochen und schwingen dadurch mit
@@ -352,6 +353,66 @@ function buildSaddleLeather(leather) {
   return g;
 }
 
+// Zaumzeug am Kopfknochen. Kopfraum (gemessen): +y zum Maul, +z nach oben, x quer;
+// Querschnitt des Kopfes: Stirn bei y≈0.3 (Breite ±0.34), Nasenrücken y≈0.8 (±0.17), Maulwinkel y≈1.0.
+const BRIDLE = { bit: [new THREE.Vector3(0.17, 1.0, -0.13), new THREE.Vector3(-0.17, 1.0, -0.13)] };
+function strap(points, mat, radius = 0.018, closed = false) {
+  const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)), closed);
+  return new THREE.Mesh(new THREE.TubeGeometry(curve, points.length * 8, radius, 6, closed), mat);
+}
+function ring(n, fn) {
+  return Array.from({ length: n }, (_, i) => fn(i / n * Math.PI * 2));
+}
+function buildBridle(head) {
+  const g = new THREE.Group();
+  const leather = new THREE.MeshStandardMaterial({ color: 0x1c120b, roughness: 0.5 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0xd9d6cf, metalness: 0.9, roughness: 0.25 });
+  // Nasenriemen um den Nasenrücken
+  g.add(strap(ring(16, (a) => [Math.cos(a) * 0.2, 0.78, -0.01 + Math.sin(a) * 0.22]), leather, 0.02, true));
+  // Stirnriemen über die Stirn unter den Ohren
+  g.add(strap([[0.36, 0.3, 0.05], [0.26, 0.33, 0.3], [0, 0.34, 0.4], [-0.26, 0.33, 0.3], [-0.36, 0.3, 0.05]], leather));
+  // Genickstück hinter den Ohren, an den Seiten in die Backenstücke bis zum Gebiss
+  for (const sx of [1, -1]) {
+    g.add(strap([[0, 0.18, 0.4], [sx * 0.28, 0.2, 0.3], [sx * 0.37, 0.28, 0.0], [sx * 0.3, 0.55, -0.14], [sx * 0.21, 0.82, -0.14], [sx * 0.17, 0.98, -0.13]], leather));
+    const bitRing = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.012, 6, 16), metal);
+    bitRing.position.copy(BRIDLE.bit[sx > 0 ? 0 : 1]);
+    bitRing.rotation.y = Math.PI / 2;
+    g.add(bitRing);
+  }
+  // Kehlriemen unter dem Kiefer
+  g.add(strap([[0.36, 0.28, -0.02], [0.2, 0.3, -0.3], [0, 0.32, -0.38], [-0.2, 0.3, -0.3], [-0.36, 0.28, -0.02]], leather, 0.014));
+  // Gebissstange quer durchs Maul
+  g.add(strap([BRIDLE.bit[0].toArray(), BRIDLE.bit[1].toArray()], metal, 0.012));
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  head.add(g);
+  tack.bitAnchors = BRIDLE.bit.map((p) => { const o = new THREE.Object3D(); o.position.copy(p); head.add(o); return o; });
+  // Zügel werden jedes Bild zwischen Gebiss und Händen neu aufgebaut
+  tack.reinMat = leather;
+  tack.reins = [null, null];
+}
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _m = new THREE.Vector3();
+function updateReins() {
+  if (!tack.bitAnchors || !rider.bones) return;
+  ['LeftHand', 'RightHand'].forEach((name, i) => {
+    // linke Hand (+x) gehört zum Gebissring auf der linken Seite des Pferdes; im Kopfraum ist x gespiegelt
+    tack.bitAnchors[1 - i].getWorldPosition(_a);
+    rider.bones[name].getWorldPosition(_b);
+    // leicht durchhängend: Mitte etwas nach unten
+    _m.addVectors(_a, _b).multiplyScalar(0.5);
+    _m.y -= 0.06;
+    const curve = new THREE.QuadraticBezierCurve3(_a.clone(), _m.clone(), _b.clone());
+    const geo = new THREE.TubeGeometry(curve, 16, 0.008, 5, false);
+    if (!tack.reins[i]) {
+      tack.reins[i] = new THREE.Mesh(geo, tack.reinMat);
+      tack.reins[i].castShadow = true;
+      scene.add(tack.reins[i]);
+    } else {
+      tack.reins[i].geometry.dispose();
+      tack.reins[i].geometry = geo;
+    }
+  });
+}
+
 const _foot = new THREE.Vector3(), _dir = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
 function updateTack() {
   if (!rider.bones) return;
@@ -469,16 +530,18 @@ function tick() {
     updateTack();
   }
 
-  // Verfolgerkamera
-  if (drag === null && state.speed > 0.5) state.camYaw *= 1 - Math.min(1, dt * 0.8);
-  const yaw = state.heading + Math.PI + state.camYaw;
-  const dist = (10 + state.speed * 0.25) * state.zoom;
-  const want = new THREE.Vector3(x + Math.sin(yaw) * dist, 0, z + Math.cos(yaw) * dist);
-  want.y = Math.max(heightAt(want.x, want.z) + 1.5, horse.position.y + 1.6 + 2.4 * state.zoom);
-  camPos.lerp(want, Math.min(1, dt * 4));
-  camera.position.copy(camPos);
-  look.set(x, horse.position.y + 2.0, z);
-  camera.lookAt(look);
+  // Verfolgerkamera (state.freeCam: Debug, Kamera wird von außen gesetzt)
+  if (!state.freeCam) {
+    if (drag === null && state.speed > 0.5) state.camYaw *= 1 - Math.min(1, dt * 0.8);
+    const yaw = state.heading + Math.PI + state.camYaw;
+    const dist = (10 + state.speed * 0.25) * state.zoom;
+    const want = new THREE.Vector3(x + Math.sin(yaw) * dist, 0, z + Math.cos(yaw) * dist);
+    want.y = Math.max(heightAt(want.x, want.z) + 1.5, horse.position.y + 1.6 + 2.4 * state.zoom);
+    camPos.lerp(want, Math.min(1, dt * 4));
+    camera.position.copy(camPos);
+    look.set(x, horse.position.y + 2.0, z);
+    camera.lookAt(look);
+  }
 
   sun.position.set(x + 30, horse.position.y + 50, z + 20);
   sun.target.position.copy(horse.position);
@@ -487,6 +550,7 @@ function tick() {
   elSpeed.textContent = (state.speed * 3.6).toFixed(1) + ' km/h';
   gears.forEach((s, i) => s.classList.toggle('on', i < state.gait));
 
+  updateReins();
   renderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
