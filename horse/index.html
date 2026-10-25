@@ -49,6 +49,7 @@
   <div><b>A D ← →</b> lenken</div>
   <div><b>Leertaste</b> springen</div>
   <div><b>Maus</b> Kamera drehen</div>
+  <div><b>Rad</b> Zoom</div>
 </div>
 <div id="touch">
   <div class="grp"><button data-k="left">◀</button><button data-k="right">▶</button></div>
@@ -68,16 +69,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Gangarten: Clip, Zielgeschwindigkeit in m/s, Geschwindigkeit bei timeScale 1
 const GAITS = [
   { name: 'Stehen', clip: 'Idle',   speed: 0,    ref: 1 },
-  { name: 'Schritt', clip: 'Walk',  speed: 1.7,  ref: 1.7 },
-  { name: 'Trab',    clip: 'Trot',  speed: 3.8,  ref: 3.8 },
-  { name: 'Galopp',  clip: 'Gallop', speed: 6.5, ref: 9.5 },
-  { name: 'Renngalopp', clip: 'Gallop', speed: 12, ref: 11 },
+  { name: 'Schritt', clip: 'Walk',  speed: 1.7,  ref: 2.3 },
+  { name: 'Trab',    clip: 'Trot',  speed: 3.8,  ref: 5.0 },
+  { name: 'Galopp',  clip: 'Gallop', speed: 6.5, ref: 12 },
+  { name: 'Renngalopp', clip: 'Gallop', speed: 12, ref: 14 },
 ];
-const HORSE_SCALE = 0.36;
+const HORSE_SCALE = 0.5;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -96,6 +98,9 @@ scene.add(new THREE.HemisphereLight(0xdff1ff, 0x6b8a3a, 1.1));
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
+// Bias gegen Shadow Acne: ohne ihn zeichnet sich das geglättete Pferd selbst in Streifen
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.03;
 Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 120 });
 scene.add(sun, sun.target);
 
@@ -150,13 +155,20 @@ scatter([[new THREE.DodecahedronGeometry(0.8, 0), new THREE.MeshStandardMaterial
 const horse = new THREE.Group();
 scene.add(horse);
 let mixer, actions = {}, current = null;
-const state = { gait: 0, speed: 0, heading: 0, jumping: false, camYaw: 0 };
+const state = { gait: 0, speed: 0, heading: 0, jumping: false, camYaw: 0, zoom: 1 };
 
 const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.167.0/examples/jsm/libs/draco/gltf/');
-new GLTFLoader().setDRACOLoader(draco).load('horse.glb', (gltf) => {
+const loader = new GLTFLoader().setDRACOLoader(draco);
+const load = (url) => new Promise((ok, fail) => loader.load(url, ok, undefined, fail));
+
+// Sitz: Lage des Sattels im Modellraum des Pferdes (Einheiten vor HORSE_SCALE)
+const SEAT = { pos: new THREE.Vector3(0, 3.05, -0.15) };
+const rider = { pose: {}, root: null };
+
+Promise.all([load('horse.glb'), load('jockey.glb')]).then(([gltf, riderGltf]) => {
   const model = gltf.scene;
   model.scale.setScalar(HORSE_SCALE);
-  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; smooth(o); } });
   horse.add(model);
   mixer = new THREE.AnimationMixer(model);
   for (const clip of gltf.animations) actions[clip.name] = mixer.clipAction(clip);
@@ -167,9 +179,161 @@ new GLTFLoader().setDRACOLoader(draco).load('horse.glb', (gltf) => {
     if (e.action === jump) { state.jumping = false; playGait(true); }
   });
   playGait(true);
+  mixer.update(0);
+  model.updateMatrixWorld(true);
+  mountRider(model, riderGltf);
   document.getElementById('loading').remove();
-  window.__horse = { state, actions, horse };
+  window.__horse = { state, actions, horse, rider, SEAT };
 });
+
+// Sattel und Reiter hängen am Rückenknochen und schwingen dadurch mit
+function mountRider(model, gltf) {
+  const torso = model.getObjectByName('Torso');
+  const seat = new THREE.Group();
+  seat.position.copy(SEAT.pos);
+  model.add(seat);
+  model.updateMatrixWorld(true);
+  torso.attach(seat);
+
+  seat.add(buildSaddle());
+
+  const man = gltf.scene;
+  man.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true; o.receiveShadow = true;
+    // MPFB exportiert alles mit Alpha-Blending; ohne Tiefenschreiben scheint das Pferd durch den Jockey
+    const m = o.material;
+    m.transparent = false;
+    m.depthWrite = true;
+    m.alphaTest = /eyebrow/i.test(o.name + m.name) ? 0.5 : 0;
+    m.needsUpdate = true;
+  });
+  // Sitz liegt im skalierten Pferderaum, der Jockey soll in Metern bleiben
+  man.scale.setScalar(1 / HORSE_SCALE);
+  const holder = new THREE.Group();
+  holder.add(man);
+  seat.add(holder);
+  const bones = {};
+  man.traverse((o) => { if (o.isBone) bones[o.name.replace('mixamorig', '')] = o; });
+  rider.root = holder;
+  rider.bones = bones;
+  rider.rest = Object.fromEntries(Object.entries(bones).map(([k, b]) => [k, b.quaternion.clone()]));
+  poseJockey(0);
+  // Gesäß knapp über die Sitzfläche bringen
+  holder.updateMatrixWorld(true);
+  const hip = holder.worldToLocal(bones.Hips.getWorldPosition(new THREE.Vector3()));
+  holder.position.set(0, -hip.y + JOCKEY.hipLift, -hip.z + JOCKEY.hipBack);
+}
+
+// Jockeyhaltung: kurze Bügel, Knie hoch, Oberkörper flach nach vorn, Hände am Mähnenkamm.
+// Winkel um Achsen im Jockey-Raum (x = links, y = oben, z = vorn), angewendet von der Hüfte nach außen.
+const JOCKEY = {
+  hipLift: 0.6, hipBack: 0,
+  pose: [
+    ['Hips', 'x', 0.5], ['Spine', 'x', 0.3], ['Spine1', 'x', 0.25], ['Spine2', 'x', 0.15],
+    ['Neck', 'x', -0.45], ['Head', 'x', -0.45],
+    ['LeftUpLeg', 'x', -0.85], ['RightUpLeg', 'x', -0.85],
+    ['LeftUpLeg', 'z', 0.75], ['RightUpLeg', 'z', -0.75],
+    ['LeftLeg', 'x', 1.9], ['RightLeg', 'x', 1.9],
+    ['LeftFoot', 'x', -1.0], ['RightFoot', 'x', -1.0],
+    ['LeftArm', 'z', -0.9], ['RightArm', 'z', 0.9],
+    ['LeftArm', 'x', -0.9], ['RightArm', 'x', -0.9],
+    ['LeftForeArm', 'x', -0.9], ['RightForeArm', 'x', -0.9],
+    ['LeftForeArm', 'y', -0.6], ['RightForeArm', 'y', 0.6],
+  ],
+};
+const AXES = { x: new THREE.Vector3(1, 0, 0), y: new THREE.Vector3(0, 1, 0), z: new THREE.Vector3(0, 0, 1) };
+const _q = new THREE.Quaternion(), _p = new THREE.Quaternion(), _r = new THREE.Quaternion();
+function rotateInRiderSpace(bone, axis, angle) {
+  // Achse aus dem Jockey-Raum in den Elternraum des Knochens bringen
+  rider.root.updateMatrixWorld(true);
+  rider.root.getWorldQuaternion(_r);
+  bone.parent.getWorldQuaternion(_p);
+  const a = AXES[axis].clone().applyQuaternion(_r).applyQuaternion(_p.invert());
+  bone.quaternion.premultiply(_q.setFromAxisAngle(a, angle));
+}
+// lean: zusätzliches Vorbeugen bei Tempo (0..1)
+function poseJockey(lean) {
+  const b = rider.bones;
+  for (const [k, q] of Object.entries(rider.rest)) b[k].quaternion.copy(q);
+  for (const [name, axis, angle] of JOCKEY.pose) if (b[name]) rotateInRiderSpace(b[name], axis, angle);
+  if (lean) { rotateInRiderSpace(b.Spine1, 'x', 0.25 * lean); rotateInRiderSpace(b.Head, 'x', -0.25 * lean); }
+}
+
+// Rennsattel: flache Lederschale auf weißer Schabracke mit Startnummer,
+// die Bügel folgen jedes Bild den Füßen des Jockeys
+const tack = { stirrups: [], leathers: [] };
+// Abwicklung der Schabracke: u läuft einmal über den Rücken, die Flanken liegen bei u≈0.2 und u≈0.8
+const CLOTH = { start: Math.PI * 0.35, len: Math.PI * 1.3, r: 0.74 };
+function numberCloth(n) {
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#f4f1ea'; g.fillRect(0, 0, 1024, 256);
+  g.fillStyle = '#0d5c33'; g.fillRect(0, 0, 18, 256); g.fillRect(1006, 0, 18, 256);
+  g.fillStyle = '#111'; g.font = 'bold 120px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const u of [0.2, 0.8]) {
+    g.save(); g.translate(u * 1024, 128); g.rotate(Math.PI / 2); g.fillText(String(n), 0, 6); g.restore();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function buildSaddle() {
+  const g = new THREE.Group();
+  const leather = new THREE.MeshStandardMaterial({ color: 0x2a1a10, roughness: 0.55 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0xc9c4b8, metalness: 0.85, roughness: 0.3 });
+  const clothMat = new THREE.MeshStandardMaterial({ map: numberCloth(7), roughness: 0.9, side: THREE.DoubleSide });
+  // Schabracke: Zylinderausschnitt, Achse längs zum Pferd, hängt über beide Flanken
+  const cloth = new THREE.Mesh(new THREE.CylinderGeometry(CLOTH.r, CLOTH.r, 1.2, 40, 1, true, CLOTH.start, CLOTH.len), clothMat);
+  cloth.rotation.x = Math.PI / 2;
+  cloth.position.set(0, -CLOTH.r + 0.02, 0.05);
+  g.add(cloth);
+  // Sattelschale: flach, kurz
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.32), leather);
+  shell.scale.set(0.95, 0.45, 1.25);
+  shell.position.set(0, -0.2, 0.08);
+  g.add(shell);
+  for (const side of [-1, 1]) {
+    const stirrup = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.025, 6, 14), metal);
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1, 0.08), leather);
+    g.add(stirrup, strap);
+    tack.stirrups.push(stirrup);
+    tack.leathers.push({ mesh: strap, top: new THREE.Vector3(side * 0.4, -0.05, 0.15) });
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  tack.group = g;
+  return g;
+}
+const _foot = new THREE.Vector3(), _dir = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function updateTack() {
+  if (!rider.bones) return;
+  ['LeftToeBase', 'RightToeBase'].forEach((name, i) => {
+    // Bügel sitzt unter dem Fußballen
+    tack.group.worldToLocal(rider.bones[name].getWorldPosition(_foot));
+    _foot.y -= 0.12;
+    const st = tack.stirrups[i];
+    st.position.copy(_foot);
+    st.rotation.set(0, Math.PI / 2, 0);
+    const l = tack.leathers[i];
+    _dir.subVectors(_foot, l.top);
+    l.mesh.position.copy(l.top).addScaledVector(_dir, 0.5);
+    l.mesh.scale.y = _dir.length();
+    l.mesh.quaternion.setFromUnitVectors(_up, _dir.normalize());
+  });
+}
+
+// Low-Poly-Facetten weich zeichnen: doppelte Eckpunkte verschmelzen, Normalen neu mitteln
+function smooth(mesh) {
+  let g = mesh.geometry;
+  g.deleteAttribute('normal');
+  if (!mesh.material.map) g.deleteAttribute('uv');
+  g = mergeVertices(g, 1e-4);
+  g.computeVertexNormals();
+  mesh.geometry = g;
+  mesh.material.flatShading = false;
+  mesh.material.needsUpdate = true;
+}
 
 function playGait(force) {
   const g = GAITS[state.gait];
@@ -214,6 +378,10 @@ addEventListener('pointermove', (e) => {
   state.camYaw -= (e.clientX - drag) * 0.006; drag = e.clientX;
 });
 
+addEventListener('wheel', (e) => {
+  state.zoom = THREE.MathUtils.clamp(state.zoom * Math.exp(e.deltaY * 0.001), 0.35, 2.5);
+}, { passive: true });
+
 // HUD
 const elGait = document.getElementById('gait'), elSpeed = document.getElementById('speed');
 const gears = [...document.querySelectorAll('#gears span')];
@@ -250,17 +418,19 @@ function tick() {
   if (mixer) {
     if (!state.jumping && current) current.timeScale = state.gait === 0 ? 1 : Math.max(0.4, state.speed / g.ref);
     mixer.update(dt);
+    if (rider.bones) poseJockey(Math.min(1, state.speed / 12));
+    updateTack();
   }
 
   // Verfolgerkamera
-  state.camYaw *= 1 - Math.min(1, dt * (drag === null ? 0.8 : 0));
+  if (drag === null && state.speed > 0.5) state.camYaw *= 1 - Math.min(1, dt * 0.8);
   const yaw = state.heading + Math.PI + state.camYaw;
-  const dist = 9 + state.speed * 0.25;
+  const dist = (10 + state.speed * 0.25) * state.zoom;
   const want = new THREE.Vector3(x + Math.sin(yaw) * dist, 0, z + Math.cos(yaw) * dist);
-  want.y = Math.max(heightAt(want.x, want.z) + 1.5, horse.position.y + 3.6);
+  want.y = Math.max(heightAt(want.x, want.z) + 1.5, horse.position.y + 1.6 + 2.4 * state.zoom);
   camPos.lerp(want, Math.min(1, dt * 4));
   camera.position.copy(camPos);
-  look.set(x, horse.position.y + 1.6, z);
+  look.set(x, horse.position.y + 2.0, z);
   camera.lookAt(look);
 
   sun.position.set(x + 30, horse.position.y + 50, z + 20);
