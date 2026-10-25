@@ -692,6 +692,7 @@ $('btnPlayer').onclick = () => { $('dlgSettings').showModal(); sync(); };
 $('btnSettingsClose').onclick = $('btnSettingsX').onclick = () => $('dlgSettings').close();
 $('btnHistory').onclick = () => { $('dlgHistory').showModal(); sync(); };
 $('btnHistoryClose').onclick = $('btnHistoryX').onclick = () => $('dlgHistory').close();
+$('btnNewMobile').onclick = () => $('btnNew').click();
 $('btnMenu').onclick = () => $('dlgMenu').showModal();
 $('btnMenuX').onclick = () => $('dlgMenu').close();
 $('dlgMenu').querySelector('.menu-list').onclick = (e) => {
