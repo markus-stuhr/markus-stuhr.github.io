@@ -1768,6 +1768,7 @@ const OPPONENTS = window.__opps = [   // __opps: console checks
   makeOpponent({ hull: 0x9a4634, sail: 0xe4d8c8, rig: 0x7a3a2c, track: 0x9a4634, dot: 0x9a4634, x: -22, z: 4 }),
   makeOpponent({ hull: 0x7cc4ec, sail: 0xd6e2ea, rig: 0x4a86aa, track: 0x7cc4ec, dot: 0x7cc4ec, x: 38,  z: -8 }),
 ];
+OPPONENTS.forEach((o, i) => { o.slot = [110, -110, -200][i]; });   // metres along the start line
 
 function updateOpponent(o, dt) {
   const st = o.state, group = o.group;
@@ -1849,7 +1850,8 @@ function updateOpponent(o, dt) {
   // Same sailing physics as the player
   const twa2 = normAngle(wind.from - st.heading) * 180 / Math.PI;
   const eff2 = sailEfficiency(twa2);
-  const target = st.maxSpeed * (wind.tws / wind.maxTws) * eff2 * (st.done ? 0 : 1);
+  const waiting = race.state === 'pre' && !mp.active;   // luffing behind the line until the gun
+  const target = st.maxSpeed * (wind.tws / wind.maxTws) * eff2 * (st.done || waiting ? 0 : 1);
   st.speed += (target - st.speed) * (target > st.speed ? 0.85 : 0.45) * dt;
   const steerage = 0.35 + 0.65 * Math.min(Math.abs(st.speed) / st.maxSpeed, 1);
   st.heading = normAngle(st.heading + st.rudder * 0.25 * steerage * dt); // slow, heavy maxi turn rate
@@ -2526,11 +2528,21 @@ function terrainMaterial(tex) {
 // Race course — windward/leeward in the open water south-east of the start, laid for the
 // south-easterly trade wind (wind.baseFrom = 135°): beat, run, beat, short reach to finish.
 const COURSE = [
-  { x:  1500, z: 1800 },  // 1 — windward mark, 2.3 km SE
+  { x:  1500, z: 1800 },  // 1 — windward mark, 1.5 km upwind of the line
   { x:  -300, z:  600 },  // 2 — leeward mark
   { x:  1800, z: 1500 },  // 3 — windward again (offset mark)
-  { x:     0, z:  300 },  // Finish — just south of the start
+  { x:   250, z: 1000 },  // Finish — the middle of the start line
 ];
+// Start line: 400 m across the design wind (from SE), 1.3 km out from the islands.
+// Committee boat at the starboard end, pin buoy at the port end; the fleet waits
+// 150 m behind it and the gun goes after a 30 s countdown.
+const START_LINE = { x: 250, z: 1000, half: 200, back: 150, countdown: 30 };
+START_LINE.ux = Math.SQRT1_2; START_LINE.uz = Math.SQRT1_2;    // upwind (towards the course)
+START_LINE.lx = Math.SQRT1_2; START_LINE.lz = -Math.SQRT1_2;   // along the line, to the committee boat
+function startSpot(along) {   // a place behind the line
+  const L = START_LINE;
+  return { x: L.x - L.ux * L.back + L.lx * along, z: L.z - L.uz * L.back + L.lz * along };
+}
 const MARK_RADIUS = 30; // metres: how close you must get to round a mark
 
 // Default terrain (race-mode course area / menu backdrop) once the route is known
@@ -2602,6 +2614,39 @@ COURSE.forEach((m, i) => {
   buoys.push({ grp, buoy, ball, beam, zone, ring });
 });
 
+// Start line objects: pin buoy, committee boat with flag mast, dashed line between them
+const startLineGroup = new THREE.Group();
+{
+  const L = START_LINE;
+  const pin = new THREE.Group();
+  const pinBody = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.2, 2.4, 12),
+    new THREE.MeshPhongMaterial({ color: 0xffd400, emissive: 0x332a00 }));
+  pinBody.scale.setScalar(0.25 * M); pinBody.position.y = 0.25 * M;
+  pin.add(pinBody);
+  pin.position.set(L.x - L.lx * L.half, 0, L.z - L.lz * L.half);
+  const cb = new THREE.Group();
+  const cbHull = new THREE.Mesh(new THREE.BoxGeometry(5, 1.6, 14), new THREE.MeshPhongMaterial({ color: 0xf2f2ee }));
+  cbHull.position.y = 0.5;
+  const cbCabin = new THREE.Mesh(new THREE.BoxGeometry(3.6, 2.2, 5), new THREE.MeshPhongMaterial({ color: 0x2b4e7a }));
+  cbCabin.position.set(0, 2.4, -1);
+  const cbMast = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 9, 6), new THREE.MeshPhongMaterial({ color: 0xcccccc }));
+  cbMast.position.set(0, 5.5, 2);
+  const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1.2), new THREE.MeshBasicMaterial({ color: 0xff8800, side: THREE.DoubleSide }));
+  flag.position.set(0, 9.2, 2.9); flag.rotation.y = Math.PI / 2;
+  cb.add(cbHull, cbCabin, cbMast, flag);
+  cb.position.set(L.x + L.lx * (L.half + 6), 0, L.z + L.lz * (L.half + 6));
+  cb.rotation.y = Math.atan2(L.ux, L.uz);   // bow into the wind
+  const lineGeo = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(pin.position.x, 0.12 * M, pin.position.z),
+    new THREE.Vector3(L.x + L.lx * L.half, 0.12 * M, L.z + L.lz * L.half)]);
+  const line = new THREE.Line(lineGeo, new THREE.LineDashedMaterial({
+    color: 0xffd400, dashSize: 6, gapSize: 4, transparent: true, opacity: 0.8, depthWrite: false }));
+  line.computeLineDistances();
+  startLineGroup.add(pin, cb, line);
+  startLineGroup.userData = { pin, cb };
+  scene.add(startLineGroup);
+}
+
 // --- Wind ---
 const wind = {
   baseFrom: Math.PI * 0.75, // nominal direction wind blows FROM (SE trades)
@@ -2635,16 +2680,21 @@ function restartRace() {
   race.state = 'pre';
   race.nextMark = 0;
   race.time = 0;
+  race.gun = START_LINE.countdown;
+  race.started = false; race.ocs = false;
+  race.side = -1;
   boat.heading = START_HEADING;
   boat.speed = 0;
-  boatGroup.position.set(0, 0.3 * M, 0);
+  const p0 = startSpot(0);
+  boatGroup.position.set(p0.x, 0.3 * M, p0.z);
   boatGroup.rotation.y = -START_HEADING; // face the right way during the countdown
   // reset the opponents too
   clearTrack(playerTrack);
   OPPONENTS.forEach(o => {
     Object.assign(o.state, { heading: START_HEADING, speed: 0, rudder: 0, nextMark: 0, done: false, tack: undefined });
     o.sailAngle = 0; o.heel = 0;
-    o.group.position.set(o.start.x, 0.3 * M, o.start.z);
+    const p = startSpot(o.slot);
+    o.group.position.set(p.x, 0.3 * M, p.z);
     o.group.rotation.y = -START_HEADING;
     clearTrack(o.track);
   });
@@ -2736,9 +2786,13 @@ const elVmg = document.getElementById('vmg');
 const elVmgSpeed = document.getElementById('vmgspeed');
 
 const race = {
-  state: 'pre',     // 'pre' | 'racing' | 'done'
+  state: 'pre',     // 'pre' (countdown to the gun) | 'racing' | 'done'
   nextMark: 0,
   time: 0,
+  gun: 0,           // seconds to the start gun (real time)
+  started: false,   // crossed the line after the gun -> marks count
+  ocs: false,       // over the line at the gun: must dip back behind it
+  side: -1,         // which side of the line the boat was on last frame
 };
 let bestTime = parseFloat(localStorage.getItem('sim_best_time')) || null;
 
@@ -2749,11 +2803,39 @@ function fmtTime(s) {
 }
 
 function updateRace(dt) {
-  // The clock starts as soon as the boat gets underway, not only at the first mark.
-  if (race.state === 'pre' && Math.abs(boat.speed) > 0.3) { race.state = 'racing'; race.time = 0; }
+  // Start: 30 s countdown while sailing, the clock starts with the gun; the marks only
+  // count once the boat has crossed the line from behind after it. Multiplayer keeps its
+  // shared frozen countdown and starts on the gun.
+  const L = START_LINE;
+  const rx = boatGroup.position.x - L.x, rz = boatGroup.position.z - L.z;
+  const side = rx * L.ux + rz * L.uz >= 0 ? 1 : -1;
+  const onLine = Math.abs(rx * L.lx + rz * L.lz) < L.half;
+  if (mp.active) race.started = true;
+  if (race.state === 'pre' && !mp.active) {
+    race.gun -= dt / SIM_SPEED;
+    const cd = document.getElementById('countdown');
+    const n = Math.ceil(race.gun);
+    cd.style.display = n <= 5 ? 'flex' : 'none';
+    cd.textContent = n > 0 ? String(n) : 'Go!';
+    if (race.gun <= 0) {
+      race.state = 'racing'; race.time = 0;
+      race.ocs = side > 0;
+      elRaceMsg.textContent = race.ocs ? 'Over the line early! Go back behind it' : 'Go! Cross the line';
+      setTimeout(() => { if (gameState !== 'countdown') cd.style.display = 'none'; }, 1000);
+    } else {
+      elRaceMsg.textContent = side > 0 ? 'Stay behind the start line' : 'Start in ' + n + ' s';
+    }
+  }
+  if (race.state === 'racing' && !race.started) {
+    if (race.ocs && side < 0) { race.ocs = false; elRaceMsg.textContent = 'Now cross the line'; }
+    else if (!race.ocs && race.side < 0 && side > 0 && onLine) {
+      race.started = true; elRaceMsg.textContent = 'Good start! Mark 1 next';
+    }
+  }
+  race.side = side;
   if (race.state === 'racing') race.time += dt;
 
-  if (race.state !== 'done') {
+  if (race.state !== 'done' && race.started) {
     const mark = COURSE[race.nextMark];
     const dx = mark.x - boatGroup.position.x;
     const dz = mark.z - boatGroup.position.z;
@@ -2761,7 +2843,6 @@ function updateRace(dt) {
 
     // Reached the current mark?
     if (dist < MARK_RADIUS) {
-      if (race.state === 'pre') { race.state = 'racing'; race.time = 0; }
       race.nextMark++;
       if (race.nextMark >= COURSE.length) {
         race.state = 'done';
@@ -2806,7 +2887,7 @@ function updateRace(dt) {
     b.ball.material.emissive.setRGB(emis * 0.5, emis, emis * 0.6);
   });
 
-  elRaceTime.textContent = fmtTime(race.time);
+  elRaceTime.textContent = race.state === 'pre' ? '-' + fmtTime(Math.max(0, race.gun)) : fmtTime(race.time);
   elRaceBest.textContent = bestTime !== null ? `Best ${fmtTime(bestTime)}` : 'Best —';
 }
 
@@ -3237,12 +3318,9 @@ function startGame() {
   setWorldVisible(true);
   document.body.classList.remove('menu');
   document.getElementById('menu').classList.add('hidden');
-  // Freeze the scene and run a 3-2-1 countdown before the boats move.
-  gameState = 'countdown';
-  countdownTimer = 3;
-  const cd = document.getElementById('countdown');
-  cd.style.display = 'flex';
-  cd.textContent = '3';
+  // Solo: the boats sail during the 30 s start countdown (updateRace runs it);
+  // multiplayer switches to its own frozen countdown in mpBeginRace.
+  gameState = 'racing';
 }
 
 // ===================== REPLAY MODE =====================
