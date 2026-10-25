@@ -98,3 +98,6 @@ footer a { color: var(--muted); }
 .db { font-size: 12px; color: var(--muted); }
 .db.ok { color: var(--accent); } .db.err { color: var(--mistake); }
 #histStats { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+.new-player { display: flex; gap: 6px; margin-bottom: 8px; }
+.new-player[hidden] { display: none; }
+.new-player input { flex: 1; min-width: 0; background: #1f2126; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font: inherit; }

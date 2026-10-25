@@ -377,8 +377,7 @@ async function sync() {
 async function loadPlayers() {
   try {
     const list = await api('players');
-    const names = [...new Set([...list.map((p) => p.player), playerName].filter(Boolean))];
-    $('playerSel').innerHTML = names.map((nm) => `<option${nm === playerName ? ' selected' : ''}>${esc(nm)}</option>`).join('') + '<option value="__new">Neuer Spieler …</option>';
+    fillPlayers(list.map((p) => p.player));
     $('playerSel').dataset.loaded = 1;
   } catch {}
 }
@@ -417,15 +416,23 @@ $('history').addEventListener('click', async (e) => {
   refresh();
 });
 
-$('playerSel').onchange = () => {
-  let v = $('playerSel').value;
-  if (v === '__new') {
-    v = (prompt('Name des Spielers:') || '').trim().slice(0, 40);
-    if (!v) { $('playerSel').value = playerName; return; }
-    $('playerSel').insertAdjacentHTML('afterbegin', `<option>${esc(v)}</option>`);
-    $('playerSel').value = v;
-  }
-  playerName = v; ls('chess.player', v); sync();
+function fillPlayers(names) {
+  names = [...new Set([...names, playerName].filter(Boolean))];
+  $('playerSel').innerHTML = (playerName ? '' : '<option value="">– Spieler wählen –</option>')
+    + names.map((nm) => `<option${nm === playerName ? ' selected' : ''}>${esc(nm)}</option>`).join('');
+}
+function setPlayer(v) { playerName = v; ls('chess.player', v); refresh(); sync(); }
+$('playerSel').onchange = () => setPlayer($('playerSel').value);
+$('btnAddPlayer').onclick = () => { $('newPlayer').hidden = false; $('newPlayerName').value = ''; $('newPlayerName').focus(); };
+$('newPlayerCancel').onclick = () => { $('newPlayer').hidden = true; };
+$('newPlayer').onsubmit = (e) => {
+  e.preventDefault();
+  const v = $('newPlayerName').value.trim().slice(0, 40);
+  if (!v) return;
+  $('newPlayer').hidden = true;
+  playerName = v;
+  fillPlayers([...$('playerSel').options].map((o) => o.value));
+  setPlayer(v);
 };
 $('btnToken').onclick = () => {
   const t = prompt('Familien-Token für die Partie-Datenbank:', token);
@@ -433,8 +440,7 @@ $('btnToken').onclick = () => {
   token = t.trim(); ls('chess.token', token);
   $('playerSel').dataset.loaded = ''; sync();
 };
-if (playerName) $('playerSel').innerHTML = `<option>${esc(playerName)}</option><option value="__new">Neuer Spieler …</option>`;
-else $('playerSel').innerHTML = '<option value="">– Spieler wählen –</option><option value="__new">Neuer Spieler …</option>';
+fillPlayers([]);
 
 function pgn() {
   const head = `[Event "markusstuhr.de/chess"]\n[Date "${new Date(G.date).toISOString().slice(0, 10).replace(/-/g, '.')}"]\n[White "${G.player === 'w' ? 'Spieler' : 'Stockfish ' + LEVELS[G.level].name}"]\n[Black "${G.player === 'b' ? 'Spieler' : 'Stockfish ' + LEVELS[G.level].name}"]\n[Result "${(G.result || '*').replace('½-½', '1/2-1/2')}"]\n\n`;

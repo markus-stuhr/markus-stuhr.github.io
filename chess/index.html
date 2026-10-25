@@ -61,9 +61,15 @@
       <h2>Partien</h2>
       <div class="hist-head">
         <select id="playerSel"></select>
+        <button id="btnAddPlayer" title="Neuen Spieler anlegen">＋</button>
         <button id="btnToken" title="Datenbank verbinden">🔑</button>
         <span class="db" id="dbState">Nur lokal</span>
       </div>
+      <form class="new-player" id="newPlayer" hidden>
+        <input id="newPlayerName" maxlength="40" placeholder="Name des Spielers" autocomplete="off">
+        <button class="primary">Anlegen</button>
+        <button type="button" id="newPlayerCancel">Abbrechen</button>
+      </form>
       <div class="meta" id="histStats"></div>
       <ul class="history" id="history"></ul>
     </div>
