@@ -395,7 +395,7 @@ function renderHistory() {
     const d = new Date(g.date).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' });
     return `<li data-id="${esc(g.id)}"><span><span class="res">${res}</span> vs ${LEVELS[g.level].name} <span class="meta">(${g.color === 'w' ? '♔' : '♚'}, ${Math.ceil(g.moves / 2)} Züge)</span></span><span class="meta">${g.acc != null ? g.acc.toFixed(0) + ' % · ' : ''}${d}${g.synced === false && token ? ' ⏳' : ''}</span></li>`;
   }).join('') : '<li class="meta">Noch keine Partien</li>';
-  $('histStats').textContent = list.length ? `${stats.w} Siege · ${stats.d} Remis · ${stats.l} Niederlagen` : '';
+  $('histStats').innerHTML = list.length ? `<div><b>${stats.w}</b><span>Siege</span></div><div><b>${stats.d}</b><span>Remis</span></div><div><b>${stats.l}</b><span>Niederlagen</span></div>` : '';
 }
 
 $('history').addEventListener('click', async (e) => {
@@ -684,9 +684,9 @@ let lastLevel = 2;
 try { lastLevel = +(localStorage.getItem('chess.level') ?? 2); } catch {}
 $('levels').querySelectorAll('input')[lastLevel].checked = true;
 $('btnPlayer').onclick = () => { $('dlgSettings').showModal(); sync(); };
-$('btnSettingsClose').onclick = () => $('dlgSettings').close();
+$('btnSettingsClose').onclick = $('btnSettingsX').onclick = () => $('dlgSettings').close();
 $('btnHistory').onclick = () => { $('dlgHistory').showModal(); sync(); };
-$('btnHistoryClose').onclick = () => $('dlgHistory').close();
+$('btnHistoryClose').onclick = $('btnHistoryX').onclick = () => $('dlgHistory').close();
 $('btnNew').onclick = () => $('dlgNew').showModal();
 $('dlgNew').addEventListener('close', () => {
   if ($('dlgNew').returnValue !== 'ok') return;
@@ -700,4 +700,14 @@ $('dlgNew').addEventListener('close', () => {
 G = { level: lastLevel, player: 'w', fens: [new Chess().fen()], sans: [], ucis: [], evals: [], cls: [], over: false, thinking: false, idle: true };
 refresh();
 sync().then(() => { if (G.idle) $('history').querySelector('li[data-id]')?.click(); });
+// Mausrad über dem Brettbereich zoomt das Brett zwischen 25 % und Vollbild
+let zoom = Math.min(1, Math.max(0.25, +ls('chess.zoom') || 1));
+const applyZoom = () => document.querySelector('.board-col').style.setProperty('--zoom', zoom);
+applyZoom();
+document.querySelector('.board-col').addEventListener('wheel', (e) => {
+  if (matchMedia('(max-width: 860px)').matches) return;
+  e.preventDefault();
+  zoom = Math.min(1, Math.max(0.25, zoom * Math.exp(-e.deltaY * 0.0015)));
+  applyZoom(); ls('chess.zoom', zoom.toFixed(3));
+}, { passive: false });
 window.__chess = { get G() { return G; }, playMove, newGame };

@@ -62,15 +62,22 @@
   </section>
 </main>
 
-<dialog id="dlgNew">
+<dialog id="dlgNew" class="modal">
   <form method="dialog">
-    <h2>Neue Partie</h2>
-    <div class="levels" id="levels"></div>
-    <div class="colors">
-      <label><input type="radio" name="color" value="w" checked> Weiß</label>
-      <label><input type="radio" name="color" value="b"> Schwarz</label>
-      <label><input type="radio" name="color" value="r"> Zufall</label>
-    </div>
+    <div class="dlg-head"><h2>Neue Partie</h2><button value="cancel" class="x" formnovalidate title="Schließen">✕</button></div>
+    <section class="dlg-sec">
+      <h3>Gegner</h3>
+      <p class="hint">Die unteren Stufen machen absichtlich menschliche Fehler, ab 1350 spielt Stockfish mit begrenzter Elo.</p>
+      <div class="levels" id="levels"></div>
+    </section>
+    <section class="dlg-sec">
+      <h3>Deine Farbe</h3>
+      <div class="seg">
+        <label><input type="radio" name="color" value="w" checked><span>♔ Weiß</span></label>
+        <label><input type="radio" name="color" value="b"><span>♚ Schwarz</span></label>
+        <label><input type="radio" name="color" value="r"><span>🎲 Zufall</span></label>
+      </div>
+    </section>
     <div class="dlg-actions">
       <button value="cancel" formnovalidate>Abbrechen</button>
       <button value="ok" class="primary">Los geht's</button>
@@ -78,30 +85,38 @@
   </form>
 </dialog>
 
-<dialog id="dlgHistory" class="dlg-history">
-      <h2>Partien</h2>
-      <p class="meta" id="histWho"></p>
-      <div class="meta" id="histStats"></div>
-      <ul class="history" id="history"></ul>
-      <div class="dlg-actions"><button id="btnHistoryClose">Schließen</button></div>
+<dialog id="dlgHistory" class="modal">
+  <div class="dlg-head"><h2>Partien</h2><button class="x" id="btnHistoryX" title="Schließen">✕</button></div>
+  <p class="hint" id="histWho"></p>
+  <div class="tiles" id="histStats"></div>
+  <ul class="history" id="history"></ul>
+  <div class="dlg-actions"><button id="btnHistoryClose">Schließen</button></div>
 </dialog>
 
-<dialog id="dlgSettings" class="dlg-history">
-  <h2>Einstellungen</h2>
-  <div class="set-row"><span>Spieler</span></div>
-      <div class="hist-head">
-        <select id="playerSel"></select>
-        <button id="btnAddPlayer" title="Neuen Spieler anlegen">＋</button>
-        <button id="btnToken" title="Datenbank verbinden">🔑</button>
-        <span class="db" id="dbState">Nur lokal</span>
-      </div>
-      <form class="new-player" id="newPlayer" hidden>
-        <input id="newPlayerName" maxlength="40" placeholder="Name des Spielers" autocomplete="off">
-        <button class="primary">Anlegen</button>
-        <button type="button" id="newPlayerCancel">Abbrechen</button>
-      </form>
-  <div class="set-row"><span>Figuren</span><select id="optPieces"></select></div>
-  <div class="set-row"><span>Live-Bewertung</span><label class="toggle"><input type="checkbox" id="optLive" checked> während der Partie zeigen</label></div>
+<dialog id="dlgSettings" class="modal">
+  <div class="dlg-head"><h2>Spieler &amp; Einstellungen</h2><button class="x" id="btnSettingsX" title="Schließen">✕</button></div>
+  <section class="dlg-sec">
+    <h3>Spieler</h3>
+    <p class="hint">Partien werden pro Spieler gespeichert.</p>
+    <div class="hist-head">
+      <select id="playerSel"></select>
+      <button id="btnAddPlayer" title="Neuen Spieler anlegen">＋ Neu</button>
+    </div>
+    <form class="new-player" id="newPlayer" hidden>
+      <input id="newPlayerName" maxlength="40" placeholder="Name des Spielers" autocomplete="off">
+      <button class="primary">Anlegen</button>
+      <button type="button" id="newPlayerCancel">Abbrechen</button>
+    </form>
+  </section>
+  <section class="dlg-sec">
+    <h3>Datenbank</h3>
+    <div class="set-row"><span class="db" id="dbState">Nur lokal</span><button id="btnToken">🔑 Token eingeben</button></div>
+  </section>
+  <section class="dlg-sec">
+    <h3>Darstellung</h3>
+    <div class="set-row"><span>Figuren</span><select id="optPieces"></select></div>
+    <div class="set-row"><span>Live-Bewertung während der Partie</span><label class="switch"><input type="checkbox" id="optLive" checked><i></i></label></div>
+  </section>
   <div class="dlg-actions"><button id="btnSettingsClose" class="primary">Fertig</button></div>
 </dialog>
 
