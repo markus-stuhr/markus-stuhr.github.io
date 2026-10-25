@@ -541,10 +541,11 @@ boardEl.addEventListener('pointerdown', (e) => {
   const sq = d.dataset.sq, c = cur(), p = c.get(sq);
   if (selected && selected !== sq && tryMove(selected, sq)) return;
   if (p && p.color === G.player) {
+    const wasSelected = selected === sq;
     selected = sq; render();
     const pc = squares[sq].querySelector('.pc');
     const r = boardEl.getBoundingClientRect();
-    drag = { from: sq, el: pc, x0: e.clientX, y0: e.clientY, size: r.width / 8, moved: false };
+    drag = { from: sq, el: pc, x0: e.clientX, y0: e.clientY, size: r.width / 8, moved: false, wasSelected };
     boardEl.setPointerCapture(e.pointerId);
   } else { selected = null; render(); }
 });
@@ -557,7 +558,8 @@ boardEl.addEventListener('pointermove', (e) => {
 boardEl.addEventListener('pointerup', (e) => {
   if (!drag) return;
   const dd = drag; drag = null;
-  if (!dd.moved) return;
+  // erneutes Antippen der gewählten Figur hebt die Auswahl auf
+  if (!dd.moved) { if (dd.wasSelected) { selected = null; render(); } return; }
   dd.el.classList.remove('drag'); dd.el.style.transform = '';
   const el = document.elementsFromPoint(e.clientX, e.clientY).find((x) => x.classList?.contains('sq'));
   if (!el || !tryMove(dd.from, el.dataset.sq)) render();
