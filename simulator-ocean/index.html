@@ -1011,7 +1011,8 @@ void main() {
   // lagoon water is turquoise (green well above red); haze/cloud in the imagery is grey-blue
   float turq = smoothstep(0.12, 0.35, (sat.g - sat.r) / max(sat.b, 1e-3));
   float cloud = smoothstep(0.5, 0.75, min(min(sat.r, sat.g), sat.b) / max(max(sat.r, max(sat.g, sat.b)), 1e-3));
-  float shallow = inBox * (1.0 - cloud) * clamp(max(1.0 - smoothstep(25.0, 300.0, dS), turq * smoothstep(0.03, 0.12, lumS)), 0.0, 1.0);
+  float shallow = inBox * (1.0 - cloud) * clamp(max(1.0 - smoothstep(25.0, 300.0, dS), turq * smoothstep(0.03, 0.12, lumS)), 0.0, 1.0)
+                * (1.0 - smoothstep(300.0, 900.0, dS));   // open water far off the islands: imagery fades out
   // lighten only: the imagery may brighten the sea (lagoons, sand, reefs) but never darken it,
   // so dark/ultramarine tiles over deep water leave the rendered ocean colour as it is
   vec3 satCol = max(sat * (0.85 + 0.3 * NdL) + scatterCol * sss * 0.25, body);
