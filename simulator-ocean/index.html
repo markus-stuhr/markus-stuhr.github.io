@@ -906,6 +906,11 @@ void main() {
       // pull red down to the green level there; sand and reefs (red > blue) stay as they are
       float purple = smoothstep(0.0, 0.06, sat.b - sat.r) * smoothstep(0.0, 0.03, sat.r - sat.g);
       sat.r = mix(sat.r, min(sat.r, sat.g * 0.85), purple);
+      // ...and deep water often comes out ultramarine (green far below blue): lift green
+      // towards 60 % of blue so it reads as the petrol blue of the rest of the sea
+      float ultra = smoothstep(0.75, 0.45, sat.g / max(sat.b, 1e-3)) * step(sat.r, sat.b);   // ratio: dark patches too
+      sat.g = mix(sat.g, max(sat.g, sat.b * 0.6), ultra);
+      sat.r = mix(sat.r, min(sat.r, sat.g * 0.6), ultra);
     }
   }
   float damp = mix(1.0, mix(0.06, 1.0, smoothstep(0.0, 180.0, dS)), step(0.001, inBox));
