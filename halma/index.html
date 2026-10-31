@@ -28,8 +28,7 @@
   .target { fill:var(--sel); }
   .via { fill:var(--accent); }
   .last { fill:none; stroke:var(--accent); stroke-width:.07; }
-  .st .ring { fill:none; stroke:#0002; stroke-width:.05; }
-  .st.sel .top { stroke:var(--sel); stroke-width:.1; }
+  .st.sel .top { stroke:var(--sel); stroke-width:.08; }
   .hit { fill:transparent; } .hit.can { cursor:pointer; }
   .card { background:var(--panel); border-radius:10px; padding:12px 14px; }
   .card h3 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
@@ -198,7 +197,7 @@ function render() {
     const ms = pieceMoves(board,i); if (ms.length) movable.add(i);
     if (i===selected) for (const m of ms) targets.add(m.path[m.path.length-1]);
   }
-  let h = `<circle cx="0" cy="0" r="${R}" fill="#c9a26b"/><circle cx="0" cy="0" r="${R-.25}" fill="#d9b98a"/>`;
+  let h = `<defs><filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".05"/></filter></defs><circle cx="0" cy="0" r="${R}" fill="#c9a26b"/><circle cx="0" cy="0" r="${R-.25}" fill="#d9b98a"/>`;
   // Zacken in der Farbe ihres Besitzers tönen
   for (let q=0;q<6;q++) {
     const col = seats.includes(q) ? COLORS[q][1] : seats.includes((q+3)%6) ? COLORS[(q+3)%6][1] : null;
@@ -210,7 +209,8 @@ function render() {
     const [x,y] = XY[i], v = board[i];
     if (v) {
       const [, top, edge] = COLORS[v-1];
-      h += `<g class="st ${selected===i?'sel':''}"><circle cx="${x}" cy="${y+.08}" r=".4" fill="${edge}"/><circle class="top" cx="${x}" cy="${y}" r=".4" fill="${top}"/><circle class="ring" cx="${x}" cy="${y}" r=".24"/></g>`;
+      // Spielfigur von oben: Schlagschatten der stehenden Figur, Fuß als Ring, Kopf als Kreis
+      h += `<g class="st ${selected===i?'sel':''}"><ellipse cx="${x+.2}" cy="${y+.24}" rx=".3" ry=".2" transform="rotate(40 ${x+.2} ${y+.24})" fill="#3a2410" opacity=".35" filter="url(#blur)"/><circle class="top" cx="${x}" cy="${y}" r=".27" fill="${edge}"/><circle cx="${x}" cy="${y}" r=".21" fill="${top}" opacity=".75"/><circle cx="${x-.02}" cy="${y-.03}" r=".15" fill="${top}"/></g>`;
     } else {
       h += `<circle class="${targets.has(i) ? 'target' : via.has(i) ? 'via' : 'hole'}" cx="${x}" cy="${y}" r="${targets.has(i) ? .2 : .13}"/>`;
     }
