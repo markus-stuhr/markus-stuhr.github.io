@@ -198,12 +198,6 @@ function render() {
     if (i===selected) for (const m of ms) targets.add(m.path[m.path.length-1]);
   }
   let h = `<defs><filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".05"/></filter></defs><circle cx="0" cy="0" r="${R}" fill="#c9a26b"/><circle cx="0" cy="0" r="${R-.25}" fill="#d9b98a"/>`;
-  // Zacken in der Farbe ihres Besitzers tönen
-  for (let q=0;q<6;q++) {
-    const col = seats.includes(q) ? COLORS[q][1] : seats.includes((q+3)%6) ? COLORS[(q+3)%6][1] : null;
-    if (!col) continue;
-    for (const i of ZONE[q]) { const [x,y] = XY[i]; h += `<circle cx="${x}" cy="${y}" r=".5" fill="${col}" opacity=".22"/>`; }
-  }
   const via = new Set(lastMove ? lastMove.path.slice(1,-1) : []);
   CELLS.forEach((_,i) => {
     const [x,y] = XY[i], v = board[i];
