@@ -293,15 +293,15 @@ const yrLabel = (y, stand) => y == stand.slice(0, 4) ? y + '*' : y;
 // Achsenschritt für 3–5 Linien, auch bei kleinen Werten (Wasser, Kernkraft …)
 const niceStep = raw => [1, 2, 5, 10, 20, 25, 50, 100, 200].find(s => raw / s <= 5) || 200;
 
-function stacked(el, years, rows, keys, pct, stand, net = null) {
+function stacked(el, years, rows, keys, pct, stand, net = null, fixMax = 0) {
   const n = years.length, bw = (W - PL) / n, ph = H - PT - PB;
   // Positive Werte stapeln nach oben, negative (Netto-Export) nach unten; im Prozentmodus zählt nur Positives
   const val = (r, k) => pct ? Math.max(r[k], 0) : r[k];
   const pos = rows.map(r => keys.reduce((s, k) => s + Math.max(val(r, k), 0), 0));
   const neg = rows.map(r => keys.reduce((s, k) => s + Math.min(val(r, k), 0), 0));
-  const step = pct ? 25 : niceStep(Math.max(...pos) - Math.min(...neg));
+  const step = pct ? 25 : niceStep(Math.max(fixMax, ...pos) - Math.min(...neg));
   // optional: Netto-Linie über den Balken (Import/Export-Kachel)
-  const max = pct ? 100 : Math.ceil(Math.max(...pos) / step) * step;
+  const max = pct ? 100 : Math.ceil(Math.max(fixMax, ...pos) / step) * step;
   const min = pct ? 0 : Math.floor(Math.min(...neg) / step) * step;
   const yOf = v => PT + ph * (max - v) / (max - min);
   let svg = `<svg viewBox="0 0 ${W} ${H}">` + axis(max, step, pct ? '%' : '', min);
@@ -458,6 +458,9 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     // Zusammengefasste Kacheln: Solar mit Eigenverbrauch, Wind an Land + offshore
     const GROUP = { 'Solar': ['Solar', 'Solar Eigenverbrauch'], 'Wind': ['Wind an Land', 'Wind offshore'] };
     const inGroup = Object.values(GROUP).flat();
+    // Gemeinsame Y-Achse für alle Quellen (ohne Import/Export), damit man die Größen vergleichen kann
+    const sharedMax = Math.max(...['Wind', 'Solar', ...keys.filter(k => !inGroup.includes(k) && k !== 'Import (netto)')]
+      .flatMap(k => rows.map(r => (GROUP[k] || [k]).reduce((a, x) => a + r[x], 0))));
     // Import/Export ganz ans Ende, nach Kernkraft
     ['Wind', 'Solar', ...keys.filter(k => !inGroup.includes(k) && k !== 'Import (netto)').reverse(), 'Import (netto)'].forEach(k => {
       const sk = GROUP[k] || [k];
@@ -473,7 +476,7 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
       single.appendChild(t);
       if (imp && rows.every(r => r['Importe'] !== undefined))
         stacked(t.lastElementChild, years, rows, ['Importe', 'Exporte'], false, st.stand, rows.map(r => r['Import (netto)']));
-      else stacked(t.lastElementChild, years, rows, sk, false, st.stand);
+      else stacked(t.lastElementChild, years, rows, sk, false, st.stand, null, sharedMax);
     });
     const cy = Object.keys(st.cap).filter(y => +y >= from);
     lines(document.getElementById('cCap'), cy, capS.map(([n, k, c]) => ({ n, c, v: cy.map(y => k(st.cap[y])) })), st.stand);
