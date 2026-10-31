@@ -427,7 +427,8 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
 
   // Auslastung = TWh / (mittlere GW × 8760 h); Mittel aus Vorjahresende und Jahresende
   const useS = [
-    ['Wind', '#5eead4', r => r['Wind an Land'] + r['Wind offshore'], c => c.on + c.off],
+    ['Wind offshore', '#0f9b8e', r => r['Wind offshore'], c => c.off],
+    ['Wind an Land', '#5eead4', r => r['Wind an Land'], c => c.on],
     ['Solar inkl. Eigenverbrauch', '#fef08a', r => r['Solar'] + r['Solar Eigenverbrauch'], c => c.solar, true],
     ['Solar ins Netz', '#fde047', r => r['Solar'], c => c.solar]
   ];
