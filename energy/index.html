@@ -67,6 +67,9 @@
     padding: 4px 10px; font-size: 12px; cursor: pointer; margin-left: 4px;
   }
   .range button.on { color: #e6edf3; border-color: #58a6ff; }
+  .tiles.small { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .tiles.small .tile h3 { display: flex; justify-content: space-between; gap: 8px; }
+  .tiles.small .tile h3 small { font-weight: 400; color: #9aa4b2; font-size: 11px; }
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; padding: 12px 16px 24px; max-width: 1400px; margin: 0 auto; }
   .tile { background: #161a20; border: 1px solid #22272e; border-radius: 12px; padding: 14px 16px; min-width: 0; }
   .tile h3 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
@@ -137,6 +140,8 @@
   <div class="tile"><h3>Windkraft nach Bundesland</h3><div class="m" id="mWindLand">Installierte Leistung heute (Balken) und Verlauf im gewählten Zeitraum (Linie)</div><div class="bars" id="cWindLand"></div></div>
   <div class="tile"><h3>Solar nach Bundesland</h3><div class="m" id="mSolarLand">Installierte Leistung heute (Balken) und Verlauf im gewählten Zeitraum (Linie)</div><div class="bars" id="cSolarLand"></div></div>
 </div>
+<div class="tiles-head"><h2>Einzelne Quellen</h2></div>
+<div class="tiles small" id="single"></div>
 <div class="foot" id="foot"></div>
 <div id="tip"></div>
 
@@ -281,11 +286,14 @@ function axis(max, step, unit) {
 }
 const yrLabel = (y, stand) => y == stand.slice(0, 4) ? y + '*' : y;
 
+// Achsenschritt für 3–5 Linien, auch bei kleinen Werten (Wasser, Kernkraft …)
+const niceStep = raw => [1, 2, 5, 10, 20, 25, 50, 100, 200].find(s => raw / s <= 5) || 200;
+
 function stacked(el, years, rows, keys, pct, stand) {
   const n = years.length, bw = (W - PL) / n;
   const totals = rows.map(r => keys.reduce((s, k) => s + r[k], 0));
-  const max = pct ? 100 : Math.ceil(Math.max(...totals) / 100) * 100;
-  let svg = `<svg viewBox="0 0 ${W} ${H}">` + axis(max, pct ? 25 : 100, pct ? '%' : '');
+  const step = pct ? 25 : niceStep(Math.max(...totals)), max = pct ? 100 : Math.ceil(Math.max(...totals) / step) * step;
+  let svg = `<svg viewBox="0 0 ${W} ${H}">` + axis(max, step, pct ? '%' : '');
   rows.forEach((r, i) => {
     let acc = 0;
     const x = PL + i * bw + bw * 0.15, w = bw * 0.7;
@@ -395,6 +403,22 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     stacked(document.getElementById('cMix'), years, mixRows, keys, true, st.stand);
     lines(document.getElementById('cRen'), years, renS.map(([n, c, f, d], i) => ({ n, c, v: rows.map(f), dash: i === 0 || d })), st.stand, 'TWh');
     lines(document.getElementById('cUse'), years, useS.map(([n, c, f, g, d]) => ({ n, c, dash: d, v: years.map(y => useOf(+y, f, g)) })), st.stand, '%');
+    // Einzelchart je Quelle, Solar mit Eigenverbrauch obendrauf
+    const single = document.getElementById('single');
+    single.innerHTML = '';
+    keys.filter(k => k !== 'Solar Eigenverbrauch').slice().reverse().forEach(k => {
+      const sk = k === 'Solar' ? ['Solar', 'Solar Eigenverbrauch'] : [k];
+      const sum = r => sk.reduce((a, x) => a + r[x], 0);
+      if (!rows.some(r => sum(r) > 0)) return;
+      const first = sum(rows[0]), last = sum(rows.at(-1));
+      const d = first ? Math.round((last / first - 1) * 100) : null;
+      const t = document.createElement('div');
+      t.className = 'tile';
+      t.innerHTML = `<h3><span>${k}</span><small>${num(last)} TWh${d !== null ? ` · ${d > 0 ? '+' : ''}${d} %` : ''}</small></h3>` +
+        `<div class="m">${k === 'Solar' ? 'ins Netz + Eigenverbrauch (hell), ' : ''}TWh pro Jahr, Veränderung seit ${years[0]}</div><div></div>`;
+      single.appendChild(t);
+      stacked(t.lastElementChild, years, rows, sk, false, st.stand);
+    });
     const cy = Object.keys(st.cap).filter(y => +y >= from);
     lines(document.getElementById('cCap'), cy, capS.map(([n, k, c]) => ({ n, c, v: cy.map(y => k(st.cap[y])) })), st.stand);
   };
