@@ -262,7 +262,7 @@ map.on('load', async () => {
 
 // ---- Kacheln ----
 const SRC = {
-  'Wind an Land': '#5eead4', 'Wind offshore': '#2dd4bf', 'Solar': '#fde047', 'Solar Eigenverbrauch': '#fef08a', 'Biomasse': '#86efac',
+  'Wind an Land': '#5eead4', 'Wind offshore': '#0f9b8e', 'Solar': '#fde047', 'Solar Eigenverbrauch': '#fef08a', 'Biomasse': '#86efac',
   'Wasser': '#60a5fa', 'Erdgas': '#fb923c', 'Steinkohle': '#a1a1aa', 'Braunkohle': '#a16207',
   'Kernkraft': '#c084fc', 'Sonstige': '#4b5563', 'Import (netto)': '#475569'
 };
@@ -419,8 +419,11 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     // Einzelchart je Quelle, Solar mit Eigenverbrauch obendrauf
     const single = document.getElementById('single');
     single.innerHTML = '';
-    keys.filter(k => k !== 'Solar Eigenverbrauch').slice().reverse().forEach(k => {
-      const sk = k === 'Solar' ? ['Solar', 'Solar Eigenverbrauch'] : [k];
+    // Zusammengefasste Kacheln: Solar mit Eigenverbrauch, Wind an Land + offshore
+    const GROUP = { 'Solar': ['Solar', 'Solar Eigenverbrauch'], 'Wind': ['Wind an Land', 'Wind offshore'] };
+    const inGroup = Object.values(GROUP).flat();
+    ['Wind', 'Solar', ...keys.filter(k => !inGroup.includes(k)).reverse()].forEach(k => {
+      const sk = GROUP[k] || [k];
       const sum = r => sk.reduce((a, x) => a + r[x], 0);
       if (!rows.some(r => sum(r) > 0)) return;
       const first = sum(rows[0]), last = sum(rows.at(-1));
@@ -429,7 +432,7 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
       const t = document.createElement('div');
       t.className = 'tile';
       t.innerHTML = `<h3><span>${imp ? 'Import / Export (netto)' : k}</span><small>${imp ? (last < 0 ? 'Export ' : 'Import ') + num(Math.abs(last)) : num(last)} TWh${d !== null ? ` · ${d > 0 ? '+' : ''}${d} %` : ''}</small></h3>` +
-        `<div class="m">${imp ? 'über null = Import, unter null = Export, TWh pro Jahr' : (k === 'Solar' ? 'ins Netz + Eigenverbrauch (hell), ' : '') + 'TWh pro Jahr, Veränderung seit ' + years[0]}</div><div></div>`;
+        `<div class="m">${imp ? 'über null = Import, unter null = Export, TWh pro Jahr' : (k === 'Solar' ? 'ins Netz + Eigenverbrauch (hell), ' : k === 'Wind' ? 'an Land + offshore (dunkel), ' : '') + 'TWh pro Jahr, Veränderung seit ' + years[0]}</div><div></div>`;
       single.appendChild(t);
       stacked(t.lastElementChild, years, rows, sk, false, st.stand);
     });
