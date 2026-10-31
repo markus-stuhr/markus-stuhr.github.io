@@ -137,7 +137,7 @@
 <div class="tiles">
   <div class="tile"><h3>Stromerzeugung nach Quelle</h3><div class="m">Nettoerzeugung pro Jahr in TWh, Netto-Import oben (gestrichelt), Netto-Export unter der Nulllinie</div><div id="cGen"></div><div class="keys" id="kGen"></div></div>
   <div class="tile"><h3>Strommix in Prozent</h3><div class="m">Anteil am verfügbaren Strom (Erzeugung + Netto-Import), 2026 gemessen bis heute</div><div id="cMix"></div></div>
-  <div class="tile"><h3>Erneuerbare Erzeugung</h3><div class="m">Strom aus Erneuerbaren in TWh pro Jahr: gesamt (Wind, Solar inkl. Eigenverbrauch, Biomasse, Wasser) sowie Wind, Solar und Wasser einzeln. 2026 hochgerechnet.</div><div id="cRen"></div><div class="keys" id="kRen"></div></div>
+  <div class="tile"><h3>Erneuerbare Erzeugung</h3><div class="m">Strom aus Erneuerbaren in TWh pro Jahr: gesamt (Wind, Solar inkl. Eigenverbrauch, Biomasse, Wasser) sowie Wind, Solar, Biomasse und Wasser einzeln. 2026 hochgerechnet.</div><div id="cRen"></div><div class="keys" id="kRen"></div></div>
   <div class="tile"><h3>Installierte Leistung</h3><div class="m">Wind (an Land + offshore) und Solar in GW, jeweils Jahresende</div><div id="cCap"></div><div class="keys" id="kCap"></div></div>
   <div class="tile"><h3>Auslastung</h3><div class="m">Erzeugung geteilt durch mittlere installierte Leistung des Jahres, also Anteil der Stunden unter Volllast. Wind läuft auch nachts und im Winter.</div><div id="cUse"></div><div class="keys" id="kUse"></div></div>
   <div class="tile" hidden><h3>Grenzflüsse nach Nachbarland</h3><div class="m">Export nach links (dunkel), Import nach rechts (hell), Saldo rechts. Jahr: <select id="tradeYear"></select></div><div class="trade" id="cTrade"></div></div>
@@ -381,6 +381,7 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     ['Wind (an Land + offshore)', '#5eead4', r => r['Wind an Land'] + r['Wind offshore']],
     ['Solar inkl. Eigenverbrauch', '#fef08a', r => r['Solar'] + r['Solar Eigenverbrauch'], true],
     ['Solar ins Netz', '#fde047', r => r['Solar']],
+    ['Biomasse', '#86efac', r => r['Biomasse']],
     ['Wasser', '#60a5fa', r => r['Wasser']]
   ];
   document.getElementById('kRen').innerHTML = keyHtml(renS.map(([n, c]) => [n, c]));
