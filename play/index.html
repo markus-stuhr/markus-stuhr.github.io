@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Spiele</title>
+<meta name="description" content="Alle Spiele auf markusstuhr.de">
+<script src="/analytics.js" defer></script>
+<style>
+  :root { --bg:#1c1a17; --panel:#2a2723; --hover:#34302a; --ink:#f1ebe0; --dim:#a69d8e; --accent:#e0a33a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,sans-serif; }
+  .wrap { max-width:1100px; margin:0 auto; padding:32px 16px 48px; }
+  h1 { font-size:34px; margin:0 0 4px; }
+  .sub { color:var(--dim); margin:0 0 28px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); margin:32px 0 12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px; }
+  a.game { display:flex; gap:14px; align-items:center; padding:14px; background:var(--panel); border-radius:12px; color:inherit; text-decoration:none; border:1px solid transparent; transition:background .15s, border-color .15s, transform .15s; }
+  a.game:hover { background:var(--hover); border-color:#4a443b; transform:translateY(-2px); }
+  .ico { flex:none; width:52px; height:52px; border-radius:12px; display:grid; place-items:center; font-size:28px; background:#3a352f; }
+  .t { font-weight:600; font-size:16px; }
+  .d { color:var(--dim); font-size:13px; margin-top:2px; }
+  .new { color:var(--accent); font-size:11px; font-weight:700; margin-left:6px; text-transform:uppercase; letter-spacing:.05em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎲 Spiele</h1>
+  <p class="sub">Alles, was man auf markusstuhr.de spielen kann.</p>
+  <div id="groups"></div>
+</div>
+<script>
+const GROUPS = [
+  ['Brettspiele', [
+    ['chess', '♞', 'Schach', 'Gegen Stockfish mit Live-Zugbewertung'],
+    ['dame', '⛀', 'Dame', 'Gegen die KI oder KI gegen KI', true],
+    ['muehle', '◎', 'Mühle', 'Setzen, ziehen, springen', true],
+    ['halma', '⬡', 'Halma', 'Sprungketten ins gegnerische Lager', true],
+    ['go', '⚫', 'Go', 'Das alte Brettspiel'],
+  ]],
+  ['Kartenspiele', [
+    ['shithead', '🃏', 'Shithead', 'Gegen 1–3 KI-Gegner'],
+  ]],
+  ['Arcade & Action', [
+    ['game', '🚀', 'Moonrunner', 'Pixel-Endless-Runner auf dem Mond'],
+    ['volley', '🏐', 'Blob Volley', 'Volleyball mit Blobs'],
+    ['fish', '🎣', 'Abendangeln', 'Im Ruderboot auf dem See'],
+    ['star', '🛸', 'Star Goose 3D', 'Weltraum-Shooter'],
+    ['rally', '🏎️', 'Steppen-Rallye', 'Rallye durch die Steppe'],
+  ]],
+  ['Strategie', [
+    ['tower', '🏰', 'Burgwacht', 'Tower Defence auf einer Hex-Insel'],
+    ['battle', '⚔️', 'Burgenkrieg', 'Mittelalter-Echtzeitstrategie'],
+  ]],
+  ['Abenteuer & Welten', [
+    ['christianso', '🏝️', 'Christiansø', 'Point-and-Click-Adventure'],
+    ['adventure', '🗡️', 'Adventure', 'Begehbares Zelda-Level'],
+    ['blocks', '🧱', 'Blocks', 'Voxel-Bauspiel'],
+    ['kitty', '🐱', 'Kitty', 'Deine 3D-Katze'],
+    ['cars', '🚗', 'Cars', 'Supercar-Sammelalbum mit 3D-Garage'],
+  ]],
+  ['Simulatoren', [
+    ['fly', '✈️', 'Fly', 'Flugsimulator'],
+    ['horse', '🐎', 'Horse', 'Reitsimulator und Rennbahn'],
+    ['simulator', '⛵', 'Sailing', 'Segelsimulator'],
+  ]],
+];
+document.getElementById('groups').innerHTML = GROUPS.map(([g, items]) => `<h2>${g}</h2><div class="grid">` +
+  items.map(([path, ico, t, d, isNew]) => `<a class="game" href="/${path}/"><span class="ico">${ico}</span><span><div class="t">${t}${isNew ? '<span class="new">neu</span>' : ''}</div><div class="d">${d}</div></span></a>`).join('') + '</div>').join('');
+</script>
+</body>
+</html>
