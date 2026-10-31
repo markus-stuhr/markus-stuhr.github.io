@@ -71,7 +71,7 @@
     </div>
     <div class="card"><h3>Züge</h3><div class="log" id="log"></div></div>
     <div class="card rules"><h3>Regeln</h3>
-      Jeder bringt seine 10 Steine in die gegenüberliegende Zacke des Sterns. Ein Zug ist ein Schritt auf ein freies Nachbarloch oder eine Kette von Sprüngen über direkt benachbarte Steine – egal welcher Farbe. Geschlagen wird nicht. Gewonnen hat, wer zuerst alle Steine im Ziel hat. Ist das Ziel voll, weil dort jemand sitzen geblieben ist, zählt es trotzdem, sobald mindestens ein eigener Stein drin ist.
+      Jeder bringt seine 10 Steine in die gegenüberliegende Zacke des Sterns. Ein Zug ist ein Schritt auf ein freies Nachbarloch oder eine Kette von Sprüngen über direkt benachbarte Steine – egal welcher Farbe. Geschlagen wird nicht. Gewonnen hat, wer zuerst alle Steine im Ziel hat. Ab Runde 40 gilt: Ist das Ziel voll, weil dort jemand sitzen geblieben ist, zählt es trotzdem, sobald mindestens ein eigener Stein drin ist.
     </div>
   </div>
 </main>
@@ -137,7 +137,13 @@ function applyMove(b, mv) {
   n[t] = n[f]; n[f] = 0; return n;
 }
 const goalZone = p => ZONE[(p+3)%6];
-const isWinner = (b,p) => { const g = goalZone(p); return g.every(i => b[i]) && g.some(i => b[i]===p+1); };
+// Blockier-Regel (Ziel voll, ein eigener Stein reicht) erst ab Runde 40, sonst zählen Gegner, die noch zu Hause stehen
+const BLOCK_ROUND = 40;
+const isWinner = (b,p) => {
+  const g = goalZone(p);
+  if (g.every(i => b[i]===p+1)) return true;
+  return moveNo >= BLOCK_ROUND && g.every(i => b[i]) && g.some(i => b[i]===p+1);
+};
 
 // ---------- KI: plant mehrere eigene Züge voraus, Gegner werden ignoriert ----------
 function evaluate(b, p) {
