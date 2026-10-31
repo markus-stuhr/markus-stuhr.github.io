@@ -408,7 +408,8 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     `* ${st.stand.slice(0, 4)} hochgerechnet (blasser Balken): Erzeugung bis ${new Date(st.stand).toLocaleDateString('de-DE')} je Quelle, ` +
     `aufs Jahr skaliert mit dem Verhältnis Gesamtjahr zu Januar–Oktober im Vorjahr (berücksichtigt z. B. den dunklen, windreichen Winter). ` +
     `Gemessen bisher: ${num(Object.values(st.ytd2026).reduce((a, b) => a + b, 0), 0)} TWh. Installierte Leistung ${st.stand.slice(0, 4)} = aktueller Stand. ` +
-    `Erzeugung und Leistung: <a href="https://www.energy-charts.info" target="_blank">Energy-Charts (Fraunhofer ISE)</a>, öffentliche Nettostromerzeugung; Solar-Eigenverbrauch = Differenz aus Gesamterzeugung (total_power) und öffentlicher Einspeisung (Schätzung von Energy-Charts). ` +
+    `Erzeugung und Leistung: <a href="https://www.energy-charts.info" target="_blank">Energy-Charts (Fraunhofer ISE)</a>, öffentliche Nettostromerzeugung; Solar-Eigenverbrauch = Differenz aus Gesamterzeugung (total_power) und öffentlicher Einspeisung (Schätzung von Energy-Charts); ` +
+    `2026: März–Mai sind in den Quelldaten lückenhaft und wie November/Dezember aus dem Vorjahresmonat × Wachstum Juni–Oktober (+12 %) geschätzt. ` +
     (st.windLand ? `Bundesländer: eigene Auswertung des <a href="https://www.marktstammdatenregister.de" target="_blank">Marktstammdatenregisters</a> (Bundesnetzagentur), ` +
     `Bruttoleistung aller Einheiten nach Inbetriebnahme- und Stilllegungsdatum, Stand ${st.mastr ? st.mastr.replace(/(\d{4})(\d\d)(\d\d)/, '$3.$2.$1') : ''}. Fährt man über eine Zeile, zeigt sie Zuwachs und Anzahl der Anlagen.` : '');
 })();
