@@ -62,11 +62,6 @@
   /* Kacheln unter der Karte */
   .tiles-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 22px 16px 4px; max-width: 1400px; margin: 0 auto; }
   .tiles-head h2 { font-size: 17px; font-weight: 600; }
-  .range button {
-    background: #1c1f26; color: #9aa4b2; border: 1px solid #2d333b; border-radius: 6px;
-    padding: 4px 10px; font-size: 12px; cursor: pointer; margin-left: 4px;
-  }
-  .range button.on { color: #e6edf3; border-color: #58a6ff; }
   .tiles.small { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
   .tiles.small .tile h3 { display: flex; justify-content: space-between; gap: 8px; }
   .tiles.small .tile h3 small { font-weight: 400; color: #9aa4b2; font-size: 11px; }
@@ -138,7 +133,6 @@
 
 <div class="tiles-head">
   <h2>Strom in Deutschland</h2>
-  <div class="range">Zeitraum <button data-from="2021" class="on">5 Jahre</button><button data-from="2015">seit 2015</button></div>
 </div>
 <div class="tiles">
   <div class="tile"><h3>Stromerzeugung nach Quelle</h3><div class="m">Nettoerzeugung pro Jahr in TWh, Netto-Import oben (gestrichelt), Netto-Export unter der Nulllinie</div><div id="cGen"></div><div class="keys" id="kGen"></div></div>
@@ -147,8 +141,8 @@
   <div class="tile"><h3>Installierte Leistung</h3><div class="m">Wind (an Land + offshore) und Solar in GW, jeweils Jahresende</div><div id="cCap"></div><div class="keys" id="kCap"></div></div>
   <div class="tile"><h3>Auslastung</h3><div class="m">Erzeugung geteilt durch mittlere installierte Leistung des Jahres, also Anteil der Stunden unter Volllast. Wind läuft auch nachts und im Winter.</div><div id="cUse"></div><div class="keys" id="kUse"></div></div>
   <div class="tile" hidden><h3>Grenzflüsse nach Nachbarland</h3><div class="m">Export nach links (dunkel), Import nach rechts (hell), Saldo rechts. Jahr: <select id="tradeYear"></select></div><div class="trade" id="cTrade"></div></div>
-  <div class="tile"><h3>Windkraft nach Bundesland</h3><div class="m" id="mWindLand">Installierte Leistung heute (Balken) und Verlauf im gewählten Zeitraum (Linie)</div><div class="bars" id="cWindLand"></div></div>
-  <div class="tile"><h3>Solar nach Bundesland</h3><div class="m" id="mSolarLand">Installierte Leistung heute (Balken) und Verlauf im gewählten Zeitraum (Linie)</div><div class="bars" id="cSolarLand"></div></div>
+  <div class="tile"><h3>Windkraft nach Bundesland</h3><div class="m" id="mWindLand">Installierte Leistung heute (Balken, an Land + offshore) und Verlauf seit 2015 (Linie)</div><div class="bars" id="cWindLand"></div></div>
+  <div class="tile"><h3>Solar nach Bundesland</h3><div class="m" id="mSolarLand">Installierte Leistung heute (Balken, alle Anlagen inkl. Dach, Balkon, Eigenverbrauch) und Verlauf seit 2015 (Linie)</div><div class="bars" id="cSolarLand"></div></div>
 </div>
 <div class="tiles-head"><h2>Einzelne Quellen</h2></div>
 <div class="tiles small" id="single"></div>
@@ -482,11 +476,7 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     const cy = Object.keys(st.cap).filter(y => +y >= from);
     lines(document.getElementById('cCap'), cy, capS.map(([n, k, c]) => ({ n, c, v: cy.map(y => k(st.cap[y])) })), st.stand);
   };
-  document.querySelectorAll('.range button').forEach(b => b.onclick = () => {
-    document.querySelectorAll('.range button').forEach(x => x.classList.toggle('on', x === b));
-    draw(+b.dataset.from);
-  });
-  draw(2021);
+  draw(2015);
 
   document.getElementById('foot').innerHTML =
     `* ${st.stand.slice(0, 4)} hochgerechnet (blasser Balken): Erzeugung bis ${new Date(st.stand).toLocaleDateString('de-DE')} je Quelle, ` +
