@@ -129,7 +129,7 @@
 <div class="tiles">
   <div class="tile"><h3>Stromerzeugung nach Quelle</h3><div class="m">Nettoerzeugung pro Jahr in TWh</div><div id="cGen"></div><div class="keys" id="kGen"></div></div>
   <div class="tile"><h3>Strommix in Prozent</h3><div class="m">Anteil jeder Quelle an der Jahreserzeugung, 2026 gemessen bis heute</div><div id="cMix"></div></div>
-  <div class="tile"><h3>Erneuerbare Erzeugung</h3><div class="m">Strom aus Erneuerbaren in TWh pro Jahr: gesamt (Wind, Solar, Biomasse, Wasser) sowie Wind und Solar einzeln. 2026 hochgerechnet.</div><div id="cRen"></div><div class="keys" id="kRen"></div></div>
+  <div class="tile"><h3>Erneuerbare Erzeugung</h3><div class="m">Strom aus Erneuerbaren in TWh pro Jahr: gesamt (Wind, Solar, Biomasse, Wasser) sowie Wind, Solar und Wasser einzeln. 2026 hochgerechnet.</div><div id="cRen"></div><div class="keys" id="kRen"></div></div>
   <div class="tile"><h3>Installierte Leistung</h3><div class="m">Wind an Land, Wind offshore und Solar in GW, jeweils Jahresende</div><div id="cCap"></div><div class="keys" id="kCap"></div></div>
   <div class="tile"><h3>Windkraft nach Bundesland</h3><div class="m">Heutiger Bestand laut OpenStreetMap: eingetragene Leistung (MW) und Anzahl Anlagen. Einen Verlauf gibt es dafür nicht, weil das Baujahr nur bei rund einem Viertel der Anlagen eingetragen ist.</div><div class="bars" id="cLand"></div></div>
 </div>
@@ -339,7 +339,8 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
   const renS = [
     ['Erneuerbare gesamt', '#7ee787', r => r['Wind an Land'] + r['Wind offshore'] + r['Solar'] + r['Biomasse'] + r['Wasser']],
     ['Wind (an Land + offshore)', '#5eead4', r => r['Wind an Land'] + r['Wind offshore']],
-    ['Solar', '#fde047', r => r['Solar']]
+    ['Solar', '#fde047', r => r['Solar']],
+    ['Wasser', '#60a5fa', r => r['Wasser']]
   ];
   document.getElementById('kRen').innerHTML = keyHtml(renS.map(([n, c]) => [n, c]));
 
