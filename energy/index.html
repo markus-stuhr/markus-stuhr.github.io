@@ -85,6 +85,15 @@
   .bars .r span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d7dbe2; }
   .bars .b { height: 9px; border-radius: 3px; background: #5eead4; }
   .bars .v { text-align: right; color: #9aa4b2; white-space: nowrap; }
+  .trade { display: flex; flex-direction: column; gap: 5px; font-size: 11px; }
+  .trade .r { display: grid; grid-template-columns: 96px 1fr 1fr 74px; align-items: center; gap: 0; }
+  .trade .r > span:first-child { color: #d7dbe2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trade .l, .trade .rt { height: 9px; display: flex; }
+  .trade .l { justify-content: flex-end; border-right: 1px solid #6e7681; }
+  .trade .l i { background: #475569; border-radius: 3px 0 0 3px; }
+  .trade .rt i { background: #94a3b8; border-radius: 0 3px 3px 0; }
+  .trade .v { text-align: right; color: #9aa4b2; white-space: nowrap; }
+  #tradeYear { background: #1c1f26; color: #e6edf3; border: 1px solid #2d333b; border-radius: 5px; font-size: 11px; padding: 1px 4px; }
   .foot { font-size: 11px; color: #6e7681; padding: 0 16px 30px; max-width: 1400px; margin: 0 auto; }
   .foot a { color: #6e7681; }
   #tip {
@@ -137,6 +146,7 @@
   <div class="tile"><h3>Erneuerbare Erzeugung</h3><div class="m">Strom aus Erneuerbaren in TWh pro Jahr: gesamt (Wind, Solar inkl. Eigenverbrauch, Biomasse, Wasser) sowie Wind, Solar und Wasser einzeln. 2026 hochgerechnet.</div><div id="cRen"></div><div class="keys" id="kRen"></div></div>
   <div class="tile"><h3>Installierte Leistung</h3><div class="m">Wind (an Land + offshore) und Solar in GW, jeweils Jahresende</div><div id="cCap"></div><div class="keys" id="kCap"></div></div>
   <div class="tile"><h3>Auslastung</h3><div class="m">Erzeugung geteilt durch mittlere installierte Leistung des Jahres, also Anteil der Stunden unter Volllast. Wind läuft auch nachts und im Winter.</div><div id="cUse"></div><div class="keys" id="kUse"></div></div>
+  <div class="tile" hidden><h3>Grenzflüsse nach Nachbarland</h3><div class="m">Export nach links (dunkel), Import nach rechts (hell), Saldo rechts. Jahr: <select id="tradeYear"></select></div><div class="trade" id="cTrade"></div></div>
   <div class="tile"><h3>Windkraft nach Bundesland</h3><div class="m" id="mWindLand">Installierte Leistung heute (Balken) und Verlauf im gewählten Zeitraum (Linie)</div><div class="bars" id="cWindLand"></div></div>
   <div class="tile"><h3>Solar nach Bundesland</h3><div class="m" id="mSolarLand">Installierte Leistung heute (Balken) und Verlauf im gewählten Zeitraum (Linie)</div><div class="bars" id="cSolarLand"></div></div>
 </div>
@@ -264,7 +274,7 @@ map.on('load', async () => {
 const SRC = {
   'Wind an Land': '#5eead4', 'Wind offshore': '#0f9b8e', 'Solar': '#fde047', 'Solar Eigenverbrauch': '#fef08a', 'Biomasse': '#86efac',
   'Wasser': '#60a5fa', 'Erdgas': '#fb923c', 'Steinkohle': '#a1a1aa', 'Braunkohle': '#a16207',
-  'Kernkraft': '#c084fc', 'Sonstige': '#4b5563', 'Import (netto)': '#475569'
+  'Kernkraft': '#c084fc', 'Sonstige': '#4b5563', 'Import (netto)': '#475569', 'Importe': '#94a3b8', 'Exporte': '#475569'
 };
 const tip = document.getElementById('tip');
 const showTip = (ev, html) => {
@@ -289,13 +299,14 @@ const yrLabel = (y, stand) => y == stand.slice(0, 4) ? y + '*' : y;
 // Achsenschritt für 3–5 Linien, auch bei kleinen Werten (Wasser, Kernkraft …)
 const niceStep = raw => [1, 2, 5, 10, 20, 25, 50, 100, 200].find(s => raw / s <= 5) || 200;
 
-function stacked(el, years, rows, keys, pct, stand) {
+function stacked(el, years, rows, keys, pct, stand, net = null) {
   const n = years.length, bw = (W - PL) / n, ph = H - PT - PB;
   // Positive Werte stapeln nach oben, negative (Netto-Export) nach unten; im Prozentmodus zählt nur Positives
   const val = (r, k) => pct ? Math.max(r[k], 0) : r[k];
   const pos = rows.map(r => keys.reduce((s, k) => s + Math.max(val(r, k), 0), 0));
   const neg = rows.map(r => keys.reduce((s, k) => s + Math.min(val(r, k), 0), 0));
   const step = pct ? 25 : niceStep(Math.max(...pos) - Math.min(...neg));
+  // optional: Netto-Linie über den Balken (Import/Export-Kachel)
   const max = pct ? 100 : Math.ceil(Math.max(...pos) / step) * step;
   const min = pct ? 0 : Math.floor(Math.min(...neg) / step) * step;
   const yOf = v => PT + ph * (max - v) / (max - min);
@@ -318,6 +329,13 @@ function stacked(el, years, rows, keys, pct, stand) {
     svg += `<text x="${x + w / 2}" y="${H - 4}" text-anchor="middle">${yrLabel(years[i], stand)}</text>`;
   });
   if (min < 0) svg += `<line x1="${PL}" x2="${W}" y1="${yOf(0)}" y2="${yOf(0)}" stroke="#6e7681"/>`;
+  if (net) {
+    const xs = i => PL + i * bw + bw / 2;
+    svg += `<polyline points="${net.map((v, i) => `${xs(i)},${yOf(v)}`).join(' ')}" fill="none" stroke="#e6edf3" stroke-width="1.5"/>`;
+    net.forEach((v, i) => svg += `<circle cx="${xs(i)}" cy="${yOf(v)}" r="3" fill="#e6edf3" stroke="#161a20" stroke-width="1"/>`);
+    svg = svg.replace(/(<rect class="hit"[^>]*>)/g, '');
+    rows.forEach((r, i) => svg += `<rect class="hit" data-i="${i}" x="${PL + i * bw}" y="${PT}" width="${bw}" height="${ph}" fill="transparent"/>`);
+  }
   el.innerHTML = svg + '</svg>';
   el.querySelectorAll('.hit').forEach(h => {
     const i = +h.dataset.i, r = rows[i];
@@ -325,7 +343,8 @@ function stacked(el, years, rows, keys, pct, stand) {
     h.onmousemove = ev => showTip(ev, `<b>${yrLabel(years[i], stand)}${years[i] == stand.slice(0, 4) ? (pct ? ' (bis ' + new Date(stand).toLocaleDateString('de-DE') + ')' : ' (hochgerechnet)') : ''}</b><br>` +
       keys.slice().reverse().filter(k => pct ? r[k] > 0 : r[k] !== 0)
       .map(k => `<i style="display:inline-block;width:8px;height:8px;background:${SRC[k]};margin-right:5px"></i>${label(k)}: ${pct ? num(r[k] / pos[i] * 100) + ' %' : num(Math.abs(r[k])) + ' TWh'}`).join('<br>')
-      + (pct || keys.length < 2 ? '' : `<br><b>${keys.includes('Import (netto)') ? 'Verfügbar' : 'Summe'} ${num(pos[i])} TWh</b>`));
+      + (net ? `<br><b>Netto: ${net[i] < 0 ? 'Export' : 'Import'} ${num(Math.abs(net[i]))} TWh</b>` :
+        pct || keys.length < 2 ? '' : `<br><b>${keys.includes('Import (netto)') ? 'Verfügbar' : 'Summe'} ${num(pos[i])} TWh</b>`));
     h.onmouseleave = hideTip;
   });
 }
@@ -388,6 +407,27 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     }).join('');
   };
 
+  // Grenzflüsse je Nachbarland (nur wenn in stats.json vorhanden)
+  if (st.trade) {
+    const sel = document.getElementById('tradeYear'), el = document.getElementById('cTrade');
+    el.closest('.tile').hidden = false;
+    sel.innerHTML = st.trade.years.map(y => `<option${y == st.trade.years.at(-2) ? ' selected' : ''}>${y}</option>`).join('');
+    const drawTrade = () => {
+      const i = st.trade.years.indexOf(+sel.value);
+      const rows = Object.entries(st.trade.countries).map(([n, c]) => [n, c.imp[i], c.exp[i]])
+        .sort((a, b) => (b[1] - b[2]) - (a[1] - a[2]));
+      const max = Math.max(...rows.map(r => Math.max(r[1], r[2])));
+      el.innerHTML = rows.map(([n, im, ex]) => {
+        const net = im - ex;
+        return `<div class="r" title="${n} ${sel.value}: Import ${num(im)} TWh, Export ${num(ex)} TWh">` +
+          `<span>${n}</span><div class="l"><i style="width:${ex / max * 100}%"></i></div><div class="rt"><i style="width:${im / max * 100}%"></i></div>` +
+          `<span class="v">${net >= 0 ? '+' : '−'}${num(Math.abs(net))} TWh</span></div>`;
+      }).join('');
+    };
+    sel.onchange = drawTrade;
+    drawTrade();
+  }
+
   // Bundesland-Kacheln erst zeigen, wenn MaStR-Daten in stats.json stehen
   ['cWindLand', 'cSolarLand'].forEach(id => document.getElementById(id).closest('.tile').hidden = !st.windLand);
 
@@ -422,7 +462,8 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     // Zusammengefasste Kacheln: Solar mit Eigenverbrauch, Wind an Land + offshore
     const GROUP = { 'Solar': ['Solar', 'Solar Eigenverbrauch'], 'Wind': ['Wind an Land', 'Wind offshore'] };
     const inGroup = Object.values(GROUP).flat();
-    ['Wind', 'Solar', ...keys.filter(k => !inGroup.includes(k)).reverse()].forEach(k => {
+    // Import/Export ganz ans Ende, nach Kernkraft
+    ['Wind', 'Solar', ...keys.filter(k => !inGroup.includes(k) && k !== 'Import (netto)').reverse(), 'Import (netto)'].forEach(k => {
       const sk = GROUP[k] || [k];
       const sum = r => sk.reduce((a, x) => a + r[x], 0);
       if (!rows.some(r => sum(r) > 0)) return;
@@ -431,10 +472,12 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
       const d = first && !imp ? Math.round((last / first - 1) * 100) : null;
       const t = document.createElement('div');
       t.className = 'tile';
-      t.innerHTML = `<h3><span>${imp ? 'Import / Export (netto)' : k}</span><small>${imp ? (last < 0 ? 'Export ' : 'Import ') + num(Math.abs(last)) : num(last)} TWh${d !== null ? ` · ${d > 0 ? '+' : ''}${d} %` : ''}</small></h3>` +
-        `<div class="m">${imp ? 'über null = Import, unter null = Export, TWh pro Jahr' : (k === 'Solar' ? 'ins Netz + Eigenverbrauch (hell), ' : k === 'Wind' ? 'an Land + offshore (dunkel), ' : '') + 'TWh pro Jahr, Veränderung seit ' + years[0]}</div><div></div>`;
+      t.innerHTML = `<h3><span>${imp ? 'Import / Export' : k}</span><small>${imp ? 'Saldo ' + (last < 0 ? '−' : '+') + num(Math.abs(last)) : num(last)} TWh${d !== null ? ` · ${d > 0 ? '+' : ''}${d} %` : ''}</small></h3>` +
+        `<div class="m">${imp ? (rows[0]['Importe'] !== undefined ? 'Importe (hell) und Exporte (dunkel) aller Grenzen, Linie = Saldo, TWh pro Jahr' : 'über null = Import, unter null = Export, TWh pro Jahr') : (k === 'Solar' ? 'ins Netz + Eigenverbrauch (hell), ' : k === 'Wind' ? 'an Land + offshore (dunkel), ' : '') + 'TWh pro Jahr, Veränderung seit ' + years[0]}</div><div></div>`;
       single.appendChild(t);
-      stacked(t.lastElementChild, years, rows, sk, false, st.stand);
+      if (imp && rows.every(r => r['Importe'] !== undefined))
+        stacked(t.lastElementChild, years, rows, ['Importe', 'Exporte'], false, st.stand, rows.map(r => r['Import (netto)']));
+      else stacked(t.lastElementChild, years, rows, sk, false, st.stand);
     });
     const cy = Object.keys(st.cap).filter(y => +y >= from);
     lines(document.getElementById('cCap'), cy, capS.map(([n, k, c]) => ({ n, c, v: cy.map(y => k(st.cap[y])) })), st.stand);
