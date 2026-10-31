@@ -257,7 +257,8 @@ function stacked(el, years, rows, keys, pct, stand) {
     keys.forEach(k => {
       const v = pct ? r[k] / totals[i] * 100 : r[k];
       const h = (H - PT - PB) * v / max, y = PT + (H - PT - PB) * (1 - (acc + v) / max);
-      svg += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(h, 0)}" fill="${SRC[k]}"/>`;
+      const est = years[i] == stand.slice(0, 4);
+      svg += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(h, 0)}" fill="${SRC[k]}"${est ? ' fill-opacity="0.55"' : ''}/>`;
       acc += v;
     });
     svg += `<rect class="hit" data-i="${i}" x="${PL + i * bw}" y="${PT}" width="${bw}" height="${H - PT - PB}" fill="transparent"/>`;
@@ -266,7 +267,7 @@ function stacked(el, years, rows, keys, pct, stand) {
   el.innerHTML = svg + '</svg>';
   el.querySelectorAll('.hit').forEach(h => {
     const i = +h.dataset.i;
-    h.onmousemove = ev => showTip(ev, `<b>${yrLabel(years[i], stand)}</b><br>` + keys.slice().reverse().filter(k => rows[i][k] > 0)
+    h.onmousemove = ev => showTip(ev, `<b>${yrLabel(years[i], stand)}${years[i] == stand.slice(0, 4) ? ' (hochgerechnet)' : ''}</b><br>` + keys.slice().reverse().filter(k => rows[i][k] > 0)
       .map(k => `<i style="display:inline-block;width:8px;height:8px;background:${SRC[k]};margin-right:5px"></i>${k}: ${pct ? num(rows[i][k] / totals[i] * 100) + ' %' : num(rows[i][k]) + ' TWh'}`).join('<br>')
       + (pct ? '' : `<br><b>Summe ${num(totals[i])} TWh</b>`));
     h.onmouseleave = hideTip;
@@ -325,7 +326,9 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     `<span class="v">${fmt(mw)} MW · ${fmt(c)}</span></div>`).join('');
 
   document.getElementById('foot').innerHTML =
-    `* ${st.stand.slice(0, 4)} bis ${new Date(st.stand).toLocaleDateString('de-DE')}, also noch kein volles Jahr. ` +
+    `* ${st.stand.slice(0, 4)} hochgerechnet (blasser Balken): Erzeugung bis ${new Date(st.stand).toLocaleDateString('de-DE')} je Quelle, ` +
+    `aufs Jahr skaliert mit dem Verhältnis Gesamtjahr zu Januar–Oktober im Vorjahr (berücksichtigt z. B. den dunklen, windreichen Winter). ` +
+    `Gemessen bisher: ${num(Object.values(st.ytd2026).reduce((a, b) => a + b, 0), 0)} TWh. Installierte Leistung ${st.stand.slice(0, 4)} = aktueller Stand. ` +
     `Erzeugung und Leistung: <a href="https://www.energy-charts.info" target="_blank">Energy-Charts (Fraunhofer ISE)</a>, öffentliche Nettostromerzeugung. ` +
     `Bundesländer: eigene Auswertung der OSM-Windräder („Küste/Grenze“ = Punkte knapp außerhalb der Ländergrenzen).`;
 })();
