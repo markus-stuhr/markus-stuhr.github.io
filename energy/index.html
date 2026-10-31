@@ -105,6 +105,19 @@ map.on('load', async () => {
     geometry: { type: 'Point', coordinates: [lon, lat] },
     properties: { mw, hub, rotor, man: data.man[man], model, year, off }
   }));
+  // Autobahnen leicht hervorheben (Vektorquelle des Kartenstils mitbenutzen)
+  const road = map.getStyle().layers.find(l => l['source-layer'] === 'transportation');
+  if (road) map.addLayer({
+    id: 'motorway', type: 'line', source: road.source, 'source-layer': 'transportation',
+    filter: ['==', ['get', 'class'], 'motorway'],
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': '#8b95a5',
+      'line-opacity': 0.35,
+      'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 8, 1.2, 12, 2.5]
+    }
+  });
+
   map.addSource('wind', { type: 'geojson', data: { type: 'FeatureCollection', features } });
   map.addLayer({
     id: 'wind', type: 'circle', source: 'wind',
