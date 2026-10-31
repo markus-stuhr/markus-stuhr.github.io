@@ -203,8 +203,8 @@ function render() {
     const [x,y] = XY[i], v = board[i];
     if (v) {
       const [, top, edge] = COLORS[v-1];
-      // Spielfigur von oben: Fuß als Ring, Kopf als Kreis
-      h += `<g class="st ${selected===i?'sel':''}"><circle class="top" cx="${x}" cy="${y}" r=".27" fill="${edge}"/><circle cx="${x}" cy="${y}" r=".21" fill="${top}" opacity=".75"/><circle cx="${x-.02}" cy="${y-.03}" r=".15" fill="${top}"/></g>`;
+      // Spielfigur von oben: harter Schatten, Fuß als Ring, Kopf als Kreis
+      h += `<g class="st ${selected===i?'sel':''}"><circle cx="${x+.07}" cy="${y+.08}" r=".27" fill="#3a2410" opacity=".3"/><circle class="top" cx="${x}" cy="${y}" r=".27" fill="${edge}"/><circle cx="${x}" cy="${y}" r=".21" fill="${top}" opacity=".75"/><circle cx="${x-.02}" cy="${y-.03}" r=".15" fill="${top}"/></g>`;
     } else {
       h += `<circle class="${targets.has(i) ? 'target' : via.has(i) ? 'via' : 'hole'}" cx="${x}" cy="${y}" r="${targets.has(i) ? .2 : .13}"/>`;
     }
