@@ -118,6 +118,17 @@ map.on('load', async () => {
     }
   });
 
+  if (road) map.addLayer({
+    id: 'ferry', type: 'line', source: road.source, 'source-layer': 'transportation',
+    filter: ['==', ['get', 'class'], 'ferry'],
+    paint: {
+      'line-color': '#6b9bc3',
+      'line-opacity': 0.45,
+      'line-dasharray': [3, 2],
+      'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 8, 1, 12, 1.8]
+    }
+  });
+
   map.addSource('wind', { type: 'geojson', data: { type: 'FeatureCollection', features } });
   map.addLayer({
     id: 'wind', type: 'circle', source: 'wind',
