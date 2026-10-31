@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="apple-mobile-web-app-title" content="Energy">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Windräder in Deutschland | Markus Stuhr</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    width: 100vw; height: 100vh; overflow: hidden; background: #0d1117;
+  }
+  #map { position: fixed; inset: 0; }
+
+  .panel {
+    position: fixed; top: 16px; left: 16px; z-index: 10;
+    background: rgba(20, 22, 26, 0.92); color: #fff;
+    border-radius: 12px; padding: 16px 18px;
+    width: 290px; max-width: calc(100vw - 32px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    backdrop-filter: blur(6px);
+  }
+  .panel h1 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  .panel .sub { font-size: 12px; color: #9aa4b2; line-height: 1.45; margin-bottom: 12px; }
+  .kpis { display: flex; gap: 16px; margin-bottom: 12px; }
+  .kpis div { font-size: 11px; color: #9aa4b2; }
+  .kpis b { display: block; font-size: 20px; color: #e6edf3; font-weight: 700; letter-spacing: -.3px; }
+  .legend { display: flex; flex-direction: column; gap: 7px; font-size: 12px; color: #d7dbe2; }
+  .legend div { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .legend label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .status { margin-top: 12px; font-size: 11px; color: #6e7681; line-height: 1.45; }
+  .status a { color: #6e7681; }
+
+  .maplibregl-popup-content {
+    background: #1c1f26; color: #e6edf3; border-radius: 10px;
+    padding: 10px 14px; font-size: 13px; box-shadow: 0 4px 18px rgba(0,0,0,.5);
+  }
+  .maplibregl-popup-content b { display: block; font-size: 14px; margin-bottom: 2px; }
+  .maplibregl-popup-content .m { color: #9aa4b2; font-size: 11px; line-height: 1.5; }
+  .maplibregl-popup-tip { border-top-color: #1c1f26; border-bottom-color: #1c1f26; }
+
+  @media (max-width: 700px) {
+    .panel { top: 10px; left: 10px; right: 10px; width: auto; padding: 12px 14px; }
+    .panel .sub { display: none; }
+  }
+</style>
+  <script defer src="/analytics.js"></script>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="panel">
+  <h1>Windräder in Deutschland</h1>
+  <div class="sub">Jede Windkraftanlage, die in OpenStreetMap eingetragen ist – an Land und in Nord- und Ostsee. Klick auf ein Windrad zeigt Details.</div>
+  <div class="kpis">
+    <div><b id="kCount">–</b>Anlagen</div>
+    <div><b id="kGW">–</b>GW bekannt</div>
+  </div>
+  <div class="legend">
+    <div><span class="dot" style="background:#4b5563"></span> Leistung unbekannt</div>
+    <div><span class="dot" style="background:#7dd3fc"></span> bis 2 MW</div>
+    <div><span class="dot" style="background:#5eead4"></span> 2–4 MW</div>
+    <div><span class="dot" style="background:#fde047"></span> 4–6 MW</div>
+    <div><span class="dot" style="background:#fb923c"></span> über 6 MW</div>
+    <label><input type="checkbox" id="offshore" checked> Offshore anzeigen</label>
+  </div>
+  <div class="status" id="status">Lade Windräder …</div>
+</div>
+
+<script>
+const COLOR = ['case',
+  ['==', ['get', 'mw'], 0], '#4b5563',
+  ['<', ['get', 'mw'], 2], '#7dd3fc',
+  ['<', ['get', 'mw'], 4], '#5eead4',
+  ['<', ['get', 'mw'], 6], '#fde047',
+  '#fb923c'];
+
+const statusEl = document.getElementById('status');
+const fmt = n => n.toLocaleString('de-DE');
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://api.maptiler.com/maps/dataviz-dark/style.json?key=lT9jK8r0OXrZinP9JSOT',
+  center: [10.4, 51.2],
+  zoom: 5.4,
+  attributionControl: { compact: true }
+});
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+let data;
+map.on('load', async () => {
+  try {
+    data = await (await fetch('wind.json')).json();
+  } catch (e) {
+    statusEl.textContent = 'Daten konnten nicht geladen werden.';
+    return;
+  }
+  // Zeilen: [lon, lat, MW, Nabenhöhe, Rotor, Hersteller-Index, Modell, Baujahr, offshore]
+  const features = data.t.map(([lon, lat, mw, hub, rotor, man, model, year, off], i) => ({
+    type: 'Feature', id: i,
+    geometry: { type: 'Point', coordinates: [lon, lat] },
+    properties: { mw, hub, rotor, man: data.man[man], model, year, off }
+  }));
+  map.addSource('wind', { type: 'geojson', data: { type: 'FeatureCollection', features } });
+  map.addLayer({
+    id: 'wind', type: 'circle', source: 'wind',
+    paint: {
+      'circle-color': COLOR,
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 1.2, 8, 2.5, 11, 5, 14, 8],
+      'circle-opacity': 0.85,
+      'circle-stroke-color': '#0d1117',
+      'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 8, 0, 11, 1]
+    }
+  });
+
+  const update = () => {
+    const showOff = document.getElementById('offshore').checked;
+    map.setFilter('wind', showOff ? null : ['==', ['get', 'off'], 0]);
+    const rows = data.t.filter(r => showOff || !r[8]);
+    document.getElementById('kCount').textContent = fmt(rows.length);
+    document.getElementById('kGW').textContent =
+      (rows.reduce((s, r) => s + r[2], 0) / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 });
+  };
+  document.getElementById('offshore').onchange = update;
+  update();
+
+  const off = data.t.filter(r => r[8]).length;
+  statusEl.innerHTML = `${fmt(data.t.length - off)} an Land, ${fmt(off)} offshore. Leistung ist nur bei ` +
+    `${Math.round(data.t.filter(r => r[2]).length / data.t.length * 100)} % eingetragen.<br>` +
+    `Daten: <a href="https://www.openstreetmap.org/copyright" target="_blank">© OpenStreetMap</a>, Stand ${new Date(data.osm).toLocaleDateString('de-DE')}`;
+
+  map.on('click', 'wind', e => {
+    const p = e.features[0].properties;
+    const lines = [
+      p.mw ? `${String(p.mw).replace('.', ',')} MW` : 'Leistung unbekannt',
+      p.hub ? `Nabenhöhe ${p.hub} m` : '',
+      p.rotor ? `Rotor ⌀ ${p.rotor} m` : '',
+      p.year ? `in Betrieb seit ${p.year}` : '',
+      p.off ? 'Offshore' : ''
+    ].filter(Boolean);
+    new maplibregl.Popup({ offset: 8, closeButton: false })
+      .setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<b>${[p.man, p.model].filter(Boolean).join(' ') || 'Windkraftanlage'}</b><div class="m">${lines.join('<br>')}</div>`)
+      .addTo(map);
+  });
+  map.on('mouseenter', 'wind', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'wind', () => map.getCanvas().style.cursor = '');
+});
+</script>
+</body>
+</html>
