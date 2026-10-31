@@ -131,7 +131,8 @@
 <div class="tiles">
   <div class="tile"><h3>Stromerzeugung nach Quelle</h3><div class="m">Nettoerzeugung pro Jahr in TWh</div><div id="cGen"></div><div class="keys" id="kGen"></div></div>
   <div class="tile"><h3>Strommix in Prozent</h3><div class="m">Anteil jeder Quelle an der Jahreserzeugung, 2026 gemessen bis heute</div><div id="cMix"></div></div>
-  <div class="tile"><h3>Erneuerbare Erzeugung</h3><div class="m">Strom aus Erneuerbaren in TWh pro Jahr: gesamt (Wind, Solar, Biomasse, Wasser) sowie Wind, Solar und Wasser einzeln. 2026 hochgerechnet.</div><div id="cRen"></div><div class="keys" id="kRen"></div></div>
+  <div class="tile"><h3>Erneuerbare Erzeugung</h3><div class="m">Strom aus Erneuerbaren in TWh pro Jahr: gesamt (Wind, Solar inkl. Eigenverbrauch, Biomasse, Wasser) sowie Wind, Solar und Wasser einzeln. 2026 hochgerechnet.</div><div id="cRen"></div><div class="keys" id="kRen"></div></div>
+  <div class="tile"><h3>Auslastung</h3><div class="m">Erzeugung geteilt durch mittlere installierte Leistung des Jahres, also Anteil der Stunden unter Volllast. Wind läuft auch nachts und im Winter.</div><div id="cUse"></div><div class="keys" id="kUse"></div></div>
   <div class="tile"><h3>Installierte Leistung</h3><div class="m">Wind (an Land + offshore) und Solar in GW, jeweils Jahresende</div><div id="cCap"></div><div class="keys" id="kCap"></div></div>
   <div class="tile"><h3>Windkraft nach Bundesland</h3><div class="m" id="mWindLand">Installierte Leistung heute (Balken) und Verlauf im gewählten Zeitraum (Linie)</div><div class="bars" id="cWindLand"></div></div>
   <div class="tile"><h3>Solar nach Bundesland</h3><div class="m" id="mSolarLand">Installierte Leistung heute (Balken) und Verlauf im gewählten Zeitraum (Linie)</div><div class="bars" id="cSolarLand"></div></div>
@@ -256,7 +257,7 @@ map.on('load', async () => {
 
 // ---- Kacheln ----
 const SRC = {
-  'Wind an Land': '#5eead4', 'Wind offshore': '#2dd4bf', 'Solar': '#fde047', 'Biomasse': '#86efac',
+  'Wind an Land': '#5eead4', 'Wind offshore': '#2dd4bf', 'Solar': '#fde047', 'Solar Eigenverbrauch': '#fef08a', 'Biomasse': '#86efac',
   'Wasser': '#60a5fa', 'Erdgas': '#fb923c', 'Steinkohle': '#a1a1aa', 'Braunkohle': '#a16207',
   'Kernkraft': '#c084fc', 'Sonstige': '#4b5563'
 };
@@ -334,16 +335,18 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
 
 (async () => {
   let st;
-  try { st = await (await fetch('stats.json')).json(); } catch (e) { return; }
-  const keys = ['Kernkraft', 'Braunkohle', 'Steinkohle', 'Erdgas', 'Sonstige', 'Biomasse', 'Wasser', 'Solar', 'Wind offshore', 'Wind an Land'];
+  try { st = await (await fetch('stats.json', { cache: 'no-cache' })).json(); } catch (e) { return; }
+  Object.values(st.gen).concat(st.ytd2026).forEach(r => r['Solar Eigenverbrauch'] ??= 0);
+  const keys = ['Kernkraft', 'Braunkohle', 'Steinkohle', 'Erdgas', 'Sonstige', 'Biomasse', 'Wasser', 'Solar', 'Solar Eigenverbrauch', 'Wind offshore', 'Wind an Land'];
   document.getElementById('kGen').innerHTML = keyHtml(keys.slice().reverse().map(k => [k, SRC[k]]));
   const capS = [['Wind (an Land + offshore)', c => c.on + c.off, '#5eead4'], ['Solar', c => c.solar, '#fde047']];
   document.getElementById('kCap').innerHTML = keyHtml(capS.map(([n, , c]) => [n, c]));
 
   const renS = [
-    ['Erneuerbare gesamt', '#7ee787', r => r['Wind an Land'] + r['Wind offshore'] + r['Solar'] + r['Biomasse'] + r['Wasser']],
+    ['Erneuerbare gesamt', '#7ee787', r => r['Wind an Land'] + r['Wind offshore'] + r['Solar'] + r['Solar Eigenverbrauch'] + r['Biomasse'] + r['Wasser']],
     ['Wind (an Land + offshore)', '#5eead4', r => r['Wind an Land'] + r['Wind offshore']],
-    ['Solar', '#fde047', r => r['Solar']],
+    ['Solar inkl. Eigenverbrauch', '#fef08a', r => r['Solar'] + r['Solar Eigenverbrauch'], true],
+    ['Solar ins Netz', '#fde047', r => r['Solar']],
     ['Wasser', '#60a5fa', r => r['Wasser']]
   ];
   document.getElementById('kRen').innerHTML = keyHtml(renS.map(([n, c]) => [n, c]));
@@ -367,6 +370,18 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
   // Bundesland-Kacheln erst zeigen, wenn MaStR-Daten in stats.json stehen
   ['cWindLand', 'cSolarLand'].forEach(id => document.getElementById(id).closest('.tile').hidden = !st.windLand);
 
+  // Auslastung = TWh / (mittlere GW × 8760 h); Mittel aus Vorjahresende und Jahresende
+  const useS = [
+    ['Wind', '#5eead4', r => r['Wind an Land'] + r['Wind offshore'], c => c.on + c.off],
+    ['Solar inkl. Eigenverbrauch', '#fef08a', r => r['Solar'] + r['Solar Eigenverbrauch'], c => c.solar, true],
+    ['Solar ins Netz', '#fde047', r => r['Solar'], c => c.solar]
+  ];
+  document.getElementById('kUse').innerHTML = keyHtml(useS.map(([n, c]) => [n, c]));
+  const useOf = (y, f, g) => {
+    const gw = ((st.cap[y - 1] ? g(st.cap[y - 1]) : g(st.cap[y])) + g(st.cap[y])) / 2;
+    return f(st.gen[y]) * 1000 / (gw * 8760) * 100;
+  };
+
   const draw = from => {
     if (st.windLand) {
       landTile(document.getElementById('cWindLand'), st.windLand, from, '#5eead4');
@@ -378,7 +393,8 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     // Strommix: für das laufende Jahr die tatsächlich gemessenen Werte, nicht die Hochrechnung
     const mixRows = years.map(y => y == st.stand.slice(0, 4) ? st.ytd2026 : st.gen[y]);
     stacked(document.getElementById('cMix'), years, mixRows, keys, true, st.stand);
-    lines(document.getElementById('cRen'), years, renS.map(([n, c, f], i) => ({ n, c, v: rows.map(f), dash: i === 0 })), st.stand, 'TWh');
+    lines(document.getElementById('cRen'), years, renS.map(([n, c, f, d], i) => ({ n, c, v: rows.map(f), dash: i === 0 || d })), st.stand, 'TWh');
+    lines(document.getElementById('cUse'), years, useS.map(([n, c, f, g, d]) => ({ n, c, dash: d, v: years.map(y => useOf(+y, f, g)) })), st.stand, '%');
     const cy = Object.keys(st.cap).filter(y => +y >= from);
     lines(document.getElementById('cCap'), cy, capS.map(([n, k, c]) => ({ n, c, v: cy.map(y => k(st.cap[y])) })), st.stand);
   };
@@ -392,9 +408,9 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     `* ${st.stand.slice(0, 4)} hochgerechnet (blasser Balken): Erzeugung bis ${new Date(st.stand).toLocaleDateString('de-DE')} je Quelle, ` +
     `aufs Jahr skaliert mit dem Verhältnis Gesamtjahr zu Januar–Oktober im Vorjahr (berücksichtigt z. B. den dunklen, windreichen Winter). ` +
     `Gemessen bisher: ${num(Object.values(st.ytd2026).reduce((a, b) => a + b, 0), 0)} TWh. Installierte Leistung ${st.stand.slice(0, 4)} = aktueller Stand. ` +
-    `Erzeugung und Leistung: <a href="https://www.energy-charts.info" target="_blank">Energy-Charts (Fraunhofer ISE)</a>, öffentliche Nettostromerzeugung. ` +
-    `Bundesländer: eigene Auswertung des <a href="https://www.marktstammdatenregister.de" target="_blank">Marktstammdatenregisters</a> (Bundesnetzagentur), ` +
-    `Bruttoleistung aller Einheiten nach Inbetriebnahme- und Stilllegungsdatum, Stand ${st.mastr ? st.mastr.replace(/(\d{4})(\d\d)(\d\d)/, '$3.$2.$1') : ''}. Fährt man über eine Zeile, zeigt sie Zuwachs und Anzahl der Anlagen.`;
+    `Erzeugung und Leistung: <a href="https://www.energy-charts.info" target="_blank">Energy-Charts (Fraunhofer ISE)</a>, öffentliche Nettostromerzeugung; Solar-Eigenverbrauch = Differenz aus Gesamterzeugung (total_power) und öffentlicher Einspeisung (Schätzung von Energy-Charts). ` +
+    (st.windLand ? `Bundesländer: eigene Auswertung des <a href="https://www.marktstammdatenregister.de" target="_blank">Marktstammdatenregisters</a> (Bundesnetzagentur), ` +
+    `Bruttoleistung aller Einheiten nach Inbetriebnahme- und Stilllegungsdatum, Stand ${st.mastr ? st.mastr.replace(/(\d{4})(\d\d)(\d\d)/, '$3.$2.$1') : ''}. Fährt man über eine Zeile, zeigt sie Zuwachs und Anzahl der Anlagen.` : '');
 })();
 </script>
 </body>
