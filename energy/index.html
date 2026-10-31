@@ -109,7 +109,7 @@
 </div>
 <div class="tiles">
   <div class="tile"><h3>Stromerzeugung nach Quelle</h3><div class="m">Nettoerzeugung pro Jahr in TWh</div><div id="cGen"></div><div class="keys" id="kGen"></div></div>
-  <div class="tile"><h3>Strommix in Prozent</h3><div class="m">Anteil jeder Quelle an der Jahreserzeugung</div><div id="cMix"></div></div>
+  <div class="tile"><h3>Strommix in Prozent</h3><div class="m">Anteil jeder Quelle an der Jahreserzeugung, 2026 gemessen bis heute</div><div id="cMix"></div></div>
   <div class="tile"><h3>Installierte Leistung</h3><div class="m">Wind an Land, Wind offshore und Solar in GW, jeweils Jahresende</div><div id="cCap"></div><div class="keys" id="kCap"></div></div>
   <div class="tile"><h3>Windkraft nach Bundesland</h3><div class="m">Heutiger Bestand laut OpenStreetMap: eingetragene Leistung (MW) und Anzahl Anlagen. Einen Verlauf gibt es dafür nicht, weil das Baujahr nur bei rund einem Viertel der Anlagen eingetragen ist.</div><div class="bars" id="cLand"></div></div>
 </div>
@@ -257,7 +257,7 @@ function stacked(el, years, rows, keys, pct, stand) {
     keys.forEach(k => {
       const v = pct ? r[k] / totals[i] * 100 : r[k];
       const h = (H - PT - PB) * v / max, y = PT + (H - PT - PB) * (1 - (acc + v) / max);
-      const est = years[i] == stand.slice(0, 4);
+      const est = !pct && years[i] == stand.slice(0, 4);
       svg += `<rect x="${x}" y="${y}" width="${w}" height="${Math.max(h, 0)}" fill="${SRC[k]}"${est ? ' fill-opacity="0.55"' : ''}/>`;
       acc += v;
     });
@@ -267,7 +267,7 @@ function stacked(el, years, rows, keys, pct, stand) {
   el.innerHTML = svg + '</svg>';
   el.querySelectorAll('.hit').forEach(h => {
     const i = +h.dataset.i;
-    h.onmousemove = ev => showTip(ev, `<b>${yrLabel(years[i], stand)}${years[i] == stand.slice(0, 4) ? ' (hochgerechnet)' : ''}</b><br>` + keys.slice().reverse().filter(k => rows[i][k] > 0)
+    h.onmousemove = ev => showTip(ev, `<b>${yrLabel(years[i], stand)}${years[i] == stand.slice(0, 4) ? (pct ? ' (bis ' + new Date(stand).toLocaleDateString('de-DE') + ')' : ' (hochgerechnet)') : ''}</b><br>` + keys.slice().reverse().filter(k => rows[i][k] > 0)
       .map(k => `<i style="display:inline-block;width:8px;height:8px;background:${SRC[k]};margin-right:5px"></i>${k}: ${pct ? num(rows[i][k] / totals[i] * 100) + ' %' : num(rows[i][k]) + ' TWh'}`).join('<br>')
       + (pct ? '' : `<br><b>Summe ${num(totals[i])} TWh</b>`));
     h.onmouseleave = hideTip;
@@ -309,7 +309,9 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     const years = Object.keys(st.gen).filter(y => +y >= from);
     const rows = years.map(y => st.gen[y]);
     stacked(document.getElementById('cGen'), years, rows, keys, false, st.stand);
-    stacked(document.getElementById('cMix'), years, rows, keys, true, st.stand);
+    // Strommix: für das laufende Jahr die tatsächlich gemessenen Werte, nicht die Hochrechnung
+    const mixRows = years.map(y => y == st.stand.slice(0, 4) ? st.ytd2026 : st.gen[y]);
+    stacked(document.getElementById('cMix'), years, mixRows, keys, true, st.stand);
     const cy = Object.keys(st.cap).filter(y => +y >= from);
     lines(document.getElementById('cCap'), cy, capS.map(([n, k, c]) => ({ n, c, v: cy.map(y => st.cap[y][k]) })), st.stand);
   };
