@@ -122,10 +122,10 @@
   </div>
   <div class="legend">
     <div><span class="dot" style="background:#4b5563"></span> Wind, Leistung unbekannt</div>
-    <div><span class="dot" style="background:#a5f3fc"></span> Wind bis 2 MW</div>
-    <div><span class="dot" style="background:#38bdf8"></span> Wind 2–4 MW</div>
-    <div><span class="dot" style="background:#6366f1"></span> Wind 4–6 MW</div>
-    <div><span class="dot" style="background:#c084fc"></span> Wind über 6 MW</div>
+    <div><span class="dot" style="background:#bfdbfe"></span> Wind bis 2 MW</div>
+    <div><span class="dot" style="background:#93c5fd"></span> Wind 2–4 MW</div>
+    <div><span class="dot" style="background:#60a5fa"></span> Wind 4–6 MW</div>
+    <div><span class="dot" style="background:#2563eb"></span> Wind über 6 MW</div>
     <label><input type="checkbox" id="offshore" checked> Offshore anzeigen</label>
     <div id="solarLegend" style="display:none;flex-direction:column;align-items:stretch;gap:6px;margin-top:6px">
       <label><input type="checkbox" id="showParks" checked> <span class="dot" style="background:#facc15;border:none"></span> Solarparks ab 1 MW</label>
@@ -159,10 +159,10 @@
 <script>
 const COLOR = ['case',
   ['==', ['get', 'mw'], 0], '#4b5563',
-  ['<', ['get', 'mw'], 2], '#a5f3fc',
-  ['<', ['get', 'mw'], 4], '#38bdf8',
-  ['<', ['get', 'mw'], 6], '#6366f1',
-  '#c084fc'];
+  ['<', ['get', 'mw'], 2], '#bfdbfe',
+  ['<', ['get', 'mw'], 4], '#93c5fd',
+  ['<', ['get', 'mw'], 6], '#60a5fa',
+  '#2563eb'];
 
 const statusEl = document.getElementById('status');
 const fmt = n => n.toLocaleString('de-DE');
