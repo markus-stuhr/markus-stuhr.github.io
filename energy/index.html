@@ -151,6 +151,8 @@
 </div>
 <div class="tiles-head"><h2>Einzelne Quellen</h2></div>
 <div class="tiles small" id="single"></div>
+<div class="tiles-head" id="landHead" hidden><h2>Bundesländer</h2></div>
+<div class="tiles small" id="laender"></div>
 <div class="foot" id="foot"></div>
 <div id="tip"></div>
 
@@ -348,7 +350,7 @@ map.on('load', async () => {
 const SRC = {
   'Wind an Land': '#5eead4', 'Wind offshore': '#0f9b8e', 'Solar': '#fde047', 'Solar Eigenverbrauch': '#fef08a', 'Biomasse': '#86efac',
   'Wasser': '#60a5fa', 'Erdgas': '#a1a1aa', 'Steinkohle': '#71717a', 'Braunkohle': '#52525b',
-  'Kernkraft': '#e4e4e7', 'Sonstige': '#8b7d6b', 'Import (netto)': '#475569', 'Importe': '#94a3b8', 'Exporte': '#475569'
+  'Kernkraft': '#e4e4e7', 'Sonstige': '#8b7d6b', 'Import (netto)': '#475569', 'Wind': '#5eead4', 'Importe': '#94a3b8', 'Exporte': '#475569'
 };
 const tip = document.getElementById('tip');
 const showTip = (ev, html) => {
@@ -373,7 +375,7 @@ const yrLabel = (y, stand) => y == stand.slice(0, 4) ? y + '*' : y;
 // Achsenschritt für 3–5 Linien, auch bei kleinen Werten (Wasser, Kernkraft …)
 const niceStep = raw => [1, 2, 5, 10, 20, 25, 50, 100, 200].find(s => raw / s <= 5) || 200;
 
-function stacked(el, years, rows, keys, pct, stand, net = null, fixMax = 0) {
+function stacked(el, years, rows, keys, pct, stand, net = null, fixMax = 0, unit = 'TWh') {
   const n = years.length, bw = (W - PL) / n, ph = H - PT - PB;
   // Positive Werte stapeln nach oben, negative (Netto-Export) nach unten; im Prozentmodus zählt nur Positives
   const val = (r, k) => pct ? Math.max(r[k], 0) : r[k];
@@ -416,9 +418,9 @@ function stacked(el, years, rows, keys, pct, stand, net = null, fixMax = 0) {
     const label = k => k === 'Import (netto)' ? (r[k] < 0 ? 'Export (netto)' : k) : k;
     h.onmousemove = ev => showTip(ev, `<b>${yrLabel(years[i], stand)}${years[i] == stand.slice(0, 4) ? (pct ? ' (bis ' + new Date(stand).toLocaleDateString('de-DE') + ')' : ' (hochgerechnet)') : ''}</b><br>` +
       keys.slice().reverse().filter(k => pct ? r[k] > 0 : r[k] !== 0)
-      .map(k => `<i style="display:inline-block;width:8px;height:8px;background:${SRC[k]};margin-right:5px"></i>${label(k)}: ${pct ? num(r[k] / pos[i] * 100) + ' %' : num(Math.abs(r[k])) + ' TWh'}`).join('<br>')
+      .map(k => `<i style="display:inline-block;width:8px;height:8px;background:${SRC[k]};margin-right:5px"></i>${label(k)}: ${pct ? num(r[k] / pos[i] * 100) + ' %' : num(Math.abs(r[k])) + ' ' + unit}`).join('<br>')
       + (net ? `<br><b>Netto: ${net[i] < 0 ? 'Export' : 'Import'} ${num(Math.abs(net[i]))} TWh</b>` :
-        pct || keys.length < 2 ? '' : `<br><b>${keys.includes('Import (netto)') ? 'Verfügbar' : 'Summe'} ${num(pos[i])} TWh</b>`));
+        pct || keys.length < 2 ? '' : `<br><b>${keys.includes('Import (netto)') ? 'Verfügbar' : 'Summe'} ${num(pos[i])} ${unit}</b>`));
     h.onmouseleave = hideTip;
   });
 }
@@ -563,6 +565,25 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
   };
   draw(2015);
 
+  // Je Bundesland eine Kachel: installierte Leistung Wind + Solar seit 2015, gemeinsame Y-Achse
+  if (st.windLand) {
+    document.getElementById('landHead').hidden = false;
+    const ly = st.laenderJahre, box = document.getElementById('laender');
+    const names = [...new Set([...Object.keys(st.solarLand), ...Object.keys(st.windLand)])].filter(n => n !== 'unbekannt');
+    const rowsOf = n => ly.map((y, i) => ({ Wind: (st.windLand[n]?.mw[i] || 0) / 1000, Solar: (st.solarLand[n]?.mw[i] || 0) / 1000 }));
+    const all = names.map(n => [n, rowsOf(n)]).sort((a, b) => (b[1].at(-1).Wind + b[1].at(-1).Solar) - (a[1].at(-1).Wind + a[1].at(-1).Solar));
+    const lmax = Math.max(...all.flatMap(([, r]) => r.map(x => x.Wind + x.Solar)));
+    all.forEach(([n, rows]) => {
+      const a = rows[0].Wind + rows[0].Solar, b = rows.at(-1).Wind + rows.at(-1).Solar;
+      const t = document.createElement('div');
+      t.className = 'tile';
+      t.innerHTML = `<h3><span>${n}</span><small>${num(b)} GW · +${Math.round((b / a - 1) * 100)} %</small></h3>` +
+        `<div class="m">Wind ${num(rows.at(-1).Wind)} GW, Solar ${num(rows.at(-1).Solar)} GW installiert</div><div></div>`;
+      box.appendChild(t);
+      stacked(t.lastElementChild, ly, rows, ['Wind', 'Solar'], false, '0000', null, lmax, 'GW');
+    });
+  }
+
   document.getElementById('foot').innerHTML =
     `* ${st.stand.slice(0, 4)} hochgerechnet (blasser Balken): Erzeugung bis ${new Date(st.stand).toLocaleDateString('de-DE')} je Quelle, ` +
     `aufs Jahr skaliert mit dem Verhältnis Gesamtjahr zu Januar–Oktober im Vorjahr (berücksichtigt z. B. den dunklen, windreichen Winter). ` +
@@ -570,7 +591,7 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
     `Erzeugung und Leistung: <a href="https://www.energy-charts.info" target="_blank">Energy-Charts (Fraunhofer ISE)</a>, öffentliche Nettostromerzeugung; Solar-Eigenverbrauch = Differenz aus Gesamterzeugung (total_power) und öffentlicher Einspeisung (Schätzung von Energy-Charts); ` +
     `2026: März–Mai sind in den Quelldaten lückenhaft und wie November/Dezember aus dem Vorjahresmonat × Wachstum Juni–Oktober (+12 %) geschätzt. ` +
     (st.windLand ? `Bundesländer: eigene Auswertung des <a href="https://www.marktstammdatenregister.de" target="_blank">Marktstammdatenregisters</a> (Bundesnetzagentur), ` +
-    `Bruttoleistung aller Einheiten nach Inbetriebnahme- und Stilllegungsdatum, Stand ${st.mastr ? st.mastr.replace(/(\d{4})(\d\d)(\d\d)/, '$3.$2.$1') : ''}. Fährt man über eine Zeile, zeigt sie Zuwachs und Anzahl der Anlagen.` : '');
+    `Bruttoleistung aller Einheiten nach Inbetriebnahme- und Stilllegungsdatum, Stand ${st.mastr ? st.mastr.replace(/(\d{4})(\d\d)(\d\d)/, '$3.$2.$1') : ''}. Fährt man über eine Zeile, zeigt sie Zuwachs und Anzahl der Anlagen. Bundesland-Kacheln: installierte Leistung zum Jahresende, 2026 = Stand ${st.mastr ? st.mastr.replace(/(\d{4})(\d\d)(\d\d)/, '$3.$2.$1') : ''}.` : '');
 })();
 </script>
 </body>
