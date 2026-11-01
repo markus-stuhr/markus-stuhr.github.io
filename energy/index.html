@@ -75,8 +75,8 @@
   .keys span { display: inline-flex; align-items: center; gap: 5px; }
   .keys i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
   .bars { display: flex; flex-direction: column; gap: 5px; font-size: 11px; }
-  .bars .r { display: grid; grid-template-columns: 130px 1fr 70px 64px; align-items: center; gap: 8px; }
-  .bars .r svg { width: 70px; height: 16px; }
+  .bars .r { display: grid; grid-template-columns: 112px minmax(0, 1fr) 36px 62px; align-items: center; gap: 6px; }
+  .bars .r svg { width: 36px; height: 14px; }
   .bars .r span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d7dbe2; }
   .bars .b { height: 9px; border-radius: 3px; background: #5eead4; }
   .bars .v { text-align: right; color: #9aa4b2; white-space: nowrap; }
@@ -101,8 +101,8 @@
     .switch { top: auto; bottom: 28px; }
     body.daten .tiles-head { padding-top: 16px; }
     body.daten .foot { padding-bottom: 80px; }
-    .bars .r { grid-template-columns: 96px 1fr 56px 58px; }
-    .bars .r svg { width: 56px; }
+    .bars .r { grid-template-columns: 96px minmax(0, 1fr) 30px 58px; }
+    .bars .r svg { width: 30px; }
     .panel { top: 10px; left: 10px; right: 10px; width: auto; padding: 12px 14px; }
     .panel .sub { display: none; }
   }
