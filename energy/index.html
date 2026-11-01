@@ -78,7 +78,7 @@
   .bars .r { display: grid; grid-template-columns: 112px minmax(0, 1fr) 36px 62px; align-items: center; gap: 6px; }
   .bars .r svg { width: 36px; height: 14px; }
   .bars .r span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #d7dbe2; }
-  .bars .b { height: 9px; border-radius: 3px; background: #5eead4; }
+  .bars .b { height: 9px; border-radius: 3px; background: #60a5fa; }
   .bars .v { text-align: right; color: #9aa4b2; white-space: nowrap; }
   .trade { display: flex; flex-direction: column; gap: 5px; font-size: 11px; }
   .trade .r { display: grid; grid-template-columns: 96px 1fr 1fr 74px; align-items: center; gap: 0; }
@@ -348,9 +348,9 @@ map.on('load', async () => {
 
 // ---- Kacheln ----
 const SRC = {
-  'Wind an Land': '#5eead4', 'Wind offshore': '#0f9b8e', 'Solar': '#fde047', 'Solar Eigenverbrauch': '#fef08a', 'Biomasse': '#86efac',
-  'Wasser': '#60a5fa', 'Erdgas': '#a1a1aa', 'Steinkohle': '#71717a', 'Braunkohle': '#52525b',
-  'Kernkraft': '#e4e4e7', 'Sonstige': '#8b7d6b', 'Import (netto)': '#475569', 'Wind': '#5eead4', 'Importe': '#94a3b8', 'Exporte': '#475569'
+  'Wind an Land': '#60a5fa', 'Wind offshore': '#2563eb', 'Solar': '#fde047', 'Solar Eigenverbrauch': '#fef08a', 'Biomasse': '#22c55e',
+  'Wasser': '#5eead4', 'Erdgas': '#a1a1aa', 'Steinkohle': '#71717a', 'Braunkohle': '#52525b',
+  'Kernkraft': '#e4e4e7', 'Sonstige': '#8b7d6b', 'Import (netto)': '#475569', 'Wind': '#60a5fa', 'Importe': '#94a3b8', 'Exporte': '#475569'
 };
 const tip = document.getElementById('tip');
 const showTip = (ev, html) => {
@@ -455,16 +455,16 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
   Object.values(st.gen).concat(st.ytd2026).forEach(r => { r['Solar Eigenverbrauch'] ??= 0; r['Import (netto)'] ??= 0; });
   const keys = ['Kernkraft', 'Braunkohle', 'Steinkohle', 'Erdgas', 'Sonstige', 'Biomasse', 'Wasser', 'Solar', 'Solar Eigenverbrauch', 'Wind offshore', 'Wind an Land', 'Import (netto)'];
   document.getElementById('kGen').innerHTML = keyHtml(keys.slice().reverse().map(k => [k, SRC[k]]));
-  const capS = [['Wind (an Land + offshore)', c => c.on + c.off, '#5eead4'], ['Solar', c => c.solar, '#fde047']];
+  const capS = [['Wind (an Land + offshore)', c => c.on + c.off, '#60a5fa'], ['Solar', c => c.solar, '#fde047']];
   document.getElementById('kCap').innerHTML = keyHtml(capS.map(([n, , c]) => [n, c]));
 
   const renS = [
-    ['Erneuerbare gesamt', '#7ee787', r => r['Wind an Land'] + r['Wind offshore'] + r['Solar'] + r['Solar Eigenverbrauch'] + r['Biomasse'] + r['Wasser']],
-    ['Wind (an Land + offshore)', '#5eead4', r => r['Wind an Land'] + r['Wind offshore']],
+    ['Erneuerbare gesamt', '#e6edf3', r => r['Wind an Land'] + r['Wind offshore'] + r['Solar'] + r['Solar Eigenverbrauch'] + r['Biomasse'] + r['Wasser']],
+    ['Wind (an Land + offshore)', '#60a5fa', r => r['Wind an Land'] + r['Wind offshore']],
     ['Solar inkl. Eigenverbrauch', '#fef08a', r => r['Solar'] + r['Solar Eigenverbrauch'], true],
     ['Solar ins Netz', '#fde047', r => r['Solar']],
-    ['Biomasse', '#86efac', r => r['Biomasse']],
-    ['Wasser', '#60a5fa', r => r['Wasser']]
+    ['Biomasse', '#22c55e', r => r['Biomasse']],
+    ['Wasser', '#5eead4', r => r['Wasser']]
   ];
   document.getElementById('kRen').innerHTML = keyHtml(renS.map(([n, c]) => [n, c]));
 
@@ -510,8 +510,8 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
 
   // Auslastung = TWh / (mittlere GW × 8760 h); Mittel aus Vorjahresende und Jahresende
   const useS = [
-    ['Wind offshore', '#0f9b8e', r => r['Wind offshore'], c => c.off],
-    ['Wind an Land', '#5eead4', r => r['Wind an Land'], c => c.on],
+    ['Wind offshore', '#2563eb', r => r['Wind offshore'], c => c.off],
+    ['Wind an Land', '#60a5fa', r => r['Wind an Land'], c => c.on],
     ['Solar inkl. Eigenverbrauch', '#fef08a', r => r['Solar'] + r['Solar Eigenverbrauch'], c => c.solar, true],
     ['Solar ins Netz', '#fde047', r => r['Solar'], c => c.solar]
   ];
@@ -523,7 +523,7 @@ const keyHtml = list => list.map(([n, c]) => `<span><i style="background:${c}"><
 
   const draw = from => {
     if (st.windLand) {
-      landTile(document.getElementById('cWindLand'), st.windLand, from, '#5eead4');
+      landTile(document.getElementById('cWindLand'), st.windLand, from, '#60a5fa');
       landTile(document.getElementById('cSolarLand'), st.solarLand, from, '#fde047');
     }
     const years = Object.keys(st.gen).filter(y => +y >= from);
