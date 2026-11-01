@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="apple-mobile-web-app-title" content="Energy">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Windräder in Deutschland | Markus Stuhr</title>
+<title>Wind &amp; Solar in Deutschland | Markus Stuhr</title>
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <style>
@@ -114,19 +114,24 @@
 <div id="map"></div>
 
 <div class="panel">
-  <h1>Windräder in Deutschland</h1>
-  <div class="sub">Jede Windkraftanlage, die in OpenStreetMap eingetragen ist – an Land und in Nord- und Ostsee. Klick auf ein Windrad zeigt Details.</div>
+  <h1>Wind &amp; Solar in Deutschland</h1>
+  <div class="sub">Jede Windkraftanlage aus OpenStreetMap, an Land und in Nord- und Ostsee, dazu Solarparks und Dach-Solar je Landkreis. Klick zeigt Details.</div>
   <div class="kpis">
     <div><b id="kCount">–</b>Anlagen</div>
     <div><b id="kGW">–</b>GW bekannt</div>
   </div>
   <div class="legend">
-    <div><span class="dot" style="background:#4b5563"></span> Leistung unbekannt</div>
-    <div><span class="dot" style="background:#7dd3fc"></span> bis 2 MW</div>
-    <div><span class="dot" style="background:#5eead4"></span> 2–4 MW</div>
-    <div><span class="dot" style="background:#fde047"></span> 4–6 MW</div>
-    <div><span class="dot" style="background:#fb923c"></span> über 6 MW</div>
+    <div><span class="dot" style="background:#4b5563"></span> Wind, Leistung unbekannt</div>
+    <div><span class="dot" style="background:#a5f3fc"></span> Wind bis 2 MW</div>
+    <div><span class="dot" style="background:#38bdf8"></span> Wind 2–4 MW</div>
+    <div><span class="dot" style="background:#6366f1"></span> Wind 4–6 MW</div>
+    <div><span class="dot" style="background:#c084fc"></span> Wind über 6 MW</div>
     <label><input type="checkbox" id="offshore" checked> Offshore anzeigen</label>
+    <div id="solarLegend" style="display:none;flex-direction:column;align-items:stretch;gap:6px;margin-top:6px">
+      <label><input type="checkbox" id="showParks" checked> <span class="dot" style="background:#facc15;border:none"></span> Solarparks ab 1 MW</label>
+      <label><input type="checkbox" id="showKreis"> Dach-Solar je Landkreis</label>
+      <div id="kreisScale" style="display:none;align-items:center;gap:4px;font-size:10px;color:#9aa4b2;margin:4px 0 0 22px"></div>
+    </div>
   </div>
   <div class="status" id="status">Lade Windräder …</div>
 </div>
@@ -152,10 +157,10 @@
 <script>
 const COLOR = ['case',
   ['==', ['get', 'mw'], 0], '#4b5563',
-  ['<', ['get', 'mw'], 2], '#7dd3fc',
-  ['<', ['get', 'mw'], 4], '#5eead4',
-  ['<', ['get', 'mw'], 6], '#fde047',
-  '#fb923c'];
+  ['<', ['get', 'mw'], 2], '#a5f3fc',
+  ['<', ['get', 'mw'], 4], '#38bdf8',
+  ['<', ['get', 'mw'], 6], '#6366f1',
+  '#c084fc'];
 
 const statusEl = document.getElementById('status');
 const fmt = n => n.toLocaleString('de-DE');
@@ -207,16 +212,29 @@ map.on('load', async () => {
     }
   });
 
-  if (road) map.addLayer({
-    id: 'ferry', type: 'line', source: road.source, 'source-layer': 'transportation',
-    filter: ['==', ['get', 'class'], 'ferry'],
-    paint: {
-      'line-color': '#6b9bc3',
-      'line-opacity': 0.45,
-      'line-dasharray': [3, 2],
-      'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 8, 1, 12, 1.8]
-    }
+  // Außengrenze Deutschlands weiß (Grenzlinien des Kartenstils, nur die mit DE auf einer Seite)
+  const border = map.getStyle().layers.find(l => l['source-layer'] === 'boundary');
+  if (border) map.addLayer({
+    id: 'de-border', type: 'line', source: border.source, 'source-layer': 'boundary',
+    filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1],
+      ['any', ['==', ['get', 'adm0_l'], 'DEU'], ['==', ['get', 'adm0_r'], 'DEU']]],
+    layout: { 'line-join': 'round' },
+    paint: { 'line-color': '#ffffff', 'line-opacity': 0.85, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1, 10, 2] }
   });
+
+  // Fährrouten von/nach Deutschland (OSM route=ferry mit Anleger in DE), statt aller Fähren aus dem Kartenstil
+  fetch('faehren.json').then(r => r.json()).then(fe => {
+    map.addSource('ferry', { type: 'geojson', data: fe });
+    map.addLayer({
+      id: 'ferry', type: 'line', source: 'ferry',
+      paint: {
+        'line-color': '#6b9bc3',
+        'line-opacity': 0.45,
+        'line-dasharray': [3, 2],
+        'line-width': ['interpolate', ['linear'], ['zoom'], 5, 0.6, 8, 1, 12, 1.8]
+      }
+    }, ['kreise', 'wind'].find(id => map.getLayer(id)));
+  }).catch(() => {});
 
   map.addSource('wind', { type: 'geojson', data: { type: 'FeatureCollection', features } });
   map.addLayer({
@@ -262,13 +280,75 @@ map.on('load', async () => {
   });
   map.on('mouseenter', 'wind', () => map.getCanvas().style.cursor = 'pointer');
   map.on('mouseleave', 'wind', () => map.getCanvas().style.cursor = '');
+
+  // ---- Solar aus dem Marktstammdatenregister (nur wenn die Dateien vorhanden sind) ----
+  let parks, kreise, st;
+  try {
+    [parks, kreise, st] = await Promise.all(['solarparks.json', 'kreise.json', 'stats.json']
+      .map(f => fetch(f, { cache: 'no-cache' }).then(r => { if (!r.ok) throw 0; return r.json(); })));
+  } catch (e) { return; }
+  if (!st.solarKreis) return;
+  document.getElementById('solarLegend').style.display = 'flex';
+
+  // Dach-Solar je Kreis: kW pro km², Klassen nach Quintilen, unter den Punkten
+  kreise.features.forEach(f => {
+    const mw = st.solarKreis[f.properties.ags] || 0;
+    f.properties.mw = mw;
+    f.properties.d = mw * 1000 / f.properties.km2;
+  });
+  const ds = kreise.features.map(f => f.properties.d).sort((a, b) => a - b);
+  const br = [0.2, 0.4, 0.6, 0.8].map(q => Math.round(ds[Math.floor(q * ds.length)]));
+  const ramp = ['#3b2f0b', '#6b4f0f', '#a16207', '#ca8a04', '#facc15'];
+  map.addSource('kreise', { type: 'geojson', data: kreise });
+  map.addLayer({
+    id: 'kreise', type: 'fill', source: 'kreise', layout: { visibility: 'none' },
+    paint: {
+      'fill-color': ['step', ['get', 'd'], ramp[0], br[0], ramp[1], br[1], ramp[2], br[2], ramp[3], br[3], ramp[4]],
+      'fill-opacity': 0.55, 'fill-outline-color': '#0d1117'
+    }
+  }, 'wind');
+  document.getElementById('kreisScale').innerHTML = ramp.map((c, i) =>
+    `<span title="${i ? '≥ ' + br[i - 1] : '< ' + br[0]} kW/km²" style="width:18px;height:8px;background:${c};display:inline-block"></span>`).join('') +
+    ` <span>${br[0]}–${br[3]}+ kW/km²</span>`;
+
+  map.addSource('parks', { type: 'geojson', data: { type: 'FeatureCollection', features: parks.t.map(([lon, lat, mw, year, name], i) => ({
+    type: 'Feature', id: i, geometry: { type: 'Point', coordinates: [lon, lat] }, properties: { mw, year, name } })) } });
+  map.addLayer({
+    id: 'parks', type: 'circle', source: 'parks',
+    paint: {
+      'circle-color': '#facc15',
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, ['interpolate', ['linear'], ['get', 'mw'], 1, 0.7, 100, 3.5],
+        8, ['interpolate', ['linear'], ['get', 'mw'], 1, 1.5, 100, 7], 12, ['interpolate', ['linear'], ['get', 'mw'], 1, 5, 100, 16]],
+      'circle-opacity': 0.85
+    }
+  });
+
+  const vis = (id, on) => map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  const kreisScale = document.getElementById('kreisScale');
+  document.getElementById('showParks').onchange = e => vis('parks', e.target.checked);
+  document.getElementById('showKreis').onchange = e => { vis('kreise', e.target.checked); kreisScale.style.display = e.target.checked ? 'flex' : 'none'; };
+
+  map.on('click', 'parks', e => {
+    const p = e.features[0].properties;
+    new maplibregl.Popup({ offset: 8, closeButton: false }).setLngLat(e.features[0].geometry.coordinates)
+      .setHTML(`<b>${p.name || 'Solarpark'}</b><div class="m">${num(p.mw)} MW<br>in Betrieb seit ${p.year}<br>Quelle: Marktstammdatenregister</div>`).addTo(map);
+  });
+  map.on('click', 'kreise', e => {
+    if (map.queryRenderedFeatures(e.point, { layers: ['wind', 'parks'] }).length) return;
+    const p = e.features[0].properties;
+    new maplibregl.Popup({ closeButton: false }).setLngLat(e.lngLat)
+      .setHTML(`<b>${p.name}</b><div class="m">Dach-Solar ${num(p.mw)} MW<br>${fmt(Math.round(p.d))} kW pro km²</div>`).addTo(map);
+  });
+  map.on('mouseenter', 'parks', () => map.getCanvas().style.cursor = 'pointer');
+  map.on('mouseleave', 'parks', () => map.getCanvas().style.cursor = '');
+  statusEl.innerHTML += `<br>Solar: ${fmt(parks.t.length)} Solarparks ab 1 MW und Dach-Solar je Kreis aus dem <a href="https://www.marktstammdatenregister.de" target="_blank">Marktstammdatenregister</a>.`;
 });
 
 // ---- Kacheln ----
 const SRC = {
   'Wind an Land': '#5eead4', 'Wind offshore': '#0f9b8e', 'Solar': '#fde047', 'Solar Eigenverbrauch': '#fef08a', 'Biomasse': '#86efac',
-  'Wasser': '#60a5fa', 'Erdgas': '#fb923c', 'Steinkohle': '#a1a1aa', 'Braunkohle': '#a16207',
-  'Kernkraft': '#c084fc', 'Sonstige': '#4b5563', 'Import (netto)': '#475569', 'Importe': '#94a3b8', 'Exporte': '#475569'
+  'Wasser': '#60a5fa', 'Erdgas': '#a1a1aa', 'Steinkohle': '#71717a', 'Braunkohle': '#52525b',
+  'Kernkraft': '#e4e4e7', 'Sonstige': '#8b7d6b', 'Import (netto)': '#475569', 'Importe': '#94a3b8', 'Exporte': '#475569'
 };
 const tip = document.getElementById('tip');
 const showTip = (ev, html) => {
