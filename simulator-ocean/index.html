@@ -1101,7 +1101,7 @@ void main() {
       float d = abs(c) - wl;                                // m outside the hull
       // both sides throw flakes; the low (leeward) side more and wider
       float lee = clamp(1.0 - 2.2 * B.y * sign(c), 0.65, 2.2);
-      float reach = (0.8 + 0.3 * bt) * (0.6 + 0.55 * lee);   // the pushed-out band widens aft
+      float reach = (0.8 + 0.3 * bt) * (0.7 + 0.3 * lee);   // the pushed-out band widens aft
       // windward (high) side: just a narrow, bright strip running along the water's edge
       float wwd = clamp((1.0 - lee) / 0.35, 0.0, 1.0);
       reach = mix(reach, 0.55 + 0.03 * bt, wwd);
