@@ -3832,9 +3832,6 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       // stern: the transom's churned water as the same crisp flakes, full width, fading aft
       leeFoam += uFxW.x * exp(-xq * xq) * exp(-age / 3.0) * go * behind * 0.7;
       // breaking crests along the outer edge of the Kelvin V, much more on the low side
-      // flatter than the Kelvin edge (~10 deg instead of 19.5): where the bow wave's crest breaks
-      leeFoam += uFxW.y * smoothstep(0.42, 0.5, au) * (1.0 - smoothstep(0.52, 0.62, au)) * smoothstep(uHullL * 1.0, uHullL * 1.3, s)
-               * exp(-age / 4.0) * (1.0 - smoothstep(50.0, 90.0, s)) * go * clamp(spd / 6.0, 0.0, 1.0) * (0.25 + 0.6 * leeSide);
       gl_FragColor = vec4(foam, h, slick, leeFoam);
     }`,
   blending: THREE.CustomBlending,
@@ -3976,7 +3973,7 @@ const _bows = [];
 // bursts when the stem meets a rising crest, plus slow, large mist puffs at higher speed.
 // Effects around the boat, rebuilt one by one (2026-11-04): all off, switched back on step by step.
 // Water, clear water near the boat, whitecaps and the Kelvin bow waves (wave height) stay on.
-const FX = { bowFlakes: true, sternFlakes: true, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
+const FX = { bowFlakes: true, sternFlakes: true, wakeFoam: false, spray: false, mist: false };
 FX.kelvin = 2.0;   // Kelvin bow-wave height (wave only, no foam)
 FX.kelvinLen = 55;   // m behind the bow where the bow waves have faded out
 FX.bowLen = 23;   // m: how far aft the bow flakes reach (decay length)
@@ -3989,7 +3986,7 @@ FX.sternLen = 95;
 window.FX = FX;
 // Small switch panel (top right) to try the effects one by one
 {
-  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', sternFlakeLen: 'Heck-Flocken (Länge m)', sternFlakeW: 'Heck-Flocken (Breite)', sternFlakeI: 'Heck-Flocken (Stärke)', sternShift: 'Heck-Versatz bei Krängung', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
+  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', sternFlakeLen: 'Heck-Flocken (Länge m)', sternFlakeW: 'Heck-Flocken (Breite)', sternFlakeI: 'Heck-Flocken (Stärke)', sternShift: 'Heck-Versatz bei Krängung', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-Flocken', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
   const box = document.createElement('div');
   box.id = 'fxPanel';
   box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:40;background:rgba(10,20,30,.72);color:#e8f0f6;font:12px system-ui,sans-serif;padding:8px 10px;border-radius:8px;line-height:1.7;user-select:none';
@@ -4139,7 +4136,7 @@ function updateSpray() {
   sternRibbonMat.uniforms.uFlkLen.value = FX.sternFlakeLen;
   sternRibbonMat.uniforms.uFlkW.value = FX.sternFlakeW;
   sternRibbonMat.uniforms.uFlkI.value = FX.sternFlakeI;
-  wakeRibbonMat.uniforms.uFxW.value.set(0, FX.kelvinFlakes ? 1 : 0, 0);
+  wakeRibbonMat.uniforms.uFxW.value.set(0, 0, 0);
   ou.uBoatP.value.set(boatGroup.position.x, boatGroup.position.z);
   seaFloorFake.position.x = boatGroup.position.x; seaFloorFake.position.z = boatGroup.position.z;
   seaFloorFake.material.color.setRGB(0.004 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), 0.06 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), 0.075 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), THREE.LinearSRGBColorSpace);
