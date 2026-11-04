@@ -946,7 +946,7 @@ void main() {
   float ds = (0.10 + 0.06 * uAmp + 0.10 * windF) * (0.45 + 1.1 * gust) * exp(-dist / 1100.0) * uRipple
            * (1.0 + 1.8 * uRain);   // raindrops pock the surface
   // Boat wakes: foam (r) + Kelvin wave height (g) from the top-down wake texture
-  float wakeFoam = 0.0, wakeSlick = 0.0;
+  float wakeFoam = 0.0, wakeSlick = 0.0, wakeLee = 0.0;
   if (uWakeOn > 0.5) {
     vec2 wuv = (vWorld.xz - uWakeBox.xy) / uWakeBox.z;
     if (wuv.x > 0.0 && wuv.y > 0.0 && wuv.x < 1.0 && wuv.y < 1.0) {
@@ -959,6 +959,7 @@ void main() {
       n.z -= hz / texM;
       wakeFoam = wk.r;
       wakeSlick = clamp(wk.b, 0.0, 1.0);
+      wakeLee = clamp(wk.a, 0.0, 1.2);
     }
   }
   ds *= 1.0 - 0.75 * wakeSlick;   // turbulence flattens the ripples in the old wake
@@ -1086,6 +1087,7 @@ void main() {
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
       bowMask = max(bowMask, m);
     }
+    bowMask = max(bowMask, wakeLee);   // the leeward flakes run on aft along the real track
     if (bowMask > 0.001) {
       // coarse pattern only and a soft edge: the fine layer read as pixel speckle
       float pb = texture2D(tFoam, vWorld.xz / 4.5 + uTime * vec2(0.05, -0.03)).r * 0.8
@@ -3783,8 +3785,9 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float leeSide = clamp((lee - 0.7) * 1.5, 0.0, 1.0);
       float xs = 2.4 + max(s - uHullL * 0.3, 0.0) * 0.05;      // m off the track
       float bw = 1.2 + s * 0.02;
-      foam += exp(-(x - xs) * (x - xs) / (bw * bw)) * smoothstep(uHullL * 0.2, uHullL * 0.5, s)
-            * exp(-age / 6.0) * (1.0 - smoothstep(60.0, 110.0, s)) * 0.75 * go * leeSide;
+      // (own channel a: the ocean draws it as the same crisp foam flakes as the bow white water)
+      float leeFoam = exp(-(x - xs) * (x - xs) / (bw * bw)) * smoothstep(uHullL * 0.2, uHullL * 0.5, s)
+            * exp(-age / 6.0) * (1.0 - smoothstep(60.0, 110.0, s)) * 1.1 * go * leeSide;
       // Kelvin pattern; transverse wavelength 2*pi*v^2/g
       float lam = max(6.2831 * spd * spd / 9.81, 3.0);
       float edge = smoothstep(0.45, 0.9, au) * (1.0 - smoothstep(0.9, 1.0, au));
@@ -3796,7 +3799,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float spread = sqrt(uHullL * 0.5 / (uHullL * 0.5 + r));
       // divergent ridges ~60 % of before (max slope ~6-9°); transverse waves faint (masked by wash)
       float h = (edge * div * 0.42 * lee * spread + tra * 0.15 * spread) * amp;
-      gl_FragColor = vec4(foam, h, slick, 1.0);
+      gl_FragColor = vec4(foam, h, slick, leeFoam);
     }`,
   blending: THREE.CustomBlending,
   blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendEquation: THREE.AddEquation,
