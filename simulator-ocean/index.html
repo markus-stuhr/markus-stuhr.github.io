@@ -383,8 +383,11 @@ const M = 7.4;
 // Sim runs faster than wall-clock so a realistic metre-scale course feels lively
 // (a 30 m maxi at ~13 kn would otherwise crawl across the screen).
 const SIM_SPEED = 1;   // real time (was 3x time compression until 2026-11-04)
-// The wake/foam/spray effects were tuned at 3x: they see speeds and ages as if it still ran at 3x
-const FX_TIME = SIM_SPEED / 3;
+// Effects around the boats (wake, waves, flakes, spray) run on simulation time (fxT), so they
+// look the same at any SIM_SPEED - faster just plays them faster. They were tuned while the
+// sim ran at 3x, so internally they see speed x3 and age /3 (FX_REF) to keep those values.
+const FX_REF = 3;
+let fxT = 0;   // simulation seconds, advanced with the boats
 
 // --- Real-world geography (BVI North Sound — the TracTrac race area) ---
 const MAPTILER_KEY = 'nKyAvBkGUvss9FTqT7f6'; // shared with the Globe project
@@ -3625,6 +3628,7 @@ function updateReplayFrame(dt) {
   const adt = replay.playing ? dt : 0;               // animation dt — freeze when paused
   const rdt = replay.playing ? dt * replay.speed : 0; // replay-scaled dt for physics (heel etc.)
   t += adt;
+  fxT += rdt * SIM_SPEED;
   if (replay.playing) {
     replay.ms += dt * 1000 * replay.speed;
     if (replay.ms >= replay.duration) { replay.ms = replay.duration; replay.playing = false; document.getElementById('rpPlay').textContent = '▶'; }
@@ -3754,7 +3758,7 @@ function chaseCamera() {
 // g = wave height (divergent ridges along the wedge edges, transverse waves inside).
 WAKE_SOURCES.push(boatGroup);
 // ~0.31 m per texel: coarser texels showed up as blocky wave normals
-const WAKE_SPAN = 640, WAKE_RES = 2048, WAKE_MAXP = 100, WAKE_LIFE_S = 18 / FX_TIME, WAKE_STEP = 2;
+const WAKE_SPAN = 640, WAKE_RES = 2048, WAKE_MAXP = 100, WAKE_LIFE_S = 18 * FX_REF, WAKE_STEP = 2;
 const HULL_L = (HULL_ZSTERN - HULL_ZBOW) * M;   // the bow wave starts at the stem, the wash behind the transom
 // Half-width of the wave pattern s metres behind the stem: the bow wave hugs the hull at
 // the waterline (the round sections are only ~2/3 as wide there as at deck level) until
@@ -3919,6 +3923,7 @@ function sternTrailFor(g) {
 }
 const _stA = new THREE.Vector3(), _stB = new THREE.Vector3(), _stC = new THREE.Vector3();
 function updateSternTrail(g, live, spd) {
+  const t = fxT;
   const tr = sternTrailFor(g);
   tr.mesh.visible = false;
   if (!live) { tr.pts.length = 0; return; }
@@ -3953,7 +3958,7 @@ function updateSternTrail(g, live, spd) {
     for (let side = -1; side <= 1; side += 2) {
       const k = n * 2 + (side > 0 ? 1 : 0);
       pos[k * 3] = c.x + nx * W * side; pos[k * 3 + 1] = 0; pos[k * 3 + 2] = c.z + nz * W * side;
-      aw[k * 4] = side; aw[k * 4 + 1] = sAcc; aw[k * 4 + 2] = (t - c.t) * FX_TIME; aw[k * 4 + 3] = spd;
+      aw[k * 4] = side; aw[k * 4 + 1] = sAcc; aw[k * 4 + 2] = (t - c.t) / FX_REF; aw[k * 4 + 3] = spd;
       al[k * 2] = c.hw || hw0; al[k * 2 + 1] = W;
     }
     n++;
@@ -4126,7 +4131,7 @@ function hullWaterline(g, side, lz, out) {
 
 function updateSpray() {
   const now = performance.now() / 1000;
-  const dt = Math.min(now - sprayLast, 0.05); sprayLast = now;
+  const dt = Math.min(now - sprayLast, 0.05) * (gameState === 'racing' ? SIM_SPEED : 1); sprayLast = now;
   if (dt <= 0) return;
   const ou = oceanMat.uniforms;
   ou.uFx.value.set(FX.bowFlakes ? 1 : 0, FX.sternFlakes ? 1 : 0, 0, FX.bowLen);
@@ -4246,6 +4251,7 @@ function updateSpray() {
 }
 
 function updateWakes() {
+  const t = fxT;   // simulation time (see FX_REF)
   _bows.length = 0;
   for (const g of WAKE_SOURCES) {
     const tr = wakeTrailFor(g);
@@ -4262,7 +4268,7 @@ function updateWakes() {
     if (tr.px !== null && t > tr.pt) {
       const dtw = t - tr.pt;
       const k = 1 - Math.exp(-dtw / 1.0);
-      const vInst = Math.min(Math.hypot(sx - tr.px, sz - tr.pz) / dtw / FX_TIME, 30);
+      const vInst = Math.min(Math.hypot(sx - tr.px, sz - tr.pz) / dtw * FX_REF, 30);
       tr.vs += (vInst - tr.vs) * k;
       tr.ls += (leanRaw - tr.ls) * k;
     } else if (tr.px === null) tr.ls = leanRaw;
@@ -4321,7 +4327,7 @@ function updateWakes() {
       const dl = Math.hypot(dx, dz) || 1;
       if (i > 0) sAcc += Math.hypot(c.x - px, c.z - pz);
       px = c.x; pz = c.z;
-      put(c.x, c.z, (t - c.t) * FX_TIME, headV, c.l || 0, -dz / dl, dx / dl);   // whole pattern uses the current speed
+      put(c.x, c.z, (t - c.t) / FX_REF, headV, c.l || 0, -dz / dl, dx / dl);   // whole pattern uses the current speed
     }
     if (n < 2) continue;
     tr.mesh.geometry.setDrawRange(0, (n - 1) * 6);
@@ -5459,6 +5465,7 @@ function animate(now) {
   // Menu: just the empty sea, slowly drifting, behind the overlay.
   if (gameState === 'menu') {
     t += dt;
+    fxT += dt * SIM_SPEED;
     menuYaw += dt * 0.04;
     ocean.position.set(0, 0, 0);
     stars.position.set(0, 0, 0);
@@ -5492,7 +5499,7 @@ function animate(now) {
   }
 
   const moving = gameState === 'racing';
-  if (moving) t += dt; // frozen sea & boats during the countdown
+  if (moving) { t += dt; fxT += dt * SIM_SPEED; } // frozen sea & boats during the countdown
   // Time compression: real sailing on a metre-scale course is slow, so the
   // simulation (boat/opponents/clock/wake) runs faster than wall-clock. The wave
   // field still evolves at real time (calm sea), so speeds/knots stay realistic.
