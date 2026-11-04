@@ -848,6 +848,9 @@ uniform sampler2D tWake;
 uniform vec3 uWakeBox;   // x0, z0, span (m)
 #define BOW_N 6
 uniform vec2 uBoatP;
+uniform sampler2D tUnder;
+uniform float uUnderOn;
+uniform vec2 uRes;
 uniform vec4 uBowA[BOW_N];   // stem x, z, bow direction x, z
 uniform vec4 uBowB[BOW_N];   // speed (m/s), lean (+ = starboard up)
 uniform int uBowN;
@@ -1115,9 +1118,16 @@ void main() {
   // Clear water around the player's boat: hull, keel and deck under a wave show through.
   // Only within ~35 m of the boat (no land there), never where foam or the grazing mirror
   // image is; the teal backdrop under the boat (seaFloorFake) stands in for the deep below.
+  // Refraction: the under-water view (boat + deep backdrop, rendered to tUnder each frame)
+  // is read with a screen offset from the wave slope, so hull and keel wobble with the waves.
   float clearW = 1.0 - smoothstep(18.0, 35.0, length(vWorld.xz - uBoatP));
-  float seeThru = clearW * 0.2 * (1.0 - F) * (1.0 - clamp(foam + wf, 0.0, 1.0)) * (1.0 - inBox * (1.0 - smoothstep(0.0, 60.0, dS)));
-  gl_FragColor = vec4(acesFit(col * 1.1), 1.0 - seeThru);
+  float seeThru = uUnderOn * clearW * 0.2 * (1.0 - F) * (1.0 - clamp(foam + wf, 0.0, 1.0)) * (1.0 - inBox * (1.0 - smoothstep(0.0, 60.0, dS)));
+  if (seeThru > 0.001) {
+    vec2 suv = gl_FragCoord.xy / uRes + N.xz * 0.035 / (1.0 + dist / 40.0);
+    vec3 under = texture2D(tUnder, clamp(suv, 0.001, 0.999)).rgb;
+    col = mix(col, under * vec3(0.55, 0.9, 0.88), seeThru);   // water absorbs red on the way through
+  }
+  gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
   #include <colorspace_fragment>
   // fog + aerial perspective towards the sky colour behind (see fogSky)
   #ifdef USE_FOG
@@ -1164,14 +1174,14 @@ const oceanMat = new THREE.ShaderMaterial({
     tWake: { value: null }, uWakeBox: { value: new THREE.Vector3(0, 0, 1) }, uWakeOn: { value: 0 },
     uBowA: { value: null }, uBowB: { value: null }, uBowN: { value: 0 },
     uRipple: { value: RIPPLE },
-    uBoatP: { value: new THREE.Vector2(0, 0) },   // player boat (x, z): the water around it is see-through
+    uBoatP: { value: new THREE.Vector2(0, 0) },
+    tUnder: { value: null }, uUnderOn: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) },   // player boat (x, z): the water around it is see-through
     tSunShadow: { value: null }, uSunShadowMat: { value: new THREE.Matrix4() }, uShadowOn: { value: 0 },
     uShadowTexel: { value: new THREE.Vector2(1 / 4096, 1 / 4096) },
   }]),
   vertexShader: OCEAN_VERT,
   fragmentShader: OCEAN_FRAG,
   fog: true,
-  transparent: true,   // see-through near the boat (alpha is 1 everywhere else)
 });
 // UniformsUtils.merge clones arrays/textures -> point back at the live wave tables
 oceanMat.uniforms.uWaveA.value = uWaveA;
@@ -1187,13 +1197,42 @@ oceanMat.uniforms.uBowA.value = uBowA;
 oceanMat.uniforms.uBowB.value = uBowB;
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
-ocean.renderOrder = -10;   // first of the transparent pass: wakes, spray, lines draw over it
-// Backdrop under the boat for the clear water to show: a deep-teal disc ~9 m down that
-// follows the player (land and seabed terrain above it still win the depth test)
+// Under-water view for the refraction: the boat's lit parts + a deep-teal disc ~9 m down,
+// drawn on layer 2 only into underRT (half resolution) right before the main render
 const seaFloorFake = new THREE.Mesh(new THREE.CircleGeometry(60, 48).rotateX(-Math.PI / 2),
   new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(0.004, 0.06, 0.075, THREE.LinearSRGBColorSpace), fog: false }));
 seaFloorFake.position.y = -9;
+seaFloorFake.layers.set(2);
 scene.add(seaFloorFake);
+const UNDER_LAYER = 2;
+const underRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+let underTagged = 0;
+function renderUnderwater() {
+  if (renderer.xr.isPresenting) { oceanMat.uniforms.uUnderOn.value = 0; return; }   // stereo: skipped
+  const db = renderer.getDrawingBufferSize(_underSz);
+  const w = Math.max(1, db.x >> 1), h = Math.max(1, db.y >> 1);
+  if (underRT.width !== w || underRT.height !== h) underRT.setSize(w, h);
+  // tag the boat's lit, opaque meshes (rings/markers are unlit or transparent) and the lights
+  if (underTagged++ % 60 === 0) {
+    boatGroup.traverse(o => { if (o.isMesh && !o.material.transparent && (o.material.isMeshPhongMaterial || o.material.isMeshStandardMaterial || o.material.isMeshLambertMaterial)) o.layers.enable(UNDER_LAYER); });
+    scene.traverse(o => { if (o.isLight) o.layers.enable(UNDER_LAYER); });
+  }
+  const mask = camera.layers.mask, fog = scene.fog, bg = scene.background;
+  camera.layers.set(UNDER_LAYER);
+  scene.fog = null; scene.background = null;
+  const prev = renderer.getRenderTarget(), ca = renderer.getClearAlpha();
+  renderer.getClearColor(_rClear2);
+  renderer.setRenderTarget(underRT);
+  renderer.setClearColor(seaFloorFake.material.color, 1);
+  renderer.clear();
+  passRender(scene, camera);
+  renderer.setRenderTarget(prev);
+  renderer.setClearColor(_rClear2, ca);
+  camera.layers.mask = mask; scene.fog = fog; scene.background = bg;
+  const ou = oceanMat.uniforms;
+  ou.tUnder.value = underRT.texture; ou.uUnderOn.value = 1; ou.uRes.value.copy(db);
+}
+const _underSz = new THREE.Vector2(), _rClear2 = new THREE.Color();
 ocean.frustumCulled = false;
 ocean.renderOrder = -1;
 scene.add(ocean);
@@ -4911,9 +4950,7 @@ const _baseRender = renderer.render.bind(renderer);
 function passRender(s, c) {
   const xrOn = renderer.xr.enabled;
   renderer.xr.enabled = false;
-  const ff = seaFloorFake.visible; seaFloorFake.visible = false;   // only for the main view's clear water
   _baseRender(s, c);
-  seaFloorFake.visible = ff;
   renderer.xr.enabled = xrOn;
 }
 const CAM_W = new THREE.Vector3();   // camera position in the world (in VR it sits in the dolly)
@@ -4938,7 +4975,7 @@ renderer.render = (s, c) => {
     // In VR it stays fixed: changing it re-configures the XR session every time
     const near = inVR ? 2 : THREE.MathUtils.clamp(CAM_W.y * 0.05, 0.1, 40);
     if (Math.abs(camera.near - near) > camera.near * 0.1) { camera.near = near; camera.updateProjectionMatrix(); }
-    applyWeather(); updateBirds(); updateDetail(); updateWakes(); updateSunShadow(); renderReflection();
+    applyWeather(); updateBirds(); updateDetail(); updateWakes(); updateSunShadow(); renderReflection(); renderUnderwater();
   }
   _baseRender(s, c);
   if (main && !inVR) { renderGodRays(); renderLensRain(); }   // screen-space effects: not in stereo
