@@ -1102,7 +1102,7 @@ void main() {
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
       bowMask = max(bowMask, m * uFx.x);
     }
-    bowMask = max(bowMask, wakeLee * 1.8 * uFx.y);   // the leeward flakes run on aft along the real track
+    bowMask = max(bowMask, wakeLee * 1.8);   // switched per part in the wake ribbon (uFxW)   // the leeward flakes run on aft along the real track
     if (bowMask > 0.001) {
       // coarse pattern only and a soft edge: the fine layer read as pixel speckle
       float pb = texture2D(tFoam, vWorld.xz / 4.5 + uTime * vec2(0.05, -0.03)).r * 0.8
@@ -3758,7 +3758,8 @@ const wakeScene = new THREE.Scene();
 const wakeCam = new THREE.Camera();   // unused by the ribbon shader (it writes clip space itself)
 const wakeCenter = new THREE.Vector2();
 const wakeRibbonMat = new THREE.ShaderMaterial({
-  uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uHullL: { value: HULL_L } },
+  uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uHullL: { value: HULL_L },
+    uFxW: { value: new THREE.Vector3(0, 0, 0) } },   // FX: x stern/lee flakes, y Kelvin-edge flakes, z soft foam
   vertexShader: /* glsl */`
     attribute vec4 aW;   // u (-1..1 across, +1 = starboard), s (m behind the bow), age (s), speed (m/s)
     attribute vec2 aLean;  // x: starboard side height from heel (+ = starboard up, port leeward), y: half-width (m)
@@ -3775,6 +3776,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
     varying vec4 vW;
     varying vec2 vLean;
     uniform float uHullL;
+    uniform vec3 uFxW;
     void main() {
       float au = abs(vW.x), s = vW.y, age = vW.z, spd = vW.w;
       // heeled hull: the low (leeward) side pushes a bigger bow wave, the high side a smaller one
@@ -3805,7 +3807,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float xs = max(s - uHullL, 0.0) * 0.04;      // m off the track
       float bw = ${(0.52 * 0.96 * 0.65 * 7.4).toFixed(2)} + max(s - uHullL, 0.0) * 0.03;
       // (own channel a: the ocean draws it as the same crisp foam flakes as the bow white water)
-      float leeFoam = exp(-(x - xs) * (x - xs) / (bw * bw)) * smoothstep(uHullL + 7.0, uHullL + 15.0, s)
+      float leeFoam = uFxW.x * exp(-(x - xs) * (x - xs) / (bw * bw)) * smoothstep(uHullL + 7.0, uHullL + 15.0, s)
             * exp(-age / 6.0) * (1.0 - smoothstep(60.0, 110.0, s)) * 1.1 * go * leeSide;
       // Kelvin pattern; transverse wavelength 2*pi*v^2/g
       float lam = max(6.2831 * spd * spd / 9.81, 3.0);
@@ -3819,9 +3821,10 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       // divergent ridges ~60 % of before (max slope ~6-9°); transverse waves faint (masked by wash)
       float h = (edge * div * 0.42 * lee * spread + tra * 0.15 * spread) * amp;
       // stern: the transom's churned water as the same crisp flakes, full width, fading aft
-      leeFoam += exp(-xq * xq) * exp(-age / 3.0) * go * behind * 0.7;
+      leeFoam += uFxW.x * exp(-xq * xq) * exp(-age / 3.0) * go * behind * 0.7;
       // breaking crests along the outer edge of the Kelvin V, much more on the low side
-      leeFoam += smoothstep(0.8, 0.95, au) * (1.0 - smoothstep(0.95, 1.0, au)) * smoothstep(uHullL * 1.0, uHullL * 1.3, s)
+      // flatter than the Kelvin edge (~10 deg instead of 19.5): where the bow wave's crest breaks
+      leeFoam += uFxW.y * smoothstep(0.42, 0.5, au) * (1.0 - smoothstep(0.52, 0.62, au)) * smoothstep(uHullL * 1.0, uHullL * 1.3, s)
                * exp(-age / 4.0) * (1.0 - smoothstep(50.0, 90.0, s)) * go * clamp(spd / 6.0, 0.0, 1.0) * (0.25 + 0.6 * leeSide);
       gl_FragColor = vec4(foam, h, slick, leeFoam);
     }`,
@@ -3857,7 +3860,7 @@ const _bows = [];
 // bursts when the stem meets a rising crest, plus slow, large mist puffs at higher speed.
 // Effects around the boat, rebuilt one by one (2026-11-04): all off, switched back on step by step.
 // Water, clear water near the boat, whitecaps and the Kelvin bow waves (wave height) stay on.
-const FX = { bowFlakes: false, sternFlakes: false, wakeFoam: false, spray: false, mist: false };
+const FX = { bowFlakes: false, sternFlakes: false, kelvinFlakes: true, wakeFoam: false, spray: false, mist: false };
 window.FX = FX;   // console: FX.spray = true
 const SPRAY_N = 3000;
 const sprayPos = new Float32Array(SPRAY_N * 3);
@@ -3968,6 +3971,7 @@ function updateSpray() {
   if (dt <= 0) return;
   const ou = oceanMat.uniforms;
   ou.uFx.value.set(FX.bowFlakes ? 1 : 0, FX.sternFlakes ? 1 : 0, FX.wakeFoam ? 1 : 0, 0);
+  wakeRibbonMat.uniforms.uFxW.value.set(FX.sternFlakes ? 1 : 0, FX.kelvinFlakes ? 1 : 0, 0);
   ou.uBoatP.value.set(boatGroup.position.x, boatGroup.position.z);
   seaFloorFake.position.x = boatGroup.position.x; seaFloorFake.position.z = boatGroup.position.z;
   seaFloorFake.material.color.setRGB(0.004 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), 0.06 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), 0.075 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), THREE.LinearSRGBColorSpace);
