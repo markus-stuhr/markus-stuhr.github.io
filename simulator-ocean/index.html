@@ -1116,7 +1116,7 @@ void main() {
   // Only within ~35 m of the boat (no land there), never where foam or the grazing mirror
   // image is; the teal backdrop under the boat (seaFloorFake) stands in for the deep below.
   float clearW = 1.0 - smoothstep(18.0, 35.0, length(vWorld.xz - uBoatP));
-  float seeThru = clearW * 0.6 * (1.0 - F) * (1.0 - clamp(foam + wf, 0.0, 1.0)) * (1.0 - inBox * (1.0 - smoothstep(0.0, 60.0, dS)));
+  float seeThru = clearW * 0.3 * (1.0 - F) * (1.0 - clamp(foam + wf, 0.0, 1.0)) * (1.0 - inBox * (1.0 - smoothstep(0.0, 60.0, dS)));
   gl_FragColor = vec4(acesFit(col * 1.1), 1.0 - seeThru);
   #include <colorspace_fragment>
   // fog + aerial perspective towards the sky colour behind (see fogSky)
