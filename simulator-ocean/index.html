@@ -3852,6 +3852,93 @@ function wakeTrailFor(g) {
   wakeTrails.set(g, tr);
   return tr;
 }
+// Stern wave trail: a second ribbon recorded at the transom (not the stem), so it starts right
+// at the stern and follows the stern's own path through turns. Writes wave height (g) only.
+const sternRibbonMat = new THREE.ShaderMaterial({
+  uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uAmp: { value: 1 }, uLen: { value: 60 } },
+  vertexShader: /* glsl */`
+    attribute vec4 aW;   // u (-1..1 across), s (m behind the transom), age (s), speed (m/s)
+    attribute vec2 aLean;  // x: -, y: half-width (m)
+    uniform vec2 uCenter;
+    uniform float uHalf;
+    varying vec4 vW;
+    varying float vHW;
+    void main() {
+      vW = aW; vHW = aLean.y;
+      gl_Position = vec4((position.x - uCenter.x) / uHalf, (position.z - uCenter.y) / uHalf, 0.0, 1.0);
+    }`,
+  fragmentShader: /* glsl */`
+    varying vec4 vW;
+    varying float vHW;
+    uniform float uAmp, uLen;
+    void main() {
+      float s = vW.y, age = vW.z, spd = vW.w;
+      float x = vW.x * vHW;                               // m off the stern's track
+      float go = smoothstep(0.8, 3.5, spd);
+      float lam = clamp(spd * 0.9, 4.0, 14.0);            // short, steep stern waves
+      float w = ${(0.52 * 0.96 * 0.65 * 7.4).toFixed(2)} + s * 0.06;    // transom width, spreading aft
+      float band = exp(-x * x / (w * w));
+      float fade = smoothstep(0.0, 3.0, s) * (1.0 - smoothstep(0.35 * uLen, uLen, s)) * exp(-age / max(uLen / 16.0, 1.0));
+      float h = (cos(6.2831 * s / lam) * 0.8 + 0.35 * cos(6.2831 * (s * 0.6 + x * 0.9) / lam)) * band * fade
+              * 0.28 * clamp(spd / 5.0, 0.0, 1.6) * go * uAmp;
+      gl_FragColor = vec4(0.0, h, 0.0, 0.0);
+    }`,
+  blending: THREE.CustomBlending,
+  blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendEquation: THREE.AddEquation,
+  depthTest: false, depthWrite: false, side: THREE.DoubleSide,
+});
+const sternTrails = new Map();
+function sternTrailFor(g) {
+  let tr = sternTrails.get(g);
+  if (tr) return tr;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(WAKE_MAXP * 2 * 3), 3));
+  geo.setAttribute('aW', new THREE.BufferAttribute(new Float32Array(WAKE_MAXP * 2 * 4), 4));
+  geo.setAttribute('aLean', new THREE.BufferAttribute(new Float32Array(WAKE_MAXP * 2 * 2), 2));
+  const idx = [];
+  for (let i = 0; i < WAKE_MAXP - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, sternRibbonMat);
+  mesh.frustumCulled = false;
+  wakeScene.add(mesh);
+  tr = { pts: [], mesh };
+  sternTrails.set(g, tr);
+  return tr;
+}
+function updateSternTrail(g, live, spd) {
+  const tr = sternTrailFor(g);
+  tr.mesh.visible = false;
+  if (!live) { tr.pts.length = 0; return; }
+  const x0 = g.position.x - _wf.x * HULL_ZSTERN * M, z0 = g.position.z - _wf.z * HULL_ZSTERN * M;
+  const p = tr.pts, lp = p[p.length - 1];
+  if (lp && (t < lp.t || Math.hypot(x0 - lp.x, z0 - lp.z) > 80)) p.length = 0;
+  if (!p.length || Math.hypot(x0 - p[p.length - 1].x, z0 - p[p.length - 1].z) >= WAKE_STEP) p.push({ x: x0, z: z0, t });
+  while (p.length && (t - p[0].t > WAKE_LIFE_S || p.length > WAKE_MAXP - 1)) p.shift();
+  const chain = [{ x: x0, z: z0, t }];
+  for (let i = p.length - 1; i >= 0; i--) chain.push(p[i]);
+  const geo = tr.mesh.geometry, pos = geo.attributes.position.array, aw = geo.attributes.aW.array, al = geo.attributes.aLean.array;
+  let n = 0, sAcc = 0, px = x0, pz = z0;
+  for (let i = 0; i < chain.length && n < WAKE_MAXP; i++) {
+    const c = chain[i], nb = chain[Math.min(i + 1, chain.length - 1)], pb = chain[Math.max(i - 1, 0)];
+    let dx = pb.x - nb.x, dz = pb.z - nb.z;
+    if (i === 0) { dx = _wf.x; dz = _wf.z; }   // at the transom: across the hull, not the track
+    const dl = Math.hypot(dx, dz) || 1, nx = -dz / dl, nz = dx / dl;
+    if (i > 0) sAcc += Math.hypot(c.x - px, c.z - pz);
+    px = c.x; pz = c.z;
+    const W = 8 + sAcc * 0.12;
+    for (let side = -1; side <= 1; side += 2) {
+      const k = n * 2 + (side > 0 ? 1 : 0);
+      pos[k * 3] = c.x + nx * W * side; pos[k * 3 + 1] = 0; pos[k * 3 + 2] = c.z + nz * W * side;
+      aw[k * 4] = side; aw[k * 4 + 1] = sAcc; aw[k * 4 + 2] = t - c.t; aw[k * 4 + 3] = spd;
+      al[k * 2] = 0; al[k * 2 + 1] = W;
+    }
+    n++;
+  }
+  if (n < 2) return;
+  geo.setDrawRange(0, (n - 1) * 6);
+  geo.attributes.position.needsUpdate = geo.attributes.aW.needsUpdate = geo.attributes.aLean.needsUpdate = true;
+  tr.mesh.visible = true;
+}
 const _wf = new THREE.Vector3(), _wr = new THREE.Vector3();
 const _bows = [];
 // --- Spray: droplets thrown off the bow where the stem cuts the water ---
@@ -3865,10 +3952,12 @@ const _bows = [];
 const FX = { bowFlakes: false, sternFlakes: false, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
 FX.kelvin = 1.5;   // Kelvin bow-wave height (wave only, no foam)
 FX.kelvinLen = 90;   // m behind the bow where the bow waves have faded out
+FX.sternWave = 1.0;   // stern wave trail height (wave only)
+FX.sternLen = 60;
 window.FX = FX;
 // Small switch panel (top right) to try the effects one by one
 {
-  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-/Lee-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
+  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-/Lee-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
   const box = document.createElement('div');
   box.id = 'fxPanel';
   box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:40;background:rgba(10,20,30,.72);color:#e8f0f6;font:12px system-ui,sans-serif;padding:8px 10px;border-radius:8px;line-height:1.7;user-select:none';
@@ -3882,7 +3971,7 @@ window.FX = FX;
     row.style.cssText = 'display:flex;gap:6px;align-items:center;cursor:pointer';
     const inp = document.createElement('input');
     if (typeof FX[k] === 'number') {
-      const big = k === 'kelvinLen';
+      const big = k === 'kelvinLen' || k === 'sternLen';
       inp.type = 'range'; inp.min = big ? 20 : 0; inp.max = big ? 160 : 2; inp.step = big ? 5 : 0.05; inp.value = FX[k]; inp.style.width = '80px';
       const fmt = (v) => big ? String(v) : v.toFixed(2);
       const val = document.createElement('span'); val.textContent = fmt(FX[k]);
@@ -4010,6 +4099,8 @@ function updateSpray() {
   ou.uFx.value.set(FX.bowFlakes ? 1 : 0, FX.sternFlakes ? 1 : 0, FX.wakeFoam ? 1 : 0, 0);
   wakeRibbonMat.uniforms.uKelvin.value = FX.kelvin;
   wakeRibbonMat.uniforms.uKelvinLen.value = FX.kelvinLen;
+  sternRibbonMat.uniforms.uAmp.value = FX.sternWave;
+  sternRibbonMat.uniforms.uLen.value = FX.sternLen;
   wakeRibbonMat.uniforms.uFxW.value.set(FX.sternFlakes ? 1 : 0, FX.kelvinFlakes ? 1 : 0, 0);
   ou.uBoatP.value.set(boatGroup.position.x, boatGroup.position.z);
   seaFloorFake.position.x = boatGroup.position.x; seaFloorFake.position.z = boatGroup.position.z;
@@ -4126,7 +4217,7 @@ function updateWakes() {
     const tr = wakeTrailFor(g);
     const live = g.parent && g.visible && gameState !== 'menu';
     tr.mesh.visible = false;
-    if (!live) { tr.pts.length = 0; tr.px = null; tr.vs = 0; continue; }
+    if (!live) { tr.pts.length = 0; tr.px = null; tr.vs = 0; updateSternTrail(g, false, 0); continue; }
     _wf.set(0, 0, -1).applyQuaternion(g.quaternion); _wf.y = 0; _wf.normalize();   // bow direction
     const leanRaw = _wr.set(1, 0, 0).applyQuaternion(g.quaternion).y;             // sin(heel), + = starboard up
     // where the stem meets the water: a little aft of the tip of the bow
@@ -4143,6 +4234,7 @@ function updateWakes() {
     } else if (tr.px === null) tr.ls = leanRaw;
     tr.px = sx; tr.pz = sz; tr.pt = t;
     const lean = tr.ls;
+    updateSternTrail(g, FX.sternWave > 0, tr.vs);
     _bows.push({ g, x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - CAM_W.x, sz - CAM_W.z) });
     const p = tr.pts;
     const last = p[p.length - 1];
