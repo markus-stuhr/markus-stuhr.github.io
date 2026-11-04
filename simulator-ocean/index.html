@@ -3863,21 +3863,23 @@ function wakeTrailFor(g) {
 // at the stern and follows the stern's own path through turns. Writes wave height (g) only.
 const sternRibbonMat = new THREE.ShaderMaterial({
   uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uAmp: { value: 1 }, uLen: { value: 60 },
-    uFlk: { value: 0 }, uFlkLen: { value: 40 }, uFlkW: { value: 1 } },
+    uFlk: { value: 0 }, uFlkLen: { value: 40 }, uFlkW: { value: 0.5 } },
   vertexShader: /* glsl */`
     attribute vec4 aW;   // u (-1..1 across), s (m behind the transom), age (s), speed (m/s)
-    attribute vec2 aLean;  // x: -, y: half-width (m)
+    attribute vec2 aLean;  // x: wetted transom half-width there (m), y: ribbon half-width (m)
     uniform vec2 uCenter;
     uniform float uHalf;
     varying vec4 vW;
     varying float vHW;
+    varying float vTW;
     void main() {
-      vW = aW; vHW = aLean.y;
+      vW = aW; vHW = aLean.y; vTW = aLean.x;
       gl_Position = vec4((position.x - uCenter.x) / uHalf, (position.z - uCenter.y) / uHalf, 0.0, 1.0);
     }`,
   fragmentShader: /* glsl */`
     varying vec4 vW;
     varying float vHW;
+    varying float vTW;
     uniform float uAmp, uLen, uFlk, uFlkLen, uFlkW;
     void main() {
       float s = vW.y, age = vW.z, spd = vW.w;
@@ -3890,7 +3892,7 @@ const sternRibbonMat = new THREE.ShaderMaterial({
       float h = (cos(6.2831 * s / lam) * 0.8 + 0.35 * cos(6.2831 * (s * 0.6 + x * 0.9) / lam)) * band * fade
               * 0.28 * clamp(spd / 5.0, 0.0, 1.6) * go * uAmp;
       // stern flakes: churned water as wide as the transom, spreading a little, fading aft
-      float wf = (${(0.52 * 0.96 * 0.65 * 7.4).toFixed(2)} + s * 0.04) * uFlkW;
+      float wf = (vTW + s * 0.04) * uFlkW;   // from the wetted transom width at that point
       float xq = x * x / (wf * wf);
       float flk = exp(-xq * xq) * smoothstep(0.0, 1.0, s) * (1.0 - smoothstep(0.35 * uFlkLen, uFlkLen, s))
                 * exp(-age / max(uFlkLen / 8.0, 1.0)) * go * uFlk;
@@ -3918,16 +3920,21 @@ function sternTrailFor(g) {
   sternTrails.set(g, tr);
   return tr;
 }
+const _stA = new THREE.Vector3(), _stB = new THREE.Vector3();
 function updateSternTrail(g, live, spd) {
   const tr = sternTrailFor(g);
   tr.mesh.visible = false;
   if (!live) { tr.pts.length = 0; return; }
-  const x0 = g.position.x - _wf.x * HULL_ZSTERN * M, z0 = g.position.z - _wf.z * HULL_ZSTERN * M;
+  // source: the transom's waterline across the stern (heel moves it to leeward and narrows it)
+  hullWaterline(g, -1, HULL_ZSTERN - 0.02, _stA);
+  hullWaterline(g, 1, HULL_ZSTERN - 0.02, _stB);
+  const x0 = (_stA.x + _stB.x) / 2, z0 = (_stA.z + _stB.z) / 2;
+  const hw0 = Math.max(Math.hypot(_stB.x - _stA.x, _stB.z - _stA.z) / 2, 0.3);
   const p = tr.pts, lp = p[p.length - 1];
   if (lp && (t < lp.t || Math.hypot(x0 - lp.x, z0 - lp.z) > 80)) p.length = 0;
-  if (!p.length || Math.hypot(x0 - p[p.length - 1].x, z0 - p[p.length - 1].z) >= WAKE_STEP) p.push({ x: x0, z: z0, t });
+  if (!p.length || Math.hypot(x0 - p[p.length - 1].x, z0 - p[p.length - 1].z) >= WAKE_STEP) p.push({ x: x0, z: z0, t, hw: hw0 });
   while (p.length && (t - p[0].t > WAKE_LIFE_S || p.length > WAKE_MAXP - 1)) p.shift();
-  const chain = [{ x: x0, z: z0, t }];
+  const chain = [{ x: x0, z: z0, t, hw: hw0 }];
   for (let i = p.length - 1; i >= 0; i--) chain.push(p[i]);
   const geo = tr.mesh.geometry, pos = geo.attributes.position.array, aw = geo.attributes.aW.array, al = geo.attributes.aLean.array;
   let n = 0, sAcc = 0, px = x0, pz = z0;
@@ -3943,7 +3950,7 @@ function updateSternTrail(g, live, spd) {
       const k = n * 2 + (side > 0 ? 1 : 0);
       pos[k * 3] = c.x + nx * W * side; pos[k * 3 + 1] = 0; pos[k * 3 + 2] = c.z + nz * W * side;
       aw[k * 4] = side; aw[k * 4 + 1] = sAcc; aw[k * 4 + 2] = t - c.t; aw[k * 4 + 3] = spd;
-      al[k * 2] = 0; al[k * 2 + 1] = W;
+      al[k * 2] = c.hw || hw0; al[k * 2 + 1] = W;
     }
     n++;
   }
@@ -3967,7 +3974,7 @@ FX.kelvin = 1.5;   // Kelvin bow-wave height (wave only, no foam)
 FX.kelvinLen = 90;   // m behind the bow where the bow waves have faded out
 FX.bowLen = 10;   // m: how far aft the bow flakes reach (decay length)
 FX.sternFlakeLen = 40;   // m behind the transom
-FX.sternFlakeW = 1.0;   // x transom width
+FX.sternFlakeW = 0.5;   // x wetted transom width
 FX.sternWave = 1.0;   // stern wave trail height (wave only)
 FX.sternLen = 60;
 window.FX = FX;
