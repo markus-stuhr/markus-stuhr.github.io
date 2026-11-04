@@ -3933,7 +3933,9 @@ function updateSternTrail(g, live, spd) {
   // centre: halfway between the wetted line's middle and the hull's centreline (the high side
   // only touches near the keel, which pulled the source too far to leeward)
   _stC.set(0, 0, SZ); g.localToWorld(_stC);
-  const x0 = ((_stA.x + _stB.x) / 2 + _stC.x) / 2, z0 = ((_stA.z + _stB.z) / 2 + _stC.z) / 2;
+  // FX.sternShift: 0 = on the centreline, 1 = fully at the wetted line's middle (negative: other way)
+  const k = FX.sternShift;
+  const x0 = _stC.x + ((_stA.x + _stB.x) / 2 - _stC.x) * k, z0 = _stC.z + ((_stA.z + _stB.z) / 2 - _stC.z) * k;
   const hw0 = Math.max(Math.hypot(_stB.x - _stA.x, _stB.z - _stA.z) / 2, 0.3);
   const p = tr.pts, lp = p[p.length - 1];
   if (lp && (t < lp.t || Math.hypot(x0 - lp.x, z0 - lp.z) > 80)) p.length = 0;
@@ -3979,13 +3981,14 @@ FX.kelvin = 2.0;   // Kelvin bow-wave height (wave only, no foam)
 FX.kelvinLen = 55;   // m behind the bow where the bow waves have faded out
 FX.bowLen = 23;   // m: how far aft the bow flakes reach (decay length)
 FX.sternFlakeLen = 20;   // m behind the transom
-FX.sternFlakeW = 0.3;   // x wetted transom width
+FX.sternFlakeW = 0.3;
+FX.sternShift = 0;   // how far heel moves the stern source to leeward (0 centre .. 1 wetted line)   // x wetted transom width
 FX.sternWave = 1.15;   // stern wave trail height (wave only)
 FX.sternLen = 95;
 window.FX = FX;
 // Small switch panel (top right) to try the effects one by one
 {
-  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', sternFlakeLen: 'Heck-Flocken (Länge m)', sternFlakeW: 'Heck-Flocken (Breite)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
+  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', sternFlakeLen: 'Heck-Flocken (Länge m)', sternFlakeW: 'Heck-Flocken (Breite)', sternShift: 'Heck-Versatz bei Krängung', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
   const box = document.createElement('div');
   box.id = 'fxPanel';
   box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:40;background:rgba(10,20,30,.72);color:#e8f0f6;font:12px system-ui,sans-serif;padding:8px 10px;border-radius:8px;line-height:1.7;user-select:none';
@@ -4001,7 +4004,8 @@ window.FX = FX;
     if (typeof FX[k] === 'number') {
       const big = k === 'kelvinLen' || k === 'sternLen' || k === 'bowLen' || k === 'sternFlakeLen';
       const lo = k === 'bowLen' ? 3 : k === 'sternFlakeLen' ? 5 : big ? 20 : 0, hi = k === 'bowLen' ? 25 : k === 'sternFlakeLen' ? 120 : big ? 160 : 2;
-      inp.type = 'range'; inp.min = lo; inp.max = hi; inp.step = k === 'bowLen' ? 1 : big ? 5 : 0.05; inp.value = FX[k]; inp.style.width = '80px';
+      const lo2 = k === 'sternShift' ? -1 : lo, hi2 = k === 'sternShift' ? 1 : hi;
+      inp.type = 'range'; inp.min = lo2; inp.max = hi2; inp.step = k === 'bowLen' ? 1 : big ? 5 : 0.05; inp.value = FX[k]; inp.style.width = '80px';
       const fmt = (v) => big ? String(v) : v.toFixed(2);
       const val = document.createElement('span'); val.textContent = fmt(FX[k]);
       inp.oninput = () => { FX[k] = +inp.value; val.textContent = fmt(FX[k]); };
