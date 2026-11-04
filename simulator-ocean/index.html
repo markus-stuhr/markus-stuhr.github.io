@@ -3773,8 +3773,10 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float x = au * W;                                   // metres off the track
       float go = smoothstep(0.8, 3.5, spd);
       // turbulent centre stripe: hull + keel wash, spreading and fading
-      float cw = 1.8 + max(s - uHullL, 0.0) * 0.03;
-      float foam = exp(-x * x / (cw * cw)) * exp(-age / 1.4) * go * behind;
+      // as wide as the transom's wetted bottom (flat-topped profile), then spreading
+      float cw = ${(HULL_MAXBEAM * 0.96 * 0.65 * M + 0.4).toFixed(2)} + max(s - uHullL, 0.0) * 0.04;
+      float xq = x * x / (cw * cw);
+      float foam = exp(-xq * xq) * exp(-age / 1.6) * go * behind;
       // older wake: a smooth 'slick' where the turbulence flattened the ripples
       float sw = 3.0 + s * 0.04;
       float slick = exp(-x * x / (sw * sw)) * exp(-age / 9.0) * go * behind;
