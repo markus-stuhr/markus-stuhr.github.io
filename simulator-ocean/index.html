@@ -1102,12 +1102,16 @@ void main() {
       // both sides throw flakes; the low (leeward) side more and wider
       float lee = clamp(1.0 - 2.2 * B.y * sign(c), 0.65, 2.2);
       float reach = (0.8 + 0.3 * bt) * (0.6 + 0.55 * lee);   // the pushed-out band widens aft
+      // windward (high) side: just a narrow, bright strip running along the water's edge
+      float wwd = clamp((1.0 - lee) / 0.35, 0.0, 1.0);
+      reach = mix(reach, 0.55 + 0.03 * bt, wwd);
+      lee = mix(lee, 1.5, wwd);
       float m = smoothstep(-0.5, 0.1, d) * (1.0 - smoothstep(0.5 * reach, reach, d))
-              * smoothstep(0.0, 1.5, bt) * exp(-bt / 10.0)
+              * smoothstep(0.0, 1.5, bt) * exp(-bt / mix(10.0, 16.0, wwd))
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
       if (m < 0.001) continue;
       float along = dot(vWorld.xz, A.zw);                   // world-anchored along the heading
-      float across = d - 0.25 * bt;                         // sheared: born at the hull, drifting out
+      float across = d - 0.25 * (1.0 - wwd) * bt;           // sheared: born at the hull, drifting out (windward strip stays put)
       float pq = texture2D(tFoam, vec2(along / 5.0, across / 1.6)).r * 0.8
                + texture2D(tFoam, vec2(along / 11.0, across / 4.0) + 0.5).r * 0.4;
       float thb = 1.05 - 0.8 * clamp(m, 0.0, 1.2);
