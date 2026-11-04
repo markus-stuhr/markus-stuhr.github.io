@@ -4165,6 +4165,7 @@ function updateSpray() {
       // right at the stem: the first ~4 m of the waterline
       const lz = HULL_ZBOW + 0.05 + Math.pow(Math.random(), 2.2) * 0.55;
       const high = Math.max(b.l * side, 0);
+      if (high > 0.02) continue;   // no spray on the lifted windward side (only when heeled)
       const low = Math.min(Math.max(-b.l * side, 0) * 5, 1);
       hullWaterline(g, side, lz, _sp);
       const bow = Math.exp(-(lz - HULL_ZBOW) / 0.25);   // fastest and highest at the very stem
