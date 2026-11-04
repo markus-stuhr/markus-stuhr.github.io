@@ -1103,7 +1103,9 @@ void main() {
               * smoothstep(0.0, 1.5, bt) * exp(-bt / (uFx.w * mix(1.0, 1.6, wwd)))
               * smoothstep(3.0, 8.0, B.x / 3.0 * 1.944) * clamp(B.x / 5.0, 0.0, 1.4) * lee;   // gone below ~3 kn
       if (m < 0.001) continue;
-      float along = dot(vWorld.xz, A.zw);                   // world-anchored along the heading
+      // along the hull, anchored in the water by the boat's own log (B.z, distance sailed mod 55 m):
+      // projecting world position on the heading made the pattern race around in turns
+      float along = B.z - behind;
       float across = d - drift * (1.0 - wwd);               // born at the hull, drifting out along the arc (windward strip stays put)
       float pq = texture2D(tFoam, vec2(along / 5.0, across / 1.6)).r * 0.8
                + texture2D(tFoam, vec2(along / 11.0, across / 4.0) + 0.5).r * 0.4;
@@ -4283,10 +4285,11 @@ function updateWakes() {
       tr.vs += (vInst - tr.vs) * k;
       tr.ls += (leanRaw - tr.ls) * k;
     } else if (tr.px === null) tr.ls = leanRaw;
+    if (tr.px !== null) tr.odo = ((tr.odo || 0) + Math.hypot(sx - tr.px, sz - tr.pz)) % 55;   // 55 m = pattern repeat (5 m x 11 m)
     tr.px = sx; tr.pz = sz; tr.pt = t;
     const lean = tr.ls;
     updateSternTrail(g, FX.sternWave > 0 || FX.sternFlakes, tr.vs);
-    _bows.push({ g, x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - CAM_W.x, sz - CAM_W.z) });
+    _bows.push({ g, odo: tr.odo || 0, x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - CAM_W.x, sz - CAM_W.z) });
     const p = tr.pts;
     const last = p[p.length - 1];
     // reset on restart, seek or teleport: also any jump faster than a boat can sail (>20 m/s), or
@@ -4368,7 +4371,7 @@ function updateWakes() {
   for (let i = 0; i < nb; i++) {
     const b = _bows[i];
     uBowA[i].set(b.x, b.z, b.fx, b.fz);
-    uBowB[i].set(b.v, b.l, b.qx ?? b.x, b.qz ?? b.z);
+    uBowB[i].set(b.v, b.l, b.odo, 0);
   }
   ou.uBowN.value = nb;
   updateSpray();
