@@ -3753,7 +3753,7 @@ const _bows = [];
 // CPU particle pool drawn as soft billboards. Emitted along both sides of the forward
 // hull from the same _bows data the bow foam uses; more on the lee side, bursts when the
 // stem meets a rising crest, plus slow, large mist puffs at higher speed.
-const SPRAY_N = 1800;
+const SPRAY_N = 4000;
 const sprayPos = new Float32Array(SPRAY_N * 3);
 const sprayVel = new Float32Array(SPRAY_N * 3);
 const sprayAge = new Float32Array(SPRAY_N).fill(9);
@@ -3778,7 +3778,7 @@ const sprayMat = new THREE.ShaderMaterial({
       vAlpha = alpha; vKind = kind;
       vec4 mv = modelViewMatrix * vec4(position, 1.0);
       vView = normalize((inverse(viewMatrix) * vec4(normalize(-mv.xyz), 0.0)).xyz);
-      gl_PointSize = clamp(size * uScale / max(1.0, -mv.z), 1.0, 256.0);
+      gl_PointSize = clamp(size * uScale / max(1.0, -mv.z), 1.5, 256.0);
       gl_Position = projectionMatrix * mv;
     }`,
   fragmentShader: `
@@ -3789,7 +3789,7 @@ const sprayMat = new THREE.ShaderMaterial({
       float r2 = dot(p, p);
       if (r2 > 1.0) discard;
       // droplet clumps: a dense core; mist: a very soft wide puff
-      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.35 : pow(1.0 - r2, 1.5);
+      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.35 : smoothstep(1.0, 0.3, r2) * 0.9;
       // backlit spray glows when you look towards the sun (forward scattering)
       float fwd = pow(max(dot(-vView, uSunDir), 0.0), 6.0) * uSunI;
       vec3 c = vec3(0.86, 0.91, 0.95) * mix(0.06, 1.0, uDay) * (0.8 + 0.25 * uSunDir.y) + vec3(1.0, 0.95, 0.85) * fwd * 0.8;
@@ -3828,7 +3828,7 @@ function updateSpray() {
     // the stem meeting a rising crest throws a burst
     const ahead = waveHeight(b.x + b.fx * 6, b.z + b.fz * 6, t) - waveHeight(b.x, b.z, t);
     const slam = 1 + 5 * Math.max(ahead - 0.15, 0);
-    let rate = sp * sp * 260 * slam * (vr ? 0.4 : 1);
+    let rate = sp * sp * 700 * slam * (vr ? 0.4 : 1);
     let n = rate * dt; n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
     const sx = -b.fz, sz = b.fx;   // starboard
     for (let k = 0; k < n; k++) {
@@ -3845,7 +3845,7 @@ function updateSpray() {
       const fwd = (0.2 + 0.3 * Math.random()) * v;   // keeps some of the boat's forward speed
       emitSpray(px, py, pz,
         sx * side * out + b.fx * fwd, up, sz * side * out + b.fz * fwd,
-        0.9 + Math.random() * 0.8, 0.45 + Math.random() * 0.9 + 0.3 * sp, 0);
+        0.7 + Math.random() * 0.7, 0.1 + Math.pow(Math.random(), 2) * 0.3 + 0.05 * sp, 0);
     }
     // mist puffs: few, big, slow, drifting downwind
     if (!vr) {
@@ -3881,7 +3881,7 @@ function updateSpray() {
       const above = sprayPos[o + 1] - hw;
       if (above < 0 && sprayVel[o + 1] < 0) { sprayAge[i] = sprayLife[i]; a = 0; }
       else a *= Math.min(above / 0.4 + 0.2, 1);   // soft where it meets the water
-      spraySize[i] *= 1 + dt * 0.6;              // clumps break up and spread
+      spraySize[i] *= 1 + dt * 0.15;             // droplets stay small
     } else spraySize[i] *= 1 + dt * 0.5;
     sprayA[i] = a;
   }
