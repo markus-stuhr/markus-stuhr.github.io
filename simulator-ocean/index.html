@@ -1003,8 +1003,8 @@ void main() {
   // Water body: teal, translucent. Sunlight entering the waves scatters back out of the
   // flanks (thicker -> greener), so the whole wave body glows, not only the crests;
   // sails/hulls shade that light too, which puts the boat's shadow *into* the water.
-  vec3 deep = vec3(0.003, 0.045, 0.062);
-  vec3 scatterCol = vec3(0.03, 0.36, 0.31);
+  vec3 deep = vec3(0.002, 0.03, 0.085);      // deep cobalt, like open Caribbean water
+  vec3 scatterCol = vec3(0.02, 0.25, 0.42);
   float NdL = max(dot(N, L), 0.0);
   vec3 Hs = normalize(L + N * 0.6);
   float nearW = exp(-dist / 1500.0);
@@ -1092,9 +1092,9 @@ void main() {
       // coarse pattern only and a soft edge: the fine layer read as pixel speckle
       float pb = texture2D(tFoam, vWorld.xz / 4.5 + uTime * vec2(0.05, -0.03)).r * 0.8
                + texture2D(tFoam, vWorld.xz / 11.0 - uTime * vec2(0.02, 0.03)).r * 0.4;
-      float th = 1.05 - 0.7 * clamp(bowMask, 0.0, 1.2);
-      float bf = smoothstep(th, th + 0.35, pb);
-      col = mix(col, vec3(0.92, 0.95, 0.97) * mix(0.05, 1.0, uDay) * (0.72 + 0.38 * NdL), bf * 0.55);
+      float th = 1.05 - 0.8 * clamp(bowMask, 0.0, 1.2);
+      float bf = smoothstep(th, th + 0.3, pb);
+      col = mix(col, vec3(0.95, 0.97, 0.99) * mix(0.05, 1.0, uDay) * (0.8 + 0.3 * NdL), bf * 0.88);
     }
   }
 
@@ -3803,6 +3803,9 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float h = (edge * div * 0.42 * lee * spread + tra * 0.15 * spread) * amp;
       // stern: the transom's churned water as the same crisp flakes, full width, fading aft
       leeFoam += exp(-xq * xq) * exp(-age / 3.0) * go * behind * 0.7;
+      // breaking crests along the outer edge of the Kelvin V, much more on the low side
+      leeFoam += smoothstep(0.8, 0.95, au) * (1.0 - smoothstep(0.95, 1.0, au)) * smoothstep(uHullL * 0.6, uHullL * 1.2, s)
+               * exp(-age / 4.0) * (1.0 - smoothstep(50.0, 90.0, s)) * go * clamp(spd / 6.0, 0.0, 1.0) * (0.25 + 0.6 * leeSide);
       gl_FragColor = vec4(foam, h, slick, leeFoam);
     }`,
   blending: THREE.CustomBlending,
@@ -3894,7 +3897,7 @@ const sprayMat = new THREE.ShaderMaterial({
     void main() {
       float r2 = dot(vUv, vUv);
       if (r2 > 1.0) discard;
-      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.22 : smoothstep(1.0, 0.1, r2) * 0.9;
+      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.15 : smoothstep(1.0, 0.1, r2) * 0.9;
       // backlit spray glows when you look towards the sun (forward scattering)
       vec3 col = vec3(0.86, 0.91, 0.95) * mix(0.06, 1.0, uDay) * (0.8 + 0.25 * uSunDir.y) + vec3(1.0, 0.95, 0.85) * vFwd * uSunI * 0.8;
       gl_FragColor = vec4(col, a * vAlpha);
