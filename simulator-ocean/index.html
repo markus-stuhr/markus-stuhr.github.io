@@ -3894,7 +3894,7 @@ const sternRibbonMat = new THREE.ShaderMaterial({
       // stern flakes: churned water as wide as the transom, spreading a little, fading aft
       float wf = (vTW + s * 0.04) * uFlkW;   // from the wetted transom width at that point
       float xq = x * x / (wf * wf);
-      float flk = exp(-xq * xq) * smoothstep(0.0, 1.0, s) * (1.0 - smoothstep(0.35 * uFlkLen, uFlkLen, s))
+      float flk = exp(-xq * xq) * smoothstep(0.0, 0.3, s) * (1.0 - smoothstep(0.35 * uFlkLen, uFlkLen, s))
                 * exp(-age / max(uFlkLen / 8.0, 1.0)) * go * uFlk;
       gl_FragColor = vec4(0.0, h, 0.0, flk);
     }`,
@@ -3920,15 +3920,20 @@ function sternTrailFor(g) {
   sternTrails.set(g, tr);
   return tr;
 }
-const _stA = new THREE.Vector3(), _stB = new THREE.Vector3();
+const _stA = new THREE.Vector3(), _stB = new THREE.Vector3(), _stC = new THREE.Vector3();
 function updateSternTrail(g, live, spd) {
   const tr = sternTrailFor(g);
   tr.mesh.visible = false;
   if (!live) { tr.pts.length = 0; return; }
   // source: the transom's waterline across the stern (heel moves it to leeward and narrows it)
-  hullWaterline(g, -1, HULL_ZSTERN - 0.02, _stA);
-  hullWaterline(g, 1, HULL_ZSTERN - 0.02, _stB);
-  const x0 = (_stA.x + _stB.x) / 2, z0 = (_stA.z + _stB.z) / 2;
+  // a little forward of the transom edge: the stern overhangs, the wetted line sits further in
+  const SZ = HULL_ZSTERN - 0.25;
+  hullWaterline(g, -1, SZ, _stA);
+  hullWaterline(g, 1, SZ, _stB);
+  // centre: halfway between the wetted line's middle and the hull's centreline (the high side
+  // only touches near the keel, which pulled the source too far to leeward)
+  _stC.set(0, 0, SZ); g.localToWorld(_stC);
+  const x0 = ((_stA.x + _stB.x) / 2 + _stC.x) / 2, z0 = ((_stA.z + _stB.z) / 2 + _stC.z) / 2;
   const hw0 = Math.max(Math.hypot(_stB.x - _stA.x, _stB.z - _stA.z) / 2, 0.3);
   const p = tr.pts, lp = p[p.length - 1];
   if (lp && (t < lp.t || Math.hypot(x0 - lp.x, z0 - lp.z) > 80)) p.length = 0;
