@@ -3863,7 +3863,7 @@ function wakeTrailFor(g) {
 // at the stern and follows the stern's own path through turns. Writes wave height (g) only.
 const sternRibbonMat = new THREE.ShaderMaterial({
   uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uAmp: { value: 1 }, uLen: { value: 60 },
-    uFlk: { value: 0 }, uFlkLen: { value: 40 }, uFlkW: { value: 0.5 } },
+    uFlk: { value: 0 }, uFlkLen: { value: 40 }, uFlkW: { value: 0.5 }, uFlkI: { value: 0.5 } },
   vertexShader: /* glsl */`
     attribute vec4 aW;   // u (-1..1 across), s (m behind the transom), age (s), speed (m/s)
     attribute vec2 aLean;  // x: wetted transom half-width there (m), y: ribbon half-width (m)
@@ -3880,7 +3880,7 @@ const sternRibbonMat = new THREE.ShaderMaterial({
     varying vec4 vW;
     varying float vHW;
     varying float vTW;
-    uniform float uAmp, uLen, uFlk, uFlkLen, uFlkW;
+    uniform float uAmp, uLen, uFlk, uFlkLen, uFlkW, uFlkI;
     void main() {
       float s = vW.y, age = vW.z, spd = vW.w;
       float x = vW.x * vHW;                               // m off the stern's track
@@ -3895,7 +3895,7 @@ const sternRibbonMat = new THREE.ShaderMaterial({
       float wf = (vTW + s * 0.04) * uFlkW;   // from the wetted transom width at that point
       float xq = x * x / (wf * wf);
       float flk = exp(-xq * xq) * smoothstep(0.0, 0.3, s) * (1.0 - smoothstep(0.35 * uFlkLen, uFlkLen, s))
-                * exp(-age / max(uFlkLen / 8.0, 1.0)) * go * uFlk;
+                * exp(-age / max(uFlkLen / 8.0, 1.0)) * go * uFlk * uFlkI;
       gl_FragColor = vec4(0.0, h, 0.0, flk);
     }`,
   blending: THREE.CustomBlending,
@@ -3982,13 +3982,14 @@ FX.kelvinLen = 55;   // m behind the bow where the bow waves have faded out
 FX.bowLen = 23;   // m: how far aft the bow flakes reach (decay length)
 FX.sternFlakeLen = 20;   // m behind the transom
 FX.sternFlakeW = 0.3;
-FX.sternShift = 0;   // how far heel moves the stern source to leeward (0 centre .. 1 wetted line)   // x wetted transom width
+FX.sternFlakeI = 0.5;   // stern flake intensity (fewer, sparser flakes below 1)
+FX.sternShift = 1;   // how far heel moves the stern source to leeward (0 centre .. 1 wetted line)   // x wetted transom width
 FX.sternWave = 1.15;   // stern wave trail height (wave only)
 FX.sternLen = 95;
 window.FX = FX;
 // Small switch panel (top right) to try the effects one by one
 {
-  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', sternFlakeLen: 'Heck-Flocken (Länge m)', sternFlakeW: 'Heck-Flocken (Breite)', sternShift: 'Heck-Versatz bei Krängung', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
+  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', sternFlakeLen: 'Heck-Flocken (Länge m)', sternFlakeW: 'Heck-Flocken (Breite)', sternFlakeI: 'Heck-Flocken (Stärke)', sternShift: 'Heck-Versatz bei Krängung', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
   const box = document.createElement('div');
   box.id = 'fxPanel';
   box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:40;background:rgba(10,20,30,.72);color:#e8f0f6;font:12px system-ui,sans-serif;padding:8px 10px;border-radius:8px;line-height:1.7;user-select:none';
@@ -4137,6 +4138,7 @@ function updateSpray() {
   sternRibbonMat.uniforms.uFlk.value = FX.sternFlakes ? 1 : 0;
   sternRibbonMat.uniforms.uFlkLen.value = FX.sternFlakeLen;
   sternRibbonMat.uniforms.uFlkW.value = FX.sternFlakeW;
+  sternRibbonMat.uniforms.uFlkI.value = FX.sternFlakeI;
   wakeRibbonMat.uniforms.uFxW.value.set(0, FX.kelvinFlakes ? 1 : 0, 0);
   ou.uBoatP.value.set(boatGroup.position.x, boatGroup.position.z);
   seaFloorFake.position.x = boatGroup.position.x; seaFloorFake.position.z = boatGroup.position.z;
