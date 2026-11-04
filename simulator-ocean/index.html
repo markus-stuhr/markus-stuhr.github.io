@@ -3749,6 +3749,151 @@ function wakeTrailFor(g) {
 }
 const _wf = new THREE.Vector3(), _wr = new THREE.Vector3();
 const _bows = [];
+// --- Spray: droplets thrown off the bow where the stem cuts the water ---
+// CPU particle pool drawn as soft billboards. Emitted along both sides of the forward
+// hull from the same _bows data the bow foam uses; more on the lee side, bursts when the
+// stem meets a rising crest, plus slow, large mist puffs at higher speed.
+const SPRAY_N = 1800;
+const sprayPos = new Float32Array(SPRAY_N * 3);
+const sprayVel = new Float32Array(SPRAY_N * 3);
+const sprayAge = new Float32Array(SPRAY_N).fill(9);
+const sprayLife = new Float32Array(SPRAY_N).fill(1);
+const spraySize = new Float32Array(SPRAY_N);
+const sprayA = new Float32Array(SPRAY_N);
+const sprayKind = new Float32Array(SPRAY_N);   // 0 droplet, 1 mist
+let sprayNext = 0, sprayLast = 0;
+const sprayGeo = new THREE.BufferGeometry();
+sprayGeo.setAttribute('position', new THREE.BufferAttribute(sprayPos, 3));
+sprayGeo.setAttribute('size', new THREE.BufferAttribute(spraySize, 1));
+sprayGeo.setAttribute('alpha', new THREE.BufferAttribute(sprayA, 1));
+sprayGeo.setAttribute('kind', new THREE.BufferAttribute(sprayKind, 1));
+const sprayMat = new THREE.ShaderMaterial({
+  uniforms: { uDay: { value: 1 }, uSunDir: { value: SUN_DIR }, uSunI: { value: 1 }, uScale: { value: 300 } },
+  transparent: true, depthWrite: false,
+  vertexShader: `
+    attribute float size; attribute float alpha; attribute float kind;
+    uniform float uScale;
+    varying float vAlpha; varying float vKind; varying vec3 vView;
+    void main() {
+      vAlpha = alpha; vKind = kind;
+      vec4 mv = modelViewMatrix * vec4(position, 1.0);
+      vView = normalize((inverse(viewMatrix) * vec4(normalize(-mv.xyz), 0.0)).xyz);
+      gl_PointSize = clamp(size * uScale / max(1.0, -mv.z), 1.0, 256.0);
+      gl_Position = projectionMatrix * mv;
+    }`,
+  fragmentShader: `
+    uniform float uDay; uniform vec3 uSunDir; uniform float uSunI;
+    varying float vAlpha; varying float vKind; varying vec3 vView;
+    void main() {
+      vec2 p = gl_PointCoord * 2.0 - 1.0;
+      float r2 = dot(p, p);
+      if (r2 > 1.0) discard;
+      // droplet clumps: a dense core; mist: a very soft wide puff
+      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.35 : pow(1.0 - r2, 1.5);
+      // backlit spray glows when you look towards the sun (forward scattering)
+      float fwd = pow(max(dot(-vView, uSunDir), 0.0), 6.0) * uSunI;
+      vec3 c = vec3(0.86, 0.91, 0.95) * mix(0.06, 1.0, uDay) * (0.8 + 0.25 * uSunDir.y) + vec3(1.0, 0.95, 0.85) * fwd * 0.8;
+      gl_FragColor = vec4(c, a * vAlpha);
+      #include <colorspace_fragment>
+    }`,
+});
+const sprayPoints = new THREE.Points(sprayGeo, sprayMat);
+sprayPoints.frustumCulled = false;
+sprayPoints.renderOrder = 5;
+scene.add(sprayPoints);
+
+function emitSpray(x, y, z, vx, vy, vz, life, size, kind) {
+  const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
+  sprayPos[i * 3] = x; sprayPos[i * 3 + 1] = y; sprayPos[i * 3 + 2] = z;
+  sprayVel[i * 3] = vx; sprayVel[i * 3 + 1] = vy; sprayVel[i * 3 + 2] = vz;
+  sprayAge[i] = 0; sprayLife[i] = life; spraySize[i] = size; sprayKind[i] = kind;
+}
+
+function updateSpray() {
+  const now = performance.now() / 1000;
+  const dt = Math.min(now - sprayLast, 0.05); sprayLast = now;
+  if (dt <= 0) return;
+  const ou = oceanMat.uniforms;
+  sprayMat.uniforms.uDay.value = ou.uDay ? ou.uDay.value : 1;
+  sprayMat.uniforms.uSunI.value = ou.uSunI ? ou.uSunI.value : 1;
+  sprayMat.uniforms.uScale.value = renderer.domElement.height * 0.45;
+  const vr = renderer.xr.isPresenting;
+  const wind = Math.min((ou.uWindKn ? ou.uWindKn.value : 12) / 20, 1.6);
+  // emit from the nearest few boats only
+  const nb = Math.min(_bows.length, vr ? 2 : 4);
+  for (let bi = 0; bi < nb; bi++) {
+    const b = _bows[bi];
+    if (b.d > 900 || b.v < 1.2) continue;
+    const sp = Math.min((b.v - 1.2) / 5, 1.6);
+    // the stem meeting a rising crest throws a burst
+    const ahead = waveHeight(b.x + b.fx * 6, b.z + b.fz * 6, t) - waveHeight(b.x, b.z, t);
+    const slam = 1 + 5 * Math.max(ahead - 0.15, 0);
+    let rate = sp * sp * 260 * slam * (vr ? 0.4 : 1);
+    let n = rate * dt; n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
+    const sx = -b.fz, sz = b.fx;   // starboard
+    for (let k = 0; k < n; k++) {
+      // lee side (low side) throws more water
+      const side = Math.random() < 0.5 + Math.max(-0.45, Math.min(0.45, -2.5 * b.l)) ? 1 : -1;
+      const behind = 1.5 + Math.pow(Math.random(), 1.6) * 12;
+      const wl = 0.65 * 0.52 * M * Math.pow(Math.min(behind / (0.5 * 4.1 * M), 1), 0.6) + 0.3;
+      const px = b.x - b.fx * behind + sx * side * wl;
+      const pz = b.z - b.fz * behind + sz * side * wl;
+      const py = waveHeight(px, pz, t) + 0.2;
+      const v = b.v * (0.8 + 0.6 * Math.random());
+      const out = (0.35 + 0.5 * Math.random()) * v * 0.55;
+      const up = (0.3 + 0.7 * Math.random()) * v * 0.55 * Math.exp(-behind / 10) * (0.7 + 0.3 * slam);
+      const fwd = (0.2 + 0.3 * Math.random()) * v;   // keeps some of the boat's forward speed
+      emitSpray(px, py, pz,
+        sx * side * out + b.fx * fwd, up, sz * side * out + b.fz * fwd,
+        0.9 + Math.random() * 0.8, 0.45 + Math.random() * 0.9 + 0.3 * sp, 0);
+    }
+    // mist puffs: few, big, slow, drifting downwind
+    if (!vr) {
+      let m = sp * sp * 18 * slam * dt; m = Math.floor(m) + (Math.random() < m % 1 ? 1 : 0);
+      for (let k = 0; k < m; k++) {
+        const side = Math.random() < 0.5 ? 1 : -1;
+        const behind = 2 + Math.random() * 10;
+        const px = b.x - b.fx * behind + sx * side * (2.5 + Math.random() * 2);
+        const pz = b.z - b.fz * behind + sz * side * (2.5 + Math.random() * 2);
+        emitSpray(px, waveHeight(px, pz, t) + 0.6, pz,
+          sx * side * 1.5 + (ou.uWindDir ? ou.uWindDir.value.x : 0) * 2 * wind, 0.6 + Math.random(),
+          sz * side * 1.5 + (ou.uWindDir ? ou.uWindDir.value.y : 0) * 2 * wind,
+          1.8 + Math.random() * 1.2, 3.5 + Math.random() * 3, 1);
+      }
+    }
+  }
+  // integrate: gravity, air drag, droplets vanish when they fall back into the sea
+  const drag = Math.exp(-dt * 0.9), mdrag = Math.exp(-dt * 2.0);
+  let alive = 0;
+  for (let i = 0; i < SPRAY_N; i++) {
+    if (sprayAge[i] >= sprayLife[i]) { sprayA[i] = 0; continue; }
+    alive++;
+    sprayAge[i] += dt;
+    const o = i * 3, mist = sprayKind[i] > 0.5;
+    const d = mist ? mdrag : drag;
+    sprayVel[o] *= d; sprayVel[o + 2] *= d;
+    sprayVel[o + 1] = sprayVel[o + 1] * d - (mist ? 0.3 : 9.81) * dt;
+    sprayPos[o] += sprayVel[o] * dt; sprayPos[o + 1] += sprayVel[o + 1] * dt; sprayPos[o + 2] += sprayVel[o + 2] * dt;
+    const u = sprayAge[i] / sprayLife[i];
+    let a = Math.min(u * 8, 1) * (1 - u * u);
+    if (!mist) {
+      const hw = waveHeight(sprayPos[o], sprayPos[o + 2], t);
+      const above = sprayPos[o + 1] - hw;
+      if (above < 0 && sprayVel[o + 1] < 0) { sprayAge[i] = sprayLife[i]; a = 0; }
+      else a *= Math.min(above / 0.4 + 0.2, 1);   // soft where it meets the water
+      spraySize[i] *= 1 + dt * 0.6;              // clumps break up and spread
+    } else spraySize[i] *= 1 + dt * 0.5;
+    sprayA[i] = a;
+  }
+  sprayPoints.visible = alive > 0;
+  if (alive) {
+    sprayGeo.attributes.position.needsUpdate = true;
+    sprayGeo.attributes.size.needsUpdate = true;
+    sprayGeo.attributes.alpha.needsUpdate = true;
+    sprayGeo.attributes.kind.needsUpdate = true;
+  }
+}
+
 function updateWakes() {
   _bows.length = 0;
   for (const g of WAKE_SOURCES) {
@@ -3845,6 +3990,7 @@ function updateWakes() {
     uBowB[i].set(b.v, b.l, 0, 0);
   }
   ou.uBowN.value = nb;
+  updateSpray();
 }
 
 // --- Sun shadows ---
