@@ -416,7 +416,7 @@ camera.position.set(0, 8, 20);
 camera.lookAt(0, 0, 0);
 
 // --- Renderer ---
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });   // stencil: underwater keel view
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5)); // Retina at 2x costs ~1.8x the pixels for little visible gain
 document.body.appendChild(renderer.domElement);
@@ -1159,6 +1159,8 @@ const oceanMat = new THREE.ShaderMaterial({
   vertexShader: OCEAN_VERT,
   fragmentShader: OCEAN_FRAG,
   fog: true,
+  // marks every visible water pixel, so the keel ghost below shows only through the sea
+  stencilWrite: true, stencilRef: 1, stencilZPass: THREE.ReplaceStencilOp,
 });
 // UniformsUtils.merge clones arrays/textures -> point back at the live wave tables
 oceanMat.uniforms.uWaveA.value = uWaveA;
@@ -1431,6 +1433,33 @@ const bulb = new THREE.Mesh(
 bulb.rotation.x = Math.PI / 2;
 bulb.position.set(0, -0.86, 0.01);
 boatGroup.add(bulb);
+
+// Underwater view of keel + bulb: the sea is opaque, so these are drawn a second time after
+// it, only where they lie *behind* a water pixel (GreaterDepth + the ocean's stencil mark),
+// tinted teal and fading with depth, as if seen through the clear water.
+const keelGhostMat = new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, depthFunc: THREE.GreaterDepth,
+  stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc,
+  stencilZPass: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilFail: THREE.KeepStencilOp,
+  uniforms: { uDay: { value: 1 } },
+  vertexShader: `varying float vY; varying vec3 vN;
+    void main() { vec4 w = modelMatrix * vec4(position, 1.0); vY = w.y; vN = normalize(mat3(modelMatrix) * normal);
+      gl_Position = projectionMatrix * viewMatrix * w; }`,
+  fragmentShader: `uniform float uDay; varying float vY; varying vec3 vN;
+    void main() {
+      float d = clamp(-vY, 0.0, 40.0);
+      float vis = exp(-d / 14.0);
+      vec3 c = mix(vec3(0.005, 0.05, 0.06), vec3(0.03, 0.14, 0.14), 0.5 + 0.5 * vN.y) * mix(0.1, 1.0, uDay);
+      gl_FragColor = vec4(c, 0.8 * vis);
+      #include <colorspace_fragment>
+    }`,
+});
+const keelGhost = new THREE.Mesh(keelGeo, keelGhostMat);
+const bulbGhost = new THREE.Mesh(bulb.geometry, keelGhostMat);
+bulbGhost.rotation.copy(bulb.rotation); bulbGhost.position.copy(bulb.position);
+keelGhost.position.copy(keel.position); keelGhost.rotation.copy(keel.rotation); keelGhost.scale.copy(keel.scale);
+keelGhost.renderOrder = bulbGhost.renderOrder = 4;
+boatGroup.add(keelGhost, bulbGhost);
 
 // Rig group — scaled up 20% relative to the hull (keeps mast:boom etc. ratios)
 const rigGroup = new THREE.Group();
@@ -4848,7 +4877,9 @@ const _baseRender = renderer.render.bind(renderer);
 function passRender(s, c) {
   const xrOn = renderer.xr.enabled;
   renderer.xr.enabled = false;
+  keelGhost.visible = bulbGhost.visible = false;   // offscreen passes have no stencil
   _baseRender(s, c);
+  keelGhost.visible = bulbGhost.visible = true;
   renderer.xr.enabled = xrOn;
 }
 const CAM_W = new THREE.Vector3();   // camera position in the world (in VR it sits in the dolly)
