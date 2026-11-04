@@ -3931,14 +3931,18 @@ function updateSpray() {
       // from the stem aft along the forward third, most of it right at the bow
       const lz = HULL_ZBOW + 0.15 + Math.pow(Math.random(), 1.8) * 1.4;
       const s = (lz - HULL_ZBOW) / (HULL_ZSTERN - HULL_ZBOW);
-      _sp.set(side * (hullHalfBeam(s) + 0.06), 0, lz);
+      // the high (windward) side lifts out: its waterline sits further in under the hull,
+      // and the water there is only brushed aside, not thrown
+      const high = Math.max(b.l * side, 0);
+      const wlF = Math.min(Math.max(1 - 1.6 * high, 0.55), 1);
+      _sp.set(side * (hullHalfBeam(s) * wlF + 0.04), 0, lz);
       g.localToWorld(_sp);
       _sp.y = waveHeight(_sp.x, _sp.z, t) + 0.15;
       const bow = Math.exp(-(lz - HULL_ZBOW) / 0.7);   // the sheet is fastest and highest at the stem
       const v = b.v * (0.7 + 0.6 * Math.random());
       // thrown as a sheet: outward from the hull side, 30-60 deg up
       const el = (0.5 + 0.55 * Math.random());
-      const sv = v * (0.3 + 0.3 * bow) * (0.7 + 0.3 * slam);
+      const sv = v * (0.3 + 0.3 * bow) * (0.7 + 0.3 * slam) * Math.max(1 - 2.5 * high, 0.35);
       const out = Math.cos(el) * sv, up = Math.sin(el) * sv;
       const fwd = (0.05 + 0.15 * Math.random()) * v;
       emitSpray(_sp.x, _sp.y, _sp.z,
