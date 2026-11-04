@@ -3987,7 +3987,7 @@ FX.bowLen = 25;   // m: how far aft the bow flakes reach (decay length)
 FX.sternFlakeLen = 55;   // m behind the transom
 FX.sternFlakeW = 0.5;
 FX.sternFlakeI = 0.65;   // stern flake intensity (fewer, sparser flakes below 1)
-FX.sternShift = 1;
+FX.sternShift = 1.5;
 FX.sprayAmt = 1.5;   // bow spray amount
 FX.sprayH = 0.9;
 FX.mistAmt = 0.9;   // mist puffs amount
@@ -4014,7 +4014,7 @@ window.FX = FX;
     if (typeof FX[k] === 'number') {
       const big = k === 'kelvinLen' || k === 'sternLen' || k === 'bowLen' || k === 'sternFlakeLen';
       const lo = k === 'bowLen' ? 3 : k === 'sternFlakeLen' ? 5 : big ? 20 : 0, hi = k === 'bowLen' ? 25 : k === 'sternFlakeLen' ? 120 : big ? 160 : 2;
-      const lo2 = k === 'sternShift' ? -1 : lo, hi2 = k === 'sternShift' ? 1 : hi;
+      const lo2 = k === 'sternShift' ? -2 : lo, hi2 = k === 'sternShift' ? 2 : hi;
       inp.type = 'range'; inp.min = lo2; inp.max = hi2; inp.step = k === 'bowLen' ? 1 : big ? 5 : 0.05; inp.value = FX[k]; inp.style.width = '80px';
       const fmt = (v) => big ? String(v) : v.toFixed(2);
       const val = document.createElement('span'); val.textContent = fmt(FX[k]);
