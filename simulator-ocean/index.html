@@ -1074,15 +1074,15 @@ void main() {
       vec4 A = uBowA[i]; vec4 B = uBowB[i];
       vec2 rel = vWorld.xz - A.xy;
       float behind = -dot(rel, A.zw);                       // m aft of the stem
-      if (behind < 0.0 || behind > 24.0) continue;
+      if (behind < 0.0 || behind > 75.0) continue;
       float c = dot(rel, vec2(-A.w, A.z));                  // + = starboard
       float wl = ${(0.65 * 0.52 * 7.4).toFixed(2)} * pow(clamp(behind / ${(0.5 * 4.1 * 7.4).toFixed(1)}, 0.0, 1.0), 0.6);   // waterline half-beam
       wl *= clamp(1.0 - 1.6 * max(B.y * sign(c), 0.0), 0.55, 1.0);   // high side's waterline sits further in
       float d = abs(c) - wl;                                // m outside the hull
       float lee = clamp(1.0 - 2.2 * B.y * sign(c), 0.25, 2.0);
-      float reach = 2.0 + 0.45 * max(behind, 0.0);          // patch widens aft
+      float reach = 2.0 + 0.45 * min(behind, 24.0) + 0.12 * max(behind - 24.0, 0.0);   // patch widens aft, slower behind the transom
       float m = smoothstep(-0.6, 0.3, d) * (1.0 - smoothstep(0.4 * reach, reach, d))
-              * smoothstep(0.3, 2.5, behind) * exp(-max(behind, 0.0) / 9.0)
+              * smoothstep(0.3, 2.5, behind) * (exp(-behind / 9.0) * 0.55 + 0.45 * exp(-behind / 28.0))   // bow patch + a trail running on aft of the boat
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
       bowMask = max(bowMask, m);
     }
