@@ -382,7 +382,9 @@ const M = 7.4;
 
 // Sim runs faster than wall-clock so a realistic metre-scale course feels lively
 // (a 30 m maxi at ~13 kn would otherwise crawl across the screen).
-const SIM_SPEED = 3;
+const SIM_SPEED = 1;   // real time (was 3x time compression until 2026-11-04)
+// The wake/foam/spray effects were tuned at 3x: they see speeds and ages as if it still ran at 3x
+const FX_TIME = SIM_SPEED / 3;
 
 // --- Real-world geography (BVI North Sound — the TracTrac race area) ---
 const MAPTILER_KEY = 'nKyAvBkGUvss9FTqT7f6'; // shared with the Globe project
@@ -3752,7 +3754,7 @@ function chaseCamera() {
 // g = wave height (divergent ridges along the wedge edges, transverse waves inside).
 WAKE_SOURCES.push(boatGroup);
 // ~0.31 m per texel: coarser texels showed up as blocky wave normals
-const WAKE_SPAN = 640, WAKE_RES = 2048, WAKE_MAXP = 100, WAKE_LIFE_S = 18, WAKE_STEP = 2;
+const WAKE_SPAN = 640, WAKE_RES = 2048, WAKE_MAXP = 100, WAKE_LIFE_S = 18 / FX_TIME, WAKE_STEP = 2;
 const HULL_L = (HULL_ZSTERN - HULL_ZBOW) * M;   // the bow wave starts at the stem, the wash behind the transom
 // Half-width of the wave pattern s metres behind the stem: the bow wave hugs the hull at
 // the waterline (the round sections are only ~2/3 as wide there as at deck level) until
@@ -3951,7 +3953,7 @@ function updateSternTrail(g, live, spd) {
     for (let side = -1; side <= 1; side += 2) {
       const k = n * 2 + (side > 0 ? 1 : 0);
       pos[k * 3] = c.x + nx * W * side; pos[k * 3 + 1] = 0; pos[k * 3 + 2] = c.z + nz * W * side;
-      aw[k * 4] = side; aw[k * 4 + 1] = sAcc; aw[k * 4 + 2] = t - c.t; aw[k * 4 + 3] = spd;
+      aw[k * 4] = side; aw[k * 4 + 1] = sAcc; aw[k * 4 + 2] = (t - c.t) * FX_TIME; aw[k * 4 + 3] = spd;
       al[k * 2] = c.hw || hw0; al[k * 2 + 1] = W;
     }
     n++;
@@ -4170,7 +4172,7 @@ function updateSpray() {
       hullWaterline(g, side, lz, _sp);
       const bow = Math.exp(-(lz - HULL_ZBOW) / 0.25);   // fastest and highest at the very stem
       // real (not time-compressed) boat speed
-      const v = b.v / SIM_SPEED * (0.75 + 0.5 * Math.random());
+      const v = b.v / 3 * (0.75 + 0.5 * Math.random());   // b.v is in the 3x effect scale
       const el = 0.75 + 0.5 * Math.random();            // 43-72 deg up
       const sv = v * (0.7 + 0.6 * bow) * (1 + 0.5 * low) * (0.6 + 0.5 * slam) * FX.sprayH * Math.max(1 - 3 * high, 0.5);
       // windward (high) side: the water just runs along the edge with the hull, barely thrown
@@ -4260,7 +4262,7 @@ function updateWakes() {
     if (tr.px !== null && t > tr.pt) {
       const dtw = t - tr.pt;
       const k = 1 - Math.exp(-dtw / 1.0);
-      const vInst = Math.min(Math.hypot(sx - tr.px, sz - tr.pz) / dtw, 30);
+      const vInst = Math.min(Math.hypot(sx - tr.px, sz - tr.pz) / dtw / FX_TIME, 30);
       tr.vs += (vInst - tr.vs) * k;
       tr.ls += (leanRaw - tr.ls) * k;
     } else if (tr.px === null) tr.ls = leanRaw;
@@ -4319,7 +4321,7 @@ function updateWakes() {
       const dl = Math.hypot(dx, dz) || 1;
       if (i > 0) sAcc += Math.hypot(c.x - px, c.z - pz);
       px = c.x; pz = c.z;
-      put(c.x, c.z, t - c.t, headV, c.l || 0, -dz / dl, dx / dl);   // whole pattern uses the current speed
+      put(c.x, c.z, (t - c.t) * FX_TIME, headV, c.l || 0, -dz / dl, dx / dl);   // whole pattern uses the current speed
     }
     if (n < 2) continue;
     tr.mesh.geometry.setDrawRange(0, (n - 1) * 6);
