@@ -3989,9 +3989,9 @@ FX.bowLen = 25;   // m: how far aft the bow flakes reach (decay length)
 FX.sternFlakeLen = 55;   // m behind the transom
 FX.sternFlakeW = 0.5;
 FX.sternFlakeI = 0.65;   // stern flake intensity (fewer, sparser flakes below 1)
-FX.sternShift = 1.5;
+FX.sternShift = 2;
 FX.sprayAmt = 1.5;   // bow spray amount
-FX.sprayH = 0.9;
+FX.sprayH = 0.85;
 FX.mistAmt = 1.5;   // mist puffs amount
 FX.mistA = 0.8;   // mist opacity
 FX.mistSize = 1.4;   // mist puff size   // bow spray throw speed / height   // how far heel moves the stern source to leeward (0 centre .. 1 wetted line)   // x wetted transom width
@@ -4031,6 +4031,9 @@ window.FX = FX;
     body.append(row);
   }
   box.addEventListener('pointerdown', e => e.stopPropagation());
+  // hidden by default (kept for later tuning): open with ?fx in the URL or Shift+F
+  box.style.display = /[?&]fx\b/.test(location.search) ? '' : 'none';
+  addEventListener('keydown', (e) => { if (e.code === 'KeyF' && e.shiftKey) box.style.display = box.style.display === 'none' ? '' : 'none'; });
   document.body.appendChild(box);
 }
 const SPRAY_N = 3000;
