@@ -3819,7 +3819,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float r = sqrt(s * s + x * x);
       float spread = sqrt(uHullL * 0.5 / (uHullL * 0.5 + r));
       // divergent ridges ~60 % of before (max slope ~6-9°); transverse waves faint (masked by wash)
-      float h = (edge * div * 0.42 * lee * spread + tra * 0.15 * spread) * amp;
+      float h = (edge * div * 0.42 * lee * spread + tra * 0.15 * spread) * amp * 0.6;   // flatter (2026-11-04)
       // stern: the transom's churned water as the same crisp flakes, full width, fading aft
       leeFoam += uFxW.x * exp(-xq * xq) * exp(-age / 3.0) * go * behind * 0.7;
       // breaking crests along the outer edge of the Kelvin V, much more on the low side
@@ -3860,7 +3860,7 @@ const _bows = [];
 // bursts when the stem meets a rising crest, plus slow, large mist puffs at higher speed.
 // Effects around the boat, rebuilt one by one (2026-11-04): all off, switched back on step by step.
 // Water, clear water near the boat, whitecaps and the Kelvin bow waves (wave height) stay on.
-const FX = { bowFlakes: false, sternFlakes: false, kelvinFlakes: true, wakeFoam: false, spray: false, mist: false };
+const FX = { bowFlakes: false, sternFlakes: false, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
 window.FX = FX;   // console: FX.spray = true
 const SPRAY_N = 3000;
 const sprayPos = new Float32Array(SPRAY_N * 3);
