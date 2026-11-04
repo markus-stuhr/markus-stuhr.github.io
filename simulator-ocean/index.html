@@ -1003,8 +1003,8 @@ void main() {
   // Water body: teal, translucent. Sunlight entering the waves scatters back out of the
   // flanks (thicker -> greener), so the whole wave body glows, not only the crests;
   // sails/hulls shade that light too, which puts the boat's shadow *into* the water.
-  vec3 deep = vec3(0.002, 0.03, 0.085);      // deep cobalt, like open Caribbean water
-  vec3 scatterCol = vec3(0.02, 0.25, 0.42);
+  vec3 deep = vec3(0.002, 0.038, 0.078);      // deep cobalt, like open Caribbean water
+  vec3 scatterCol = vec3(0.025, 0.3, 0.38);
   float NdL = max(dot(N, L), 0.0);
   vec3 Hs = normalize(L + N * 0.6);
   float nearW = exp(-dist / 1500.0);
@@ -3776,7 +3776,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       // as wide as the transom's wetted bottom (flat-topped profile), then spreading
       float cw = ${(HULL_MAXBEAM * 0.96 * 0.65 * M + 0.4).toFixed(2)} + max(s - uHullL, 0.0) * 0.04;
       float xq = x * x / (cw * cw);
-      float foam = exp(-xq * xq) * exp(-age / 1.6) * go * behind;
+      float foam = 0.0;   // soft stern wash dropped: the stern shows only the crisp flakes (channel a)
       // older wake: a smooth 'slick' where the turbulence flattened the ripples
       float sw = 3.0 + s * 0.04;
       float slick = exp(-x * x / (sw * sw)) * exp(-age / 9.0) * go * behind;
