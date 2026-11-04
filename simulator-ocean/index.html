@@ -1075,8 +1075,18 @@ void main() {
       vec4 A = uBowA[i]; vec4 B = uBowB[i];
       vec2 rel = vWorld.xz - A.xy;
       float behind = -dot(rel, A.zw);                       // m aft of the stem
-      if (behind < 0.0 || behind > 24.0) continue;
+      if (behind < 0.0 || behind > ${(4.1 * 7.4 + 13).toFixed(1)}) continue;
       float c = dot(rel, vec2(-A.w, A.z));                  // + = starboard
+      // stern: churned water right behind the transom, full transom width, tied to the boat
+      // (the wake ribbon takes over a few metres aft, where its track points are reliable)
+      {
+        const float HL = ${(4.1 * 7.4 - 2.0).toFixed(2)};   // stem reference point sits 2 m aft of the tip
+        const float TW = ${(0.52 * 0.96 * 0.65 * 7.4 + 0.4).toFixed(2)};
+        float sm = (1.0 - smoothstep(TW - 0.4, TW + 0.8, abs(c))) * smoothstep(HL - 1.5, HL + 0.3, behind)
+                 * (1.0 - smoothstep(HL + 6.0, HL + 13.0, behind)) * smoothstep(1.0, 4.0, B.x) * 1.1;
+        bowMask = max(bowMask, sm);
+      }
+      if (behind > 24.0) continue;
       float wl = ${(0.65 * 0.52 * 7.4).toFixed(2)} * pow(clamp(behind / ${(0.5 * 4.1 * 7.4).toFixed(1)}, 0.0, 1.0), 0.6);   // waterline half-beam
       wl *= clamp(1.0 - 1.6 * max(B.y * sign(c), 0.0), 0.55, 1.0);   // high side's waterline sits further in
       float d = abs(c) - wl;                                // m outside the hull
@@ -3763,7 +3773,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float au = abs(vW.x), s = vW.y, age = vW.z, spd = vW.w;
       // heeled hull: the low (leeward) side pushes a bigger bow wave, the high side a smaller one
       float lee = clamp(1.0 - 2.2 * vLean.x * sign(vW.x), 0.25, 2.0);
-      float behind = smoothstep(uHullL * 0.98, uHullL * 1.12, s);   // wash starts at the transom (not alongside: in turns the bow's track swings off the hull)
+      float behind = smoothstep(uHullL + 4.0, uHullL + 11.0, s);   // wash starts at the transom (not alongside: in turns the bow's track swings off the hull)
       float W = vLean.y;
       // heeled: the high (windward) side lifts out, so its waterline - and the bow wave -
       // sits further in; only along the hull, the V further aft doesn't care about heel
@@ -3788,7 +3798,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float xs = 2.4 + max(s - uHullL * 0.3, 0.0) * 0.05;      // m off the track
       float bw = 1.2 + s * 0.02;
       // (own channel a: the ocean draws it as the same crisp foam flakes as the bow white water)
-      float leeFoam = exp(-(x - xs) * (x - xs) / (bw * bw)) * smoothstep(uHullL * 0.95, uHullL * 1.15, s)
+      float leeFoam = exp(-(x - xs) * (x - xs) / (bw * bw)) * smoothstep(uHullL + 4.0, uHullL + 11.0, s)
             * exp(-age / 6.0) * (1.0 - smoothstep(60.0, 110.0, s)) * 1.1 * go * leeSide;
       // Kelvin pattern; transverse wavelength 2*pi*v^2/g
       float lam = max(6.2831 * spd * spd / 9.81, 3.0);
