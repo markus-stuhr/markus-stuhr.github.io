@@ -3963,7 +3963,7 @@ function updateSpray() {
     // the stem meeting a rising crest throws a burst
     const ahead = waveHeight(b.x + b.fx * 6, b.z + b.fz * 6, t) - waveHeight(b.x, b.z, t);
     const slam = 1 + 5 * Math.max(ahead - 0.15, 0);
-    let n = sp * sp * 220 * slam * (vr ? 0.4 : 1) * dt * (bi === 0 ? 1 : 0.3) * Math.max(0, 1 - b.d / 900);
+    let n = sp * sp * 380 * slam * (vr ? 0.4 : 1) * dt * (bi === 0 ? 1 : 0.3) * Math.max(0, 1 - b.d / 900);
     n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
     _sax.setFromMatrixColumn(g.matrixWorld, 0).normalize();   // boat's starboard axis (heeled)
     for (let k = 0; k < n; k++) {
@@ -3975,6 +3975,8 @@ function updateSpray() {
       // the high (windward) side lifts out: its waterline sits further in under the hull,
       // and the water there is only brushed aside, not thrown
       const high = Math.max(b.l * side, 0);
+      // leeward: the bow buries and throws a real sheet
+      const low = Math.min(Math.max(-b.l * side, 0) * 5, 1);
       hullWaterline(g, side, lz, _sp);
       const bow = Math.exp(-(lz - HULL_ZBOW) / 0.7);   // the sheet is fastest and highest at the stem
       // the sim runs SIM_SPEED x faster than real time: throw at the real boat speed, or the
@@ -3982,13 +3984,14 @@ function updateSpray() {
       const v = b.v / SIM_SPEED * (0.7 + 0.6 * Math.random());
       // thrown as a sheet: outward from the hull side, 30-60 deg up
       const el = (0.5 + 0.55 * Math.random());
-      const sv = v * (0.3 + 0.3 * bow) * (0.7 + 0.3 * slam) * Math.max(1 - 2.5 * high, 0.35);
-      const hug = Math.min(high * 6, 1);   // windward: water runs along the hull, barely thrown off it
+      const sv = v * (0.3 + 0.3 * bow) * (1 + 0.6 * low) * (0.7 + 0.3 * slam) * Math.max(1 - 2.5 * high, 0.35);
+      // windward: water runs along the hull, barely thrown off it
+      const hug = Math.min(high * 6, 1);
       const out = Math.cos(el) * sv * (1 - 0.9 * hug), up = Math.sin(el) * sv * (1 - 0.5 * hug);
       const fwd = (0.05 + 0.15 * Math.random()) * v;
       emitSpray(_sp.x, _sp.y, _sp.z,
         _sax.x * side * out + b.fx * fwd, up, _sax.z * side * out + b.fz * fwd,
-        0.7 + Math.random() * 0.9, 0.035 + Math.pow(Math.random(), 2) * 0.09 + 0.02 * sp, 0, g);
+        0.7 + Math.random() * 0.9, (0.04 + Math.pow(Math.random(), 2) * 0.12 + 0.03 * sp) * (1 + 0.8 * low), 0, g);
     }
     // mist puffs: few, big, slow, drifting downwind
     if (!vr) {
