@@ -847,6 +847,7 @@ uniform float uWindKn, uReflOn, uWakeOn, uRipple;
 uniform sampler2D tWake;
 uniform vec3 uWakeBox;   // x0, z0, span (m)
 #define BOW_N 6
+uniform vec2 uBoatP;
 uniform vec4 uBowA[BOW_N];   // stem x, z, bow direction x, z
 uniform vec4 uBowB[BOW_N];   // speed (m/s), lean (+ = starboard up)
 uniform int uBowN;
@@ -1111,7 +1112,12 @@ void main() {
     col = mix(col, vec3(0.92, 0.95, 0.96) * mix(0.05, 1.0, uDay) * (0.7 + 0.4 * NdL), clamp(surf, 0.0, 1.0) * inBox);
   }
 
-  gl_FragColor = vec4(acesFit(col * 1.1), 1.0);
+  // Clear water around the player's boat: hull, keel and deck under a wave show through.
+  // Only within ~35 m of the boat (no land there), never where foam or the grazing mirror
+  // image is; the teal backdrop under the boat (seaFloorFake) stands in for the deep below.
+  float clearW = 1.0 - smoothstep(18.0, 35.0, length(vWorld.xz - uBoatP));
+  float seeThru = clearW * 0.6 * (1.0 - F) * (1.0 - clamp(foam + wf, 0.0, 1.0)) * (1.0 - inBox * (1.0 - smoothstep(0.0, 60.0, dS)));
+  gl_FragColor = vec4(acesFit(col * 1.1), 1.0 - seeThru);
   #include <colorspace_fragment>
   // fog + aerial perspective towards the sky colour behind (see fogSky)
   #ifdef USE_FOG
@@ -1158,12 +1164,14 @@ const oceanMat = new THREE.ShaderMaterial({
     tWake: { value: null }, uWakeBox: { value: new THREE.Vector3(0, 0, 1) }, uWakeOn: { value: 0 },
     uBowA: { value: null }, uBowB: { value: null }, uBowN: { value: 0 },
     uRipple: { value: RIPPLE },
+    uBoatP: { value: new THREE.Vector2(0, 0) },   // player boat (x, z): the water around it is see-through
     tSunShadow: { value: null }, uSunShadowMat: { value: new THREE.Matrix4() }, uShadowOn: { value: 0 },
     uShadowTexel: { value: new THREE.Vector2(1 / 4096, 1 / 4096) },
   }]),
   vertexShader: OCEAN_VERT,
   fragmentShader: OCEAN_FRAG,
   fog: true,
+  transparent: true,   // see-through near the boat (alpha is 1 everywhere else)
 });
 // UniformsUtils.merge clones arrays/textures -> point back at the live wave tables
 oceanMat.uniforms.uWaveA.value = uWaveA;
@@ -1179,6 +1187,13 @@ oceanMat.uniforms.uBowA.value = uBowA;
 oceanMat.uniforms.uBowB.value = uBowB;
 
 const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.renderOrder = -10;   // first of the transparent pass: wakes, spray, lines draw over it
+// Backdrop under the boat for the clear water to show: a deep-teal disc ~9 m down that
+// follows the player (land and seabed terrain above it still win the depth test)
+const seaFloorFake = new THREE.Mesh(new THREE.CircleGeometry(60, 48).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(0.004, 0.06, 0.075, THREE.LinearSRGBColorSpace), fog: false }));
+seaFloorFake.position.y = -9;
+scene.add(seaFloorFake);
 ocean.frustumCulled = false;
 ocean.renderOrder = -1;
 scene.add(ocean);
@@ -3850,6 +3865,9 @@ function updateSpray() {
   const dt = Math.min(now - sprayLast, 0.05); sprayLast = now;
   if (dt <= 0) return;
   const ou = oceanMat.uniforms;
+  ou.uBoatP.value.set(boatGroup.position.x, boatGroup.position.z);
+  seaFloorFake.position.x = boatGroup.position.x; seaFloorFake.position.z = boatGroup.position.z;
+  seaFloorFake.material.color.setRGB(0.004 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), 0.06 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), 0.075 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), THREE.LinearSRGBColorSpace);
   sprayMat.uniforms.uDay.value = ou.uDay ? ou.uDay.value : 1;
   sprayMat.uniforms.uSunI.value = ou.uSunI ? ou.uSunI.value : 1;
   const vr = renderer.xr.isPresenting;
@@ -4893,7 +4911,9 @@ const _baseRender = renderer.render.bind(renderer);
 function passRender(s, c) {
   const xrOn = renderer.xr.enabled;
   renderer.xr.enabled = false;
+  const ff = seaFloorFake.visible; seaFloorFake.visible = false;   // only for the main view's clear water
   _baseRender(s, c);
+  seaFloorFake.visible = ff;
   renderer.xr.enabled = xrOn;
 }
 const CAM_W = new THREE.Vector3();   // camera position in the world (in VR it sits in the dolly)
