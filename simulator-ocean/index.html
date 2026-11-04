@@ -1078,19 +1078,6 @@ void main() {
       float behind = -dot(rel, A.zw);                       // m aft of the stem
       if (behind < -2.0 || behind > ${(4.1 * 7.4 + 22).toFixed(1)}) continue;
       float c = dot(rel, vec2(-A.w, A.z));                  // + = starboard
-      // stern: churned water right behind the transom, full transom width, tied to the boat
-      // (the wake ribbon takes over a few metres aft, where its track points are reliable)
-      {
-        const float HL = ${(4.1 * 7.4 - 2.0).toFixed(2)};   // stem reference point sits 2 m aft of the tip
-        const float TW = ${(0.52 * 0.96 * 0.65 * 7.4 + 0.4).toFixed(2)};
-        vec2 S = A.xy - A.zw * HL;               // real transom
-        vec2 seg = B.zw - S;                     // to where the ribbon takes over (on the real track)
-        float tq = dot(vWorld.xz - S, seg) / max(dot(seg, seg), 1.0);
-        float lat = length(vWorld.xz - (S + seg * clamp(tq, 0.0, 1.0)));
-        float sm = (1.0 - smoothstep(TW - 0.4, TW + 0.8, lat)) * smoothstep(-0.05, 0.01, tq)
-                 * (1.0 - smoothstep(0.55, 1.0, tq)) * smoothstep(1.0, 4.0, B.x) * 1.1;
-        bowMask = max(bowMask, sm * uFx.y);
-      }
       // Bow flakes: start right at the tip (the stem point sits 2 m aft of it), hug the
       // waterline, and the pattern is sheared outward along the hull - the water the bow
       // pushes aside keeps moving out, so the flakes run diagonally away from the side.
@@ -3875,7 +3862,8 @@ function wakeTrailFor(g) {
 // Stern wave trail: a second ribbon recorded at the transom (not the stem), so it starts right
 // at the stern and follows the stern's own path through turns. Writes wave height (g) only.
 const sternRibbonMat = new THREE.ShaderMaterial({
-  uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uAmp: { value: 1 }, uLen: { value: 60 } },
+  uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uAmp: { value: 1 }, uLen: { value: 60 },
+    uFlk: { value: 0 }, uFlkLen: { value: 40 }, uFlkW: { value: 1 } },
   vertexShader: /* glsl */`
     attribute vec4 aW;   // u (-1..1 across), s (m behind the transom), age (s), speed (m/s)
     attribute vec2 aLean;  // x: -, y: half-width (m)
@@ -3890,7 +3878,7 @@ const sternRibbonMat = new THREE.ShaderMaterial({
   fragmentShader: /* glsl */`
     varying vec4 vW;
     varying float vHW;
-    uniform float uAmp, uLen;
+    uniform float uAmp, uLen, uFlk, uFlkLen, uFlkW;
     void main() {
       float s = vW.y, age = vW.z, spd = vW.w;
       float x = vW.x * vHW;                               // m off the stern's track
@@ -3901,7 +3889,12 @@ const sternRibbonMat = new THREE.ShaderMaterial({
       float fade = smoothstep(0.0, 3.0, s) * (1.0 - smoothstep(0.35 * uLen, uLen, s)) * exp(-age / max(uLen / 16.0, 1.0));
       float h = (cos(6.2831 * s / lam) * 0.8 + 0.35 * cos(6.2831 * (s * 0.6 + x * 0.9) / lam)) * band * fade
               * 0.28 * clamp(spd / 5.0, 0.0, 1.6) * go * uAmp;
-      gl_FragColor = vec4(0.0, h, 0.0, 0.0);
+      // stern flakes: churned water as wide as the transom, spreading a little, fading aft
+      float wf = (${(0.52 * 0.96 * 0.65 * 7.4).toFixed(2)} + s * 0.04) * uFlkW;
+      float xq = x * x / (wf * wf);
+      float flk = exp(-xq * xq) * smoothstep(0.0, 1.0, s) * (1.0 - smoothstep(0.35 * uFlkLen, uFlkLen, s))
+                * exp(-age / max(uFlkLen / 8.0, 1.0)) * go * uFlk;
+      gl_FragColor = vec4(0.0, h, 0.0, flk);
     }`,
   blending: THREE.CustomBlending,
   blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendEquation: THREE.AddEquation,
@@ -3969,16 +3962,18 @@ const _bows = [];
 // bursts when the stem meets a rising crest, plus slow, large mist puffs at higher speed.
 // Effects around the boat, rebuilt one by one (2026-11-04): all off, switched back on step by step.
 // Water, clear water near the boat, whitecaps and the Kelvin bow waves (wave height) stay on.
-const FX = { bowFlakes: true, sternFlakes: false, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
+const FX = { bowFlakes: true, sternFlakes: true, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
 FX.kelvin = 1.5;   // Kelvin bow-wave height (wave only, no foam)
 FX.kelvinLen = 90;   // m behind the bow where the bow waves have faded out
 FX.bowLen = 10;   // m: how far aft the bow flakes reach (decay length)
+FX.sternFlakeLen = 40;   // m behind the transom
+FX.sternFlakeW = 1.0;   // x transom width
 FX.sternWave = 1.0;   // stern wave trail height (wave only)
 FX.sternLen = 60;
 window.FX = FX;
 // Small switch panel (top right) to try the effects one by one
 {
-  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-/Lee-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
+  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', sternFlakeLen: 'Heck-Flocken (Länge m)', sternFlakeW: 'Heck-Flocken (Breite)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
   const box = document.createElement('div');
   box.id = 'fxPanel';
   box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:40;background:rgba(10,20,30,.72);color:#e8f0f6;font:12px system-ui,sans-serif;padding:8px 10px;border-radius:8px;line-height:1.7;user-select:none';
@@ -3992,8 +3987,8 @@ window.FX = FX;
     row.style.cssText = 'display:flex;gap:6px;align-items:center;cursor:pointer';
     const inp = document.createElement('input');
     if (typeof FX[k] === 'number') {
-      const big = k === 'kelvinLen' || k === 'sternLen' || k === 'bowLen';
-      const lo = k === 'bowLen' ? 3 : big ? 20 : 0, hi = k === 'bowLen' ? 25 : big ? 160 : 2;
+      const big = k === 'kelvinLen' || k === 'sternLen' || k === 'bowLen' || k === 'sternFlakeLen';
+      const lo = k === 'bowLen' ? 3 : k === 'sternFlakeLen' ? 5 : big ? 20 : 0, hi = k === 'bowLen' ? 25 : k === 'sternFlakeLen' ? 120 : big ? 160 : 2;
       inp.type = 'range'; inp.min = lo; inp.max = hi; inp.step = k === 'bowLen' ? 1 : big ? 5 : 0.05; inp.value = FX[k]; inp.style.width = '80px';
       const fmt = (v) => big ? String(v) : v.toFixed(2);
       const val = document.createElement('span'); val.textContent = fmt(FX[k]);
@@ -4123,7 +4118,10 @@ function updateSpray() {
   wakeRibbonMat.uniforms.uKelvinLen.value = FX.kelvinLen;
   sternRibbonMat.uniforms.uAmp.value = FX.sternWave;
   sternRibbonMat.uniforms.uLen.value = FX.sternLen;
-  wakeRibbonMat.uniforms.uFxW.value.set(FX.sternFlakes ? 1 : 0, FX.kelvinFlakes ? 1 : 0, 0);
+  sternRibbonMat.uniforms.uFlk.value = FX.sternFlakes ? 1 : 0;
+  sternRibbonMat.uniforms.uFlkLen.value = FX.sternFlakeLen;
+  sternRibbonMat.uniforms.uFlkW.value = FX.sternFlakeW;
+  wakeRibbonMat.uniforms.uFxW.value.set(0, FX.kelvinFlakes ? 1 : 0, 0);
   ou.uBoatP.value.set(boatGroup.position.x, boatGroup.position.z);
   seaFloorFake.position.x = boatGroup.position.x; seaFloorFake.position.z = boatGroup.position.z;
   seaFloorFake.material.color.setRGB(0.004 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), 0.06 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), 0.075 * (0.1 + 0.9 * (ou.uDay ? ou.uDay.value : 1)), THREE.LinearSRGBColorSpace);
@@ -4256,7 +4254,7 @@ function updateWakes() {
     } else if (tr.px === null) tr.ls = leanRaw;
     tr.px = sx; tr.pz = sz; tr.pt = t;
     const lean = tr.ls;
-    updateSternTrail(g, FX.sternWave > 0, tr.vs);
+    updateSternTrail(g, FX.sternWave > 0 || FX.sternFlakes, tr.vs);
     _bows.push({ g, x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - CAM_W.x, sz - CAM_W.z) });
     const p = tr.pts;
     const last = p[p.length - 1];
