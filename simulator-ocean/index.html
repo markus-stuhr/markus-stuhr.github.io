@@ -1099,8 +1099,9 @@ void main() {
       float wl = ${(0.65 * 0.52 * 7.4).toFixed(2)} * pow(clamp(bt / ${(0.5 * 4.1 * 7.4).toFixed(1)}, 0.0, 1.0), 0.6);   // waterline half-beam
       wl *= clamp(1.0 - 1.6 * max(B.y * sign(c), 0.0), 0.55, 1.0);   // high side's waterline sits further in
       float d = abs(c) - wl;                                // m outside the hull
-      float lee = clamp(1.0 - 2.2 * B.y * sign(c), 0.25, 2.0);
-      float reach = 0.8 + 0.3 * bt;                         // the pushed-out band widens aft
+      // both sides throw flakes; the low (leeward) side more and wider
+      float lee = clamp(1.0 - 2.2 * B.y * sign(c), 0.65, 2.2);
+      float reach = (0.8 + 0.3 * bt) * (0.6 + 0.55 * lee);   // the pushed-out band widens aft
       float m = smoothstep(-0.5, 0.1, d) * (1.0 - smoothstep(0.5 * reach, reach, d))
               * smoothstep(0.0, 1.5, bt) * exp(-bt / 10.0)
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
