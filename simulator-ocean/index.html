@@ -1046,10 +1046,15 @@ void main() {
   float wc = smoothstep(9.0, 26.0, uWindKn);
   float foamT = (0.5 - 0.32 * wc - 0.12 * gust) * uSteep;
   float crest = smoothstep(foamT, foamT + 0.3 * uSteep, pinch) * (0.25 + 0.9 * wc) * (0.5 + gust) * smoothstep(0.3, 0.8, uAmp);
-  float pat = texture2D(tFoam, vWorld.xz / 9.0 + uWindDir * uTime * 0.12).r;
-  float pat2 = texture2D(tFoam, vWorld.xz / 3.1 - uWindDir * uTime * 0.05).r;
+  // foam pattern in wind coordinates, stretched downwind: streaks and veins instead of blobs
+  vec2 wAx = vec2(dot(vWorld.xz, uWindDir), dot(vWorld.xz, vec2(-uWindDir.y, uWindDir.x)));
+  float pat = texture2D(tFoam, vec2(wAx.x / 30.0, wAx.y / 7.0) + vec2(uTime * 0.012, 0.0)).r;
+  float pat2 = texture2D(tFoam, vec2(wAx.x / 9.0, wAx.y / 2.2) - vec2(uTime * 0.02, 0.0)).r;
   // kept subtle: dense bright specks read as pixel noise rather than foam
   float foam = clamp(crest * (pat * 1.1 + pat2 * 0.35) - 0.15 * (1.0 - crest), 0.0, 1.0) * 0.5;
+  // old foam left behind by broken crests: thin lanes along the wind, more in a rough sea
+  float lane = texture2D(tFoam, vec2(wAx.x / 160.0, wAx.y / 6.0) + 0.31).r * texture2D(tFoam, vec2(wAx.x / 55.0, wAx.y / 2.5) + 0.67).r;
+  foam = max(foam, smoothstep(0.32, 0.6, lane) * 0.28 * wc * smoothstep(0.3, 0.8, uAmp) * (0.6 + 0.4 * gust));
   foam *= exp(-dist / 3500.0);
   col = mix(col, vec3(0.9, 0.93, 0.95) * mix(0.05, 1.0, uDay) * (0.65 + 0.45 * NdL), foam);
   float wf = clamp(wakeFoam * (0.3 + 0.7 * pat2 + 0.5 * pat), 0.0, 1.0) * 0.6;
@@ -3757,9 +3762,11 @@ function wakeTrailFor(g) {
 const _wf = new THREE.Vector3(), _wr = new THREE.Vector3();
 const _bows = [];
 // --- Spray: droplets thrown off the bow where the stem cuts the water ---
-// CPU particle pool drawn as soft billboards. Emitted along both sides of the forward
-// hull from the same _bows data the bow foam uses; more on the lee side, bursts when the
-// stem meets a rising crest, plus slow, large mist puffs at higher speed.
+// CPU particle pool, drawn as camera-facing quads stretched along each droplet's motion
+// (motion blur), so fast spray reads as streaks, not dots. Emitted in the boat's own frame
+// just outside the hull at the waterline (heel included), thrown outward and up as a sheet;
+// droplets that would cross the hull are pushed back out of it. More on the lee side,
+// bursts when the stem meets a rising crest, plus slow, large mist puffs at higher speed.
 const SPRAY_N = 4000;
 const sprayPos = new Float32Array(SPRAY_N * 3);
 const sprayVel = new Float32Array(SPRAY_N * 3);
@@ -3768,54 +3775,73 @@ const sprayLife = new Float32Array(SPRAY_N).fill(1);
 const spraySize = new Float32Array(SPRAY_N);
 const sprayA = new Float32Array(SPRAY_N);
 const sprayKind = new Float32Array(SPRAY_N);   // 0 droplet, 1 mist
+const sprayOwner = new Array(SPRAY_N).fill(null);
 let sprayNext = 0, sprayLast = 0;
-const sprayGeo = new THREE.BufferGeometry();
-sprayGeo.setAttribute('position', new THREE.BufferAttribute(sprayPos, 3));
-sprayGeo.setAttribute('size', new THREE.BufferAttribute(spraySize, 1));
-sprayGeo.setAttribute('alpha', new THREE.BufferAttribute(sprayA, 1));
-sprayGeo.setAttribute('kind', new THREE.BufferAttribute(sprayKind, 1));
+const sprayGeo = new THREE.InstancedBufferGeometry();
+sprayGeo.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0], 3));
+sprayGeo.setIndex([0, 1, 2, 0, 2, 3]);
+const sprayIPos = new THREE.InstancedBufferAttribute(sprayPos, 3);
+const sprayIVel = new THREE.InstancedBufferAttribute(sprayVel, 3);
+const sprayISize = new THREE.InstancedBufferAttribute(spraySize, 1);
+const sprayIA = new THREE.InstancedBufferAttribute(sprayA, 1);
+const sprayIKind = new THREE.InstancedBufferAttribute(sprayKind, 1);
+[sprayIPos, sprayIVel, sprayISize, sprayIA, sprayIKind].forEach(a => a.setUsage(THREE.DynamicDrawUsage));
+sprayGeo.setAttribute('iPos', sprayIPos);
+sprayGeo.setAttribute('iVel', sprayIVel);
+sprayGeo.setAttribute('iSize', sprayISize);
+sprayGeo.setAttribute('iA', sprayIA);
+sprayGeo.setAttribute('iKind', sprayIKind);
+sprayGeo.instanceCount = SPRAY_N;
 const sprayMat = new THREE.ShaderMaterial({
-  uniforms: { uDay: { value: 1 }, uSunDir: { value: SUN_DIR }, uSunI: { value: 1 }, uScale: { value: 300 } },
+  uniforms: { uDay: { value: 1 }, uSunDir: { value: SUN_DIR }, uSunI: { value: 1 } },
   transparent: true, depthWrite: false,
   vertexShader: `
-    attribute float size; attribute float alpha; attribute float kind;
-    uniform float uScale;
-    varying float vAlpha; varying float vKind; varying vec3 vView;
+    attribute vec3 iPos; attribute vec3 iVel; attribute float iSize; attribute float iA; attribute float iKind;
+    varying vec2 vUv; varying float vAlpha; varying float vKind; varying float vFwd;
+    uniform vec3 uSunDir;
     void main() {
-      vAlpha = alpha; vKind = kind;
-      vec4 mv = modelViewMatrix * vec4(position, 1.0);
-      vView = normalize((inverse(viewMatrix) * vec4(normalize(-mv.xyz), 0.0)).xyz);
-      gl_PointSize = clamp(size * uScale / max(1.0, -mv.z), 1.5, 256.0);
-      gl_Position = projectionMatrix * mv;
+      vUv = position.xy; vAlpha = iA; vKind = iKind;
+      vec3 c = (viewMatrix * vec4(iPos, 1.0)).xyz;
+      vec3 v = (viewMatrix * vec4(iVel, 0.0)).xyz;
+      // streak axis: the velocity as seen on screen; length grows with speed (~1/25 s exposure)
+      vec2 vs = v.xy + c.xy / max(-c.z, 0.1) * v.z;   // perspective-correct screen direction
+      float sl = length(vs);
+      vec2 ax = sl > 1e-4 ? vs / sl : vec2(0.0, 1.0);
+      vec2 ay = vec2(-ax.y, ax.x);
+      float stretch = iKind > 0.5 ? 0.0 : min(length(iVel) * 0.045, 6.0 * iSize);
+      float hl = iSize + stretch * 0.5;
+      vec3 p = c + vec3(ax * position.y * hl + ay * position.x * iSize, 0.0);
+      vec3 wdir = normalize((inverse(viewMatrix) * vec4(normalize(c), 0.0)).xyz);
+      vFwd = pow(max(dot(wdir, uSunDir), 0.0), 6.0);
+      gl_Position = projectionMatrix * vec4(p, 1.0);
+      if (iA <= 0.0) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     }`,
   fragmentShader: `
     uniform float uDay; uniform vec3 uSunDir; uniform float uSunI;
-    varying float vAlpha; varying float vKind; varying vec3 vView;
+    varying vec2 vUv; varying float vAlpha; varying float vKind; varying float vFwd;
     void main() {
-      vec2 p = gl_PointCoord * 2.0 - 1.0;
-      float r2 = dot(p, p);
+      float r2 = dot(vUv, vUv);
       if (r2 > 1.0) discard;
-      // droplet clumps: a dense core; mist: a very soft wide puff
-      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.35 : smoothstep(1.0, 0.3, r2) * 0.9;
+      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.35 : smoothstep(1.0, 0.15, r2) * 0.85;
       // backlit spray glows when you look towards the sun (forward scattering)
-      float fwd = pow(max(dot(-vView, uSunDir), 0.0), 6.0) * uSunI;
-      vec3 c = vec3(0.86, 0.91, 0.95) * mix(0.06, 1.0, uDay) * (0.8 + 0.25 * uSunDir.y) + vec3(1.0, 0.95, 0.85) * fwd * 0.8;
-      gl_FragColor = vec4(c, a * vAlpha);
+      vec3 col = vec3(0.86, 0.91, 0.95) * mix(0.06, 1.0, uDay) * (0.8 + 0.25 * uSunDir.y) + vec3(1.0, 0.95, 0.85) * vFwd * uSunI * 0.8;
+      gl_FragColor = vec4(col, a * vAlpha);
       #include <colorspace_fragment>
     }`,
 });
-const sprayPoints = new THREE.Points(sprayGeo, sprayMat);
-sprayPoints.frustumCulled = false;
-sprayPoints.renderOrder = 5;
-scene.add(sprayPoints);
+const sprayMesh = new THREE.Mesh(sprayGeo, sprayMat);
+sprayMesh.frustumCulled = false;
+sprayMesh.renderOrder = 5;
+scene.add(sprayMesh);
 
-function emitSpray(x, y, z, vx, vy, vz, life, size, kind) {
+function emitSpray(x, y, z, vx, vy, vz, life, size, kind, owner) {
   const i = sprayNext; sprayNext = (sprayNext + 1) % SPRAY_N;
   sprayPos[i * 3] = x; sprayPos[i * 3 + 1] = y; sprayPos[i * 3 + 2] = z;
   sprayVel[i * 3] = vx; sprayVel[i * 3 + 1] = vy; sprayVel[i * 3 + 2] = vz;
-  sprayAge[i] = 0; sprayLife[i] = life; spraySize[i] = size; sprayKind[i] = kind;
+  sprayAge[i] = 0; sprayLife[i] = life; spraySize[i] = size; sprayKind[i] = kind; sprayOwner[i] = owner;
 }
 
+const _sp = new THREE.Vector3(), _sax = new THREE.Vector3(), _sup = new THREE.Vector3(), _sinv = new THREE.Matrix4();
 function updateSpray() {
   const now = performance.now() / 1000;
   const dt = Math.min(now - sprayLast, 0.05); sprayLast = now;
@@ -3823,55 +3849,57 @@ function updateSpray() {
   const ou = oceanMat.uniforms;
   sprayMat.uniforms.uDay.value = ou.uDay ? ou.uDay.value : 1;
   sprayMat.uniforms.uSunI.value = ou.uSunI ? ou.uSunI.value : 1;
-  sprayMat.uniforms.uScale.value = renderer.domElement.height * 0.45;
   const vr = renderer.xr.isPresenting;
   const wind = Math.min((ou.uWindKn ? ou.uWindKn.value : 12) / 20, 1.6);
-  // emit from the nearest few boats only
+  const wdx = ou.uWindDir ? ou.uWindDir.value.x : 0, wdz = ou.uWindDir ? ou.uWindDir.value.y : 0;
   const nb = Math.min(_bows.length, vr ? 2 : 4);
   for (let bi = 0; bi < nb; bi++) {
-    const b = _bows[bi];
-    if (b.d > 900 || b.v < 1.2) continue;
+    const b = _bows[bi], g = b.g;
+    if (!g || b.d > 900 || b.v < 1.2) continue;
+    g.updateMatrixWorld();
     const sp = Math.min((b.v - 1.2) / 5, 1.6);
     // the stem meeting a rising crest throws a burst
     const ahead = waveHeight(b.x + b.fx * 6, b.z + b.fz * 6, t) - waveHeight(b.x, b.z, t);
     const slam = 1 + 5 * Math.max(ahead - 0.15, 0);
-    let rate = sp * sp * 700 * slam * (vr ? 0.4 : 1);
-    let n = rate * dt; n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
-    const sx = -b.fz, sz = b.fx;   // starboard
+    let n = sp * sp * 700 * slam * (vr ? 0.4 : 1) * dt;
+    n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
+    _sax.setFromMatrixColumn(g.matrixWorld, 0).normalize();   // boat's starboard axis (heeled)
     for (let k = 0; k < n; k++) {
       // lee side (low side) throws more water
       const side = Math.random() < 0.5 + Math.max(-0.45, Math.min(0.45, -2.5 * b.l)) ? 1 : -1;
-      const behind = 1.5 + Math.pow(Math.random(), 1.6) * 12;
-      const wl = 0.65 * 0.52 * M * Math.pow(Math.min(behind / (0.5 * 4.1 * M), 1), 0.6) + 0.3;
-      const px = b.x - b.fx * behind + sx * side * wl;
-      const pz = b.z - b.fz * behind + sz * side * wl;
-      const py = waveHeight(px, pz, t) + 0.2;
-      const v = b.v * (0.8 + 0.6 * Math.random());
-      const out = (0.35 + 0.5 * Math.random()) * v * 0.55;
-      const up = (0.3 + 0.7 * Math.random()) * v * 0.55 * Math.exp(-behind / 10) * (0.7 + 0.3 * slam);
-      const fwd = (0.2 + 0.3 * Math.random()) * v;   // keeps some of the boat's forward speed
-      emitSpray(px, py, pz,
-        sx * side * out + b.fx * fwd, up, sz * side * out + b.fz * fwd,
-        0.7 + Math.random() * 0.7, 0.1 + Math.pow(Math.random(), 2) * 0.3 + 0.05 * sp, 0);
+      // from the stem aft along the forward third, most of it right at the bow
+      const lz = HULL_ZBOW + 0.15 + Math.pow(Math.random(), 1.8) * 1.4;
+      const s = (lz - HULL_ZBOW) / (HULL_ZSTERN - HULL_ZBOW);
+      _sp.set(side * (hullHalfBeam(s) + 0.06), 0, lz);
+      g.localToWorld(_sp);
+      _sp.y = waveHeight(_sp.x, _sp.z, t) + 0.15;
+      const bow = Math.exp(-(lz - HULL_ZBOW) / 0.7);   // the sheet is fastest and highest at the stem
+      const v = b.v * (0.7 + 0.6 * Math.random());
+      // thrown as a sheet: outward from the hull side, 30-60 deg up
+      const el = (0.5 + 0.55 * Math.random());
+      const sv = v * (0.35 + 0.45 * bow) * (0.7 + 0.3 * slam);
+      const out = Math.cos(el) * sv, up = Math.sin(el) * sv;
+      const fwd = (0.05 + 0.15 * Math.random()) * v;
+      emitSpray(_sp.x, _sp.y, _sp.z,
+        _sax.x * side * out + b.fx * fwd, up, _sax.z * side * out + b.fz * fwd,
+        0.6 + Math.random() * 0.8, 0.06 + Math.pow(Math.random(), 2) * 0.18 + 0.04 * sp, 0, g);
     }
     // mist puffs: few, big, slow, drifting downwind
     if (!vr) {
       let m = sp * sp * 18 * slam * dt; m = Math.floor(m) + (Math.random() < m % 1 ? 1 : 0);
       for (let k = 0; k < m; k++) {
         const side = Math.random() < 0.5 ? 1 : -1;
-        const behind = 2 + Math.random() * 10;
-        const px = b.x - b.fx * behind + sx * side * (2.5 + Math.random() * 2);
-        const pz = b.z - b.fz * behind + sz * side * (2.5 + Math.random() * 2);
-        emitSpray(px, waveHeight(px, pz, t) + 0.6, pz,
-          sx * side * 1.5 + (ou.uWindDir ? ou.uWindDir.value.x : 0) * 2 * wind, 0.6 + Math.random(),
-          sz * side * 1.5 + (ou.uWindDir ? ou.uWindDir.value.y : 0) * 2 * wind,
-          1.8 + Math.random() * 1.2, 3.5 + Math.random() * 3, 1);
+        _sp.set(side * (0.6 + Math.random() * 0.4), 0, HULL_ZBOW + 0.3 + Math.random() * 1.2);
+        g.localToWorld(_sp);
+        emitSpray(_sp.x, waveHeight(_sp.x, _sp.z, t) + 0.6, _sp.z,
+          _sax.x * side * 1.5 + wdx * 2 * wind, 0.6 + Math.random(), _sax.z * side * 1.5 + wdz * 2 * wind,
+          1.8 + Math.random() * 1.2, 3.5 + Math.random() * 3, 1, null);
       }
     }
   }
-  // integrate: gravity, air drag, droplets vanish when they fall back into the sea
-  const drag = Math.exp(-dt * 0.9), mdrag = Math.exp(-dt * 2.0);
-  let alive = 0;
+  // integrate: gravity, air drag; droplets can't pass through their boat and vanish in the sea
+  const drag = Math.exp(-dt * 0.6), mdrag = Math.exp(-dt * 2.0);
+  let alive = 0, lastG = null;
   for (let i = 0; i < SPRAY_N; i++) {
     if (sprayAge[i] >= sprayLife[i]) { sprayA[i] = 0; continue; }
     alive++;
@@ -3882,23 +3910,37 @@ function updateSpray() {
     sprayVel[o + 1] = sprayVel[o + 1] * d - (mist ? 0.3 : 9.81) * dt;
     sprayPos[o] += sprayVel[o] * dt; sprayPos[o + 1] += sprayVel[o + 1] * dt; sprayPos[o + 2] += sprayVel[o + 2] * dt;
     const u = sprayAge[i] / sprayLife[i];
-    let a = Math.min(u * 8, 1) * (1 - u * u);
+    let a = Math.min(u * 10, 1) * (1 - u * u);
     if (!mist) {
+      const g = sprayOwner[i];
+      if (g) {
+        if (g !== lastG) { _sinv.copy(g.matrixWorld).invert(); _sax.setFromMatrixColumn(g.matrixWorld, 0).normalize(); lastG = g; }
+        _sp.set(sprayPos[o], sprayPos[o + 1], sprayPos[o + 2]).applyMatrix4(_sinv);
+        if (_sp.z > HULL_ZBOW && _sp.z < HULL_ZSTERN) {
+          const s = (_sp.z - HULL_ZBOW) / (HULL_ZSTERN - HULL_ZBOW);
+          const hb = hullHalfBeam(s) + 0.04;
+          if (Math.abs(_sp.x) < hb && _sp.y > -hullDepth(s) && _sp.y < hullDeckY(s) + 0.05) {
+            // inside the hull: put it back on the side it came from and bounce it outward
+            const sd = Math.sign(_sp.x) || 1;
+            _sp.x = sd * hb;
+            _sp.applyMatrix4(g.matrixWorld);
+            sprayPos[o] = _sp.x; sprayPos[o + 1] = _sp.y; sprayPos[o + 2] = _sp.z;
+            const vn = (sprayVel[o] * _sax.x + sprayVel[o + 1] * _sax.y + sprayVel[o + 2] * _sax.z) * sd;
+            if (vn < 0) {
+              sprayVel[o] -= _sax.x * sd * vn * 1.4; sprayVel[o + 1] -= _sax.y * sd * vn * 1.4; sprayVel[o + 2] -= _sax.z * sd * vn * 1.4;
+            }
+          }
+        }
+      }
       const hw = waveHeight(sprayPos[o], sprayPos[o + 2], t);
       const above = sprayPos[o + 1] - hw;
       if (above < 0 && sprayVel[o + 1] < 0) { sprayAge[i] = sprayLife[i]; a = 0; }
-      else a *= Math.min(above / 0.4 + 0.2, 1);   // soft where it meets the water
-      spraySize[i] *= 1 + dt * 0.15;             // droplets stay small
+      else a *= Math.min(above / 0.3 + 0.3, 1);   // soft where it meets the water
     } else spraySize[i] *= 1 + dt * 0.5;
     sprayA[i] = a;
   }
-  sprayPoints.visible = alive > 0;
-  if (alive) {
-    sprayGeo.attributes.position.needsUpdate = true;
-    sprayGeo.attributes.size.needsUpdate = true;
-    sprayGeo.attributes.alpha.needsUpdate = true;
-    sprayGeo.attributes.kind.needsUpdate = true;
-  }
+  sprayMesh.visible = alive > 0;
+  if (alive) [sprayIPos, sprayIVel, sprayISize, sprayIA, sprayIKind].forEach(a => { a.needsUpdate = true; });
 }
 
 function updateWakes() {
@@ -3924,7 +3966,7 @@ function updateWakes() {
     } else if (tr.px === null) tr.ls = leanRaw;
     tr.px = sx; tr.pz = sz; tr.pt = t;
     const lean = tr.ls;
-    _bows.push({ x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - CAM_W.x, sz - CAM_W.z) });
+    _bows.push({ g, x: sx, z: sz, fx: _wf.x, fz: _wf.z, v: tr.vs, l: lean, d: Math.hypot(sx - CAM_W.x, sz - CAM_W.z) });
     const p = tr.pts;
     const last = p[p.length - 1];
     // reset on restart, seek or teleport: also any jump faster than a boat can sail (>20 m/s), or
