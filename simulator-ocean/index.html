@@ -1070,13 +1070,13 @@ void main() {
   // along each side of the forward hull. Like the whitecaps it is a threshold on the
   // world-anchored foam pattern, so the blobs stay in the water as the boat sails through.
   if (dist < 600.0) {
-    float bowMask = 0.0;
+    float bowMask = 0.0, bowFlake = 0.0;
     for (int i = 0; i < BOW_N; i++) {
       if (i >= uBowN) break;
       vec4 A = uBowA[i]; vec4 B = uBowB[i];
       vec2 rel = vWorld.xz - A.xy;
       float behind = -dot(rel, A.zw);                       // m aft of the stem
-      if (behind < 0.0 || behind > ${(4.1 * 7.4 + 22).toFixed(1)}) continue;
+      if (behind < -2.0 || behind > ${(4.1 * 7.4 + 22).toFixed(1)}) continue;
       float c = dot(rel, vec2(-A.w, A.z));                  // + = starboard
       // stern: churned water right behind the transom, full transom width, tied to the boat
       // (the wake ribbon takes over a few metres aft, where its track points are reliable)
@@ -1091,26 +1091,38 @@ void main() {
                  * (1.0 - smoothstep(0.55, 1.0, tq)) * smoothstep(1.0, 4.0, B.x) * 1.1;
         bowMask = max(bowMask, sm * uFx.y);
       }
-      if (behind > 24.0) continue;
-      float wl = ${(0.65 * 0.52 * 7.4).toFixed(2)} * pow(clamp(behind / ${(0.5 * 4.1 * 7.4).toFixed(1)}, 0.0, 1.0), 0.6);   // waterline half-beam
+      // Bow flakes: start right at the tip (the stem point sits 2 m aft of it), hug the
+      // waterline, and the pattern is sheared outward along the hull - the water the bow
+      // pushes aside keeps moving out, so the flakes run diagonally away from the side.
+      float bt = behind + 2.0;                              // m aft of the tip
+      if (bt > 26.0 || uFx.x < 0.5) continue;
+      float wl = ${(0.65 * 0.52 * 7.4).toFixed(2)} * pow(clamp(bt / ${(0.5 * 4.1 * 7.4).toFixed(1)}, 0.0, 1.0), 0.6);   // waterline half-beam
       wl *= clamp(1.0 - 1.6 * max(B.y * sign(c), 0.0), 0.55, 1.0);   // high side's waterline sits further in
       float d = abs(c) - wl;                                // m outside the hull
       float lee = clamp(1.0 - 2.2 * B.y * sign(c), 0.25, 2.0);
-      float reach = 2.0 + 0.45 * max(behind, 0.0);          // patch widens aft
-      float m = smoothstep(-0.6, 0.3, d) * (1.0 - smoothstep(0.4 * reach, reach, d))
-              * smoothstep(0.3, 2.5, behind) * exp(-max(behind, 0.0) / 9.0)
+      float reach = 0.8 + 0.3 * bt;                         // the pushed-out band widens aft
+      float m = smoothstep(-0.5, 0.1, d) * (1.0 - smoothstep(0.5 * reach, reach, d))
+              * smoothstep(0.0, 1.5, bt) * exp(-bt / 10.0)
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
-      bowMask = max(bowMask, m * uFx.x);
+      if (m < 0.001) continue;
+      float along = dot(vWorld.xz, A.zw);                   // world-anchored along the heading
+      float across = d - 0.25 * bt;                         // sheared: born at the hull, drifting out
+      float pq = texture2D(tFoam, vec2(along / 5.0, across / 1.6)).r * 0.8
+               + texture2D(tFoam, vec2(along / 11.0, across / 4.0) + 0.5).r * 0.4;
+      float thb = 1.05 - 0.8 * clamp(m, 0.0, 1.2);
+      bowFlake = max(bowFlake, smoothstep(thb, thb + 0.3, pq));
     }
-    bowMask = max(bowMask, wakeLee * 1.8);   // switched per part in the wake ribbon (uFxW)   // the leeward flakes run on aft along the real track
+    // the stern/wake flakes (switched per part in the wake ribbon, uFxW) use the world pattern
+    bowMask = max(bowMask, wakeLee * 1.8);
+    float bf = bowFlake;
     if (bowMask > 0.001) {
       // coarse pattern only and a soft edge: the fine layer read as pixel speckle
       float pb = texture2D(tFoam, vWorld.xz / 4.5 + uTime * vec2(0.05, -0.03)).r * 0.8
                + texture2D(tFoam, vWorld.xz / 11.0 - uTime * vec2(0.02, 0.03)).r * 0.4;
       float th = 1.05 - 0.8 * clamp(bowMask, 0.0, 1.2);
-      float bf = smoothstep(th, th + 0.3, pb);
-      col = mix(col, vec3(0.95, 0.97, 0.99) * mix(0.05, 1.0, uDay) * (0.8 + 0.3 * NdL), bf * 0.88);
+      bf = max(bf, smoothstep(th, th + 0.3, pb));
     }
+    if (bf > 0.001) col = mix(col, vec3(0.95, 0.97, 0.99) * mix(0.05, 1.0, uDay) * (0.8 + 0.3 * NdL), bf * 0.88);
   }
 
   // Surf: breaker lines marching in to the beach, then swash on the sand
@@ -3949,7 +3961,7 @@ const _bows = [];
 // bursts when the stem meets a rising crest, plus slow, large mist puffs at higher speed.
 // Effects around the boat, rebuilt one by one (2026-11-04): all off, switched back on step by step.
 // Water, clear water near the boat, whitecaps and the Kelvin bow waves (wave height) stay on.
-const FX = { bowFlakes: false, sternFlakes: false, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
+const FX = { bowFlakes: true, sternFlakes: false, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
 FX.kelvin = 1.5;   // Kelvin bow-wave height (wave only, no foam)
 FX.kelvinLen = 90;   // m behind the bow where the bow waves have faded out
 FX.sternWave = 1.0;   // stern wave trail height (wave only)
