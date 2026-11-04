@@ -4200,7 +4200,7 @@ function updateSpray() {
     // mist puffs: few, big, slow, drifting downwind
     if (!vr && FX.mist) {
       // part of the spray: same speed ramp and amount slider, plus its own amount
-      let m = (FX.spray ? 1 : 0) * spr * spr * 2.56 * 9 * FX.sprayAmt * FX.mistAmt * slam * dt; m = Math.floor(m) + (Math.random() < m % 1 ? 1 : 0);
+      let m = (FX.spray ? 1 : 0) * spr * spr * 2.56 * 6 * FX.sprayAmt * FX.mistAmt * slam * dt; m = Math.floor(m) + (Math.random() < m % 1 ? 1 : 0);
       for (let k = 0; k < m; k++) {
         // mostly on the lee side, close to the stem; on the lifted windward side at its real waterline
         const side = Math.random() < 0.5 + Math.max(-0.4, Math.min(0.4, -3 * b.l)) ? 1 : -1;
