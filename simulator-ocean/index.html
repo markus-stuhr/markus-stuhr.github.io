@@ -1095,7 +1095,7 @@ void main() {
       // waterline, and the pattern is sheared outward along the hull - the water the bow
       // pushes aside keeps moving out, so the flakes run diagonally away from the side.
       float bt = behind + 2.0;                              // m aft of the tip
-      if (bt > 26.0 || uFx.x < 0.5) continue;
+      if (bt > 2.6 * uFx.w || uFx.x < 0.5) continue;   // uFx.w: bow flake length (FX panel)
       float wl = ${(0.65 * 0.52 * 7.4).toFixed(2)} * pow(clamp(bt / ${(0.5 * 4.1 * 7.4).toFixed(1)}, 0.0, 1.0), 0.6);   // waterline half-beam
       wl *= clamp(1.0 - 1.6 * max(B.y * sign(c), 0.0), 0.55, 1.0);   // high side's waterline sits further in
       float d = abs(c) - wl + 0.5;                          // m outside the hull, flakes start 0.5 m further in
@@ -1107,7 +1107,7 @@ void main() {
       reach = mix(reach, 0.55 + 0.03 * bt, wwd);
       lee = mix(lee, 1.5, wwd);
       float m = smoothstep(-0.5, 0.1, d) * (1.0 - smoothstep(0.5 * reach, reach, d))
-              * smoothstep(0.0, 1.5, bt) * exp(-bt / mix(10.0, 16.0, wwd))
+              * smoothstep(0.0, 1.5, bt) * exp(-bt / (uFx.w * mix(1.0, 1.6, wwd)))
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
       if (m < 0.001) continue;
       float along = dot(vWorld.xz, A.zw);                   // world-anchored along the heading
@@ -3969,12 +3969,13 @@ const _bows = [];
 const FX = { bowFlakes: true, sternFlakes: false, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
 FX.kelvin = 1.5;   // Kelvin bow-wave height (wave only, no foam)
 FX.kelvinLen = 90;   // m behind the bow where the bow waves have faded out
+FX.bowLen = 10;   // m: how far aft the bow flakes reach (decay length)
 FX.sternWave = 1.0;   // stern wave trail height (wave only)
 FX.sternLen = 60;
 window.FX = FX;
 // Small switch panel (top right) to try the effects one by one
 {
-  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-/Lee-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
+  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', sternWave: 'Heckwellen (Höhe)', sternLen: 'Heckwellen (Länge m)', bowLen: 'Bug-Flocken (Länge m)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-/Lee-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
   const box = document.createElement('div');
   box.id = 'fxPanel';
   box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:40;background:rgba(10,20,30,.72);color:#e8f0f6;font:12px system-ui,sans-serif;padding:8px 10px;border-radius:8px;line-height:1.7;user-select:none';
@@ -3988,8 +3989,9 @@ window.FX = FX;
     row.style.cssText = 'display:flex;gap:6px;align-items:center;cursor:pointer';
     const inp = document.createElement('input');
     if (typeof FX[k] === 'number') {
-      const big = k === 'kelvinLen' || k === 'sternLen';
-      inp.type = 'range'; inp.min = big ? 20 : 0; inp.max = big ? 160 : 2; inp.step = big ? 5 : 0.05; inp.value = FX[k]; inp.style.width = '80px';
+      const big = k === 'kelvinLen' || k === 'sternLen' || k === 'bowLen';
+      const lo = k === 'bowLen' ? 3 : big ? 20 : 0, hi = k === 'bowLen' ? 25 : big ? 160 : 2;
+      inp.type = 'range'; inp.min = lo; inp.max = hi; inp.step = k === 'bowLen' ? 1 : big ? 5 : 0.05; inp.value = FX[k]; inp.style.width = '80px';
       const fmt = (v) => big ? String(v) : v.toFixed(2);
       const val = document.createElement('span'); val.textContent = fmt(FX[k]);
       inp.oninput = () => { FX[k] = +inp.value; val.textContent = fmt(FX[k]); };
@@ -4113,7 +4115,7 @@ function updateSpray() {
   const dt = Math.min(now - sprayLast, 0.05); sprayLast = now;
   if (dt <= 0) return;
   const ou = oceanMat.uniforms;
-  ou.uFx.value.set(FX.bowFlakes ? 1 : 0, FX.sternFlakes ? 1 : 0, FX.wakeFoam ? 1 : 0, 0);
+  ou.uFx.value.set(FX.bowFlakes ? 1 : 0, FX.sternFlakes ? 1 : 0, FX.wakeFoam ? 1 : 0, FX.bowLen);
   wakeRibbonMat.uniforms.uKelvin.value = FX.kelvin;
   wakeRibbonMat.uniforms.uKelvinLen.value = FX.kelvinLen;
   sternRibbonMat.uniforms.uAmp.value = FX.sternWave;
