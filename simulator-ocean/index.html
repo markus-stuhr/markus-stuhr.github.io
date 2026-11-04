@@ -3880,7 +3880,7 @@ const sprayMat = new THREE.ShaderMaterial({
     void main() {
       float r2 = dot(vUv, vUv);
       if (r2 > 1.0) discard;
-      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.09 : smoothstep(1.0, 0.1, r2) * 0.9;
+      float a = vKind > 0.5 ? (1.0 - r2) * (1.0 - r2) * 0.12 : smoothstep(1.0, 0.1, r2) * 0.9;
       // backlit spray glows when you look towards the sun (forward scattering)
       vec3 col = vec3(0.86, 0.91, 0.95) * mix(0.06, 1.0, uDay) * (0.8 + 0.25 * uSunDir.y) + vec3(1.0, 0.95, 0.85) * vFwd * uSunI * 0.8;
       gl_FragColor = vec4(col, a * vAlpha);
@@ -3938,12 +3938,12 @@ function updateSpray() {
       const v = b.v * (0.7 + 0.6 * Math.random());
       // thrown as a sheet: outward from the hull side, 30-60 deg up
       const el = (0.5 + 0.55 * Math.random());
-      const sv = v * (0.5 + 0.5 * bow) * (0.7 + 0.3 * slam);
+      const sv = v * (0.3 + 0.3 * bow) * (0.7 + 0.3 * slam);
       const out = Math.cos(el) * sv, up = Math.sin(el) * sv;
       const fwd = (0.05 + 0.15 * Math.random()) * v;
       emitSpray(_sp.x, _sp.y, _sp.z,
         _sax.x * side * out + b.fx * fwd, up, _sax.z * side * out + b.fz * fwd,
-        0.7 + Math.random() * 0.9, 0.05 + Math.pow(Math.random(), 2) * 0.14 + 0.03 * sp, 0, g);
+        0.7 + Math.random() * 0.9, 0.035 + Math.pow(Math.random(), 2) * 0.09 + 0.02 * sp, 0, g);
     }
     // mist puffs: few, big, slow, drifting downwind
     if (!vr) {
