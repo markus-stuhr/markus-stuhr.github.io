@@ -4072,7 +4072,7 @@ const sprayMat = new THREE.ShaderMaterial({
       vec2 ay = vec2(-ax.y, ax.x);
       float stretch = iKind > 0.5 ? 0.0 : min(length(iVel) * 0.045, 6.0 * iSize);
       // never thinner than ~2 px, so distant spray doesn't vanish (fainter instead)
-      float sz = max(iSize, -c.z * 0.002);
+      float sz = max(iSize, -c.z * 0.0011);
       vAlpha *= min(1.0, iSize / sz * 1.5);
       float hl = sz + stretch * 0.5;
       vec3 p = c + vec3(ax * position.y * hl + ay * position.x * sz, 0.0);
