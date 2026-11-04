@@ -3821,7 +3821,7 @@ const _bows = [];
 // just outside the hull at the waterline (heel included), thrown outward and up as a sheet;
 // droplets that would cross the hull are pushed back out of it. More on the lee side,
 // bursts when the stem meets a rising crest, plus slow, large mist puffs at higher speed.
-const SPRAY_N = 10000;
+const SPRAY_N = 3000;
 const sprayPos = new Float32Array(SPRAY_N * 3);
 const sprayVel = new Float32Array(SPRAY_N * 3);
 const sprayAge = new Float32Array(SPRAY_N).fill(9);
@@ -3913,7 +3913,7 @@ function updateSpray() {
   const vr = renderer.xr.isPresenting;
   const wind = Math.min((ou.uWindKn ? ou.uWindKn.value : 12) / 20, 1.6);
   const wdx = ou.uWindDir ? ou.uWindDir.value.x : 0, wdz = ou.uWindDir ? ou.uWindDir.value.y : 0;
-  const nb = Math.min(_bows.length, vr ? 2 : 4);
+  const nb = Math.min(_bows.length, vr ? 2 : 3);
   for (let bi = 0; bi < nb; bi++) {
     const b = _bows[bi], g = b.g;
     if (!g || b.d > 900 || b.v < 1.2) continue;
@@ -3922,7 +3922,7 @@ function updateSpray() {
     // the stem meeting a rising crest throws a burst
     const ahead = waveHeight(b.x + b.fx * 6, b.z + b.fz * 6, t) - waveHeight(b.x, b.z, t);
     const slam = 1 + 5 * Math.max(ahead - 0.15, 0);
-    let n = sp * sp * 500 * slam * (vr ? 0.4 : 1) * dt * (bi === 0 ? 1 : 0.45) * Math.max(0, 1 - b.d / 900);
+    let n = sp * sp * 220 * slam * (vr ? 0.4 : 1) * dt * (bi === 0 ? 1 : 0.3) * Math.max(0, 1 - b.d / 900);
     n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
     _sax.setFromMatrixColumn(g.matrixWorld, 0).normalize();   // boat's starboard axis (heeled)
     for (let k = 0; k < n; k++) {
