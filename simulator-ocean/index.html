@@ -3990,9 +3990,9 @@ FX.sternFlakeI = 0.65;   // stern flake intensity (fewer, sparser flakes below 1
 FX.sternShift = 1;
 FX.sprayAmt = 1.5;   // bow spray amount
 FX.sprayH = 0.9;
-FX.mistAmt = 1;   // mist puffs amount
-FX.mistA = 1;   // mist opacity
-FX.mistSize = 1;   // mist puff size   // bow spray throw speed / height   // how far heel moves the stern source to leeward (0 centre .. 1 wetted line)   // x wetted transom width
+FX.mistAmt = 0.9;   // mist puffs amount
+FX.mistA = 0.15;   // mist opacity
+FX.mistSize = 1.4;   // mist puff size   // bow spray throw speed / height   // how far heel moves the stern source to leeward (0 centre .. 1 wetted line)   // x wetted transom width
 FX.sternWave = 1.15;   // stern wave trail height (wave only)
 FX.sternLen = 95;
 window.FX = FX;
@@ -4199,7 +4199,8 @@ function updateSpray() {
     }
     // mist puffs: few, big, slow, drifting downwind
     if (!vr && FX.mist) {
-      let m = spr * spr * 2.56 * 9 * FX.mistAmt * slam * dt;   // grows with boat speed like the spray m = Math.floor(m) + (Math.random() < m % 1 ? 1 : 0);
+      // part of the spray: same speed ramp and amount slider, plus its own amount
+      let m = (FX.spray ? 1 : 0) * spr * spr * 2.56 * 9 * FX.sprayAmt * FX.mistAmt * slam * dt; m = Math.floor(m) + (Math.random() < m % 1 ? 1 : 0);
       for (let k = 0; k < m; k++) {
         // mostly on the lee side, close to the stem; on the lifted windward side at its real waterline
         const side = Math.random() < 0.5 + Math.max(-0.4, Math.min(0.4, -3 * b.l)) ? 1 : -1;
