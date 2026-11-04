@@ -3759,7 +3759,7 @@ const wakeCam = new THREE.Camera();   // unused by the ribbon shader (it writes 
 const wakeCenter = new THREE.Vector2();
 const wakeRibbonMat = new THREE.ShaderMaterial({
   uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uHullL: { value: HULL_L },
-    uFxW: { value: new THREE.Vector3(0, 0, 0) }, uKelvin: { value: 0.6 } },   // FX: x stern/lee flakes, y Kelvin-edge flakes, z soft foam
+    uFxW: { value: new THREE.Vector3(0, 0, 0) }, uKelvin: { value: 1.5 }, uKelvinLen: { value: 90 } },   // FX: x stern/lee flakes, y Kelvin-edge flakes, z soft foam
   vertexShader: /* glsl */`
     attribute vec4 aW;   // u (-1..1 across, +1 = starboard), s (m behind the bow), age (s), speed (m/s)
     attribute vec2 aLean;  // x: starboard side height from heel (+ = starboard up, port leeward), y: half-width (m)
@@ -3778,6 +3778,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
     uniform float uHullL;
     uniform vec3 uFxW;
     uniform float uKelvin;
+    uniform float uKelvinLen;
     void main() {
       float au = abs(vW.x), s = vW.y, age = vW.z, spd = vW.w;
       // heeled hull: the low (leeward) side pushes a bigger bow wave, the high side a smaller one
@@ -3815,7 +3816,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float edge = smoothstep(0.45, 0.9, au) * (1.0 - smoothstep(0.9, 1.0, au));
       float div = sin(6.2831 * (s * 0.57 + x * 0.82) / (lam * 0.5));
       float tra = cos(6.2831 * s / lam) * max(1.0 - au, 0.0) * smoothstep(0.0, lam, s);
-      float amp = 0.32 * clamp(spd / 5.0, 0.0, 1.6) * go * exp(-age / 7.0) * (1.0 - smoothstep(0.7, 1.0, s / 160.0));
+      float amp = 0.32 * clamp(spd / 5.0, 0.0, 1.6) * go * exp(-age / max(uKelvinLen / 16.0, 1.0)) * (1.0 - smoothstep(0.35 * uKelvinLen, uKelvinLen, s));   // length set in the FX panel
       // spreading: wave height falls off ~1/sqrt(distance from the bow), full at the hull
       float r = sqrt(s * s + x * x);
       float spread = sqrt(uHullL * 0.5 / (uHullL * 0.5 + r));
@@ -3862,11 +3863,12 @@ const _bows = [];
 // Effects around the boat, rebuilt one by one (2026-11-04): all off, switched back on step by step.
 // Water, clear water near the boat, whitecaps and the Kelvin bow waves (wave height) stay on.
 const FX = { bowFlakes: false, sternFlakes: false, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
-FX.kelvin = 0.6;   // Kelvin bow-wave height (wave only, no foam)
+FX.kelvin = 1.5;   // Kelvin bow-wave height (wave only, no foam)
+FX.kelvinLen = 90;   // m behind the bow where the bow waves have faded out
 window.FX = FX;
 // Small switch panel (top right) to try the effects one by one
 {
-  const LABELS = { kelvin: 'Bugwellen (Höhe)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-/Lee-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
+  const LABELS = { kelvin: 'Bugwellen (Höhe)', kelvinLen: 'Bugwellen (Länge m)', bowFlakes: 'Bug-Flocken', sternFlakes: 'Heck-/Lee-Flocken', kelvinFlakes: 'Schaumlinien am V', wakeFoam: 'weicher Kielwasser-Schaum', spray: 'Spritzer', mist: 'Nebel' };
   const box = document.createElement('div');
   box.id = 'fxPanel';
   box.style.cssText = 'position:fixed;top:64px;right:12px;z-index:40;background:rgba(10,20,30,.72);color:#e8f0f6;font:12px system-ui,sans-serif;padding:8px 10px;border-radius:8px;line-height:1.7;user-select:none';
@@ -3880,9 +3882,11 @@ window.FX = FX;
     row.style.cssText = 'display:flex;gap:6px;align-items:center;cursor:pointer';
     const inp = document.createElement('input');
     if (typeof FX[k] === 'number') {
-      inp.type = 'range'; inp.min = 0; inp.max = 1.5; inp.step = 0.05; inp.value = FX[k]; inp.style.width = '80px';
-      const val = document.createElement('span'); val.textContent = FX[k].toFixed(2);
-      inp.oninput = () => { FX[k] = +inp.value; val.textContent = FX[k].toFixed(2); };
+      const big = k === 'kelvinLen';
+      inp.type = 'range'; inp.min = big ? 20 : 0; inp.max = big ? 160 : 2; inp.step = big ? 5 : 0.05; inp.value = FX[k]; inp.style.width = '80px';
+      const fmt = (v) => big ? String(v) : v.toFixed(2);
+      const val = document.createElement('span'); val.textContent = fmt(FX[k]);
+      inp.oninput = () => { FX[k] = +inp.value; val.textContent = fmt(FX[k]); };
       row.append(LABELS[k], inp, val);
     } else {
       inp.type = 'checkbox'; inp.checked = FX[k];
@@ -4005,6 +4009,7 @@ function updateSpray() {
   const ou = oceanMat.uniforms;
   ou.uFx.value.set(FX.bowFlakes ? 1 : 0, FX.sternFlakes ? 1 : 0, FX.wakeFoam ? 1 : 0, 0);
   wakeRibbonMat.uniforms.uKelvin.value = FX.kelvin;
+  wakeRibbonMat.uniforms.uKelvinLen.value = FX.kelvinLen;
   wakeRibbonMat.uniforms.uFxW.value.set(FX.sternFlakes ? 1 : 0, FX.kelvinFlakes ? 1 : 0, 0);
   ou.uBoatP.value.set(boatGroup.position.x, boatGroup.position.z);
   seaFloorFake.position.x = boatGroup.position.x; seaFloorFake.position.z = boatGroup.position.z;
