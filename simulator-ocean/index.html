@@ -4171,12 +4171,14 @@ function updateSpray() {
       // real (not time-compressed) boat speed
       const v = b.v / SIM_SPEED * (0.75 + 0.5 * Math.random());
       const el = 0.75 + 0.5 * Math.random();            // 43-72 deg up
-      const sv = v * (0.7 + 0.6 * bow) * (1 + 0.5 * low) * (0.6 + 0.5 * slam) * FX.sprayH * Math.max(1 - 3 * high, 0.25);
-      const out = Math.cos(el) * sv, up = Math.sin(el) * sv;
-      const fwd = (0.15 + 0.25 * Math.random()) * v;    // the sheet leaves with some of the bow's speed
+      const sv = v * (0.7 + 0.6 * bow) * (1 + 0.5 * low) * (0.6 + 0.5 * slam) * FX.sprayH * Math.max(1 - 3 * high, 0.5);
+      // windward (high) side: the water just runs along the edge with the hull, barely thrown
+      const hugW = Math.min(high * 6, 1);
+      const out = Math.cos(el) * sv * (1 - 0.85 * hugW), up = Math.sin(el) * sv * (1 - 0.6 * hugW);
+      const fwd = (0.15 + 0.25 * Math.random() + 0.5 * hugW) * v;   // the sheet leaves with some of the bow's speed
       emitSpray(_sp.x, _sp.y, _sp.z,
         _sax.x * side * out + b.fx * fwd, up, _sax.z * side * out + b.fz * fwd,
-        0.8 + Math.random() * 0.8, (0.06 + Math.pow(Math.random(), 2) * 0.22) * (1 + 0.6 * low), 0, g);
+        0.8 + Math.random() * 0.8, (0.04 + Math.pow(Math.random(), 2) * 0.14) * (1 + 0.6 * low), 0, g);
     }
     // mist puffs: few, big, slow, drifting downwind
     if (!vr && FX.mist) {
