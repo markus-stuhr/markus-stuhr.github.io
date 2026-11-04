@@ -3763,7 +3763,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float au = abs(vW.x), s = vW.y, age = vW.z, spd = vW.w;
       // heeled hull: the low (leeward) side pushes a bigger bow wave, the high side a smaller one
       float lee = clamp(1.0 - 2.2 * vLean.x * sign(vW.x), 0.25, 2.0);
-      float behind = smoothstep(uHullL * 0.75, uHullL * 1.05, s);   // wash starts at the transom
+      float behind = smoothstep(uHullL * 0.98, uHullL * 1.12, s);   // wash starts at the transom (not alongside: in turns the bow's track swings off the hull)
       float W = vLean.y;
       // heeled: the high (windward) side lifts out, so its waterline - and the bow wave -
       // sits further in; only along the hull, the V further aft doesn't care about heel
@@ -3788,7 +3788,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float xs = 2.4 + max(s - uHullL * 0.3, 0.0) * 0.05;      // m off the track
       float bw = 1.2 + s * 0.02;
       // (own channel a: the ocean draws it as the same crisp foam flakes as the bow white water)
-      float leeFoam = exp(-(x - xs) * (x - xs) / (bw * bw)) * smoothstep(uHullL * 0.2, uHullL * 0.5, s)
+      float leeFoam = exp(-(x - xs) * (x - xs) / (bw * bw)) * smoothstep(uHullL * 0.95, uHullL * 1.15, s)
             * exp(-age / 6.0) * (1.0 - smoothstep(60.0, 110.0, s)) * 1.1 * go * leeSide;
       // Kelvin pattern; transverse wavelength 2*pi*v^2/g
       float lam = max(6.2831 * spd * spd / 9.81, 3.0);
@@ -3804,7 +3804,7 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       // stern: the transom's churned water as the same crisp flakes, full width, fading aft
       leeFoam += exp(-xq * xq) * exp(-age / 3.0) * go * behind * 0.7;
       // breaking crests along the outer edge of the Kelvin V, much more on the low side
-      leeFoam += smoothstep(0.8, 0.95, au) * (1.0 - smoothstep(0.95, 1.0, au)) * smoothstep(uHullL * 0.6, uHullL * 1.2, s)
+      leeFoam += smoothstep(0.8, 0.95, au) * (1.0 - smoothstep(0.95, 1.0, au)) * smoothstep(uHullL * 1.0, uHullL * 1.3, s)
                * exp(-age / 4.0) * (1.0 - smoothstep(50.0, 90.0, s)) * go * clamp(spd / 6.0, 0.0, 1.0) * (0.25 + 0.6 * leeSide);
       gl_FragColor = vec4(foam, h, slick, leeFoam);
     }`,
