@@ -3766,7 +3766,7 @@ const wakeCam = new THREE.Camera();   // unused by the ribbon shader (it writes 
 const wakeCenter = new THREE.Vector2();
 const wakeRibbonMat = new THREE.ShaderMaterial({
   uniforms: { uCenter: { value: wakeCenter }, uHalf: { value: WAKE_SPAN / 2 }, uHullL: { value: HULL_L },
-    uFxW: { value: new THREE.Vector3(0, 0, 0) }, uKelvin: { value: 1.5 }, uKelvinLen: { value: 90 } },   // FX: x stern/lee flakes, y Kelvin-edge flakes, z soft foam
+    uFxW: { value: new THREE.Vector3(0, 0, 0) }, uKelvin: { value: 2.0 }, uKelvinLen: { value: 55 } },   // FX: x stern/lee flakes, y Kelvin-edge flakes, z soft foam
   vertexShader: /* glsl */`
     attribute vec4 aW;   // u (-1..1 across, +1 = starboard), s (m behind the bow), age (s), speed (m/s)
     attribute vec2 aLean;  // x: starboard side height from heel (+ = starboard up, port leeward), y: half-width (m)
@@ -3975,13 +3975,13 @@ const _bows = [];
 // Effects around the boat, rebuilt one by one (2026-11-04): all off, switched back on step by step.
 // Water, clear water near the boat, whitecaps and the Kelvin bow waves (wave height) stay on.
 const FX = { bowFlakes: true, sternFlakes: true, kelvinFlakes: false, wakeFoam: false, spray: false, mist: false };
-FX.kelvin = 1.5;   // Kelvin bow-wave height (wave only, no foam)
-FX.kelvinLen = 90;   // m behind the bow where the bow waves have faded out
-FX.bowLen = 10;   // m: how far aft the bow flakes reach (decay length)
-FX.sternFlakeLen = 40;   // m behind the transom
-FX.sternFlakeW = 0.5;   // x wetted transom width
-FX.sternWave = 1.0;   // stern wave trail height (wave only)
-FX.sternLen = 60;
+FX.kelvin = 2.0;   // Kelvin bow-wave height (wave only, no foam)
+FX.kelvinLen = 55;   // m behind the bow where the bow waves have faded out
+FX.bowLen = 23;   // m: how far aft the bow flakes reach (decay length)
+FX.sternFlakeLen = 20;   // m behind the transom
+FX.sternFlakeW = 0.3;   // x wetted transom width
+FX.sternWave = 1.15;   // stern wave trail height (wave only)
+FX.sternLen = 95;
 window.FX = FX;
 // Small switch panel (top right) to try the effects one by one
 {
