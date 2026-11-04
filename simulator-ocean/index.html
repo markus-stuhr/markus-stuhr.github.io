@@ -3767,7 +3767,7 @@ const _bows = [];
 // just outside the hull at the waterline (heel included), thrown outward and up as a sheet;
 // droplets that would cross the hull are pushed back out of it. More on the lee side,
 // bursts when the stem meets a rising crest, plus slow, large mist puffs at higher speed.
-const SPRAY_N = 4000;
+const SPRAY_N = 6000;
 const sprayPos = new Float32Array(SPRAY_N * 3);
 const sprayVel = new Float32Array(SPRAY_N * 3);
 const sprayAge = new Float32Array(SPRAY_N).fill(9);
@@ -3809,8 +3809,11 @@ const sprayMat = new THREE.ShaderMaterial({
       vec2 ax = sl > 1e-4 ? vs / sl : vec2(0.0, 1.0);
       vec2 ay = vec2(-ax.y, ax.x);
       float stretch = iKind > 0.5 ? 0.0 : min(length(iVel) * 0.045, 6.0 * iSize);
-      float hl = iSize + stretch * 0.5;
-      vec3 p = c + vec3(ax * position.y * hl + ay * position.x * iSize, 0.0);
+      // never thinner than ~2 px, so distant spray doesn't vanish (fainter instead)
+      float sz = max(iSize, -c.z * 0.0035);
+      vAlpha *= min(1.0, iSize / sz * 1.5);
+      float hl = sz + stretch * 0.5;
+      vec3 p = c + vec3(ax * position.y * hl + ay * position.x * sz, 0.0);
       vec3 wdir = normalize((inverse(viewMatrix) * vec4(normalize(c), 0.0)).xyz);
       vFwd = pow(max(dot(wdir, uSunDir), 0.0), 6.0);
       gl_Position = projectionMatrix * vec4(p, 1.0);
@@ -3861,7 +3864,7 @@ function updateSpray() {
     // the stem meeting a rising crest throws a burst
     const ahead = waveHeight(b.x + b.fx * 6, b.z + b.fz * 6, t) - waveHeight(b.x, b.z, t);
     const slam = 1 + 5 * Math.max(ahead - 0.15, 0);
-    let n = sp * sp * 700 * slam * (vr ? 0.4 : 1) * dt;
+    let n = sp * sp * 600 * slam * (vr ? 0.4 : 1) * dt * (bi === 0 ? 1 : 0.45) * Math.max(0, 1 - b.d / 900);
     n = Math.floor(n) + (Math.random() < n % 1 ? 1 : 0);
     _sax.setFromMatrixColumn(g.matrixWorld, 0).normalize();   // boat's starboard axis (heeled)
     for (let k = 0; k < n; k++) {
@@ -3877,12 +3880,12 @@ function updateSpray() {
       const v = b.v * (0.7 + 0.6 * Math.random());
       // thrown as a sheet: outward from the hull side, 30-60 deg up
       const el = (0.5 + 0.55 * Math.random());
-      const sv = v * (0.35 + 0.45 * bow) * (0.7 + 0.3 * slam);
+      const sv = v * (0.5 + 0.5 * bow) * (0.7 + 0.3 * slam);
       const out = Math.cos(el) * sv, up = Math.sin(el) * sv;
       const fwd = (0.05 + 0.15 * Math.random()) * v;
       emitSpray(_sp.x, _sp.y, _sp.z,
         _sax.x * side * out + b.fx * fwd, up, _sax.z * side * out + b.fz * fwd,
-        0.6 + Math.random() * 0.8, 0.06 + Math.pow(Math.random(), 2) * 0.18 + 0.04 * sp, 0, g);
+        0.7 + Math.random() * 0.9, 0.3 + Math.pow(Math.random(), 2) * 0.8 + 0.2 * sp, 0, g);
     }
     // mist puffs: few, big, slow, drifting downwind
     if (!vr) {
