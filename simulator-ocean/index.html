@@ -994,18 +994,25 @@ void main() {
   float F = 0.02 + 0.98 * pow(1.0 - NdV, 5.0);
   F = min(F, mix(0.85, 0.6, smoothstep(1000.0, 8000.0, dist)));
 
-  // Water body: deep tropical blue + light scattered through thin crests
   float h = clamp(vWorld.y / max(0.85 * uAmp, 0.2), -1.0, 1.0);
-  vec3 deep = vec3(0.002, 0.03, 0.06);
-  vec3 scatterCol = vec3(0.02, 0.30, 0.30);
+  // Water body: teal, translucent. Sunlight entering the waves scatters back out of the
+  // flanks (thicker -> greener), so the whole wave body glows, not only the crests;
+  // sails/hulls shade that light too, which puts the boat's shadow *into* the water.
+  vec3 deep = vec3(0.003, 0.045, 0.062);
+  vec3 scatterCol = vec3(0.03, 0.36, 0.31);
   float NdL = max(dot(N, L), 0.0);
   vec3 Hs = normalize(L + N * 0.6);
-  float sss = pow(clamp(dot(V, -Hs), 0.0, 1.0), 4.0) * 2.5 * max(h + 0.35, 0.0) * exp(-dist / 1500.0);   // crest glow only nearby
-  // sails/hulls shade the water (no direct sun, glint or glow); clouds dim the sun itself
+  float nearW = exp(-dist / 1500.0);
+  float sss = pow(clamp(dot(V, -Hs), 0.0, 1.0), 4.0) * 2.5 * max(h + 0.35, 0.0) * nearW;   // backlit crest glow
+  // flanks: light through the slope that faces the viewer, strongest at a grazing view and on the upper half
+  vec2 fv = normalize(V.xz + 1e-4);
+  float facing = clamp(dot(nWave.xz, fv) * 4.0, 0.0, 1.0);
+  float flank = facing * smoothstep(-0.6, 0.7, h) * pow(1.0 - NdV, 1.5) * (0.6 + 0.4 * NdL) * nearW;
   float shadowV = sunVisibility(vWorld);
   float shade = mix(1.0, shadowV, uSunI);
   float sunVis = shade * uSunI;
-  vec3 body = deep * (0.45 + 0.55 * NdL * sunVis) + scatterCol * (sss * sunVis + 0.08 + 0.14 * max(h, 0.0));
+  vec3 body = deep * (0.5 + 0.6 * NdL * sunVis)
+            + scatterCol * ((sss + 0.9 * flank) * sunVis + (0.10 + 0.16 * max(h, 0.0)) * mix(0.45, 1.0, sunVis));
   // Shallows: the satellite image already shows the lagoon/reef colour seen through the water
   float lumS = dot(sat, vec3(0.3, 0.5, 0.2));
   // lagoon water is turquoise (green well above red); haze/cloud in the imagery is grey-blue
