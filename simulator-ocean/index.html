@@ -4191,7 +4191,7 @@ function updateSpray() {
       const fwd = (0.15 + 0.25 * Math.random() + 0.5 * hugW) * v;   // the sheet leaves with some of the bow's speed
       emitSpray(_sp.x, _sp.y, _sp.z,
         _sax.x * side * out + b.fx * fwd, up, _sax.z * side * out + b.fz * fwd,
-        0.8 + Math.random() * 0.8, (0.04 + Math.pow(Math.random(), 2) * 0.14) * (1 + 0.6 * low), 0, g);
+        0.8 + Math.random() * 0.8, (0.025 + Math.pow(Math.random(), 2) * 0.09) * (1 + 0.6 * low), 0, g);
     }
     // mist puffs: few, big, slow, drifting downwind
     if (!vr && FX.mist) {
