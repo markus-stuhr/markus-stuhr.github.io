@@ -3900,6 +3900,30 @@ function emitSpray(x, y, z, vx, vy, vz, life, size, kind, owner) {
 }
 
 const _sp = new THREE.Vector3(), _sax = new THREE.Vector3(), _sup = new THREE.Vector3(), _sinv = new THREE.Matrix4();
+// Where the heeled hull's side actually meets the water at station lz: walk down the section
+// (width narrows towards the keel) until the point drops below the wave surface. -> _sp (world)
+const _wlA = new THREE.Vector3();
+function hullWaterline(g, side, lz, out) {
+  const s = (lz - HULL_ZBOW) / (HULL_ZSTERN - HULL_ZBOW);
+  const hb = hullHalfBeam(s), dp = hullDepth(s), top = hullDeckY(s);
+  let prevAbove = null;
+  for (let k = 0; k <= 10; k++) {
+    const y = top - (top + dp) * k / 10;
+    const w = hb * (y < 0 ? Math.sqrt(Math.max(1 + y / dp, 0)) : 1) + 0.02;
+    _wlA.set(side * w, y, lz);
+    g.localToWorld(_wlA);
+    const above = _wlA.y - waveHeight(_wlA.x, _wlA.z, t);
+    if (above <= 0) {
+      if (prevAbove !== null) out.lerpVectors(out, _wlA, prevAbove / (prevAbove - above)); else out.copy(_wlA);
+      out.y = waveHeight(out.x, out.z, t) + 0.1;
+      return out;
+    }
+    out.copy(_wlA); prevAbove = above;
+  }
+  out.y = waveHeight(out.x, out.z, t) + 0.1;   // whole section clear of the water (airborne)
+  return out;
+}
+
 function updateSpray() {
   const now = performance.now() / 1000;
   const dt = Math.min(now - sprayLast, 0.05); sprayLast = now;
@@ -3934,10 +3958,7 @@ function updateSpray() {
       // the high (windward) side lifts out: its waterline sits further in under the hull,
       // and the water there is only brushed aside, not thrown
       const high = Math.max(b.l * side, 0);
-      const wlF = Math.min(Math.max(1 - 1.6 * high, 0.55), 1);
-      _sp.set(side * (hullHalfBeam(s) * wlF + 0.04), 0, lz);
-      g.localToWorld(_sp);
-      _sp.y = waveHeight(_sp.x, _sp.z, t) + 0.15;
+      hullWaterline(g, side, lz, _sp);
       const bow = Math.exp(-(lz - HULL_ZBOW) / 0.7);   // the sheet is fastest and highest at the stem
       // the sim runs SIM_SPEED x faster than real time: throw at the real boat speed, or the
       // droplets fly metres out from the hull while the boat races past them
@@ -3945,7 +3966,8 @@ function updateSpray() {
       // thrown as a sheet: outward from the hull side, 30-60 deg up
       const el = (0.5 + 0.55 * Math.random());
       const sv = v * (0.3 + 0.3 * bow) * (0.7 + 0.3 * slam) * Math.max(1 - 2.5 * high, 0.35);
-      const out = Math.cos(el) * sv, up = Math.sin(el) * sv;
+      const hug = Math.min(high * 6, 1);   // windward: water runs along the hull, barely thrown off it
+      const out = Math.cos(el) * sv * (1 - 0.9 * hug), up = Math.sin(el) * sv * (1 - 0.5 * hug);
       const fwd = (0.05 + 0.15 * Math.random()) * v;
       emitSpray(_sp.x, _sp.y, _sp.z,
         _sax.x * side * out + b.fx * fwd, up, _sax.z * side * out + b.fz * fwd,
@@ -3958,10 +3980,8 @@ function updateSpray() {
         // mostly on the lee side, close to the stem; on the lifted windward side at its real waterline
         const side = Math.random() < 0.5 + Math.max(-0.4, Math.min(0.4, -3 * b.l)) ? 1 : -1;
         const mhigh = Math.max(b.l * side, 0);
-        const ms = (0.1 + Math.pow(Math.random(), 1.5) * 0.6) / (HULL_ZSTERN - HULL_ZBOW);
-        _sp.set(side * (hullHalfBeam(ms) * Math.min(Math.max(1 - 1.6 * mhigh, 0.55), 1) + 0.05), 0, HULL_ZBOW + ms * (HULL_ZSTERN - HULL_ZBOW));
-        g.localToWorld(_sp);
-        emitSpray(_sp.x, waveHeight(_sp.x, _sp.z, t) + 0.6, _sp.z,
+        hullWaterline(g, side, HULL_ZBOW + 0.1 + Math.pow(Math.random(), 1.5) * 0.6, _sp);
+        emitSpray(_sp.x, _sp.y + 0.4, _sp.z,
           _sax.x * side * 0.5 + wdx * 1.2 * wind + b.fx * b.v * 0.5, 0.4 + 0.6 * Math.random(), _sax.z * side * 0.5 + wdz * 1.2 * wind + b.fz * b.v * 0.5,
           1.5 + Math.random() * 1.0, 1.0 + Math.random() * 0.9, 1, null);
       }
@@ -3988,8 +4008,10 @@ function updateSpray() {
         _sp.set(sprayPos[o], sprayPos[o + 1], sprayPos[o + 2]).applyMatrix4(_sinv);
         if (_sp.z > HULL_ZBOW && _sp.z < HULL_ZSTERN) {
           const s = (_sp.z - HULL_ZBOW) / (HULL_ZSTERN - HULL_ZBOW);
-          const hb = hullHalfBeam(s) + 0.04;
-          if (Math.abs(_sp.x) < hb && _sp.y > -hullDepth(s) && _sp.y < hullDeckY(s) + 0.05) {
+          // the section narrows below the chine towards the keel: use the width at this height
+          const dp = hullDepth(s);
+          const hb = hullHalfBeam(s) * (_sp.y < 0 ? Math.sqrt(Math.max(1 + _sp.y / dp, 0)) : 1) + 0.02;
+          if (Math.abs(_sp.x) < hb && _sp.y > -dp && _sp.y < hullDeckY(s) + 0.05) {
             // inside the hull: put it back on the side it came from and bounce it outward
             const sd = Math.sign(_sp.x) || 1;
             _sp.x = sd * hb;
