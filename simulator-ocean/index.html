@@ -1101,7 +1101,7 @@ void main() {
       lee = mix(lee, 1.5, wwd);
       float m = smoothstep(-0.5, 0.1, d) * (1.0 - smoothstep(0.5 * reach, reach, d))
               * smoothstep(0.0, 1.5, bt) * exp(-bt / (uFx.w * mix(1.0, 1.6, wwd)))
-              * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
+              * smoothstep(3.0, 8.0, B.x / 3.0 * 1.944) * clamp(B.x / 5.0, 0.0, 1.4) * lee;   // gone below ~3 kn
       if (m < 0.001) continue;
       float along = dot(vWorld.xz, A.zw);                   // world-anchored along the heading
       float across = d - drift * (1.0 - wwd);               // born at the hull, drifting out along the arc (windward strip stays put)
@@ -3802,7 +3802,8 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float narrow = mix(clamp(1.0 - 1.6 * up, 0.55, 1.0), 1.0, smoothstep(uHullL * 0.8, uHullL * 1.6, s));
       au /= narrow;
       float x = au * W;                                   // metres off the track
-      float go = smoothstep(0.8, 3.5, spd);
+      // real boat speed in knots (spd is in the 3x tuning scale): gone below ~3 kn, full from ~8 kn
+      float go = smoothstep(3.0, 8.0, spd / 3.0 * 1.944);
       // turbulent centre stripe: hull + keel wash, spreading and fading
       // as wide as the transom's wetted bottom (flat-topped profile), then spreading
       float cw = ${(HULL_MAXBEAM * 0.96 * 0.65 * M + 0.4).toFixed(2)} + max(s - uHullL, 0.0) * 0.04;
@@ -3885,7 +3886,8 @@ const sternRibbonMat = new THREE.ShaderMaterial({
     void main() {
       float s = vW.y, age = vW.z, spd = vW.w;
       float x = vW.x * vHW;                               // m off the stern's track
-      float go = smoothstep(0.8, 3.5, spd);
+      // real boat speed in knots (spd is in the 3x tuning scale): gone below ~3 kn, full from ~8 kn
+      float go = smoothstep(3.0, 8.0, spd / 3.0 * 1.944);
       float lam = clamp(spd * 0.9, 4.0, 14.0);            // short, steep stern waves
       float w = ${(0.52 * 0.96 * 0.65 * 7.4).toFixed(2)} + s * 0.06;    // transom width, spreading aft
       float band = exp(-x * x / (w * w));
