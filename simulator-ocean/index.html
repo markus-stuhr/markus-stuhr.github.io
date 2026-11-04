@@ -3801,6 +3801,8 @@ const wakeRibbonMat = new THREE.ShaderMaterial({
       float spread = sqrt(uHullL * 0.5 / (uHullL * 0.5 + r));
       // divergent ridges ~60 % of before (max slope ~6-9°); transverse waves faint (masked by wash)
       float h = (edge * div * 0.42 * lee * spread + tra * 0.15 * spread) * amp;
+      // stern: the transom's churned water as the same crisp flakes, full width, fading aft
+      leeFoam += exp(-xq * xq) * exp(-age / 3.0) * go * behind * 0.7;
       gl_FragColor = vec4(foam, h, slick, leeFoam);
     }`,
   blending: THREE.CustomBlending,
