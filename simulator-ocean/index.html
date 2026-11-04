@@ -959,7 +959,7 @@ void main() {
       n.z -= hz / texM;
       wakeFoam = wk.r;
       wakeSlick = clamp(wk.b, 0.0, 1.0);
-      wakeLee = clamp(wk.a, 0.0, 1.2);
+      wakeLee = clamp(wk.a, 0.0, 1.0);
     }
   }
   ds *= 1.0 - 0.75 * wakeSlick;   // turbulence flattens the ripples in the old wake
@@ -1087,7 +1087,7 @@ void main() {
               * smoothstep(1.0, 4.0, B.x) * clamp(B.x / 5.0, 0.0, 1.4) * lee;
       bowMask = max(bowMask, m);
     }
-    bowMask = max(bowMask, wakeLee);   // the leeward flakes run on aft along the real track
+    bowMask = max(bowMask, wakeLee * 1.8);   // the leeward flakes run on aft along the real track
     if (bowMask > 0.001) {
       // coarse pattern only and a soft edge: the fine layer read as pixel speckle
       float pb = texture2D(tFoam, vWorld.xz / 4.5 + uTime * vec2(0.05, -0.03)).r * 0.8
