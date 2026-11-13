@@ -52,6 +52,10 @@ canvas{display:block;width:100%;height:44px}
   text-decoration:none;padding:0}
 .acts a:hover{color:var(--acc)}
 .fav.on,.fav:hover{color:var(--acc2)}
+.mode{display:flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px}
+.mode button{background:none;border:0;color:var(--dim);font:inherit;font-size:14px;
+  padding:6px 13px;border-radius:6px;cursor:pointer}
+.mode button[aria-pressed="true"]{background:var(--acc);color:#10231a;font-weight:600}
 .empty{grid-column:1/-1;color:var(--dim);text-align:center;padding:40px}
 @media (max-width:600px){header{padding:12px 16px}.grid{padding:14px 16px 50px}
   .lic{margin-left:0;width:100%}}
@@ -63,9 +67,11 @@ canvas{display:block;width:100%;height:44px}
     <h1>Audio-Assets</h1>
     <span class="count" id="count"></span>
     <span class="lic">Alles <b>CC0</b> · Quellen: <a href="https://kenney.nl/assets/category:Audio" target="_blank" rel="noopener">Kenney</a>,
-      <a href="https://opengameart.org/content/512-sound-effects-8-bit-style" target="_blank" rel="noopener">Juhani Junkala</a></span>
+      <a href="https://opengameart.org/content/512-sound-effects-8-bit-style" target="_blank" rel="noopener">Juhani Junkala</a>,
+      <a href="https://opengameart.org/" target="_blank" rel="noopener">OpenGameArt</a></span>
   </div>
   <div class="tools">
+    <div class="mode" id="mode"><button data-m="sounds" aria-pressed="true">Sounds</button><button data-m="music" aria-pressed="false">Music</button></div>
     <input id="q" type="search" placeholder="Suchen … (z. B. coin, footstep, laser)" autocomplete="off">
     <select id="cat"><option value="">Alle Kategorien</option></select>
     <select id="pack"><option value="">Alle Packs</option></select>
@@ -125,7 +131,8 @@ function card(s) {
       <button class="fav" title="Favorit">★</button>
       <a href="${s.ogg}" download title="OGG laden">⤓</a></div>`);
   el.querySelector('.nm').textContent = s.name;
-  el.querySelector('.pk').textContent = `${s.dur.toFixed(1)} s · ${s.group || s.packLabel}`;
+  const len = s.dur >= 60 ? `${Math.floor(s.dur / 60)}:${String(Math.round(s.dur % 60)).padStart(2, '0')} min` : `${s.dur.toFixed(1)} s`;
+  el.querySelector('.pk').textContent = `${len} · ${s.group || s.packLabel}`;
   const fav = el.querySelector('.fav');
   fav.classList.toggle('on', favs.has(s.id));
   fav.onclick = e => { e.stopPropagation();
@@ -144,7 +151,7 @@ function render() {
     (!packSel.value || s.pack === packSel.value) &&
     (!onlyFav || favs.has(s.id)) &&
     t.every(w => (s.name + ' ' + s.group + ' ' + s.packLabel + ' ' + s.cat).toLowerCase().includes(w)));
-  $('#count').textContent = `${list.length} von ${sounds.length} Sounds`;
+  $('#count').textContent = `${list.length} von ${sounds.length} ${mode === 'music' ? 'Tracks' : 'Sounds'}`;
   grid.replaceChildren();
   if (!list.length) { grid.innerHTML = '<div class="empty">Nichts gefunden.</div>'; return; }
   const by = new Map();
@@ -160,11 +167,29 @@ function render() {
   grid.append(frag);
 }
 
-fetch('manifest.json').then(r => r.json()).then(d => {
-  sounds = d.sounds;
+const lib = { sounds: [], music: [] };
+let mode = 'sounds';
+function setMode(m) {
+  mode = m;
+  if (current) { audio.pause(); current.card.classList.remove('playing'); current = null; }
+  document.querySelectorAll('#mode button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === m));
+  sounds = lib[m];
+  q.placeholder = m === 'music' ? 'Suchen … (z. B. cave, ambient)' : 'Suchen … (z. B. coin, footstep, laser)';
+  catSel.length = 1; packSel.length = 1;
+  packSel.options[0].text = m === 'music' ? 'Alle Künstler' : 'Alle Packs';
   [...new Set(sounds.map(s => s.cat))].sort().forEach(c => catSel.add(new Option(c, c)));
   [...new Map(sounds.map(s => [s.pack, s.packLabel]))].forEach(([v, l]) => packSel.add(new Option(l, v)));
+  try { localStorage.setItem('audioMode', m); } catch (e) {}
   render();
+}
+document.querySelectorAll('#mode button').forEach(b => b.onclick = () => setMode(b.dataset.m));
+Promise.all([
+  fetch('manifest.json').then(r => r.json()),
+  fetch('music.json').then(r => r.json()).catch(() => ({ music: [] })),
+]).then(([a, b]) => {
+  lib.sounds = a.sounds; lib.music = b.music;
+  let m = 'sounds'; try { m = localStorage.getItem('audioMode') || m; } catch (e) {}
+  setMode(lib[m] ? m : 'sounds');
 });
 let to; q.oninput = () => { clearTimeout(to); to = setTimeout(render, 120); };
 catSel.onchange = packSel.onchange = render;
