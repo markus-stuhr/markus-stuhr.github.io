@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Fügt einen Musiktrack zu audioassets/music/ + music.json hinzu.
 
-Aufruf: python3 -I add_music.py <datei> "<Titel>" "<Autor>" "<Quell-URL>" "<Kategorie>"
+Aufruf: python3 -I add_music.py <datei> "<Titel>" "<Autor>" "<Quell-URL>" "<Kategorie>" ["<Lizenz>"]
 Braucht ffmpeg. Legt OGG + MP3 ab und berechnet die Wellenform-Peaks.
-Ein Track mit gleicher id wird ersetzt. Nur CC0-Musik aufnehmen.
+Ein Track mit gleicher id wird ersetzt. Lizenz Standard CC0, sonst z. B. "CC-BY 3.0" (Credit Pflicht).
 """
 import json, re, subprocess, sys, struct
 from pathlib import Path
 
 src, title, author, url, cat = sys.argv[1:6]
+lic = sys.argv[6] if len(sys.argv) > 6 else "CC0"
 OUT = Path(__file__).resolve().parent
 DIR = OUT / "music"
 MAN = OUT / "music.json"
@@ -36,7 +37,7 @@ item = {
     "id": "music-" + sid, "name": title, "pack": "music-" + re.sub(r"[^a-z0-9]+", "-", author.lower()),
     "packLabel": author, "cat": cat, "group": "", "dur": round(n / 8000, 2),
     "ogg": f"music/{sid}.ogg", "mp3": f"music/{sid}.mp3", "kb": round(mp3.stat().st_size / 1024),
-    "peaks": [round(v / top * 99) for v in pk], "author": author, "license": "CC0", "source": url,
+    "peaks": [round(v / top * 99) for v in pk], "author": author, "license": lic, "source": url,
 }
 data = json.loads(MAN.read_text()) if MAN.exists() else {"music": []}
 data["music"] = [m for m in data["music"] if m["id"] != item["id"]] + [item]

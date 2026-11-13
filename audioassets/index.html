@@ -56,6 +56,8 @@ canvas{display:block;width:100%;height:44px}
 .mode button{background:none;border:0;color:var(--dim);font:inherit;font-size:14px;
   padding:6px 13px;border-radius:6px;cursor:pointer}
 .mode button[aria-pressed="true"]{background:var(--acc);color:#10231a;font-weight:600}
+.by{position:absolute;top:8px;right:8px;font-size:10px;font-weight:700;padding:1px 6px;
+  border-radius:5px;background:var(--acc2);color:#2a1c05;text-decoration:none}
 .empty{grid-column:1/-1;color:var(--dim);text-align:center;padding:40px}
 @media (max-width:600px){header{padding:12px 16px}.grid{padding:14px 16px 50px}
   .lic{margin-left:0;width:100%}}
@@ -66,7 +68,7 @@ canvas{display:block;width:100%;height:44px}
   <div class="htop">
     <h1>Audio-Assets</h1>
     <span class="count" id="count"></span>
-    <span class="lic">Alles <b>CC0</b> · Quellen: <a href="https://kenney.nl/assets/category:Audio" target="_blank" rel="noopener">Kenney</a>,
+    <span class="lic"><span id="licHead">Alles <b>CC0</b></span> · Quellen: <a href="https://kenney.nl/assets/category:Audio" target="_blank" rel="noopener">Kenney</a>,
       <a href="https://opengameart.org/content/512-sound-effects-8-bit-style" target="_blank" rel="noopener">Juhani Junkala</a>,
       <a href="https://opengameart.org/" target="_blank" rel="noopener">OpenGameArt</a></span>
   </div>
@@ -133,6 +135,13 @@ function card(s) {
   el.querySelector('.nm').textContent = s.name;
   const len = s.dur >= 60 ? `${Math.floor(s.dur / 60)}:${String(Math.round(s.dur % 60)).padStart(2, '0')} min` : `${s.dur.toFixed(1)} s`;
   el.querySelector('.pk').textContent = `${len} · ${s.group || s.packLabel}`;
+  if (s.license && s.license !== 'CC0') {
+    const b = document.createElement('a');
+    b.className = 'by'; b.href = s.source; b.target = '_blank'; b.rel = 'noopener';
+    b.textContent = s.license; b.title = `Credit Pflicht: „${s.name}“ von ${s.author}`;
+    b.onclick = e => e.stopPropagation();
+    el.append(b);
+  }
   const fav = el.querySelector('.fav');
   fav.classList.toggle('on', favs.has(s.id));
   fav.onclick = e => { e.stopPropagation();
@@ -179,6 +188,8 @@ function setMode(m) {
   packSel.options[0].text = m === 'music' ? 'Alle Künstler' : 'Alle Packs';
   [...new Set(sounds.map(s => s.cat))].sort().forEach(c => catSel.add(new Option(c, c)));
   [...new Map(sounds.map(s => [s.pack, s.packLabel]))].forEach(([v, l]) => packSel.add(new Option(l, v)));
+  $('#licHead').innerHTML = sounds.some(s => s.license && s.license !== 'CC0')
+    ? '<b>CC0</b>, markierte Tracks <b>CC-BY</b> (Credit nötig)' : 'Alles <b>CC0</b>';
   try { localStorage.setItem('audioMode', m); } catch (e) {}
   render();
 }
