@@ -142,7 +142,7 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
    Zelle. Das ist von Hand editierbar und braucht kein Datenformat.
 
    Modelle: KayKit von Kay Lousberg (CC0) — die Deko liegt schon unter
-   /blocks/assets, die Figur unter /assets/models. Beides wird von hier
+   /blocks/assets, die Figur unter /adventure/models. Beides wird von hier
    aus nur referenziert, nicht kopiert.
 =================================================================== */
 
@@ -1669,7 +1669,7 @@ function rebuildWorld(){
    getrennten Bibliothek fuer dasselbe Rig ("Rig_Medium") und werden
    uebertragen. Beim Uebertragen nur Rotationen plus die Wurzelposition
    nehmen — die Clips laufen auf der Stelle, bewegt wird die Figur. */
-const MODELS = '../assets/models/';
+const MODELS = '/adventure/models/';
 const CHAR      = 'KayKit_Adventurers_2.0_FREE/Characters/gltf/Knight.glb';
 const LIB_MOVE  = 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_MovementBasic.glb';
 const LIB_GEN   = 'KayKit_Adventurers_2.0_FREE/Animations/gltf/Rig_Medium/Rig_Medium_General.glb';
