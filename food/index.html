@@ -62,6 +62,9 @@ h3 { font: 600 12px Inter; text-transform: uppercase; letter-spacing: .12em; col
 .zl li.ok .ico { background: #e7f3e2; }
 
 .abschnitt + .abschnitt { margin-top: 34px; }
+.szt { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.szt li { font-size: 13px; padding: 3px 9px; border-radius: 999px; background: color-mix(in srgb, var(--a2) 45%, transparent); line-height: 1.35; }
+.szt b { color: var(--a1); font-weight: 600; }
 .steps { list-style: none; margin: 16px 0 0; padding: 0; counter-reset: s; }
 .step { position: relative; display: grid; grid-template-columns: 58px 1fr; gap: 18px; padding: 0 0 26px; cursor: pointer; }
 .num { width: 58px; height: 58px; display: grid; place-items: center; font-size: 36px; transition: opacity .25s; }
@@ -205,10 +208,22 @@ if (!r) {
   const mehrere = r.abschnitte.length > 1;
   const zutaten = r.abschnitte.filter(a => a.zutaten.length).map(a => `${mehrere && a.titel ? `<h3>${esc(a.titel)}</h3>` : ''}<ul class="zl">${
     a.zutaten.map(([m, n]) => `<li><span class="ico">${icon(n)}</span><span>${m ? `<span class="menge" data-m="${esc(m)}">${esc(m)}</span>` : ''}<span class="name">${esc(n)}</span></span></li>`).join('')}</ul>`).join('');
+  // Zutaten je Schritt: Wortabgleich Schritttext ↔ Zutatenname (gleicher Abschnitt); s.zt überschreibt
+  const STOP = new Set('oder und sehr fein frisch gehackt gemahlen klein groß große kleine stück glas dose optional für eine einer etwas nach gewünschter schärfe mehr tiefe milde süße abtropfgewicht portionen portion handvoll bund zehe zehen scheiben gewürfelt geröstet glatte weiße weißer rote roter grüne grüner'.split(' '));
+  const wnorm = w => w.toLowerCase().replace(/[^a-zäöüß]/g, '');
+  const wstem = w => w.replace(/(en|n|e|s)$/, '');
+  const wtoks = t => t.split(/[\s,()\/\-–]+/).map(wnorm).filter(w => w.length >= 4 && !STOP.has(w));
+  const zuordnen = (zl, text) => {
+    if (/\balle[sn]?\b|zutaten/i.test(text) && !/alle (anderen|übrigen)/i.test(text)) return zl;
+    const tt = wtoks(text);
+    return zl.filter(([m, n]) => { const it = wtoks(n.split(/[(,]/)[0]); if (!it.length) it.push(...wtoks(n));
+      return it.some(i => { const si = wstem(i); return tt.some(t => { const st = wstem(t);
+        return t.startsWith(si) || (st.length >= 4 && i.startsWith(st)) || (st.length >= 5 && i.includes(st)); }); }); });
+  };
   let nr = 0;
   const schritte = r.abschnitte.map(a => `<div class="abschnitt">${mehrere && a.titel ? `<h3>${esc(a.titel)}</h3>` : ''}<ol class="steps">${
     a.schritte.map(s => { nr++; const txt = s.link ? esc(s.x).replace('BigMac Sauce', `<a href="?r=${s.link}">BigMac Sauce</a>`) : esc(s.x);
-      return `<li class="step"><div class="num">${stepIcon(s.t)}<b>${nr}</b></div><div><h4>${esc(s.t)}${s.z ? `<span class="zeit">⏱ ${esc(s.z)}</span>` : ''}</h4><p>${txt}</p></div></li>`; }).join('')}</ol></div>`).join('');
+      return `<li class="step"><div class="num">${stepIcon(s.t)}<b>${nr}</b></div><div><h4>${esc(s.t)}${s.z ? `<span class="zeit">⏱ ${esc(s.z)}</span>` : ''}</h4><p>${txt}</p>${(() => { const zs = s.zt ? a.zutaten.filter(z => s.zt.includes(z[1])) : zuordnen(a.zutaten, s.x); return zs.length ? `<ul class="szt">${zs.map(([m, n]) => `<li>${m ? `<b class="menge-i" data-m="${esc(m)}">${esc(m)}</b> ` : ''}${esc(n)}</li>`).join('')}</ul>` : ''; })()}</div></li>`; }).join('')}</ol></div>`).join('');
   const andere = R.filter(x => x.id !== r.id).sort(() => Math.random() - .5).slice(0, 4);
   app.innerHTML = `
   <section class="hero"><div class="hero-card">
@@ -230,7 +245,7 @@ if (!r) {
     const txt = r.portionen.replace(/\d+/g, (z, i) => i === r.portionen.search(/\d/) ? anzahl : Math.round(z * f));
     document.getElementById('portLabel').textContent = txt;
     document.getElementById('portPill').textContent = '🍽️ ' + txt;
-    document.querySelectorAll('.menge[data-m]').forEach(el => { el.textContent = skaliere(el.dataset.m, f); });
+    document.querySelectorAll('.menge[data-m], .menge-i[data-m]').forEach(el => { el.textContent = skaliere(el.dataset.m, f); });
     document.querySelector('.stepper [data-d="-1"]').disabled = anzahl <= 1;
   };
   app.addEventListener('click', e => {
