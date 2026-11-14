@@ -760,6 +760,21 @@ window.REZEPTE = [
     tipps: ['Kein Ketchup: die orange Farbe kommt aus Paprika und Kurkuma.', 'Zucker + Essig ersetzen das amerikanische Sweet Relish.', 'Nur Zwiebelpulver – die gehackte Zwiebel liegt beim Big Mac separat auf dem Burger.', 'Hält abgedeckt etwa eine Woche im Kühlschrank.']
   },
   {
+    id: 'alabama', neu: true, titel: 'Weiße BBQ-Sauce', kategorie: 'Amerikanisch', bild: 'img/alabama.svg', emoji: '🍗',
+    farbe: ['#8a7a5a', '#f3ecd8'], portionen: '4 Portionen', zeit: '5 Min. + 1–2 Std. kühlen',
+    teaser: 'Alabama White Sauce: cremig-würzig auf Mayonnaise- und Essigbasis statt Tomate – perfekt für Hähnchen vom Grill.',
+    tags: ['Grill', 'Hähnchen', 'vegetarisch'],
+    abschnitte: [{
+      zutaten: [['240 ml', 'Mayonnaise'], ['120 ml', 'Weißweinessig oder Apfelessig'], ['60 ml', 'Apfelsaft (für eine milde Süße)'], ['1–2 TL', 'Meerrettich (aus dem Glas oder Sahnemeerrettich)'], ['1 TL', 'schwarzer Pfeffer, frisch gemahlen'], ['1 TL', 'Zitronensaft'], ['1 TL', 'Salz'], ['½ TL', 'Cayennepfeffer (je nach Schärfe)'], ['1 TL', 'Zucker oder Worcestersauce (optional, für mehr Tiefe)']],
+      schritte: [
+        { t: 'Verrühren', x: 'Alle Zutaten in einer Schüssel mit dem Schneebesen glatt rühren, bis eine einheitliche, cremige Sauce entsteht.' },
+        { t: 'Kühlen', x: 'Abdecken und im Kühlschrank ziehen lassen, damit sich die Aromen verbinden.', z: '1–2 Std.' },
+        { t: 'Servieren', x: 'Als Dip oder Pinsel-Sauce für gegrilltes oder gesmoktes Hähnchen, Burger und Coleslaw.' }
+      ]
+    }],
+    tipps: ['Basiert auf Mayo und Essig statt Tomaten – daher die helle Farbe.', 'Zum Pinseln erst in den letzten Grillminuten auftragen, sonst trennt sich die Mayo.', 'Mit Worcestersauce ist sie nicht mehr vegetarisch (Sardellen).']
+  },
+  {
     id: 'kuerbiscurry', neu: true, titel: 'Kürbis-Curry', kategorie: 'Indisch', emoji: '🎃',
     farbe: ['#b8561c', '#f2c078'], portionen: '4 Portionen', zeit: '40 Min.',
     teaser: 'Würzig geröstete Kürbiswürfel und knusprige Kichererbsen in cremiger Kokos-Tomaten-Sauce – mit Pita, Crème fraîche und Limette.',

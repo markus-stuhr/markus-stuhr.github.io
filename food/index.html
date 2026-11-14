@@ -190,7 +190,7 @@ if (!r) {
     ['Beilagen', ['kartoffelrosen', 'fenchel']],
     ['Backen', ['pide', 'kaesestangen', 'broetchen', 'hefezopf', 'macarons', 'plaetzchen', 'pfefferkuchen', 'apfelkuchen']],
     ['Frühstück & Süßes', ['pfannkuchen', 'granola', 'milchreis']],
-    ['Saucen', ['french', 'bigmac']]
+    ['Saucen', ['french', 'bigmac', 'alabama']]
   ];
   const vergeben = new Set(GRUPPEN.flatMap(g => g[1]));
   const rest = R.filter(x => !vergeben.has(x.id)).map(x => x.id);
