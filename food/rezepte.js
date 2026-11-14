@@ -775,6 +775,29 @@ window.REZEPTE = [
     tipps: ['Basiert auf Mayo und Essig statt Tomaten – daher die helle Farbe.', 'Zum Pinseln erst in den letzten Grillminuten auftragen, sonst trennt sich die Mayo.', 'Mit Worcestersauce ist sie nicht mehr vegetarisch (Sardellen).']
   },
   {
+    id: 'chickenburger', neu: true, titel: 'Zitronen-Thymian-Hähnchenburger', kategorie: 'Amerikanisch', bild: 'img/chickenburger.svg', emoji: '🍔',
+    farbe: ['#9a6a2c', '#f3e2c4'], portionen: '2 Portionen', zeit: '30 Min. + 2 Std. marinieren',
+    teaser: 'Mariniertes Hähnchenbrustfilet aus der Grillpfanne im gerösteten Brioche Bun – mit weißer BBQ-Sauce, Rucola, Tomate und gebratenen Zwiebeln.',
+    tags: ['Hähnchen', 'Burger', 'Pfanne'],
+    abschnitte: [
+      { titel: 'Für das Hähnchen', zutaten: [['400 g', 'Hähnchenbrustfilet'], ['1', 'Zitrone'], ['1 Bund', 'Thymian'], ['4 EL', 'Olivenöl'], ['', 'Salz, Pfeffer']],
+        schritte: [
+          { t: 'Marinieren', x: 'Zitrone waschen, Schale abreiben, Saft auspressen. Thymianblätter abzupfen. Zitronensaft, -schale, Olivenöl und Thymian vermengen, salzen und pfeffern. Hähnchenbrust (dicke Filets vorher waagerecht halbieren) darin wenden und abgedeckt kühl stellen.', z: '2 Std.' }
+        ] },
+      { titel: 'Für den Burger', zutaten: [['2', 'Brioche Buns'], ['2 Portionen', 'weiße BBQ-Sauce'], ['1', 'Tomate'], ['1', 'rote Zwiebel'], ['½ Bund', 'Petersilie'], ['2 Portionen', 'Gewürzgurken'], ['2 Handvoll', 'Rucola'], ['1 EL', 'Weißweinessig'], ['1 EL', 'Olivenöl'], ['20 g', 'Butter'], ['', 'Salz, Pfeffer'], ['', 'Öl zum Braten']],
+        schritte: [
+          { t: 'Sauce', x: 'Weiße BBQ-Sauce vorbereiten und kühl stellen (kann gleichzeitig mit dem Hähnchen ziehen).', link: 'alabama' },
+          { t: 'Rucola', x: 'Rucola waschen, trocken schütteln, mit Weißweinessig und Olivenöl vermengen, salzen und pfeffern.' },
+          { t: 'Schnippeln', x: 'Tomate in ca. 0,3 cm dünne Scheiben, Zwiebel in ca. 0,5 cm dünne Ringe schneiden. Petersilienblätter abzupfen.' },
+          { t: 'Zwiebeln braten', x: 'Etwas Öl in einer Pfanne bei mittlerer Hitze erhitzen und die Zwiebelringe gleichmäßig braun braten, dann herausnehmen.', z: '3 Min.' },
+          { t: 'Hähnchen braten', x: 'Grillpfanne (oder normale Pfanne) stark erhitzen. Marinade abstreifen und das Hähnchen von jeder Seite braten, bis es durch ist und Röststreifen hat. Kurz ruhen lassen.', z: '3–4 Min. je Seite' },
+          { t: 'Buns rösten', x: 'Pfanne auswischen, Buns aufschneiden, Schnittflächen buttern und mit der Schnittfläche nach unten anrösten.', z: '30 Sek.' },
+          { t: 'Bauen', x: 'Bun-Hälften mit weißer BBQ-Sauce bestreichen. Unten Rucola, Tomate und Hähnchen, darauf Gewürzgurken, Zwiebeln und Petersilie, Deckel drauf.' }
+        ] }
+    ],
+    tipps: ['Hähnchenbrust vorher waagerecht halbieren oder flach klopfen – dann gart sie in der Pfanne gleichmäßig in wenigen Minuten.', 'Ohne Grillpfanne gehts genauso in der normalen Pfanne, nur ohne Streifen.', 'Original ist für die Wendeplatte am Gasgrill gedacht.']
+  },
+  {
     id: 'kuerbiscurry', neu: true, titel: 'Kürbis-Curry', kategorie: 'Indisch', emoji: '🎃',
     farbe: ['#b8561c', '#f2c078'], portionen: '4 Portionen', zeit: '40 Min.',
     teaser: 'Würzig geröstete Kürbiswürfel und knusprige Kichererbsen in cremiger Kokos-Tomaten-Sauce – mit Pita, Crème fraîche und Limette.',
