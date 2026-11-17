@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script defer src="/analytics.js"></script>
+<title>Wissensgraph Nordlicht</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: Kopfzeile mit Fragen, darunter Graph links und Detailspalte rechts; auf dem Handy gestapelt */
+:root{
+  --bg:#f4f6f8;--panel:#ffffff;--fg:#17202a;--muted:#5b6673;--line:#dde2e8;--accent:#1f6f8b;--accent-bg:#e3f0f5;--warn:#b5571c;--warn-bg:#fbeee3;
+  --c-p:#4766d1;--c-t:#7d8794;--c-j:#16906c;--c-s:#d07a22;--c-k:#c0436f;--c-d:#8a7650;--edge:#b9c2cc;
+  --display:"Space Grotesk",system-ui,sans-serif;--body:"Inter",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161c;--panel:#18202a;--fg:#e6ebf0;--muted:#98a4b1;--line:#2a3440;--accent:#5fb3cf;--accent-bg:#17303a;--warn:#f0a06a;--warn-bg:#3a2518;
+  --c-p:#7d95ec;--c-t:#9aa4b0;--c-j:#3fc496;--c-s:#eda05a;--c-k:#e47aa0;--c-d:#c2ad84;--edge:#3b4754;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161c;--panel:#18202a;--fg:#e6ebf0;--muted:#98a4b1;--line:#2a3440;--accent:#5fb3cf;--accent-bg:#17303a;--warn:#f0a06a;--warn-bg:#3a2518;
+  --c-p:#7d95ec;--c-t:#9aa4b0;--c-j:#3fc496;--c-s:#eda05a;--c-k:#e47aa0;--c-d:#c2ad84;--edge:#3b4754;color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.5;padding-block:20px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:600;font-size:26px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;max-width:62ch}
+.badge{font-size:12px;padding:3px 10px;border-radius:99px;background:var(--warn-bg);color:var(--warn);font-weight:500;white-space:nowrap}
+.qs{display:flex;flex-wrap:wrap;gap:8px}
+.qs button,.btn{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:8px;padding:7px 12px;cursor:pointer}
+.qs button:hover,.btn:hover{border-color:var(--accent);color:var(--accent)}
+.qs button.on{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tools{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.tools input[type=search]{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);width:220px;max-width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font:inherit;font-size:12px;display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:99px;padding:4px 10px;cursor:pointer}
+.chip i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.chip.off{opacity:.45;text-decoration:line-through}
+label.tg{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px}
+@media (max-width:860px){.main{grid-template-columns:minmax(0,1fr)}}
+.stage{min-width:0}
+#g3{background:var(--panel);border:1px solid var(--line);border-radius:12px;height:min(72vh,720px);min-height:420px;position:relative;overflow:hidden}
+.lbl3{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.lbl3 span{position:absolute;left:0;top:0;white-space:nowrap;color:var(--fg);text-shadow:0 0 3px var(--panel),0 0 3px var(--panel),0 0 2px var(--panel);will-change:transform}
+#view3d[aria-pressed=true]{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.scene-tooltip{font-family:var(--body)!important;font-size:12px!important;background:var(--panel)!important;color:var(--fg)!important;border:1px solid var(--line);border-radius:6px;padding:3px 8px!important}
+#cy{background:var(--panel);border:1px solid var(--line);border-radius:12px;height:min(72vh,720px);min-height:420px;position:relative}
+.hint{position:absolute;left:12px;bottom:10px;font-size:12px;color:var(--muted);pointer-events:none;z-index:2}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0;max-height:min(72vh,720px);overflow:auto}
+@media (max-width:860px){aside{max-height:none}}
+aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2px}
+.type{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.meta{color:var(--muted);margin:4px 0 12px}
+.grp{margin:14px 0 0}
+.grp h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:500;margin:0 0 6px}
+.rel{display:flex;flex-direction:column;gap:2px;padding:7px 8px;border-radius:8px;border:1px solid transparent;cursor:pointer}
+.rel:hover{border-color:var(--line)}
+.rel .t{display:flex;gap:8px;align-items:center;font-weight:500}
+.rel .t i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--c)}
+.rel .s{font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.conf{font-variant-numeric:tabular-nums}
+.low{color:var(--warn);font-weight:500}
+.flag{font:inherit;font-size:11px;border:none;background:none;color:var(--muted);cursor:pointer;padding:0;text-decoration:underline}
+.flagged .t{text-decoration:line-through;color:var(--muted)}
+.answer{background:var(--accent-bg);border-radius:10px;padding:12px;margin:0 0 12px}
+.answer p{margin:0 0 6px}
+.answer ol,.answer ul{margin:4px 0 0;padding-left:18px}
+.answer li{margin:2px 0}
+.lnk{color:var(--accent);cursor:pointer;text-decoration:underline;text-decoration-thickness:1px}
+.left{display:inline-block;font-size:11px;background:var(--warn-bg);color:var(--warn);border-radius:99px;padding:1px 8px;margin-left:6px;vertical-align:2px}
+.stats{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Wissensgraph Nordlicht</h1>
+      <p class="sub">Wer weiß was bei der Nordlicht Software GmbH: 24 Leute, 14 Projekte, 8 Kunden, 16 Systeme und 12 Dokumente. Jede Verbindung zeigt ihre Quelle, ihr Datum und bei KI-Extraktion ihre Sicherheit.</p>
+    </div>
+    <span class="badge">Fiktive Beispieldaten</span>
+  </header>
+
+  <div class="qs" id="qs">
+    <button data-q="kafka">Wer kennt sich mit Kafka aus?</button>
+    <button data-q="nordbank">Wer hat mit der Nordbank gearbeitet?</button>
+    <button data-q="paul">Welches Wissen ging mit Paul?</button>
+    <button data-q="path">Wie kommt Kim an die Nordbank?</button>
+    <button data-q="llm">Wer macht bei uns LLM-Projekte?</button>
+  </div>
+
+  <div class="tools">
+    <input type="search" id="search" list="names" placeholder="Suche: Anna, Kubernetes, Hanse …" aria-label="Knoten suchen">
+    <datalist id="names"></datalist>
+    <div class="chips" id="chips"></div>
+    <label class="tg"><input type="checkbox" id="unsure"> Unsichere KI-Verbindungen ausblenden</label>
+    <label class="tg" for="layout">Anordnung
+      <select id="layout" style="font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg)">
+        <option value="net">Netz (frei)</option>
+        <option value="rows">Ebenen nach Typ</option>
+        <option value="cols">Spalten nach Typ</option>
+        <option value="rings">Ringe nach Typ</option>
+        <option value="teams">Nach Teams gruppiert</option>
+      </select></label>
+    <button class="btn" id="reset">Alles zeigen</button>
+    <button class="btn" id="view3d" aria-pressed="false">3D-Ansicht</button>
+  </div>
+
+  <div class="main">
+    <div class="stage">
+      <div id="cy"><span class="hint">Klick wählt aus · Doppelklick isoliert die Nachbarschaft · Mausrad zoomt</span></div>
+      <div id="g3" hidden><span class="hint">Ziehen dreht · Rechte Maustaste verschiebt · Mausrad zoomt · Klick wählt aus</span></div>
+    </div>
+    <aside id="panel" aria-live="polite"></aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<script>
+const TYPES={p:['Person','Personen','ellipse'],t:['Team','Teams','round-rectangle'],j:['Projekt','Projekte','hexagon'],s:['System','Systeme','diamond'],k:['Kunde','Kunden','round-octagon'],d:['Dokument','Dokumente','rectangle']};
+const TEAMS=[['plat','Plattform & Cloud'],['data','Data & KI'],['web','Web & Mobile'],['cons','Consulting'],['sales','Vertrieb'],['hr','People & Compliance']];
+const PEOPLE=[
+['anna','Anna Keller','Lead Cloud Engineer','plat'],['felix','Felix Brandt','DevOps Engineer','plat'],['jonas','Jonas Peters','Cloud Architect','plat'],
+['paul','Paul Richter','Senior Backend Engineer','plat','30.06.2026'],['max','Max Neumann','Security Engineer','plat'],
+['ben','Ben Schulz','Data Engineer','data'],['elif','Elif Şahin','Head of Data & KI','data'],['lars','Lars Becker','Data Scientist','data'],
+['olga','Olga Petrova','ML Engineer','data'],['vera','Vera Engel','BI-Analystin','data'],
+['clara','Clara Wendt','Frontend Engineer','web'],['hannes','Hannes Vogel','Tech Lead Web','web'],['kim','Kim Nguyen','UX Designer','web'],
+['rosa','Rosa Klein','Mobile Lead','web'],['yusuf','Yusuf Demir','Fullstack Engineer','web'],
+['deniz','Deniz Aydın','Principal Consultant','cons'],['ines','Ines Lorenz','SAP-Beraterin','cons'],['nils','Nils Hartmann','Solution Architect','cons'],
+['sven','Sven Möller','Projektmanager','cons'],['zoe','Zoe Wagner','Junior Consultant','cons'],
+['greta','Greta Hoffmann','Key Account Managerin','sales'],['mara','Mara Fischer','Key Account Managerin','sales'],['uwe','Uwe Krause','Vertriebsleiter','sales'],
+['tara','Tara Jansen','People & Compliance','hr']];
+const CUSTOMERS=[['mueller','Müller Logistik','Logistik'],['nordbank','Nordbank AG','Finanzen'],['stadtwerke','Stadtwerke Kiel','Energie'],['medi','MediCare Kliniken','Gesundheit'],['autoh','Autohaus Brandl','Handel'],['versich','Hanse Versicherung','Versicherung'],['bio','BioFrisch Markt','Einzelhandel'],['aero','AeroParts','Luftfahrt']];
+const PROJECTS=[['shop','Webshop-Relaunch','läuft'],['crm','CRM-Migration','abgeschlossen'],['app','Patienten-App','läuft'],['tour','Tourenplanung KI','läuft'],['portal','Kundenportal','läuft'],['smart','Smart-Meter-Analytics','abgeschlossen'],['claims','Schaden-Bot','Pilot'],['dms','Dokumentenarchiv','läuft'],['fleet','Flottenmanagement','abgeschlossen'],['pred','Predictive Maintenance','läuft'],['kg','Wissensgraph intern','Konzept'],['cloudmig','Cloud-Migration intern','läuft'],['ds','Designsystem intern','läuft'],['sec','ISO-27001-Zertifizierung','läuft']];
+const SYSTEMS=[['k8s','Kubernetes'],['aws','AWS'],['azure','Azure'],['pg','PostgreSQL'],['sap','SAP S/4HANA'],['sf','Salesforce'],['kafka','Kafka'],['react','React'],['flutter','Flutter'],['py','Python'],['llm','LLM-Plattform'],['neo','Neo4j'],['tf','Terraform'],['kc','Keycloak'],['pbi','Power BI'],['spark','Spark']];
+const DOCS=[['adr1','ADR: Event-Streaming mit Kafka'],['runbook','Kubernetes-Runbook'],['conc','Konzept Tourenoptimierung'],['dsgvo','DSGVO-Leitfaden'],['pitch','Pitch Nordbank'],['lessons','Lessons Learned CRM'],['api','API-Richtlinien'],['onb','Onboarding-Handbuch'],['iso','ISO-Richtlinien'],['figma','Designsystem-Bibliothek'],['offer','Angebot Hanse Versicherung'],['arch','Architektur Kundenportal']];
+const INTERNAL={kg:1,cloudmig:1,ds:1,sec:1};
+const EDGES=`
+shop for bio|crm for nordbank|app for medi|tour for mueller|portal for stadtwerke|smart for stadtwerke|claims for versich|dms for versich|fleet for autoh|pred for aero
+hannes lead shop|clara on shop|kim on shop|yusuf on shop|anna on shop|shop use react|shop use pg|shop use k8s|shop use aws
+deniz lead crm|sven on crm|ines on crm|paul on crm|crm use sf|crm use sap|crm use kafka|crm use azure
+rosa lead app|yusuf on app|kim on app|ben on app|app use flutter|app use pg|app use kc|app use azure
+elif lead tour|lars on tour|olga on tour|paul on tour|tour use py|tour use spark|tour use aws|tour use k8s
+nils lead portal|clara on portal|hannes on portal|felix on portal|portal use react|portal use kc|portal use k8s|portal use pg
+vera lead smart|lars on smart|ben on smart|jonas on smart|paul on smart|smart use kafka|smart use spark|smart use pbi|smart use azure
+olga lead claims|elif on claims|zoe on claims|yusuf on claims|claims use llm|claims use py|claims use aws
+sven lead dms|max on dms|zoe on dms|dms use pg|dms use aws|dms use kc
+ines lead fleet|rosa on fleet|jonas on fleet|fleet use flutter|fleet use sap|fleet use azure
+ben lead pred|vera on pred|paul on pred|pred use py|pred use spark|pred use kafka|pred use aws
+elif lead kg|lars on kg|kim on kg|anna on kg|kg use neo|kg use llm|kg use py
+anna lead cloudmig|felix on cloudmig|jonas on cloudmig|max on cloudmig|paul on cloudmig|cloudmig use k8s|cloudmig use tf|cloudmig use aws|cloudmig use azure
+kim lead ds|rosa on ds|clara on ds|ds use react
+max lead sec|tara on sec|felix on sec|sec use kc
+greta acct nordbank|greta acct bio|mara acct medi|mara acct versich|mara acct aero|uwe acct mueller|uwe acct stadtwerke|uwe acct autoh
+anna exp k8s .95|anna exp tf .9|anna exp aws .85|felix exp k8s .8|felix exp kc .75|jonas exp azure .9|jonas exp tf .7
+paul exp kafka .95|paul exp spark .9|paul exp sap .6|max exp aws .85|max exp kc .8
+ben exp py .9|ben exp spark .8|elif exp llm .95|elif exp py .9|elif exp neo .6|lars exp spark .85|lars exp pg .7
+olga exp llm .8|olga exp py .85|vera exp pbi .9|vera exp kafka .55|clara exp react .9|hannes exp react .85|hannes exp pg .6
+kim exp react .5|rosa exp flutter .9|yusuf exp flutter .8|yusuf exp react .7|deniz exp sf .9|deniz exp sap .75
+ines exp sap .9|nils exp kc .6|sven exp sf .7|sven exp pg .65|zoe exp llm .45
+paul by adr1|adr1 about kafka .9|adr1 about smart .85|felix by runbook|runbook about k8s .95|elif by conc|conc about tour .9
+tara by dsgvo|dsgvo about app .7|dsgvo about claims .65|greta by pitch|pitch about crm .85|deniz by lessons|lessons about crm .95
+hannes by api|api about portal .75|api about shop .7|tara by onb|max by iso|iso about sec .9|kim by figma|figma about ds .95
+mara by offer|offer about claims .9|nils by arch|arch about portal .95|arch about kc .8`;
+const REL={in:['arbeitet in','Mitglieder'],on:['arbeitet an','Mitarbeit'],lead:['leitet','Leitung'],for:['für Kunde','Projekte'],acct:['betreut','Account-Betreuung'],use:['nutzt','Genutzt in'],exp:['Expertise in','Expert:innen'],by:['hat verfasst','Autor:in'],about:['beschreibt','Dokumentiert in']};
+const SRC={in:'HR-System',on:'Jira',lead:'Jira',for:'CRM',acct:'CRM',use:'Git-Repos',by:'Confluence',about:'KI-Extraktion aus Confluence',exp:'KI-Extraktion aus Confluence, Slack und Git'};
+
+const els=[];const name={};const typeOf={};
+const add=(id,t,label,extra={})=>{name[id]=label;typeOf[id]=t;els.push({group:'nodes',data:Object.assign({id,t,label},extra)})};
+TEAMS.forEach(([id,l])=>add(id,'t',l));
+PEOPLE.forEach(([id,l,role,team,left])=>add(id,'p',l,{role,team,left:left||''}));
+CUSTOMERS.forEach(([id,l,br])=>add(id,'k',l,{info:'Branche: '+br}));
+PROJECTS.forEach(([id,l,st])=>add(id,'j',l,{info:(INTERNAL[id]?'Internes Projekt':'Kundenprojekt')+' · Status: '+st}));
+SYSTEMS.forEach(([id,l])=>add(id,'s',l));
+DOCS.forEach(([id,l])=>add(id,'d',l));
+const hash=s=>{let h=7;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return h};
+const fmt=d=>d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+let ei=0;
+const addEdge=(a,r,b,conf)=>{const base=new Date(2026,10,15);let back=hash(a+r+b)%320;if(a==='paul'||b==='paul')back+=150;
+  const d=new Date(base-back*864e5);els.push({group:'edges',data:{id:'e'+(ei++),source:a,target:b,r,label:REL[r][0],conf:conf==null?1:conf,src:SRC[r],date:fmt(d)}})};
+PEOPLE.forEach(p=>addEdge(p[0],'in',p[3]));
+EDGES.trim().split(/[|\n]/).map(s=>s.trim()).filter(Boolean).forEach(s=>{const [a,r,b,c]=s.split(' ');addEdge(a,r,b,c?parseFloat(c):(r==='about'?.8:null))});
+
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function style(){
+  return [
+    {selector:'node',style:{'background-color':ele=>css('--c-'+ele.data('t')),'shape':ele=>TYPES[ele.data('t')][2],'label':'data(label)','font-family':'Inter, system-ui, sans-serif','font-size':10,'color':css('--fg'),'text-valign':'bottom','text-margin-y':4,'text-outline-color':css('--panel'),'text-outline-width':2,
+      'width':ele=>({t:34,p:20,j:26,s:22,k:26,d:14})[ele.data('t')]+Math.min(ele.degree()*0.8,16),'height':ele=>({t:34,p:20,j:26,s:22,k:26,d:14})[ele.data('t')]+Math.min(ele.degree()*0.8,16),'min-zoomed-font-size':7}},
+    {selector:'node[left != ""]',style:{'border-width':3,'border-color':css('--warn'),'border-style':'dashed','background-opacity':.55}},
+    {selector:'edge',style:{'width':1.2,'line-color':css('--edge'),'curve-style':'bezier','opacity':.8,'font-size':9,'color':css('--muted'),'text-rotation':'autorotate','text-outline-color':css('--panel'),'text-outline-width':2}},
+    {selector:'edge[conf < 0.7]',style:{'line-style':'dashed'}},
+    {selector:'.faded',style:{'opacity':.1}},
+    {selector:'.hidden',style:{'display':'none'}},
+    {selector:'node.sel',style:{'border-width':4,'border-color':css('--accent'),'border-style':'solid','font-size':12,'font-weight':600,'z-index':10}},
+    {selector:'node.hl',style:{'font-size':11,'z-index':9}},
+    {selector:'edge.hl',style:{'line-color':css('--accent'),'width':2.4,'opacity':1,'label':'data(label)','z-index':9,'target-arrow-shape':'triangle','target-arrow-color':css('--accent'),'arrow-scale':.8}},
+    {selector:'edge.flag',style:{'line-color':css('--warn'),'line-style':'dotted'}}
+  ];
+}
+const cy=cytoscape({container:document.getElementById('cy'),elements:els,style:style(),wheelSensitivity:.25,minZoom:.2,maxZoom:3,
+  layout:{name:'cose',animate:false,randomize:true,nodeRepulsion:()=>9000,idealEdgeLength:()=>70,edgeElasticity:()=>80,gravity:.35,numIter:1500,componentSpacing:60}});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>cy.style(style()));
+new MutationObserver(()=>cy.style(style())).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+const hiddenTypes=new Set();let hideUnsure=false;
+const panel=document.getElementById('panel');
+const pct=c=>Math.round(c*100)+' %';
+const dot=t=>`style="--c:var(--c-${t})"`;
+const lk=id=>`<span class="lnk" data-go="${id}">${name[id]}</span>`;
+
+function applyFilters(){
+  cy.batch(()=>{cy.elements().removeClass('hidden');
+    cy.nodes().filter(n=>hiddenTypes.has(n.data('t'))).addClass('hidden');
+    if(hideUnsure)cy.edges('[conf < 0.7]').addClass('hidden');});
+  document.getElementById('unsure').checked=hideUnsure;
+}
+function clearHl(){cy.elements().removeClass('faded hl sel');document.querySelectorAll('#qs button').forEach(b=>b.classList.remove('on'))}
+function highlight(nodes,edges,selId){
+  cy.batch(()=>{cy.elements().removeClass('hl sel').addClass('faded');nodes.removeClass('faded').addClass('hl');edges.removeClass('faded').addClass('hl');if(selId)cy.$id(selId).addClass('sel')});
+}
+function select(id,keepQ){
+  if(!keepQ)document.querySelectorAll('#qs button').forEach(b=>b.classList.remove('on'));
+  const n=cy.$id(id);if(!n.length)return;
+  const es=n.connectedEdges().not('.hidden');highlight(n.union(es.connectedNodes()),es,id);
+  cy.animate({center:{eles:n},duration:300});
+  panel.innerHTML=(keepQ||'')+detail(n);
+}
+function detail(n){
+  const d=n.data(),t=d.t;let h=`<div class="type">${TYPES[t][0]}</div><h2>${d.label}${d.left?'<span class="left">ausgeschieden '+d.left+'</span>':''}</h2>`;
+  const meta=[];if(d.role)meta.push(d.role);if(d.team)meta.push('Team '+name[d.team]);if(d.info)meta.push(d.info);meta.push(n.degree()+' Verbindungen');
+  h+=`<p class="meta">${meta.join(' · ')}</p>`;
+  const groups={};
+  n.connectedEdges().not('.hidden').forEach(e=>{const out=e.source().id()===d.id;const other=out?e.target():e.source();const key=out?REL[e.data('r')][0]:REL[e.data('r')][1];(groups[key]=groups[key]||[]).push({e,other})});
+  Object.entries(groups).forEach(([k,list])=>{list.sort((a,b)=>b.e.data('conf')-a.e.data('conf'));
+    h+=`<div class="grp"><h3>${k}</h3>`+list.map(({e,other})=>{const c=e.data('conf');const ai=e.data('src').startsWith('KI');
+      return `<div class="rel${e.hasClass('flag')?' flagged':''}" data-go="${other.id()}"><span class="t"><i ${dot(other.data('t'))}></i>${other.data('label')}</span>
+      <span class="s"><span>${e.data('src')}</span><span>${e.data('date')}</span>${ai?`<span class="conf ${c<.7?'low':''}">Sicherheit ${pct(c)}${c<.7?' · unsicher':''}</span>`:''}
+      <button class="flag" data-flag="${e.id()}">${e.hasClass('flag')?'Meldung zurücknehmen':'Als falsch melden'}</button></span></div>`}).join('')+'</div>';});
+  h+=`<div class="actions"><button class="btn" data-iso="${d.id}">Nachbarschaft isolieren</button></div>`;
+  return h;
+}
+function home(){
+  const c=t=>cy.nodes(`[t="${t}"]`).length;
+  panel.innerHTML=`<div class="type">Übersicht</div><h2>Firmenwissen als Netz</h2>
+  <p class="meta">Wähle eine Frage oben, such nach einem Namen oder klick einen Knoten an.</p>
+  <div class="stats"><span>${c('p')} Personen</span><span>${c('j')} Projekte</span><span>${c('s')} Systeme</span><span>${c('k')} Kunden</span><span>${c('d')} Dokumente</span><span>${cy.edges().length} Verbindungen</span></div>
+  <div class="grp"><h3>Woher die Verbindungen kommen</h3>${Object.entries(cy.edges().reduce((a,e)=>(a[e.data('src')]=(a[e.data('src')]||0)+1,a),{})).sort((a,b)=>b[1]-a[1]).map(([s,n])=>`<div class="rel" style="cursor:default"><span class="t">${s}</span><span class="s">${n} Verbindungen</span></div>`).join('')}</div>
+  <div class="grp"><h3>Lesehilfe</h3><p class="meta" style="margin:0">Gestrichelte Linien sind KI-Verbindungen mit unter 70 % Sicherheit. Gestrichelt umrandete Personen sind ausgeschieden. Größere Knoten haben mehr Verbindungen.</p></div>`;
+}
+
+const Q={
+  kafka(){const s=cy.$id('kafka');const ex=s.connectedEdges('[r="exp"]').sort((a,b)=>b.data('conf')-a.data('conf'));
+    const projs=s.connectedEdges('[r="use"]').sources();const indirect=projs.connectedEdges('[r="on"],[r="lead"]').sources().difference(ex.sources());
+    highlight(s.union(ex.sources()).union(projs).union(indirect),ex.union(s.connectedEdges('[r="use"]')).union(projs.connectedEdges('[r="on"],[r="lead"]')),'kafka');
+    return `<div class="answer"><p><b>Direkte Expertise</b></p><ol>${ex.map(e=>`<li>${lk(e.source().id())} · ${pct(e.data('conf'))}${e.source().data('left')?' <span class="low">(ausgeschieden)</span>':''}${e.data('conf')<.7?' <span class="low">(unsicher)</span>':''}</li>`).join('')}</ol>
+    <p style="margin-top:8px"><b>Praxis aus Projekten mit Kafka</b></p><ul>${indirect.map(p=>`<li>${lk(p.id())}</li>`).join('')}</ul>
+    <p style="margin-top:8px">Der eigentliche Experte ist weg. Vera ist nur unsicher zugeordnet, Ben und Lars kennen Kafka aus Projekten.</p></div>`},
+  nordbank(){const k=cy.$id('nordbank');const pe=k.connectedEdges();const projs=pe.sources('[t="j"]');const team=projs.connectedEdges('[r="on"],[r="lead"]');const docs=projs.connectedEdges('[r="about"]');
+    highlight(k.union(pe.connectedNodes()).union(team.connectedNodes()).union(docs.connectedNodes()),pe.union(team).union(docs),'nordbank');
+    return `<div class="answer"><p><b>Projekt:</b> ${projs.map(p=>lk(p.id())).join(', ')}</p><p><b>Account:</b> ${lk('greta')}</p>
+    <p><b>Im Projekt:</b> ${team.sources().map(p=>lk(p.id())).join(', ')}</p><p><b>Nachlesen:</b> ${docs.sources().map(p=>lk(p.id())).join(', ')}</p></div>`},
+  paul(){const p=cy.$id('paul');const ex=p.connectedEdges('[r="exp"]');const rows=ex.map(e=>{const s=e.target();const others=s.connectedEdges('[r="exp"]').filter(o=>o.source().id()!=='paul'&&o.data('conf')>=.7);return {s,c:e.data('conf'),others}});
+    const all=p.connectedEdges();highlight(p.union(all.connectedNodes()),all,'paul');
+    return `<div class="answer"><p>Paul ist seit 30.06.2026 nicht mehr da. Für seine Themen gibt es noch so viele sichere Expert:innen:</p><ul>${rows.map(r=>`<li>${lk(r.s.id())}: ${r.others.length?r.others.map(o=>lk(o.source().id())).join(', '):'<span class="low">niemand mehr</span>'}</li>`).join('')}</ul>
+    <p style="margin-top:8px">Sein Wissen steckt noch in ${lk('adr1')}. Ein Graph macht solche Wissensinseln sichtbar, bevor jemand geht.</p></div>`},
+  path(){const r=cy.elements().not('.hidden').aStar({root:'#kim',goal:'#nordbank',directed:false});if(!r.found)return '<div class="answer">Kein Weg gefunden.</div>';
+    highlight(r.path.nodes(),r.path.edges(),'kim');const ns=r.path.nodes();
+    const steps=r.path.edges().map(e=>`<li>${name[e.source().id()]} <i>${e.data('label')}</i> ${name[e.target().id()]}</li>`).join('');
+    return `<div class="answer"><p>Kürzester Weg über ${ns.length-2} Zwischenschritte:</p><ol>${steps}</ol><p style="margin-top:8px">Kim sollte also ${lk(ns[2].id())} fragen.</p></div>`},
+  llm(){const s=cy.$id('llm');const ex=s.connectedEdges('[r="exp"]').sort((a,b)=>b.data('conf')-a.data('conf'));const pr=s.connectedEdges('[r="use"]');const cust=pr.sources().connectedEdges('[r="for"]');
+    highlight(s.union(ex.sources()).union(pr.sources()).union(cust.targets()),ex.union(pr).union(cust),'llm');
+    return `<div class="answer"><p><b>Projekte:</b> ${pr.sources().map(p=>lk(p.id())).join(', ')}</p><p><b>Kunde:</b> ${cust.targets().map(p=>lk(p.id())).join(', ')||'nur intern'}</p>
+    <ol>${ex.map(e=>`<li>${lk(e.source().id())} · ${pct(e.data('conf'))}${e.data('conf')<.7?' <span class="low">(unsicher, bitte prüfen)</span>':''}</li>`).join('')}</ol></div>`}
+};
+document.getElementById('qs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;applyFilters();clearHl();b.classList.add('on');
+  const html=Q[b.dataset.q]();panel.innerHTML=html+`<p class="meta" style="margin:0">Klick einen Namen an, um die Details zu sehen.</p>`;
+  const hl=cy.$('.hl');if(hl.length)cy.animate({fit:{eles:hl,padding:40},duration:400});});
+
+panel.addEventListener('click',e=>{
+  const f=e.target.closest('[data-flag]');if(f){e.stopPropagation();const ed=cy.$id(f.dataset.flag);ed.toggleClass('flag');const sel=cy.$('node.sel');if(sel.length)panel.innerHTML=detail(sel);return}
+  const iso=e.target.closest('[data-iso]');if(iso){isolate(iso.dataset.iso);return}
+  const g=e.target.closest('[data-go]');if(g)select(g.dataset.go);
+});
+function isolate(id){const n=cy.$id(id);const nb=n.closedNeighborhood().closedNeighborhood();cy.batch(()=>{cy.elements().addClass('hidden');nb.removeClass('hidden');
+  if(hideUnsure)cy.edges('[conf < 0.7]').addClass('hidden');cy.nodes().filter(x=>hiddenTypes.has(x.data('t'))).addClass('hidden')});
+  cy.layout({name:'concentric',eles:cy.elements().not('.hidden'),concentric:x=>x.id()===id?3:(n.neighborhood().contains(x)?2:1),levelWidth:()=>1,minNodeSpacing:18,animate:true,animationDuration:400,fit:true,padding:30}).run();
+  select(id);}
+
+cy.on('tap','node',e=>select(e.target.id()));
+cy.on('dbltap','node',e=>isolate(e.target.id()));
+cy.on('tap',e=>{if(e.target===cy){clearHl();home()}});
+
+const chips=document.getElementById('chips');
+chips.innerHTML=Object.entries(TYPES).map(([k,v])=>`<button class="chip" data-t="${k}" aria-pressed="true"><i ${dot(k)}></i>${v[1]}</button>`).join('');
+chips.addEventListener('click',e=>{const b=e.target.closest('.chip');if(!b)return;const t=b.dataset.t;hiddenTypes.has(t)?hiddenTypes.delete(t):hiddenTypes.add(t);b.classList.toggle('off');b.setAttribute('aria-pressed',!hiddenTypes.has(t));applyFilters()});
+document.getElementById('unsure').addEventListener('change',e=>{hideUnsure=e.target.checked;applyFilters()});
+const dl=document.getElementById('names');dl.innerHTML=Object.values(name).sort().map(n=>`<option value="${n}">`).join('');
+const sIn=document.getElementById('search');
+const findId=v=>{v=v.trim().toLowerCase();if(!v)return null;return Object.keys(name).find(id=>name[id].toLowerCase()===v)||Object.keys(name).find(id=>name[id].toLowerCase().includes(v))};
+sIn.addEventListener('change',()=>{const id=findId(sIn.value);if(id)select(id)});
+sIn.addEventListener('keydown',e=>{if(e.key==='Enter'){const id=findId(sIn.value);if(id)select(id)}});
+let lay=null;
+document.getElementById('reset').addEventListener('click',()=>{hiddenTypes.clear();hideUnsure=false;chips.querySelectorAll('.chip').forEach(c=>{c.classList.remove('off');c.setAttribute('aria-pressed','true')});sIn.value='';applyFilters();clearHl();
+  runLayout();home()});
+
+const ORDER=['t','p','j','k','s','d'];
+const layoutSel=document.getElementById('layout');
+function orderedRows(){
+  const rows=ORDER.map(t=>cy.nodes(`[t="${t}"]`).toArray());const pos={};
+  rows.forEach((row,ri)=>{
+    if(ri===0)row.sort((a,b)=>a.id().localeCompare(b.id()));
+    else{const bc=n=>{const xs=n.neighborhood('node').filter(m=>pos[m.id()]!=null).map(m=>pos[m.id()]);return xs.length?xs.reduce((a,b)=>a+b)/xs.length:.5};
+      row.sort((a,b)=>bc(a)-bc(b))}
+    row.forEach((n,i)=>pos[n.id()]=(i+.5)/row.length)});
+  return {rows,pos};
+}
+function positions(mode){
+  const {rows,pos}=orderedRows();const out={};
+  if(mode==='rows'){const W=1700;rows.forEach((row,ri)=>row.forEach(n=>out[n.id()]={x:pos[n.id()]*W,y:ri*170}))}
+  if(mode==='cols'){const H=1500;rows.forEach((row,ri)=>row.forEach(n=>out[n.id()]={x:ri*300,y:pos[n.id()]*H}))}
+  if(mode==='rings'){rows.forEach((row,ri)=>{const r=ri===0?90:ri*190;row.forEach(n=>{const a=pos[n.id()]*2*Math.PI;out[n.id()]={x:r*Math.cos(a),y:r*Math.sin(a)}})})}
+  if(mode==='teams'){
+    const tx={};TEAMS.forEach(([id],i)=>{const a=i/TEAMS.length*2*Math.PI;tx[id]={x:620*Math.cos(a),y:620*Math.sin(a)}});
+    cy.nodes().forEach(n=>{const d=n.data();let c;
+      if(d.t==='t')c=tx[d.id];
+      else if(d.t==='p'){const mates=PEOPLE.filter(p=>p[3]===d.team);const i=mates.findIndex(p=>p[0]===d.id);const a=i/mates.length*2*Math.PI;c={x:tx[d.team].x+130*Math.cos(a),y:tx[d.team].y+130*Math.sin(a)}}
+      out[d.id]=c});
+    for(let it=0;it<2;it++)cy.nodes().forEach(n=>{if(out[n.id()]&&(n.data('t')==='t'||n.data('t')==='p'))return;
+      const ps=n.neighborhood('node').map(m=>out[m.id()]).filter(Boolean);
+      if(ps.length){const h=hash(n.id());out[n.id()]={x:ps.reduce((a,b)=>a+b.x,0)/ps.length*.55+(h%90-45),y:ps.reduce((a,b)=>a+b.y,0)/ps.length*.55+((h>>7)%90-45)}}});
+    cy.nodes().forEach(n=>{if(!out[n.id()])out[n.id()]={x:0,y:0}});
+  }
+  return out;
+}
+function runLayout(){
+  const mode=layoutSel.value;
+  if(mode==='net')cy.layout({name:'cose',animate:false,nodeRepulsion:()=>9000,idealEdgeLength:()=>70,edgeElasticity:()=>80,gravity:.35,numIter:1500,fit:true,padding:20}).run();
+  else{const p=positions(mode);cy.layout({name:'preset',positions:n=>p[n.id()],animate:true,animationDuration:500,fit:true,padding:30}).run()}
+  cy.style().selector('edge').style('curve-style',mode==='net'?'bezier':'straight').update();
+  layout3d(mode);
+}
+function layout3d(mode){if(!g3)return;const {rows,pos}=orderedRows();const ri={};rows.forEach((r,i)=>r.forEach(n=>ri[n.id()]=i));
+  const tIdx=Object.fromEntries(TEAMS.map(([id],i)=>[id,i]));
+  g3.graphData().nodes.forEach(n=>{n.fx=n.fy=n.fz=undefined;
+    if(mode==='rows')n.fy=(2.5-ri[n.id])*70;
+    if(mode==='cols')n.fx=(ri[n.id]-2.5)*90;
+    if(mode==='rings'){const r=ri[n.id]===0?20:ri[n.id]*55,a=pos[n.id]*2*Math.PI;n.fx=r*Math.cos(a);n.fz=r*Math.sin(a);n.fy=(ri[n.id]-2.5)*-25}
+    if(mode==='teams'&&(n.t==='t'||n.t==='p')){const d=cy.$id(n.id).data();const i=tIdx[n.t==='t'?n.id:d.team],a=i/TEAMS.length*2*Math.PI;n.fx=180*Math.cos(a);n.fz=180*Math.sin(a);if(n.t==='t')n.fy=0}});
+  setTimeout(()=>{try{g3.d3ReheatSimulation()}catch(e){}},60);setTimeout(()=>g3&&is3d&&g3.zoomToFit(600,40),1600)}
+layoutSel.addEventListener('change',runLayout);
+cy.fit(undefined,20);home();
+
+let g3=null,is3d=false;
+const box3=document.getElementById('g3'),boxCy=document.getElementById('cy'),btn3=document.getElementById('view3d');
+function refresh3d(){if(!g3||!is3d)return;
+  g3.nodeColor(g3.nodeColor()).linkColor(g3.linkColor()).linkWidth(g3.linkWidth()).nodeVisibility(g3.nodeVisibility()).linkVisibility(g3.linkVisibility()).backgroundColor(css('--panel'));}
+function flyTo(id){if(!g3||!is3d)return;const n=g3.graphData().nodes.find(x=>x.id===id);if(!n||n.x==null)return;
+  const d=220,r=1+d/Math.hypot(n.x,n.y,n.z||1);g3.cameraPosition({x:n.x*r,y:n.y*r,z:n.z*r},n,900);}
+function init3d(){
+  const nodes=cy.nodes().map(n=>({id:n.id(),t:n.data('t'),label:n.data('label'),val:1+n.degree()/3}));
+  const links=cy.edges().map(e=>({id:e.id(),source:e.source().id(),target:e.target().id(),label:e.data('label')}));
+  const st=id=>cy.$id(id);
+  g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).graphData({nodes,links})
+    .backgroundColor(css('--panel')).showNavInfo(false).nodeRelSize(4).nodeOpacity(.95).linkOpacity(.45)
+    .nodeLabel(n=>`${n.label} · ${TYPES[n.t][0]}`)
+    .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):e.hasClass('faded')?css('--line'):css('--c-'+n.t)})
+    .nodeVisibility(n=>!st(n.id).hasClass('hidden'))
+    .linkVisibility(l=>{const e=st(l.id);return !e.hasClass('hidden')&&!e.source().hasClass('hidden')&&!e.target().hasClass('hidden')})
+    .linkColor(l=>{const e=st(l.id);return e.hasClass('flag')?css('--warn'):e.hasClass('hl')?css('--accent'):e.hasClass('faded')?css('--line'):css('--muted')})
+    .linkWidth(l=>st(l.id).hasClass('hl')?1.6:0)
+    .linkLabel(l=>l.label)
+    .linkDirectionalParticles(l=>st(l.id).hasClass('hl')?2:0).linkDirectionalParticleWidth(2)
+    .onNodeClick(n=>{select(n.id);flyTo(n.id)})
+    .onBackgroundClick(()=>{clearHl();home()});
+  g3.d3Force('charge').strength(-60);
+  const layer=document.createElement('div');layer.className='lbl3';box3.appendChild(layer);
+  const tags=new Map(nodes.map(n=>{const d=document.createElement('span');d.textContent=n.label;layer.appendChild(d);return [n.id,d]}));
+  (function tick(){requestAnimationFrame(tick);if(!is3d)return;
+    const cam=g3.camera(),p=cam.position,m=cam.matrixWorldInverse.elements;
+    g3.graphData().nodes.forEach(n=>{const d=tags.get(n.id),e=st(n.id);
+      if(n.x==null||e.hasClass('hidden')){d.style.display='none';return}
+      const zc=m[2]*n.x+m[6]*n.y+m[10]*n.z+m[14];if(zc>0){d.style.display='none';return}
+      const s=g3.graph2ScreenCoords(n.x,n.y,n.z),dist=Math.hypot(p.x-n.x,p.y-n.y,p.z-n.z);
+      const strong=e.hasClass('sel')||e.hasClass('hl');
+      d.style.display='';d.style.transform=`translate(${s.x}px,${s.y}px) translate(-50%,6px)`;
+      d.style.fontSize=(strong?Math.max(12,Math.min(2600/dist,16)):Math.max(9,Math.min(2200/dist,14)))+'px';
+      d.style.opacity=e.hasClass('faded')?.12:strong?1:Math.max(.25,Math.min(1.4-dist/500,1));
+      d.style.fontWeight=e.hasClass('sel')?600:400;d.style.zIndex=strong?2:1;});
+  })();
+  new ResizeObserver(()=>g3&&g3.width(box3.clientWidth).height(box3.clientHeight)).observe(box3);
+}
+function loadLib(){return new Promise((ok,fail)=>{if(window.ForceGraph3D)return ok();const s=document.createElement('script');
+  s.src='https://cdn.jsdelivr.net/npm/3d-force-graph@1.73.0/dist/3d-force-graph.min.js';s.onload=ok;s.onerror=fail;document.head.appendChild(s)})}
+btn3.addEventListener('click',async()=>{
+  is3d=!is3d;btn3.setAttribute('aria-pressed',is3d);btn3.textContent=is3d?'2D-Ansicht':'3D-Ansicht';
+  boxCy.hidden=is3d;box3.hidden=!is3d;
+  if(is3d){try{await loadLib();if(!g3){init3d();layout3d(layoutSel.value)}g3.width(box3.clientWidth).height(box3.clientHeight);refresh3d()}
+    catch(err){box3.insertAdjacentHTML('beforeend','<p class="meta" style="padding:16px">Die 3D-Bibliothek konnte nicht geladen werden. Prüf die Verbindung und versuch es noch mal.</p>')}}
+  else{cy.resize();cy.fit(cy.$('.hl').length?cy.$('.hl'):undefined,30)}
+});
+['highlight','clearHl','applyFilters'].forEach(fn=>{const orig=window[fn];window[fn]=function(...a){const r=orig.apply(this,a);refresh3d();return r}});
+const _sel=select;select=function(id,k){_sel(id,k);flyTo(id)};
+panel.addEventListener('click',e=>{if(e.target.closest('[data-flag]'))refresh3d()});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refresh3d);
+</script>
+</body>
+</html>
