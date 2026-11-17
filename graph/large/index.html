@@ -517,6 +517,8 @@ const g3=ForceGraph3D()(box3).width(innerWidth).height(innerHeight).backgroundCo
   .onEngineStop(()=>{if(fitPending){fitPending=false;g3.zoomToFit(600,90)}});
 g3.d3Force('charge').strength(n=>n.agg?-260:-90);g3.d3Force('link').distance(l=>l.agg?75:45);
 box3.appendChild(layer);
+layer.addEventListener('wheel',ev=>{ev.preventDefault();const c=g3.renderer().domElement;
+  c.dispatchEvent(new WheelEvent('wheel',{deltaX:ev.deltaX,deltaY:ev.deltaY,deltaZ:ev.deltaZ,deltaMode:ev.deltaMode,clientX:ev.clientX,clientY:ev.clientY,ctrlKey:ev.ctrlKey,bubbles:true,cancelable:true}))},{passive:false});
 const tags=new Map(),icons=new Map();
 function sync3d(){syncQ=false;if(!is3d)return;
   const old=new Map(g3.graphData().nodes.map(n=>[n.id,n]));let kept=0;
