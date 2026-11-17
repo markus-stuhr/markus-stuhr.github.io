@@ -65,6 +65,7 @@ h1{font-family:var(--display);font-weight:600;font-size:20px;margin:0;letter-spa
 .icon-btn svg{width:18px;height:18px}
 .icon-btn:disabled{opacity:.35;cursor:default;border-color:var(--line);color:var(--fg)}
 .srch{display:flex;flex-direction:column;align-items:center;gap:4px}
+.navr{justify-self:end;display:flex;gap:6px}
 .srow{display:flex;align-items:center;gap:6px;width:100%}
 .srch input[type=search]{width:min(360px,60vw);padding:9px 14px;border-radius:99px;background:var(--panel);font-size:14px}
 .go-r{justify-self:end}
@@ -147,7 +148,8 @@ aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2p
       </div>
       <div class="crumbs" id="crumbs" hidden></div>
     </div>
-    <div class="srch"><div class="srow"><button class="icon-btn" id="back" aria-label="Back" title="Back (Alt+←)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="icon-btn" id="fwd" aria-label="Forward" title="Forward (Alt+→)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button><input type="search" id="search" autocomplete="off" placeholder="Search people, projects, customers …" aria-label="Search the graph"></div><span class="err" id="err" aria-live="polite"></span></div>
+    <div class="srch"><div class="srow"><input type="search" id="search" autocomplete="off" placeholder="Search people, projects, customers …" aria-label="Search the graph"></div><span class="err" id="err" aria-live="polite"></span></div>
+    <div class="navr"><button class="icon-btn" id="back" aria-label="Back" title="Back (Alt+←)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="icon-btn" id="fwd" aria-label="Forward" title="Forward (Alt+→)" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></div>
   </header>
 
   <div class="card" id="settings" hidden>
