@@ -552,7 +552,7 @@ function pulseLinks(){const ls=g3.graphData().links.filter(l=>l.__lineObj&&st(l.
     d.style.transform=`translate(${s.x}px,${s.y}px) translate(-50%,${is/2+3}px)`;d.style.fontSize=(strong?12:11)+'px';d.style.fontWeight=sel?600:'';
     d.style.zIndex=Math.round(1e5/(-zc))+(strong?1e6:0);
     const mm=measure(n.label,strong?12:11,strong);
-    items.push({id:n.id,x:s.x,y:s.y,w:mm.w,h:mm.h,dot:is,pri:(sel?1e6:0)+(e.connectedEdges('.hl').length?1e5:0)+(n.agg?1e4:0)+1e3/(-zc)+e.degree()*.01})});
+    items.push({id:n.id,x:s.x,y:s.y,w:mm.w,h:mm.h,dot:is,pri:(sel?1e12:0)+1e6/(-zc)+e.degree()*1e-3})});
   const show=placeLabels(items);
   items.forEach(it=>{const d=tags.get(it.id);d.style.display=show.has(it.id)?'':'none'});
 })();
