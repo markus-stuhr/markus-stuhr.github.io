@@ -330,13 +330,18 @@ function style(){return [
     'text-background-color':css('--pill'),'text-background-opacity':1,'text-background-shape':'round-rectangle','text-background-padding':()=>3/Z,'text-margin-y':()=>6/Z}},
   {selector:'edge.hl',style:{'line-color':css('--accent'),'width':()=>1/Z,'opacity':1,'z-index':9}},
   {selector:'edge[?pill]',style:{'line-color':css('--accent'),'opacity':1,'z-index':9}},
-  {selector:'node.nolabel',style:{'text-opacity':.25}}
+  {selector:'node.nolabel',style:{'text-opacity':.25}},
+  {selector:'node.nolabel0',style:{'text-opacity':0}}
 ]}
 const cy=cytoscape({container:document.getElementById('cy'),style:style(),wheelSensitivity:.25,minZoom:.15,maxZoom:6});
+/* with a node selected only it and its direct neighbors keep labels; with nothing selected all labels compete for space */
+function labelScope(){const sel=cy.$('node.sel');if(!sel.length)return null;return new Set(sel.closedNeighborhood('node').map(n=>n.id()))}
 function cull2d(){if(typeof is3d!=='undefined'&&is3d)return;const items=[];
-  cy.nodes().forEach(n=>{const d=n.data();const p=n.renderedPosition(),strong=n.hasClass('sel')||d.agg;const m=measure(d.label,strong?11:10,strong);
+  const scope=labelScope();
+  cy.nodes().forEach(n=>{const d=n.data();if(scope&&!scope.has(d.id))return;const p=n.renderedPosition(),strong=n.hasClass('sel')||d.agg;const m=measure(d.label,strong?11:10,strong);
     items.push({id:d.id,x:p.x,y:p.y,w:m.w,h:m.h,dot:dotSize(d),force:n.hasClass('sel'),pri:(n.hasClass('sel')?1e6:0)+(n.connectedEdges('.hl').length?1e5:0)+(d.agg?1e4:0)+n.degree()})});
-  const show=placeLabels(items);cy.batch(()=>cy.nodes().forEach(n=>{const off=!show.has(n.id());if(off!==n.hasClass('nolabel'))n.toggleClass('nolabel',off)}))}
+  const show=placeLabels(items);cy.batch(()=>cy.nodes().forEach(n=>{const out=!!scope&&!scope.has(n.id()),off=!out&&!show.has(n.id());
+    if(off!==n.hasClass('nolabel'))n.toggleClass('nolabel',off);if(out!==n.hasClass('nolabel0'))n.toggleClass('nolabel0',out)}))}
 let cq=false;cy.on('render',()=>{if(cq)return;cq=true;setTimeout(()=>{cq=false;cull2d()},60)});
 let pulsed=null;
 (function pulse2d(){return;if(typeof is3d==='undefined'||is3d)return;const hl=cy.edges('.hl');
@@ -663,8 +668,8 @@ function pulseLinks(){const cam=g3.camera(),m=cam.matrixWorldInverse.elements,fo
     d.classList.toggle('pill',sel);d.style.zIndex=sel?2e9:Math.round(1e5/(-zc))+(strong?1e6:0);if(sel)ic.style.zIndex=2e9-1;
     const mm=measure(n.label,strong?12:11,strong);
     items.push({id:n.id,x:s.x,y:s.y,w:mm.w,h:mm.h,dot:is,force:sel,pri:(sel?1e12:0)+1e6/(-zc)+e.degree()*1e-3})});
-  const show=placeLabels(items);
-  items.forEach(it=>{const d=tags.get(it.id);d.style.display='';d.style.opacity=(FADE&&it.id!==FADE)?0:show.has(it.id)?1:.25});
+  const scope=labelScope(),vis=scope?items.filter(it=>scope.has(it.id)):items,show=placeLabels(vis);
+  items.forEach(it=>{const d=tags.get(it.id);d.style.display='';d.style.opacity=(FADE&&it.id!==FADE)||(scope&&!scope.has(it.id))?0:show.has(it.id)?1:.25});
 })();
 addEventListener('resize',()=>g3.width(box3.clientWidth).height(box3.clientHeight));
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refresh3d);
