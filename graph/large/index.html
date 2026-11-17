@@ -23,7 +23,9 @@
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.5;overflow:hidden}
 .app{position:fixed;inset:0}
-#cy,#g3{position:absolute;top:0;left:0;bottom:0;right:var(--side)}
+#cy,#g3,#ghosts{position:absolute;top:0;left:0;bottom:0;right:var(--side)}
+#ghosts{pointer-events:none;overflow:hidden}
+#ghosts canvas{position:absolute;inset:0;width:100%;height:100%;transform-origin:50% 50%;transition:filter .6s cubic-bezier(.65,0,.35,1),opacity .6s cubic-bezier(.65,0,.35,1),transform .6s cubic-bezier(.65,0,.35,1)}
 #g3{overflow:hidden}
 .hide{visibility:hidden;pointer-events:none}
 .lbl3{position:absolute;inset:0;pointer-events:none;overflow:hidden}
@@ -104,7 +106,7 @@ aside.closed{display:none}
   #settings{top:calc(108px + env(safe-area-inset-top,0px))}
   :root{--side:0px}
   aside{top:auto;left:0;right:0;bottom:0;width:auto;height:42dvh;border-left:none;border-top:1px solid var(--line);padding:14px max(16px,env(safe-area-inset-right,0px)) calc(14px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
-  #cy,#g3,#suggest{bottom:42dvh}
+  #cy,#g3,#suggest,#ghosts{bottom:42dvh}
   .foot{display:none}
 }
 aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2px;text-wrap:balance}
@@ -137,6 +139,7 @@ aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2p
 </head>
 <body>
 <div class="app">
+  <div id="ghosts" aria-hidden="true"></div>
   <div id="cy" class="hide"></div>
   <div id="g3"></div>
 
@@ -581,7 +584,7 @@ const box3=document.getElementById('g3'),cyBox=document.getElementById('cy'),btn
 var is3d=true,fitPending=true,last={},syncQ=false,refQ=false;
 const layer=document.createElement('div');layer.className='lbl3';
 const st=id=>cy.$id(id);
-const g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).backgroundColor(css('--bg')).showNavInfo(false).cooldownTime(2500)
+const g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).backgroundColor('rgba(0,0,0,0)').showNavInfo(false).cooldownTime(2500)
   .nodeRelSize(1).nodeOpacity(0).linkOpacity(1).nodeLabel(()=>'')
   .nodeVal(.05)
   .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):n.t==='m'?css('--c-m'):css('--c-'+n.t)})
@@ -639,7 +642,7 @@ function pulseLinks(){const cam=g3.camera(),m=cam.matrixWorldInverse.elements,fo
   items.forEach(it=>{const d=tags.get(it.id);d.style.display='';d.style.opacity=(FADE&&it.id!==FADE)?0:show.has(it.id)?1:.25});
 })();
 addEventListener('resize',()=>g3.width(box3.clientWidth).height(box3.clientHeight));
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{g3.backgroundColor(css('--bg'));refresh3d()});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',refresh3d);
 btnV.onclick=()=>{is3d=!is3d;btnV.textContent=is3d?'2D view':'3D view';btnV.setAttribute('aria-pressed',!is3d);
   box3.classList.toggle('hide',!is3d);cyBox.classList.toggle('hide',is3d);
   if(is3d){fitPending=true;sync3d();refresh3d()}else{cy.resize();cy.fit(undefined,40)}};
@@ -652,9 +655,24 @@ const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ease=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
 function tween(ms,f,done){const t0=performance.now();(function step(){const k=ease(Math.min(1,(performance.now()-t0)/ms));f(k);if(k<1)requestAnimationFrame(step);else if(done)done()})()}
 let busy=false;var FADE=null;
+/* depth-of-field history: the previous 1-3 layers stay behind the graph, each one deeper, smaller and blurrier */
+const ghostBox=document.getElementById('ghosts'),GD=[{b:5,o:.42,s:.93},{b:11,o:.24,s:.86},{b:18,o:.12,s:.79}];
+function snapLayer(){const box=is3d?box3:cyBox,w=box.clientWidth,h=box.clientHeight,dpr=devicePixelRatio||1;
+  const c=document.createElement('canvas');c.width=w*dpr;c.height=h*dpr;const x=c.getContext('2d');x.scale(dpr,dpr);
+  if(is3d){const r=g3.renderer();r.render(g3.scene(),g3.camera());x.drawImage(r.domElement,0,0,w,h);
+    const br=box3.getBoundingClientRect();icons.forEach((ic,id)=>{if(ic.style.display==='none')return;const b=ic.getBoundingClientRect();if(!b.width)return;
+      const t=(cy.$id(id).data('t'))||'m';x.beginPath();x.arc(b.x-br.x+b.width/2,b.y-br.y+b.height/2,b.width/2,0,6.283);
+      if(ic.classList.contains('gone')||cy.$id(id).data('agg')){x.strokeStyle=css('--c-'+t);x.lineWidth=2;x.stroke()}else{x.fillStyle=css('--c-'+t);x.fill()}})}
+  else{const img=new Image();img.src=cy.png({full:false,bg:'transparent',scale:1});img.onload=()=>x.drawImage(img,0,0,w,h)}
+  return c}
+function layoutGhosts(){[...ghostBox.children].reverse().forEach((c,i)=>{const g=GD[i];if(!g){c.remove();return}
+  c.style.filter=`blur(${g.b}px)`;c.style.opacity=g.o;c.style.transform=`scale(${g.s})`})}
+function pushGhost(){const c=snapLayer();c.style.filter='blur(0px)';c.style.opacity=1;c.style.transform='scale(1)';ghostBox.appendChild(c);
+  requestAnimationFrame(()=>requestAnimationFrame(layoutGhosts))}
+function clearGhosts(){[...ghostBox.children].forEach(c=>{c.style.opacity=0;setTimeout(()=>c.remove(),600)})}
 function transition(id,build){
   if(RM||busy){build();return}
-  busy=true;const OUT=450,IN=550;
+  pushGhost();busy=true;const OUT=450,IN=550;
   if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);
     FADE=id;icons.forEach((ic,k)=>{if(k!==id)ic.style.opacity=0});
     tween(OUT,k=>g3.linkOpacity(1-k));
@@ -675,7 +693,7 @@ const backB=document.getElementById('back'),fwdB=document.getElementById('fwd');
 function navButtons(){backB.disabled=hi<=0;fwdB.disabled=hi>=hist.length-1}
 function snapshot(){return {mode,crumbs:crumbs.slice(),els:cy.elements().jsons().map(j=>({group:j.group,data:j.data,position:j.position})),sel:cy.$('node.sel').id()||null,panel:panel.innerHTML,hint:hintEl.textContent}}
 function recordSoon(){if(restoring||recQ)return;recQ=true;setTimeout(()=>{recQ=false;hist.splice(hi+1);hist.push(snapshot());if(hist.length>60)hist.shift();hi=hist.length-1;navButtons()},0)}
-function restore(k){if(k<0||k>=hist.length)return;hi=k;const st=hist[k];restoring=true;
+function restore(k){if(k<0||k>=hist.length)return;clearGhosts();hi=k;const st=hist[k];restoring=true;
   cy.elements().remove();cy.add(st.els);mode=st.mode;setCrumbs(st.crumbs);hintEl.textContent=st.hint;runLayout(false);
   if(st.sel&&cy.$id(st.sel).length)select(st.sel);else{cy.nodes().removeClass('sel');panel.innerHTML=st.panel}
   restoring=false;navButtons()}
