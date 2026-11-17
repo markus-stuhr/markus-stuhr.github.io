@@ -27,7 +27,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-
 #g3{overflow:hidden}
 .hide{visibility:hidden;pointer-events:none}
 .lbl3{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-.lbl3 span{position:absolute;left:0;top:0;white-space:pre;text-align:center;line-height:1.25;color:var(--fg);text-shadow:0 0 3px var(--bg),0 0 3px var(--bg),0 0 2px var(--bg);will-change:transform}
+.lbl3 span{position:absolute;left:0;top:0;white-space:pre;text-align:center;line-height:1.25;color:var(--fg);will-change:transform}
 .lbl3 span.agg{font-weight:600}
 .lbl3 i{position:absolute;left:0;top:0;display:flex;align-items:center;justify-content:center;border-radius:50%;pointer-events:auto;cursor:pointer;will-change:transform}
 .lbl3 i svg{width:62%;height:62%;display:block;pointer-events:none}
@@ -268,20 +268,20 @@ function placeLabels(items){const placed=[],show=new Set();
 const SHAPE={u:'round-rectangle',i:'round-octagon',t:'round-rectangle',p:'ellipse',j:'hexagon',s:'diamond',k:'round-octagon',d:'rectangle',m:'round-rectangle'};
 function style(){return [
   {selector:'node',style:{'background-color':e=>css('--c-'+e.data('t')),'shape':e=>SHAPE[e.data('t')],'label':'data(label)','font-family':'Inter, system-ui, sans-serif','font-size':()=>10/Z,'color':css('--fg'),
-    'text-valign':'bottom','text-margin-y':()=>4/Z,'text-outline-color':css('--bg'),'text-outline-width':()=>2/Z,'text-wrap':'wrap','text-max-width':()=>140/Z,
+    'text-valign':'bottom','text-margin-y':()=>4/Z,'text-outline-width':0,'text-wrap':'wrap','text-max-width':()=>140/Z,
     'width':e=>dotSize(e.data())/Z,'height':e=>dotSize(e.data())/Z,
     'background-image':e=>iconURI(e.data('t'),'#ffffff'),'background-width':e=>e.data('t')==='s'?'46%':'58%','background-height':e=>e.data('t')==='s'?'46%':'58%','background-clip':'none'}},
   {selector:'node[?agg]',style:{'font-weight':600,'font-size':()=>11/Z}},
   {selector:'node[t="m"]',style:{'background-image':'none','label':'data(label)','shape':'round-rectangle','width':'label','height':()=>18/Z,'padding':()=>5/Z,'text-valign':'center','text-margin-y':0,'color':css('--fg'),'background-color':css('--line'),'text-outline-width':0,'font-size':()=>10/Z}},
   {selector:'node[?left]',style:{'border-width':()=>1.5/Z,'border-color':css('--warn'),'border-style':'dashed','background-opacity':.5}},
-  {selector:'edge',style:{'width':()=>1/Z,'line-color':css('--edge'),'curve-style':'bezier','opacity':e=>qa(edgeQ(e.data())),'font-size':()=>9/Z,'color':css('--muted'),'text-rotation':'autorotate','text-outline-color':css('--bg'),'text-outline-width':()=>2/Z}},
+  {selector:'edge',style:{'width':()=>1/Z,'line-color':css('--edge'),'curve-style':'bezier','opacity':e=>qa(edgeQ(e.data())),'font-size':()=>9/Z,'color':css('--muted'),'text-rotation':'autorotate','text-outline-width':0}},
   {selector:'edge[?agg]',style:{'label':'data(label)'}},
   {selector:'edge[?dash]',style:{'line-style':'dashed'}},
   {selector:'edge[conf < 0.7]',style:{'line-style':'dashed'}},
   {selector:'.faded',style:{'opacity':.12}},
   {selector:'node.sel',style:{'border-width':()=>2.5/Z,'border-color':css('--accent'),'border-style':'solid','font-weight':600,'z-index':10}},
   {selector:'edge.hl',style:{'line-color':css('--accent'),'opacity':1,'label':'data(label)','z-index':9}},
-  {selector:'node.nolabel',style:{'text-opacity':0}},
+  {selector:'node.nolabel',style:{'text-opacity':.75}},
   {selector:'node.new',style:{'border-width':()=>1.5/Z,'border-color':css('--accent')}}
 ]}
 const cy=cytoscape({container:document.getElementById('cy'),style:style(),wheelSensitivity:.25,minZoom:.15,maxZoom:6});
@@ -554,7 +554,7 @@ function pulseLinks(){const ls=g3.graphData().links.filter(l=>l.__lineObj&&st(l.
     const mm=measure(n.label,strong?12:11,strong);
     items.push({id:n.id,x:s.x,y:s.y,w:mm.w,h:mm.h,dot:is,pri:(sel?1e12:0)+1e6/(-zc)+e.degree()*1e-3})});
   const show=placeLabels(items);
-  items.forEach(it=>{const d=tags.get(it.id);d.style.display=show.has(it.id)?'':'none'});
+  items.forEach(it=>{const d=tags.get(it.id);d.style.display='';d.style.opacity=show.has(it.id)?1:.75});
 })();
 addEventListener('resize',()=>g3.width(innerWidth).height(innerHeight));
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{g3.backgroundColor(css('--bg'));refresh3d()});
