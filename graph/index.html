@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script defer src="/analytics.js"></script>
-<title>Wissensgraph Nordlicht</title>
+<title>Nordlicht Knowledge Graph</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
 <style>
-/* Layout: Kopfzeile mit Fragen, darunter Graph links und Detailspalte rechts; auf dem Handy gestapelt */
+/* Layout: header with questions, graph left and detail column right; stacked on phones */
 :root{
   --bg:#f4f6f8;--panel:#ffffff;--fg:#17202a;--muted:#5b6673;--line:#dde2e8;--accent:#1f6f8b;--accent-bg:#e3f0f5;--warn:#b5571c;--warn-bg:#fbeee3;
   --c-p:#4766d1;--c-t:#7d8794;--c-j:#16906c;--c-s:#d07a22;--c-k:#c0436f;--c-d:#8a7650;--edge:#b9c2cc;
@@ -81,41 +81,41 @@ aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2p
 <div class="wrap">
   <header>
     <div>
-      <h1>Wissensgraph Nordlicht</h1>
-      <p class="sub">Wer weiß was bei der Nordlicht Software GmbH: 24 Leute, 14 Projekte, 8 Kunden, 16 Systeme und 12 Dokumente. Jede Verbindung zeigt ihre Quelle, ihr Datum und bei KI-Extraktion ihre Sicherheit.</p>
+      <h1>Nordlicht Knowledge Graph</h1>
+      <p class="sub">Who knows what at Nordlicht Software GmbH: 24 people, 14 projects, 8 customers, 16 systems and 12 documents. Every connection shows its source, its date and, for AI extraction, its confidence.</p>
     </div>
-    <span class="badge">Fiktive Beispieldaten</span>
+    <span class="badge">Fictional sample data</span>
   </header>
 
   <div class="qs" id="qs">
-    <button data-q="kafka">Wer kennt sich mit Kafka aus?</button>
-    <button data-q="nordbank">Wer hat mit der Nordbank gearbeitet?</button>
-    <button data-q="paul">Welches Wissen ging mit Paul?</button>
-    <button data-q="path">Wie kommt Kim an die Nordbank?</button>
-    <button data-q="llm">Wer macht bei uns LLM-Projekte?</button>
+    <button data-q="kafka">Who knows Kafka?</button>
+    <button data-q="nordbank">Who has worked with Nordbank?</button>
+    <button data-q="paul">What knowledge left with Paul?</button>
+    <button data-q="path">How does Kim reach Nordbank?</button>
+    <button data-q="llm">Who works on LLM projects?</button>
   </div>
 
   <div class="tools">
-    <input type="search" id="search" list="names" placeholder="Suche: Anna, Kubernetes, Hanse …" aria-label="Knoten suchen">
+    <input type="search" id="search" list="names" placeholder="Search: Anna, Kubernetes, Hanse …" aria-label="Search nodes">
     <datalist id="names"></datalist>
     <div class="chips" id="chips"></div>
-    <label class="tg"><input type="checkbox" id="unsure"> Unsichere KI-Verbindungen ausblenden</label>
-    <label class="tg" for="layout">Anordnung
+    <label class="tg"><input type="checkbox" id="unsure"> Hide uncertain AI connections</label>
+    <label class="tg" for="layout">Layout
       <select id="layout" style="font:inherit;font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg)">
-        <option value="net">Netz (frei)</option>
-        <option value="rows">Ebenen nach Typ</option>
-        <option value="cols">Spalten nach Typ</option>
-        <option value="rings">Ringe nach Typ</option>
-        <option value="teams">Nach Teams gruppiert</option>
+        <option value="net">Network (free)</option>
+        <option value="rows">Rows by type</option>
+        <option value="cols">Columns by type</option>
+        <option value="rings">Rings by type</option>
+        <option value="teams">Grouped by team</option>
       </select></label>
-    <button class="btn" id="reset">Alles zeigen</button>
-    <button class="btn" id="view3d" aria-pressed="false">3D-Ansicht</button>
+    <button class="btn" id="reset">Show all</button>
+    <button class="btn" id="view3d" aria-pressed="false">3D view</button>
   </div>
 
   <div class="main">
     <div class="stage">
-      <div id="cy"><span class="hint">Klick wählt aus · Doppelklick isoliert die Nachbarschaft · Mausrad zoomt</span></div>
-      <div id="g3" hidden><span class="hint">Ziehen dreht · Rechte Maustaste verschiebt · Mausrad zoomt · Klick wählt aus</span></div>
+      <div id="cy"><span class="hint">Click selects · Double-click isolates the neighborhood · Scroll zooms</span></div>
+      <div id="g3" hidden><span class="hint">Drag rotates · Right-drag pans · Scroll zooms · Click selects</span></div>
     </div>
     <aside id="panel" aria-live="polite"></aside>
   </div>
@@ -123,23 +123,23 @@ aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2p
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
 <script>
-const TYPES={p:['Person','Personen','ellipse'],t:['Team','Teams','round-rectangle'],j:['Projekt','Projekte','hexagon'],s:['System','Systeme','diamond'],k:['Kunde','Kunden','round-octagon'],d:['Dokument','Dokumente','rectangle']};
-const TEAMS=[['plat','Plattform & Cloud'],['data','Data & KI'],['web','Web & Mobile'],['cons','Consulting'],['sales','Vertrieb'],['hr','People & Compliance']];
+const TYPES={p:['Person','People','ellipse'],t:['Team','Teams','round-rectangle'],j:['Project','Projects','hexagon'],s:['System','Systems','diamond'],k:['Customer','Customers','round-octagon'],d:['Document','Documents','rectangle']};
+const TEAMS=[['plat','Platform & Cloud'],['data','Data & AI'],['web','Web & Mobile'],['cons','Consulting'],['sales','Sales'],['hr','People & Compliance']];
 const PEOPLE=[
 ['anna','Anna Keller','Lead Cloud Engineer','plat'],['felix','Felix Brandt','DevOps Engineer','plat'],['jonas','Jonas Peters','Cloud Architect','plat'],
-['paul','Paul Richter','Senior Backend Engineer','plat','30.06.2026'],['max','Max Neumann','Security Engineer','plat'],
-['ben','Ben Schulz','Data Engineer','data'],['elif','Elif Şahin','Head of Data & KI','data'],['lars','Lars Becker','Data Scientist','data'],
-['olga','Olga Petrova','ML Engineer','data'],['vera','Vera Engel','BI-Analystin','data'],
+['paul','Paul Richter','Senior Backend Engineer','plat','30 Jun 2026'],['max','Max Neumann','Security Engineer','plat'],
+['ben','Ben Schulz','Data Engineer','data'],['elif','Elif Şahin','Head of Data & AI','data'],['lars','Lars Becker','Data Scientist','data'],
+['olga','Olga Petrova','ML Engineer','data'],['vera','Vera Engel','BI Analyst','data'],
 ['clara','Clara Wendt','Frontend Engineer','web'],['hannes','Hannes Vogel','Tech Lead Web','web'],['kim','Kim Nguyen','UX Designer','web'],
 ['rosa','Rosa Klein','Mobile Lead','web'],['yusuf','Yusuf Demir','Fullstack Engineer','web'],
-['deniz','Deniz Aydın','Principal Consultant','cons'],['ines','Ines Lorenz','SAP-Beraterin','cons'],['nils','Nils Hartmann','Solution Architect','cons'],
-['sven','Sven Möller','Projektmanager','cons'],['zoe','Zoe Wagner','Junior Consultant','cons'],
-['greta','Greta Hoffmann','Key Account Managerin','sales'],['mara','Mara Fischer','Key Account Managerin','sales'],['uwe','Uwe Krause','Vertriebsleiter','sales'],
+['deniz','Deniz Aydın','Principal Consultant','cons'],['ines','Ines Lorenz','SAP Consultant','cons'],['nils','Nils Hartmann','Solution Architect','cons'],
+['sven','Sven Möller','Project Manager','cons'],['zoe','Zoe Wagner','Junior Consultant','cons'],
+['greta','Greta Hoffmann','Key Account Manager','sales'],['mara','Mara Fischer','Key Account Manager','sales'],['uwe','Uwe Krause','Head of Sales','sales'],
 ['tara','Tara Jansen','People & Compliance','hr']];
-const CUSTOMERS=[['mueller','Müller Logistik','Logistik'],['nordbank','Nordbank AG','Finanzen'],['stadtwerke','Stadtwerke Kiel','Energie'],['medi','MediCare Kliniken','Gesundheit'],['autoh','Autohaus Brandl','Handel'],['versich','Hanse Versicherung','Versicherung'],['bio','BioFrisch Markt','Einzelhandel'],['aero','AeroParts','Luftfahrt']];
-const PROJECTS=[['shop','Webshop-Relaunch','läuft'],['crm','CRM-Migration','abgeschlossen'],['app','Patienten-App','läuft'],['tour','Tourenplanung KI','läuft'],['portal','Kundenportal','läuft'],['smart','Smart-Meter-Analytics','abgeschlossen'],['claims','Schaden-Bot','Pilot'],['dms','Dokumentenarchiv','läuft'],['fleet','Flottenmanagement','abgeschlossen'],['pred','Predictive Maintenance','läuft'],['kg','Wissensgraph intern','Konzept'],['cloudmig','Cloud-Migration intern','läuft'],['ds','Designsystem intern','läuft'],['sec','ISO-27001-Zertifizierung','läuft']];
-const SYSTEMS=[['k8s','Kubernetes'],['aws','AWS'],['azure','Azure'],['pg','PostgreSQL'],['sap','SAP S/4HANA'],['sf','Salesforce'],['kafka','Kafka'],['react','React'],['flutter','Flutter'],['py','Python'],['llm','LLM-Plattform'],['neo','Neo4j'],['tf','Terraform'],['kc','Keycloak'],['pbi','Power BI'],['spark','Spark']];
-const DOCS=[['adr1','ADR: Event-Streaming mit Kafka'],['runbook','Kubernetes-Runbook'],['conc','Konzept Tourenoptimierung'],['dsgvo','DSGVO-Leitfaden'],['pitch','Pitch Nordbank'],['lessons','Lessons Learned CRM'],['api','API-Richtlinien'],['onb','Onboarding-Handbuch'],['iso','ISO-Richtlinien'],['figma','Designsystem-Bibliothek'],['offer','Angebot Hanse Versicherung'],['arch','Architektur Kundenportal']];
+const CUSTOMERS=[['mueller','Müller Logistik','Logistics'],['nordbank','Nordbank AG','Finance'],['stadtwerke','Stadtwerke Kiel','Energy'],['medi','MediCare Clinics','Healthcare'],['autoh','Brandl Motors','Car dealership'],['versich','Hanse Insurance','Insurance'],['bio','BioFresh Market','Retail'],['aero','AeroParts','Aerospace']];
+const PROJECTS=[['shop','Web Shop Relaunch','active'],['crm','CRM Migration','completed'],['app','Patient App','active'],['tour','AI Route Planning','active'],['portal','Customer Portal','active'],['smart','Smart Meter Analytics','completed'],['claims','Claims Bot','Pilot'],['dms','Document Archive','active'],['fleet','Fleet Management','completed'],['pred','Predictive Maintenance','active'],['kg','Internal Knowledge Graph','Concept'],['cloudmig','Internal Cloud Migration','active'],['ds','Internal Design System','active'],['sec','ISO 27001 Certification','active']];
+const SYSTEMS=[['k8s','Kubernetes'],['aws','AWS'],['azure','Azure'],['pg','PostgreSQL'],['sap','SAP S/4HANA'],['sf','Salesforce'],['kafka','Kafka'],['react','React'],['flutter','Flutter'],['py','Python'],['llm','LLM Platform'],['neo','Neo4j'],['tf','Terraform'],['kc','Keycloak'],['pbi','Power BI'],['spark','Spark']];
+const DOCS=[['adr1','ADR: Event Streaming with Kafka'],['runbook','Kubernetes Runbook'],['conc','Route Optimization Concept'],['dsgvo','GDPR Guideline'],['pitch','Nordbank Pitch'],['lessons','CRM Lessons Learned'],['api','API Guidelines'],['onb','Onboarding Handbook'],['iso','ISO Policies'],['figma','Design System Library'],['offer','Hanse Insurance Proposal'],['arch','Customer Portal Architecture']];
 const INTERNAL={kg:1,cloudmig:1,ds:1,sec:1};
 const EDGES=`
 shop for bio|crm for nordbank|app for medi|tour for mueller|portal for stadtwerke|smart for stadtwerke|claims for versich|dms for versich|fleet for autoh|pred for aero
@@ -168,19 +168,19 @@ paul by adr1|adr1 about kafka .9|adr1 about smart .85|felix by runbook|runbook a
 tara by dsgvo|dsgvo about app .7|dsgvo about claims .65|greta by pitch|pitch about crm .85|deniz by lessons|lessons about crm .95
 hannes by api|api about portal .75|api about shop .7|tara by onb|max by iso|iso about sec .9|kim by figma|figma about ds .95
 mara by offer|offer about claims .9|nils by arch|arch about portal .95|arch about kc .8`;
-const REL={in:['arbeitet in','Mitglieder'],on:['arbeitet an','Mitarbeit'],lead:['leitet','Leitung'],for:['für Kunde','Projekte'],acct:['betreut','Account-Betreuung'],use:['nutzt','Genutzt in'],exp:['Expertise in','Expert:innen'],by:['hat verfasst','Autor:in'],about:['beschreibt','Dokumentiert in']};
-const SRC={in:'HR-System',on:'Jira',lead:'Jira',for:'CRM',acct:'CRM',use:'Git-Repos',by:'Confluence',about:'KI-Extraktion aus Confluence',exp:'KI-Extraktion aus Confluence, Slack und Git'};
+const REL={in:['works in','Members'],on:['works on','Contributors'],lead:['leads','Led by'],for:['for customer','Projects'],acct:['manages account','Account manager'],use:['uses','Used in'],exp:['expert in','Experts'],by:['wrote','Author'],about:['describes','Documented in']};
+const SRC={in:'HR system',on:'Jira',lead:'Jira',for:'CRM',acct:'CRM',use:'Git repos',by:'Confluence',about:'AI extraction from Confluence',exp:'AI extraction from Confluence, Slack and Git'};
 
 const els=[];const name={};const typeOf={};
 const add=(id,t,label,extra={})=>{name[id]=label;typeOf[id]=t;els.push({group:'nodes',data:Object.assign({id,t,label},extra)})};
 TEAMS.forEach(([id,l])=>add(id,'t',l));
 PEOPLE.forEach(([id,l,role,team,left])=>add(id,'p',l,{role,team,left:left||''}));
-CUSTOMERS.forEach(([id,l,br])=>add(id,'k',l,{info:'Branche: '+br}));
-PROJECTS.forEach(([id,l,st])=>add(id,'j',l,{info:(INTERNAL[id]?'Internes Projekt':'Kundenprojekt')+' · Status: '+st}));
+CUSTOMERS.forEach(([id,l,br])=>add(id,'k',l,{info:'Industry: '+br}));
+PROJECTS.forEach(([id,l,st])=>add(id,'j',l,{info:(INTERNAL[id]?'Internal project':'Customer project')+' · Status: '+st}));
 SYSTEMS.forEach(([id,l])=>add(id,'s',l));
 DOCS.forEach(([id,l])=>add(id,'d',l));
 const hash=s=>{let h=7;for(const c of s)h=(h*31+c.charCodeAt(0))>>>0;return h};
-const fmt=d=>d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'});
+const fmt=d=>d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 let ei=0;
 const addEdge=(a,r,b,conf)=>{const base=new Date(2026,10,15);let back=hash(a+r+b)%320;if(a==='paul'||b==='paul')back+=150;
   const d=new Date(base-back*864e5);els.push({group:'edges',data:{id:'e'+(ei++),source:a,target:b,r,label:REL[r][0],conf:conf==null?1:conf,src:SRC[r],date:fmt(d)}})};
@@ -210,7 +210,7 @@ new MutationObserver(()=>cy.style(style())).observe(document.documentElement,{at
 
 const hiddenTypes=new Set();let hideUnsure=false;
 const panel=document.getElementById('panel');
-const pct=c=>Math.round(c*100)+' %';
+const pct=c=>Math.round(c*100)+'%';
 const dot=t=>`style="--c:var(--c-${t})"`;
 const lk=id=>`<span class="lnk" data-go="${id}">${name[id]}</span>`;
 
@@ -232,54 +232,54 @@ function select(id,keepQ){
   panel.innerHTML=(keepQ||'')+detail(n);
 }
 function detail(n){
-  const d=n.data(),t=d.t;let h=`<div class="type">${TYPES[t][0]}</div><h2>${d.label}${d.left?'<span class="left">ausgeschieden '+d.left+'</span>':''}</h2>`;
-  const meta=[];if(d.role)meta.push(d.role);if(d.team)meta.push('Team '+name[d.team]);if(d.info)meta.push(d.info);meta.push(n.degree()+' Verbindungen');
+  const d=n.data(),t=d.t;let h=`<div class="type">${TYPES[t][0]}</div><h2>${d.label}${d.left?'<span class="left">left '+d.left+'</span>':''}</h2>`;
+  const meta=[];if(d.role)meta.push(d.role);if(d.team)meta.push('Team '+name[d.team]);if(d.info)meta.push(d.info);meta.push(n.degree()+' connections');
   h+=`<p class="meta">${meta.join(' · ')}</p>`;
   const groups={};
   n.connectedEdges().not('.hidden').forEach(e=>{const out=e.source().id()===d.id;const other=out?e.target():e.source();const key=out?REL[e.data('r')][0]:REL[e.data('r')][1];(groups[key]=groups[key]||[]).push({e,other})});
   Object.entries(groups).forEach(([k,list])=>{list.sort((a,b)=>b.e.data('conf')-a.e.data('conf'));
-    h+=`<div class="grp"><h3>${k}</h3>`+list.map(({e,other})=>{const c=e.data('conf');const ai=e.data('src').startsWith('KI');
+    h+=`<div class="grp"><h3>${k}</h3>`+list.map(({e,other})=>{const c=e.data('conf');const ai=e.data('src').startsWith('AI');
       return `<div class="rel${e.hasClass('flag')?' flagged':''}" data-go="${other.id()}"><span class="t"><i ${dot(other.data('t'))}></i>${other.data('label')}</span>
-      <span class="s"><span>${e.data('src')}</span><span>${e.data('date')}</span>${ai?`<span class="conf ${c<.7?'low':''}">Sicherheit ${pct(c)}${c<.7?' · unsicher':''}</span>`:''}
-      <button class="flag" data-flag="${e.id()}">${e.hasClass('flag')?'Meldung zurücknehmen':'Als falsch melden'}</button></span></div>`}).join('')+'</div>';});
-  h+=`<div class="actions"><button class="btn" data-iso="${d.id}">Nachbarschaft isolieren</button></div>`;
+      <span class="s"><span>${e.data('src')}</span><span>${e.data('date')}</span>${ai?`<span class="conf ${c<.7?'low':''}">Confidence ${pct(c)}${c<.7?' · uncertain':''}</span>`:''}
+      <button class="flag" data-flag="${e.id()}">${e.hasClass('flag')?'Withdraw report':'Report as wrong'}</button></span></div>`}).join('')+'</div>';});
+  h+=`<div class="actions"><button class="btn" data-iso="${d.id}">Isolate neighborhood</button></div>`;
   return h;
 }
 function home(){
   const c=t=>cy.nodes(`[t="${t}"]`).length;
-  panel.innerHTML=`<div class="type">Übersicht</div><h2>Firmenwissen als Netz</h2>
-  <p class="meta">Wähle eine Frage oben, such nach einem Namen oder klick einen Knoten an.</p>
-  <div class="stats"><span>${c('p')} Personen</span><span>${c('j')} Projekte</span><span>${c('s')} Systeme</span><span>${c('k')} Kunden</span><span>${c('d')} Dokumente</span><span>${cy.edges().length} Verbindungen</span></div>
-  <div class="grp"><h3>Woher die Verbindungen kommen</h3>${Object.entries(cy.edges().reduce((a,e)=>(a[e.data('src')]=(a[e.data('src')]||0)+1,a),{})).sort((a,b)=>b[1]-a[1]).map(([s,n])=>`<div class="rel" style="cursor:default"><span class="t">${s}</span><span class="s">${n} Verbindungen</span></div>`).join('')}</div>
-  <div class="grp"><h3>Lesehilfe</h3><p class="meta" style="margin:0">Gestrichelte Linien sind KI-Verbindungen mit unter 70 % Sicherheit. Gestrichelt umrandete Personen sind ausgeschieden. Größere Knoten haben mehr Verbindungen.</p></div>`;
+  panel.innerHTML=`<div class="type">Overview</div><h2>Company knowledge as a network</h2>
+  <p class="meta">Pick a question above, search for a name or click a node.</p>
+  <div class="stats"><span>${c('p')} people</span><span>${c('j')} projects</span><span>${c('s')} systems</span><span>${c('k')} customers</span><span>${c('d')} documents</span><span>${cy.edges().length} connections</span></div>
+  <div class="grp"><h3>Where the connections come from</h3>${Object.entries(cy.edges().reduce((a,e)=>(a[e.data('src')]=(a[e.data('src')]||0)+1,a),{})).sort((a,b)=>b[1]-a[1]).map(([s,n])=>`<div class="rel" style="cursor:default"><span class="t">${s}</span><span class="s">${n} connections</span></div>`).join('')}</div>
+  <div class="grp"><h3>How to read it</h3><p class="meta" style="margin:0">Dashed lines are AI connections below 70% confidence. People with a dashed outline have left the company. Larger nodes have more connections.</p></div>`;
 }
 
 const Q={
   kafka(){const s=cy.$id('kafka');const ex=s.connectedEdges('[r="exp"]').sort((a,b)=>b.data('conf')-a.data('conf'));
     const projs=s.connectedEdges('[r="use"]').sources();const indirect=projs.connectedEdges('[r="on"],[r="lead"]').sources().difference(ex.sources());
     highlight(s.union(ex.sources()).union(projs).union(indirect),ex.union(s.connectedEdges('[r="use"]')).union(projs.connectedEdges('[r="on"],[r="lead"]')),'kafka');
-    return `<div class="answer"><p><b>Direkte Expertise</b></p><ol>${ex.map(e=>`<li>${lk(e.source().id())} · ${pct(e.data('conf'))}${e.source().data('left')?' <span class="low">(ausgeschieden)</span>':''}${e.data('conf')<.7?' <span class="low">(unsicher)</span>':''}</li>`).join('')}</ol>
-    <p style="margin-top:8px"><b>Praxis aus Projekten mit Kafka</b></p><ul>${indirect.map(p=>`<li>${lk(p.id())}</li>`).join('')}</ul>
-    <p style="margin-top:8px">Der eigentliche Experte ist weg. Vera ist nur unsicher zugeordnet, Ben und Lars kennen Kafka aus Projekten.</p></div>`},
+    return `<div class="answer"><p><b>Direct expertise</b></p><ol>${ex.map(e=>`<li>${lk(e.source().id())} · ${pct(e.data('conf'))}${e.source().data('left')?' <span class="low">(left)</span>':''}${e.data('conf')<.7?' <span class="low">(uncertain)</span>':''}</li>`).join('')}</ol>
+    <p style="margin-top:8px"><b>Hands-on experience from Kafka projects</b></p><ul>${indirect.map(p=>`<li>${lk(p.id())}</li>`).join('')}</ul>
+    <p style="margin-top:8px">The real expert has left. Vera is only an uncertain match, while Ben and Lars know Kafka from projects.</p></div>`},
   nordbank(){const k=cy.$id('nordbank');const pe=k.connectedEdges();const projs=pe.sources('[t="j"]');const team=projs.connectedEdges('[r="on"],[r="lead"]');const docs=projs.connectedEdges('[r="about"]');
     highlight(k.union(pe.connectedNodes()).union(team.connectedNodes()).union(docs.connectedNodes()),pe.union(team).union(docs),'nordbank');
-    return `<div class="answer"><p><b>Projekt:</b> ${projs.map(p=>lk(p.id())).join(', ')}</p><p><b>Account:</b> ${lk('greta')}</p>
-    <p><b>Im Projekt:</b> ${team.sources().map(p=>lk(p.id())).join(', ')}</p><p><b>Nachlesen:</b> ${docs.sources().map(p=>lk(p.id())).join(', ')}</p></div>`},
+    return `<div class="answer"><p><b>Project:</b> ${projs.map(p=>lk(p.id())).join(', ')}</p><p><b>Account:</b> ${lk('greta')}</p>
+    <p><b>Project team:</b> ${team.sources().map(p=>lk(p.id())).join(', ')}</p><p><b>Read more:</b> ${docs.sources().map(p=>lk(p.id())).join(', ')}</p></div>`},
   paul(){const p=cy.$id('paul');const ex=p.connectedEdges('[r="exp"]');const rows=ex.map(e=>{const s=e.target();const others=s.connectedEdges('[r="exp"]').filter(o=>o.source().id()!=='paul'&&o.data('conf')>=.7);return {s,c:e.data('conf'),others}});
     const all=p.connectedEdges();highlight(p.union(all.connectedNodes()),all,'paul');
-    return `<div class="answer"><p>Paul ist seit 30.06.2026 nicht mehr da. Für seine Themen gibt es noch so viele sichere Expert:innen:</p><ul>${rows.map(r=>`<li>${lk(r.s.id())}: ${r.others.length?r.others.map(o=>lk(o.source().id())).join(', '):'<span class="low">niemand mehr</span>'}</li>`).join('')}</ul>
-    <p style="margin-top:8px">Sein Wissen steckt noch in ${lk('adr1')}. Ein Graph macht solche Wissensinseln sichtbar, bevor jemand geht.</p></div>`},
-  path(){const r=cy.elements().not('.hidden').aStar({root:'#kim',goal:'#nordbank',directed:false});if(!r.found)return '<div class="answer">Kein Weg gefunden.</div>';
+    return `<div class="answer"><p>Paul left on 30 Jun 2026. These confident experts remain for his topics:</p><ul>${rows.map(r=>`<li>${lk(r.s.id())}: ${r.others.length?r.others.map(o=>lk(o.source().id())).join(', '):'<span class="low">nobody left</span>'}</li>`).join('')}</ul>
+    <p style="margin-top:8px">His knowledge still lives in ${lk('adr1')}. A graph reveals knowledge silos like this before someone leaves.</p></div>`},
+  path(){const r=cy.elements().not('.hidden').aStar({root:'#kim',goal:'#nordbank',directed:false});if(!r.found)return '<div class="answer">No path found.</div>';
     highlight(r.path.nodes(),r.path.edges(),'kim');const ns=r.path.nodes();
     const steps=r.path.edges().map(e=>`<li>${name[e.source().id()]} <i>${e.data('label')}</i> ${name[e.target().id()]}</li>`).join('');
-    return `<div class="answer"><p>Kürzester Weg über ${ns.length-2} Zwischenschritte:</p><ol>${steps}</ol><p style="margin-top:8px">Kim sollte also ${lk(ns[2].id())} fragen.</p></div>`},
+    return `<div class="answer"><p>Shortest path via ${ns.length-2} intermediate steps:</p><ol>${steps}</ol><p style="margin-top:8px">So Kim should ask ${lk(ns[2].id())}.</p></div>`},
   llm(){const s=cy.$id('llm');const ex=s.connectedEdges('[r="exp"]').sort((a,b)=>b.data('conf')-a.data('conf'));const pr=s.connectedEdges('[r="use"]');const cust=pr.sources().connectedEdges('[r="for"]');
     highlight(s.union(ex.sources()).union(pr.sources()).union(cust.targets()),ex.union(pr).union(cust),'llm');
-    return `<div class="answer"><p><b>Projekte:</b> ${pr.sources().map(p=>lk(p.id())).join(', ')}</p><p><b>Kunde:</b> ${cust.targets().map(p=>lk(p.id())).join(', ')||'nur intern'}</p>
-    <ol>${ex.map(e=>`<li>${lk(e.source().id())} · ${pct(e.data('conf'))}${e.data('conf')<.7?' <span class="low">(unsicher, bitte prüfen)</span>':''}</li>`).join('')}</ol></div>`}
+    return `<div class="answer"><p><b>Projects:</b> ${pr.sources().map(p=>lk(p.id())).join(', ')}</p><p><b>Customer:</b> ${cust.targets().map(p=>lk(p.id())).join(', ')||'internal only'}</p>
+    <ol>${ex.map(e=>`<li>${lk(e.source().id())} · ${pct(e.data('conf'))}${e.data('conf')<.7?' <span class="low">(uncertain, please verify)</span>':''}</li>`).join('')}</ol></div>`}
 };
 document.getElementById('qs').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;applyFilters();clearHl();b.classList.add('on');
-  const html=Q[b.dataset.q]();panel.innerHTML=html+`<p class="meta" style="margin:0">Klick einen Namen an, um die Details zu sehen.</p>`;
+  const html=Q[b.dataset.q]();panel.innerHTML=html+`<p class="meta" style="margin:0">Click a name to see the details.</p>`;
   const hl=cy.$('.hl');if(hl.length)cy.animate({fit:{eles:hl,padding:40},duration:400});});
 
 panel.addEventListener('click',e=>{
@@ -398,10 +398,10 @@ function init3d(){
 function loadLib(){return new Promise((ok,fail)=>{if(window.ForceGraph3D)return ok();const s=document.createElement('script');
   s.src='https://cdn.jsdelivr.net/npm/3d-force-graph@1.73.0/dist/3d-force-graph.min.js';s.onload=ok;s.onerror=fail;document.head.appendChild(s)})}
 btn3.addEventListener('click',async()=>{
-  is3d=!is3d;btn3.setAttribute('aria-pressed',is3d);btn3.textContent=is3d?'2D-Ansicht':'3D-Ansicht';
+  is3d=!is3d;btn3.setAttribute('aria-pressed',is3d);btn3.textContent=is3d?'2D view':'3D view';
   boxCy.hidden=is3d;box3.hidden=!is3d;
   if(is3d){try{await loadLib();if(!g3){init3d();layout3d(layoutSel.value)}g3.width(box3.clientWidth).height(box3.clientHeight);refresh3d()}
-    catch(err){box3.insertAdjacentHTML('beforeend','<p class="meta" style="padding:16px">Die 3D-Bibliothek konnte nicht geladen werden. Prüf die Verbindung und versuch es noch mal.</p>')}}
+    catch(err){box3.insertAdjacentHTML('beforeend','<p class="meta" style="padding:16px">The 3D library could not be loaded. Check your connection and try again.</p>')}}
   else{cy.resize();cy.fit(cy.$('.hl').length?cy.$('.hl'):undefined,30)}
 });
 ['highlight','clearHl','applyFilters'].forEach(fn=>{const orig=window[fn];window[fn]=function(...a){const r=orig.apply(this,a);refresh3d();return r}});
