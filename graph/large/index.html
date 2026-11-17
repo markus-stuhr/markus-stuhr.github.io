@@ -620,6 +620,10 @@ function sync3d(){syncQ=false;if(!is3d)return;
     if(!o){const own=d.owner||cy.$id(d.id).neighborhood('node').filter(x=>old.has(x.id())).map(x=>x.id())[0];const p=own&&old.get(own);if(p&&p.x!=null){const a=Math.random()*6.283,b=Math.random()*3.1416;n.x=p.x+40*Math.sin(b)*Math.cos(a);n.y=p.y+40*Math.sin(b)*Math.sin(a);n.z=p.z+40*Math.cos(b)}}
     return n});
   if(kept<nodes.length*.5)fitPending=true;
+  /* selecting only swaps the "+N more" pill: freeze everything so nothing re-arranges; any real change releases the layout again */
+  const nowIds=new Set(nodes.map(n=>n.id)),changed=[...nowIds].filter(i=>!old.has(i)).concat([...old.keys()].filter(i=>!nowIds.has(i)));
+  const minor=old.size>0&&changed.length>0&&changed.every(i=>i.startsWith('m:'));
+  nodes.forEach(n=>{if(minor||(n.fx!=null&&!changed.length)){if(n.x!=null){n.fx=n.x;n.fy=n.y;n.fz=n.z}}else{n.fx=n.fy=n.fz=undefined}});
   const links=cy.edges().map(e=>({id:e.id(),source:e.data('source'),target:e.data('target'),label:e.data('label'),agg:e.data('agg'),w:e.data('w')||1,q:edgeQ(e.data())}));
   g3.graphData({nodes,links});
   const ids=new Set(nodes.map(n=>n.id));
