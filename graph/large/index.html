@@ -157,7 +157,7 @@ aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2p
     <div><h3>Filters</h3><div class="bar">
       <label class="tg"><input type="checkbox" id="recent"> Only the last 12 months</label>
       <label class="tg" for="conf">Min. AI confidence <input type="range" id="conf" min="0" max="90" step="10" value="50"> <b id="confOut">50%</b></label>
-      <label class="tg" for="k" title="How many neighbors of each kind appear when you expand a node. The rest wait in a “+N” bubble.">Load per click <input type="range" id="k" min="3" max="20" step="1" value="8"> <b id="kOut">8</b></label>
+      <label class="tg" for="k" title="How many neighbors of each kind appear when a node becomes the center. The rest wait in its “+N more” pill.">Start neighbors <input type="range" id="k" min="3" max="20" step="1" value="8"> <b id="kOut">8</b></label>
     </div></div>
   </div>
   <datalist id="all"></datalist><datalist id="systems"></datalist>
@@ -411,25 +411,29 @@ function addNode(id,near){if(cy.$id(id).length)return false;const n=NODES.get(id
   cy.add({data:{id,t:n.t,label:n.label,left:n.left?1:0},position:{x:p.x+(R()-.5)*160,y:p.y+(R()-.5)*160}});return true}
 function addEdge(e){if(cy.$id('e'+e.i).length||!cy.$id(e.s).length||!cy.$id(e.t).length)return;cy.add({data:{id:'e'+e.i,source:e.s,target:e.t,label:REL[e.r][0],conf:e.conf}})}
 function connectAll(){cy.nodes().forEach(n=>{if(!NODES.has(n.id()))return;ADJ.get(n.id()).forEach(i=>{const e=EDGES[i];if(edgeOk(e))addEdge(e)})})}
-function expand(id,key){
-  const gs=groups(id).filter(g=>!key||g.key===key);cy.nodes('.new').removeClass('new');
-  gs.forEach(g=>{const sk=id+'|'+g.key;let start=shown.get(sk)||0;const slice=g.items.slice(start,start+F.k);
-    slice.forEach(e=>{const o=other(e,id);if(addNode(o,id))cy.$id(o).addClass('new');addEdge(e)});start+=slice.length;shown.set(sk,start);
-    const mid='m:'+sk;cy.$id(mid).remove();const rest=g.items.length-start;
-    if(rest>0){cy.add({data:{id:mid,t:'m',label:`+${rest} · ${g.label.toLowerCase()}`,owner:id,key:g.key},position:(()=>{const p=cy.$id(id).position(),a=R()*6.283;return {x:p.x+70*Math.cos(a),y:p.y+70*Math.sin(a)}})()});cy.add({data:{id:mid+'~',source:id,target:mid}})}});
-  connectAll();runLayout(true);
-}
+/* one "+N more" pill per selected node; clicking it loads all hidden neighbors (most relevant first, capped) */
+const EXPAND_CAP=60;
+function hiddenNeighbors(id){const seen=new Set(),out=[];
+  ADJ.get(id).forEach(i=>{const e=EDGES[i];if(!edgeOk(e))return;const o=other(e,id);if(cy.$id(o).length||seen.has(o)||!nodeOk(NODES.get(o)))return;seen.add(o);out.push(e)});
+  return out.sort((a,b)=>score(b,id)-score(a,id))}
+function moreFor(id){cy.nodes('[t="m"]').remove();if(!cy.$id(id).length)return;const rest=hiddenNeighbors(id).length;if(!rest)return;
+  const p=cy.$id(id).position(),a=R()*6.283,mid='m:'+id;
+  cy.add({data:{id:mid,t:'m',label:`+${rest} more`,owner:id},position:{x:p.x+70*Math.cos(a),y:p.y+70*Math.sin(a)}});cy.add({data:{id:mid+'~',source:id,target:mid}})}
+function addNeighbors(id,edges){cy.nodes('.new').removeClass('new');edges.forEach(e=>{const o=other(e,id);if(addNode(o,id))cy.$id(o).addClass('new');addEdge(e)});connectAll();runLayout(true)}
+function expandAll(id){addNeighbors(id,hiddenNeighbors(id).slice(0,EXPAND_CAP));moreFor(id)}
+/* fresh start: the top neighbors of each kind */
+function expand(id){const pick=[];groups(id).forEach(g=>pick.push(...g.items.slice(0,F.k)));addNeighbors(id,pick);moreFor(id)}
 function startExplore(id){
   mode='explore';cy.elements().remove();shown.clear();const n=NODES.get(id);
   setCrumbs([{label:'Nordlicht Software',fn:showOverview},...(n.dept&&n.t!=='u'?[{label:NODES.get('u:'+n.dept).label,fn:()=>drillDept(n.dept)}]:[]),{label:n.label,fn:()=>startExplore(id)}]);
-  hintEl.textContent='Click selects · double-click or “+” bubble expands';
+  hintEl.textContent='Click shows “+N more” · click it to expand · double-click makes a node the center';
   addNode(id);expand(id);select(id);
 }
 function showSet(ids,focus,title,edgeFilter){
   mode='set';cy.elements().remove();shown.clear();ids.forEach(i=>addNode(i));
   cy.nodes().forEach(n=>ADJ.get(n.id()).forEach(i=>{const e=EDGES[i];if(edgeOk(e)&&(!edgeFilter||edgeFilter(e)))addEdge(e)}));
   if(crumbs.length<2||title)setCrumbs([{label:'Nordlicht Software',fn:showOverview},{label:title||'Result',fn:()=>showSet(ids,focus,title,edgeFilter)}]);
-  hintEl.textContent='Click selects · double-click expands';runLayout(false);if(focus)cy.$id(focus).addClass('sel');
+  hintEl.textContent='Click shows “+N more” · double-click makes a node the center';runLayout(false);if(focus)cy.$id(focus).addClass('sel');
 }
 function select(id){cy.nodes().removeClass('sel');cy.edges().removeClass('hl');const n=cy.$id(id);if(n.length){n.addClass('sel');n.connectedEdges().addClass('hl')}panel.innerHTML=detail(id)}
 function reveal(id,from){
@@ -452,7 +456,7 @@ function detail(id){const n=NODES.get(id);
   groups(id).forEach(g=>{const open=openGroups.has(id+g.key);const list=open?g.items.slice(0,200):g.items.slice(0,6);
     h+=`<div class="g"><h3><span class="hh">${hIc(NODES.get(other(g.items[0],id)).t)}${esc(g.label)}</span> <span>${g.items.length}</span></h3>${list.map(e=>row(other(e,id),edgeMeta(e,id))).join('')}
     ${g.items.length>6?`<button class="more" data-tog="${id}|${g.key}">${open?'Show fewer':'Show all '+g.items.length}</button>`:''}</div>`});
-  h+=`<div class="actions">${mode==='explore'&&cy.$id(id).length?`<button class="btn primary" data-exp="${id}">Expand neighbors</button><button class="btn" data-hide="${id}">Hide</button>`:''}<button class="btn" data-start="${id}">Start here</button></div>
+  h+=`<div class="actions">${mode==='explore'&&cy.$id(id).length?`<button class="btn primary" data-exp="${id}">Show all neighbors</button><button class="btn" data-hide="${id}">Hide</button>`:''}<button class="btn" data-start="${id}">Start here</button></div>
   <p class="meta" style="margin-top:12px">Lists show everything. The canvas only gets what you expand, sorted by relevance: active projects, leads and confident AI matches first.</p>`;
   return h}
 function home(){
@@ -541,9 +545,9 @@ document.getElementById('recent').onchange=e=>{F.recent=e.target.checked;rerende
 
 cy.on('tap','node',e=>{const id=e.target.id();
   if(ACT[id]&&(mode==='overview'||mode==='drill'))return ACT[id]();
-  if(id.startsWith('m:')){const d=e.target.data();expand(d.owner,d.key);select(d.owner);return}
-  if(NODES.has(id))select(id)});
-cy.on('dbltap','node',e=>{const id=e.target.id();if(!NODES.has(id))return;if(mode!=='explore'){startExplore(id);return}expand(id);select(id)});
+  if(id.startsWith('m:')){const o=e.target.data('owner');expandAll(o);select(o);return}
+  if(NODES.has(id)){select(id);if(mode==='explore'||mode==='set')moreFor(id)}});
+cy.on('dbltap','node',e=>{const id=e.target.id();if(!NODES.has(id))return;startExplore(id)});
 cy.on('tap',e=>{if(e.target===cy){cy.nodes().removeClass('sel');cy.edges().removeClass('hl')}});
 panel.addEventListener('click',e=>{const t=e.target.closest('[data-open],[data-tog],[data-exp],[data-hide],[data-start],[data-q]');if(!t)return;
   if(t.dataset.q){const q=t.dataset.q;
@@ -554,8 +558,8 @@ panel.addEventListener('click',e=>{const t=e.target.closest('[data-open],[data-t
       document.getElementById('pa').value=jr.label;document.getElementById('pb').value=sap.label;path(jr.id,sap.id)}
     return}
   if(t.dataset.tog){const [id,key]=t.dataset.tog.split('|');openGroups.has(id+key)?openGroups.delete(id+key):openGroups.add(id+key);panel.innerHTML=detail(id);return}
-  if(t.dataset.exp){expand(t.dataset.exp);select(t.dataset.exp);return}
-  if(t.dataset.hide){cy.$id(t.dataset.hide).remove();cy.nodes().filter(n=>n.id().startsWith('m:'+t.dataset.hide+'|')).remove();updateCount();home();return}
+  if(t.dataset.exp){expandAll(t.dataset.exp);select(t.dataset.exp);return}
+  if(t.dataset.hide){cy.$id(t.dataset.hide).remove();cy.$id('m:'+t.dataset.hide).remove();updateCount();home();return}
   if(t.dataset.start){startExplore(t.dataset.start);return}
   if(t.dataset.open){const id=t.dataset.open;const n=NODES.get(id);
     if(n.t==='k'&&mode!=='explore'&&!cy.$id(id).length)return customer(id);
