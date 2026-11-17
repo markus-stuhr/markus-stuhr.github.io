@@ -10,15 +10,15 @@
 /* Layout: header, toolbar with search and questions, canvas left with breadcrumb, detail column right; stacked on phones */
 :root{
   --bg:#f4f6f8;--panel:#ffffff;--fg:#17202a;--muted:#5b6673;--line:#dde2e8;--accent:#1f6f8b;--pill:#1f6f8b;--accent-bg:#e3f0f5;--warn:#b5571c;--warn-bg:#fbeee3;
-  --c-u:#3d5a80;--c-i:#a35d86;--c-p:#4766d1;--c-t:#7d8794;--c-j:#16906c;--c-s:#d07a22;--c-k:#c0436f;--c-d:#8a7650;--c-m:#9aa4b0;--edge:#b9c2cc;
+  --c-u:#3d5a80;--c-i:#a35d86;--c-p:#4766d1;--c-t:#7d8794;--c-j:#16906c;--c-s:#d07a22;--c-k:#c0436f;--c-d:#8a7650;--c-m:#1f6f8b;--edge:#b9c2cc;
   --side:400px;--display:"Space Grotesk",system-ui,sans-serif;--body:"Inter",system-ui,sans-serif;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#11161c;--panel:#18202a;--fg:#e6ebf0;--muted:#98a4b1;--line:#2a3440;--accent:#5fb3cf;--pill:#226f8a;--accent-bg:#17303a;--warn:#f0a06a;--warn-bg:#3a2518;
-  --c-u:#7ea3d4;--c-i:#d692bb;--c-p:#7d95ec;--c-t:#9aa4b0;--c-j:#3fc496;--c-s:#eda05a;--c-k:#e47aa0;--c-d:#c2ad84;--c-m:#56616d;--edge:#3b4754;color-scheme:dark}}
+  --c-u:#7ea3d4;--c-i:#d692bb;--c-p:#7d95ec;--c-t:#9aa4b0;--c-j:#3fc496;--c-s:#eda05a;--c-k:#e47aa0;--c-d:#c2ad84;--c-m:#226f8a;--edge:#3b4754;color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#11161c;--panel:#18202a;--fg:#e6ebf0;--muted:#98a4b1;--line:#2a3440;--accent:#5fb3cf;--pill:#226f8a;--accent-bg:#17303a;--warn:#f0a06a;--warn-bg:#3a2518;
-  --c-u:#7ea3d4;--c-i:#d692bb;--c-p:#7d95ec;--c-t:#9aa4b0;--c-j:#3fc496;--c-s:#eda05a;--c-k:#e47aa0;--c-d:#c2ad84;--c-m:#56616d;--edge:#3b4754;color-scheme:dark}
+  --c-u:#7ea3d4;--c-i:#d692bb;--c-p:#7d95ec;--c-t:#9aa4b0;--c-j:#3fc496;--c-s:#eda05a;--c-k:#e47aa0;--c-d:#c2ad84;--c-m:#226f8a;--edge:#3b4754;color-scheme:dark}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.5;overflow:hidden}
@@ -329,6 +329,7 @@ function style(){return [
   {selector:'node.sel',style:{'border-width':()=>2.5/Z,'border-color':css('--accent'),'border-style':'solid','font-weight':600,'font-size':()=>12/Z,'z-index':999,'color':'#ffffff','text-opacity':1,
     'text-background-color':css('--pill'),'text-background-opacity':1,'text-background-shape':'round-rectangle','text-background-padding':()=>3/Z,'text-margin-y':()=>6/Z}},
   {selector:'edge.hl',style:{'line-color':css('--accent'),'width':()=>1/Z,'opacity':1,'z-index':9}},
+  {selector:'edge[?pill]',style:{'line-color':css('--accent'),'opacity':1,'z-index':9}},
   {selector:'node.nolabel',style:{'text-opacity':.25}}
 ]}
 const cy=cytoscape({container:document.getElementById('cy'),style:style(),wheelSensitivity:.25,minZoom:.15,maxZoom:6});
@@ -343,6 +344,10 @@ let pulsed=null;
   const a=hex(css('--muted')),b=hex(css('--accent')),k=.35+.65*(.5+.5*Math.sin(performance.now()/450));
   hl.style('line-color','rgb('+a.map((v,i)=>Math.round(v+(b[i]-v)*k)).join(',')+')')})();
 cy.on('viewport',()=>{if(typeof live!=='undefined'&&live&&live.kind==='2d')syncLive()});
+/* the "+N more" pill follows its node (2D): up-left at a fixed screen distance */
+function placePills(){cy.nodes('[t="m"]').forEach(m=>{const o=cy.$id(m.data('owner'));if(!o.length)return;const d=42/cy.zoom(),p=o.position();m.position({x:p.x-d,y:p.y-d})})}
+cy.on('position','node',e=>{if(e.target.data('t')!=='m'&&cy.$id('m:'+e.target.id()).length)placePills()});
+cy.on('layoutstop zoom',placePills);
 let zq=false;cy.on('zoom',()=>{if(zq)return;zq=true;requestAnimationFrame(()=>{zq=false;Z=cy.zoom();cy.style().update()})});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>cy.style(style()));
 new MutationObserver(()=>cy.style(style())).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
@@ -437,8 +442,8 @@ function hiddenNeighbors(id){const seen=new Set(),out=[];
   ADJ.get(id).forEach(i=>{const e=EDGES[i];if(!edgeOk(e))return;const o=other(e,id);if(cy.$id(o).length||seen.has(o)||!nodeOk(NODES.get(o)))return;seen.add(o);out.push(e)});
   return out.sort((a,b)=>score(b,id)-score(a,id))}
 function moreFor(id){cy.nodes('[t="m"]').remove();if(!cy.$id(id).length)return;const rest=hiddenNeighbors(id).length;if(!rest)return;
-  const p=cy.$id(id).position(),a=R()*6.283,mid='m:'+id;
-  cy.add({data:{id:mid,t:'m',label:`+${rest} more`,owner:id},position:{x:p.x+70*Math.cos(a),y:p.y+70*Math.sin(a)}});cy.add({data:{id:mid+'~',source:id,target:mid}})}
+  const p=cy.$id(id).position(),mid='m:'+id,d=42/cy.zoom();
+  cy.add({data:{id:mid,t:'m',label:`+${rest} more`,owner:id},position:{x:p.x-d,y:p.y-d}});cy.add({data:{id:mid+'~',source:id,target:mid,pill:1}})}
 function addNeighbors(id,edges){cy.nodes('.new').removeClass('new');edges.forEach(e=>{const o=other(e,id);if(addNode(o,id))cy.$id(o).addClass('new');addEdge(e)});connectAll();runLayout(true)}
 function expandAll(id){addNeighbors(id,hiddenNeighbors(id).slice(0,EXPAND_CAP));moreFor(id)}
 /* fresh start: the top neighbors of each kind */
@@ -599,7 +604,7 @@ let g3;try{g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHei
   .nodeRelSize(1).nodeOpacity(0).linkOpacity(1).nodeLabel(()=>'')
   .nodeVal(.05)
   .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):n.t==='m'?css('--c-m'):css('--c-'+n.t)})
-  .linkColor(l=>st(l.id).hasClass('hl')?css('--accent'):mixCol(hex(css('--muted')),l.agg?aggA(l.q):qa(l.q)*.25))
+  .linkColor(l=>st(l.id).hasClass('hl')||st(l.id).data('pill')?css('--accent'):mixCol(hex(css('--muted')),l.agg?aggA(l.q):qa(l.q)*.25))
   .linkWidth(0)
   .linkLabel(l=>esc(l.label||''))
   
@@ -607,7 +612,7 @@ let g3;try{g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHei
   .onBackgroundClick(()=>cy.emit('tap'))
   .onEngineStop(()=>{if(fitPending){fitPending=false;g3.zoomToFit(600,90)}});
 {let gn=[];const grav=a=>{gn.forEach(n=>{n.vx-=n.x*.035*a;n.vy-=n.y*.035*a;n.vz-=n.z*.035*a})};grav.initialize=ns=>{gn=ns};g3.d3Force('gravity',grav)}
-g3.d3Force('charge').strength(n=>n.agg?-260:-90);g3.d3Force('link').distance(l=>l.agg?75:45);
+g3.d3Force('charge').strength(n=>n.t==='m'?-4:n.agg?-260:-90);g3.d3Force('link').distance(l=>String(l.target.id||l.target).startsWith('m:')?16:l.agg?75:45);
 }catch(err){console.warn('3D unavailable, using 2D',err);g3=STUB;is3d=false;box3.classList.add('hide');cyBox.classList.remove('hide');btnV.hidden=true}
 box3.appendChild(layer);
 layer.addEventListener('wheel',ev=>{ev.preventDefault();const c=g3.renderer().domElement;
@@ -619,6 +624,8 @@ function sync3d(){syncQ=false;if(!is3d)return;
     const n=Object.assign(o||{},{id:d.id,t:d.t,label:d.label,size:d.size,agg:d.agg,left:d.left});
     if(!o&&RESTORE3&&RESTORE3.pos[d.id]){const q=RESTORE3.pos[d.id],A=RESTORE3.anchor&&RESTORE3.pos[RESTORE3.anchor],at=RESTORE3.at;const dx=A&&at?at.x-A.x:0,dy=A&&at?at.y-A.y:0,dz=A&&at?at.z-A.z:0;
       n.x=q.x+dx;n.y=q.y+dy;n.z=q.z+dz;n.fx=n.x;n.fy=n.y;n.fz=n.z;n.__restored=1}
+    else if(!o&&d.t==='m'){const p=old.get(d.owner);if(p&&p.x!=null){const m=g3.camera().matrixWorldInverse.elements,zc=-(m[2]*p.x+m[6]*p.y+m[10]*p.z+m[14]),k=Math.max(8,zc*.05);
+      n.x=p.x+(-m[0]+m[1])*k;n.y=p.y+(-m[4]+m[5])*k;n.z=p.z+(-m[8]+m[9])*k;n.fx=n.x;n.fy=n.y;n.fz=n.z}}
     else if(!o){const own=d.owner||cy.$id(d.id).neighborhood('node').filter(x=>old.has(x.id())).map(x=>x.id())[0];const p=own&&old.get(own);if(p&&p.x!=null){const a=Math.random()*6.283,b=Math.random()*3.1416;n.x=p.x+40*Math.sin(b)*Math.cos(a);n.y=p.y+40*Math.sin(b)*Math.sin(a);n.z=p.z+40*Math.cos(b)}}
     return n});
   if(kept<nodes.length*.5)fitPending=true;
