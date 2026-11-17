@@ -578,7 +578,7 @@ cy.on('tap','node',e=>{const id=e.target.id();
   if(id.startsWith('m:')){const o=e.target.data('owner');refreshCurrent();lastVia=o;expandAll(o);select(o);return}
   if(NODES.has(id)){select(id);if(mode==='explore'||mode==='set')moreFor(id)}});
 cy.on('dbltap','node',e=>{const id=e.target.id();if(!NODES.has(id))return;transition(id,()=>startExplore(id))});
-cy.on('tap',e=>{if(e.target===cy){cy.nodes().removeClass('sel');cy.edges().removeClass('hl')}});
+cy.on('tap',e=>{if(e.target===cy){cy.nodes().removeClass('sel');cy.edges().removeClass('hl');cy.nodes('[t="m"]').remove()}});
 panel.addEventListener('click',e=>{const t=e.target.closest('[data-open],[data-tog],[data-exp],[data-hide],[data-start],[data-q]');if(!t)return;
   if(t.dataset.q){const q=t.dataset.q;
     if(q==='sys')experts(BYLABEL.get('kafka'));
