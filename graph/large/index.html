@@ -295,6 +295,7 @@ function computeRel(){RELV.clear();const deg=new Map(),max={};
 const dotSize=n=>n.t==='m'?14:n.agg?Math.round(Math.min(32,Math.max(20,(n.size||40)*.34))):Math.round(12+14*(RELV.get(n.id)||0));
 let Z=1;
 const qa=q=>Math.max(.12,Math.min(1,.12+.88*Math.pow(Math.max(0,(q-.4)/.6),1.3)));
+const aggA=q=>.4+.55*Math.max(0,Math.min(1,(q-.45)/.55));
 const edgeQ=d=>d.agg?.45+.55*Math.min(1,((d.w||1)-1)/6):(d.conf==null?1:d.conf);
 const mctx=document.createElement('canvas').getContext('2d'),mcache=new Map();
 function measure(text,px,bold){const k=text+'|'+px+'|'+bold;if(mcache.has(k))return mcache.get(k);mctx.font=`${bold?600:400} ${px}px Inter, system-ui, sans-serif`;
@@ -320,7 +321,7 @@ function style(){return [
   {selector:'node[?agg]',style:{'font-weight':600,'font-size':()=>12/Z,'background-color':css('--bg'),'border-width':()=>2/Z,'border-style':'solid','border-color':e=>css('--c-'+e.data('t')),'background-image':e=>iconURI(e.data('t'),css('--c-'+e.data('t')))}},
   {selector:'node[t="m"]',style:{'background-color':css('--c-m')}},
   {selector:'node[?left]',style:{'background-opacity':.55,'background-image-opacity':.55,'border-width':()=>1.5/Z,'border-color':css('--warn'),'border-style':'dashed'}},
-  {selector:'edge',style:{'width':()=>1/Z,'line-color':css('--muted'),'curve-style':'straight','opacity':e=>qa(edgeQ(e.data()))*(e.data('agg')?.75:.25)}},
+  {selector:'edge',style:{'width':()=>1/Z,'line-color':css('--muted'),'curve-style':'straight','opacity':e=>e.data('agg')?aggA(edgeQ(e.data())):qa(edgeQ(e.data()))*.25}},
   {selector:'node.sel',style:{'border-width':()=>2.5/Z,'border-color':css('--accent'),'border-style':'solid','font-weight':600,'font-size':()=>12/Z,'z-index':999,'color':'#ffffff','text-opacity':1,
     'text-background-color':css('--pill'),'text-background-opacity':1,'text-background-shape':'round-rectangle','text-background-padding':()=>3/Z,'text-margin-y':()=>6/Z}},
   {selector:'edge.hl',style:{'line-color':css('--accent'),'width':()=>1/Z,'opacity':1,'z-index':9}},
@@ -582,7 +583,7 @@ const g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).
   .nodeRelSize(1).nodeOpacity(0).linkOpacity(1).nodeLabel(()=>'')
   .nodeVal(.05)
   .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):n.t==='m'?css('--c-m'):css('--c-'+n.t)})
-  .linkColor(l=>st(l.id).hasClass('hl')?css('--accent'):mixCol(hex(css('--muted')),qa(l.q)*(l.agg?.75:.25)))
+  .linkColor(l=>st(l.id).hasClass('hl')?css('--accent'):mixCol(hex(css('--muted')),l.agg?aggA(l.q):qa(l.q)*.25))
   .linkWidth(0)
   .linkLabel(l=>esc(l.label||''))
   
