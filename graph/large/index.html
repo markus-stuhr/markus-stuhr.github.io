@@ -30,7 +30,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-
 .lbl3 span{transition:opacity .2s ease;position:absolute;left:0;top:0;white-space:pre;text-align:center;line-height:1.25;color:var(--fg);will-change:transform}
 .lbl3 span.agg{font-weight:600}
 .lbl3 span.pill{background:var(--pill);color:#fff;font-weight:600;border-radius:99px;padding:1px 9px}
-.lbl3 i{position:absolute;left:0;top:0;display:flex;align-items:center;justify-content:center;border-radius:50%;pointer-events:auto;cursor:pointer;will-change:transform}
+.lbl3 i{transition:opacity .3s ease;position:absolute;left:0;top:0;display:flex;align-items:center;justify-content:center;border-radius:50%;pointer-events:auto;cursor:pointer;will-change:transform}
 .lbl3 i svg{width:62%;height:62%;display:block;pointer-events:none}
 .lbl3 i.sel{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
 .lbl3 i.gone{opacity:.55;outline:1.5px dashed var(--warn);outline-offset:1px}
@@ -412,7 +412,9 @@ function drillIndustry(ind){
 
 /* ---------- level 3: explore (ego network with expand) ---------- */
 const shown=new Map();
+let PENDING=null;
 function addNode(id,near){if(cy.$id(id).length)return false;const n=NODES.get(id);
+  if(PENDING&&PENDING.id===id){cy.add({data:{id,t:n.t,label:n.label,left:n.left?1:0},position:Object.assign({},PENDING.pos)});return true}
   const p=near&&cy.$id(near).length?cy.$id(near).position():{x:0,y:0};
   cy.add({data:{id,t:n.t,label:n.label,left:n.left?1:0},position:{x:p.x+(R()-.5)*160,y:p.y+(R()-.5)*160}});return true}
 function addEdge(e){if(cy.$id('e'+e.i).length||!cy.$id(e.s).length||!cy.$id(e.t).length)return;cy.add({data:{id:'e'+e.i,source:e.s,target:e.t,label:REL[e.r][0],conf:e.conf}})}
@@ -531,7 +533,7 @@ function suggest(){const v=sIn.value.trim().toLowerCase();if(!v){closeSug();retu
     return `<button class="tag${k===0?' first':''}" data-id="${n.id}"><i style="background:var(--c-${n.t})">${svgIcon(n.t,'#fff')}</i><span>${mark(n.label)}</span><small>${TYPES[n.t][0]}</small></button>`}).join('')}</div>`
     :`<p class="none">Nothing matches “${esc(sIn.value.trim())}”. Try a name, project, customer or system.</p>`;
   sug.hidden=false;appEl.classList.add('searching')}
-function pickSug(id){closeSug();sIn.value='';sIn.blur();startExplore(id)}
+function pickSug(id){closeSug();sIn.value='';sIn.blur();transition(id,()=>startExplore(id))}
 sIn.addEventListener('input',suggest);
 sIn.addEventListener('focus',()=>{if(sIn.value.trim())suggest()});
 sIn.addEventListener('keydown',e=>{const tags=[...sug.querySelectorAll('.tag')],cur=tags.findIndex(t=>t.classList.contains('first'));
@@ -550,10 +552,10 @@ kIn.oninput=()=>{document.getElementById('kOut').textContent=kIn.value;F.k=+kIn.
 document.getElementById('recent').onchange=e=>{F.recent=e.target.checked;rerender()};
 
 cy.on('tap','node',e=>{const id=e.target.id();
-  if(ACT[id]&&(mode==='overview'||mode==='drill'))return ACT[id]();
+  if(ACT[id]&&(mode==='overview'||mode==='drill'))return transition(id,ACT[id]);
   if(id.startsWith('m:')){const o=e.target.data('owner');expandAll(o);select(o);return}
   if(NODES.has(id)){select(id);if(mode==='explore'||mode==='set')moreFor(id)}});
-cy.on('dbltap','node',e=>{const id=e.target.id();if(!NODES.has(id))return;startExplore(id)});
+cy.on('dbltap','node',e=>{const id=e.target.id();if(!NODES.has(id))return;transition(id,()=>startExplore(id))});
 cy.on('tap',e=>{if(e.target===cy){cy.nodes().removeClass('sel');cy.edges().removeClass('hl')}});
 panel.addEventListener('click',e=>{const t=e.target.closest('[data-open],[data-tog],[data-exp],[data-hide],[data-start],[data-q]');if(!t)return;
   if(t.dataset.q){const q=t.dataset.q;
@@ -607,8 +609,8 @@ function sync3d(){syncQ=false;if(!is3d)return;
   g3.graphData({nodes,links});
   const ids=new Set(nodes.map(n=>n.id));
   tags.forEach((d,id)=>{if(!ids.has(id)){d.remove();tags.delete(id);icons.get(id).remove();icons.delete(id)}});
-  nodes.forEach(n=>{let d=tags.get(n.id);if(!d){d=document.createElement('span');layer.appendChild(d);tags.set(n.id,d)}d.textContent=n.label;d.className=n.agg?'agg':'';if(!icons.has(n.id)){const ic=document.createElement('i');if(n.agg){ic.innerHTML=svgIcon(n.t,'currentColor');ic.style.background='var(--bg)';ic.style.border=`2px solid var(--c-${n.t})`;ic.style.color=`var(--c-${n.t})`;ic.style.boxSizing='border-box'}else{ic.innerHTML=svgIcon(n.t,'#ffffff');ic.style.background=`var(--c-${n.t})`}ic.title=n.label;ic.classList.toggle('gone',!!n.left);
-    ic.onclick=ev=>{ev.stopPropagation();clickNode(n.id)};layer.insertBefore(ic,layer.firstChild);icons.set(n.id,ic)}
+  nodes.forEach(n=>{let d=tags.get(n.id);if(!d){d=document.createElement('span');d.style.opacity=0;layer.appendChild(d);tags.set(n.id,d)}d.textContent=n.label;d.className=n.agg?'agg':'';if(!icons.has(n.id)){const ic=document.createElement('i');if(n.agg){ic.innerHTML=svgIcon(n.t,'currentColor');ic.style.background='var(--bg)';ic.style.border=`2px solid var(--c-${n.t})`;ic.style.color=`var(--c-${n.t})`;ic.style.boxSizing='border-box'}else{ic.innerHTML=svgIcon(n.t,'#ffffff');ic.style.background=`var(--c-${n.t})`}ic.title=n.label;ic.classList.toggle('gone',!!n.left);
+    ic.onclick=ev=>{ev.stopPropagation();clickNode(n.id)};ic.style.opacity=0;requestAnimationFrame(()=>requestAnimationFrame(()=>{ic.style.opacity=''}));layer.insertBefore(ic,layer.firstChild);icons.set(n.id,ic)}
     const ic=icons.get(n.id),sz=dotSize(n);ic.style.width=ic.style.height=sz+'px';ic.dataset.sz=sz});
 }
 function refresh3d(){refQ=false;if(!is3d)return;g3.nodeColor(g3.nodeColor()).linkColor(g3.linkColor()).linkWidth(g3.linkWidth())}
@@ -634,7 +636,7 @@ function pulseLinks(){const cam=g3.camera(),m=cam.matrixWorldInverse.elements,fo
     const mm=measure(n.label,strong?12:11,strong);
     items.push({id:n.id,x:s.x,y:s.y,w:mm.w,h:mm.h,dot:is,force:sel,pri:(sel?1e12:0)+1e6/(-zc)+e.degree()*1e-3})});
   const show=placeLabels(items);
-  items.forEach(it=>{const d=tags.get(it.id);d.style.display='';d.style.opacity=show.has(it.id)?1:.25});
+  items.forEach(it=>{const d=tags.get(it.id);d.style.display='';d.style.opacity=(FADE&&it.id!==FADE)?0:show.has(it.id)?1:.25});
 })();
 addEventListener('resize',()=>g3.width(box3.clientWidth).height(box3.clientHeight));
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{g3.backgroundColor(css('--bg'));refresh3d()});
@@ -645,6 +647,26 @@ const gear=document.getElementById('gear'),settings=document.getElementById('set
 gear.onclick=ev=>{ev.stopPropagation();const o=settings.hidden;settings.hidden=!o;gear.setAttribute('aria-expanded',o)};
 document.addEventListener('pointerdown',ev=>{if(!settings.hidden&&!settings.contains(ev.target)&&!gear.contains(ev.target)){settings.hidden=true;gear.setAttribute('aria-expanded',false)}});
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'){settings.hidden=true;gear.setAttribute('aria-expanded',false)}});
+/* transition: the chosen node glides to the center, the rest fades out, the new view fades in around it */
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function tween(ms,f,done){const t0=performance.now();(function step(){const k=Math.min(1,(performance.now()-t0)/ms);f(k);if(k<1)requestAnimationFrame(step);else if(done)done()})()}
+let busy=false;var FADE=null;
+function transition(id,build){
+  if(RM||busy){build();return}
+  busy=true;const OUT=300,IN=400;
+  if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);
+    FADE=id;icons.forEach((ic,k)=>{if(k!==id)ic.style.opacity=0});
+    tween(OUT,k=>g3.linkOpacity(1-k));
+    if(n&&n.x!=null){const c=g3.controls(),p=g3.camera().position,t=c.target||{x:0,y:0,z:0};
+      g3.cameraPosition({x:n.x+(p.x-t.x),y:n.y+(p.y-t.y),z:n.z+(p.z-t.z)},{x:n.x,y:n.y,z:n.z},OUT)}
+    setTimeout(()=>{build();setTimeout(()=>{FADE=null;icons.forEach(ic=>{ic.style.opacity=''});tween(IN,k=>g3.linkOpacity(k),()=>{busy=false})},30)},OUT+20);
+  }else{const node=cy.$id(id);const others=cy.elements().not(node);
+    others.animate({style:{opacity:0}},{duration:OUT});if(node.length)cy.animate({center:{eles:node}},{duration:OUT});
+    setTimeout(()=>{if(node.length&&NODES.has(id))PENDING={id,pos:node.position()};build();PENDING=null;
+      const keep=cy.$id(id),fresh=cy.elements().not(keep);
+      fresh.forEach(e=>{const t=e.numericStyle('opacity');e.style('opacity',0);e.animate({style:{opacity:t}},{duration:IN,complete:()=>e.removeStyle('opacity')})});
+      setTimeout(()=>{busy=false},IN)},OUT+20)}
+}
 /* history: every expand, recenter, drill or question is a step you can go back and forward through */
 const hist=[];let hi=-1,restoring=false,recQ=false;
 const backB=document.getElementById('back'),fwdB=document.getElementById('fwd');
