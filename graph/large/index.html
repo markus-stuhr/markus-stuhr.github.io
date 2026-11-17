@@ -605,7 +605,7 @@ const layer=document.createElement('div');layer.className='lbl3';
 const st=id=>cy.$id(id);
 /* without WebGL the page falls back to 2D; a stub swallows every 3D call */
 const STUB=new Proxy(function(){},{get:(t,k)=>k==='nodes'||k==='links'?[]:STUB,apply:()=>STUB});
-let g3;try{g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).backgroundColor('rgba(0,0,0,0)').showNavInfo(false).cooldownTime(2500)
+let g3;try{g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).backgroundColor('rgba(0,0,0,0)').showNavInfo(false).warmupTicks(140).cooldownTicks(60).cooldownTime(1500).d3VelocityDecay(.55)
   .nodeRelSize(1).nodeOpacity(0).linkOpacity(1).nodeLabel(()=>'')
   .nodeVal(.05)
   .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):n.t==='m'?css('--c-m'):css('--c-'+n.t)})
@@ -688,6 +688,14 @@ gear.onclick=ev=>{ev.stopPropagation();const o=settings.hidden;settings.hidden=!
 document.addEventListener('pointerdown',ev=>{if(!settings.hidden&&!settings.contains(ev.target)&&!gear.contains(ev.target)){settings.hidden=true;gear.setAttribute('aria-expanded',false)}});
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'){settings.hidden=true;gear.setAttribute('aria-expanded',false)}});
 /* transition: the chosen node glides to the center, the rest fades out, the new view fades in around it */
+/* one calm camera move: frame the (already settled) new view, keeping the current viewing direction */
+function fitCam(ms){const ns=g3.graphData().nodes.filter(n=>n.x!=null);if(!ns.length)return;
+  const c={x:0,y:0,z:0};ns.forEach(n=>{c.x+=n.x;c.y+=n.y;c.z+=n.z});c.x/=ns.length;c.y/=ns.length;c.z/=ns.length;
+  const r=Math.max(40,...ns.map(n=>Math.hypot(n.x-c.x,n.y-c.y,n.z-c.z)));const cam=g3.camera(),ct=g3.controls(),t=ct.target||{x:0,y:0,z:0},p=cam.position;
+  const asp=box3.clientWidth/box3.clientHeight,vf=cam.fov*Math.PI/360,hf=Math.atan(Math.tan(vf)*asp),dist=r*1.15/Math.sin(Math.min(vf,hf));
+  let dx=p.x-t.x,dy=p.y-t.y,dz=p.z-t.z;const l=Math.hypot(dx,dy,dz)||1;dx/=l;dy/=l;dz/=l;
+  const p0={x:p.x,y:p.y,z:p.z},t0={x:t.x,y:t.y,z:t.z},p1={x:c.x+dx*dist,y:c.y+dy*dist,z:c.z+dz*dist},L=(a,b,k)=>({x:a.x+(b.x-a.x)*k,y:a.y+(b.y-a.y)*k,z:a.z+(b.z-a.z)*k});
+  tween(ms,k=>g3.cameraPosition(L(p0,p1,k),L(t0,c,k)))}
 var RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const ease=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
 function tween(ms,f,done){const t0=performance.now();(function step(){const k=ease(Math.min(1,(performance.now()-t0)/ms));f(k);if(k<1)requestAnimationFrame(step);else if(done)done()})()}
@@ -755,10 +763,7 @@ function transition(id,build,back){
   if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);
     FADE=id;icons.forEach((ic,k)=>{if(k!==id)ic.style.opacity=0});
     tween(OUT,k=>g3.linkOpacity(1-k));
-    if(n&&n.x!=null){const c=g3.controls(),p=g3.camera().position,t=c.target||{x:0,y:0,z:0};
-      const p0={x:p.x,y:p.y,z:p.z},t0={x:t.x,y:t.y,z:t.z},p1={x:n.x+(p.x-t.x),y:n.y+(p.y-t.y),z:n.z+(p.z-t.z)},L=(a,b,k)=>({x:a.x+(b.x-a.x)*k,y:a.y+(b.y-a.y)*k,z:a.z+(b.z-a.z)*k});
-      tween(OUT,k=>g3.cameraPosition(L(p0,p1,k),L(t0,{x:n.x,y:n.y,z:n.z},k)))}
-    setTimeout(()=>{const an=g3.graphData().nodes.find(x=>x.id===id);PENDING=an&&an.x!=null?{id,pos:{x:0,y:0},p3:{x:an.x,y:an.y,z:an.z}}:null;build();PENDING=null;setTimeout(()=>{FADE=null;icons.forEach(ic=>{ic.style.opacity=''});tween(IN,k=>g3.linkOpacity(k),()=>{busy=false})},30)},OUT+20);
+    setTimeout(()=>{const an=g3.graphData().nodes.find(x=>x.id===id);PENDING=an&&an.x!=null?{id,pos:{x:0,y:0},p3:{x:an.x,y:an.y,z:an.z}}:null;build();PENDING=null;setTimeout(()=>{fitPending=false;fitCam(900);FADE=null;icons.forEach(ic=>{ic.style.opacity=''});tween(IN,k=>g3.linkOpacity(k),()=>{busy=false})},30)},OUT+20);
   }else{const node=cy.$id(id);const others=cy.elements().not(node);
     others.animate({style:{opacity:0}},{duration:OUT,easing:'ease-in-out-cubic'});if(node.length)cy.animate({center:{eles:node}},{duration:OUT,easing:'ease-in-out-cubic'});
     setTimeout(()=>{if(node.length)PENDING={id,pos:Object.assign({},node.position())};build();PENDING=null;
