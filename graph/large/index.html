@@ -27,10 +27,10 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-
 #g3{overflow:hidden}
 .hide{visibility:hidden;pointer-events:none}
 .lbl3{position:absolute;inset:0;pointer-events:none;overflow:hidden}
-.lbl3 span{transition:opacity .2s ease;position:absolute;left:0;top:0;white-space:pre;text-align:center;line-height:1.25;color:var(--fg);will-change:transform}
+.lbl3 span{transition:opacity .4s cubic-bezier(.65,0,.35,1);position:absolute;left:0;top:0;white-space:pre;text-align:center;line-height:1.25;color:var(--fg);will-change:transform}
 .lbl3 span.agg{font-weight:600}
 .lbl3 span.pill{background:var(--pill);color:#fff;font-weight:600;border-radius:99px;padding:1px 9px}
-.lbl3 i{transition:opacity .3s ease;position:absolute;left:0;top:0;display:flex;align-items:center;justify-content:center;border-radius:50%;pointer-events:auto;cursor:pointer;will-change:transform}
+.lbl3 i{transition:opacity .5s cubic-bezier(.65,0,.35,1);position:absolute;left:0;top:0;display:flex;align-items:center;justify-content:center;border-radius:50%;pointer-events:auto;cursor:pointer;will-change:transform}
 .lbl3 i svg{width:62%;height:62%;display:block;pointer-events:none}
 .lbl3 i.sel{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
 .lbl3 i.gone{opacity:.55;outline:1.5px dashed var(--warn);outline-offset:1px}
@@ -649,23 +649,25 @@ document.addEventListener('pointerdown',ev=>{if(!settings.hidden&&!settings.cont
 document.addEventListener('keydown',ev=>{if(ev.key==='Escape'){settings.hidden=true;gear.setAttribute('aria-expanded',false)}});
 /* transition: the chosen node glides to the center, the rest fades out, the new view fades in around it */
 const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
-function tween(ms,f,done){const t0=performance.now();(function step(){const k=Math.min(1,(performance.now()-t0)/ms);f(k);if(k<1)requestAnimationFrame(step);else if(done)done()})()}
+const ease=k=>k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
+function tween(ms,f,done){const t0=performance.now();(function step(){const k=ease(Math.min(1,(performance.now()-t0)/ms));f(k);if(k<1)requestAnimationFrame(step);else if(done)done()})()}
 let busy=false;var FADE=null;
 function transition(id,build){
   if(RM||busy){build();return}
-  busy=true;const OUT=300,IN=400;
+  busy=true;const OUT=450,IN=550;
   if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);
     FADE=id;icons.forEach((ic,k)=>{if(k!==id)ic.style.opacity=0});
     tween(OUT,k=>g3.linkOpacity(1-k));
     if(n&&n.x!=null){const c=g3.controls(),p=g3.camera().position,t=c.target||{x:0,y:0,z:0};
-      g3.cameraPosition({x:n.x+(p.x-t.x),y:n.y+(p.y-t.y),z:n.z+(p.z-t.z)},{x:n.x,y:n.y,z:n.z},OUT)}
+      const p0={x:p.x,y:p.y,z:p.z},t0={x:t.x,y:t.y,z:t.z},p1={x:n.x+(p.x-t.x),y:n.y+(p.y-t.y),z:n.z+(p.z-t.z)},L=(a,b,k)=>({x:a.x+(b.x-a.x)*k,y:a.y+(b.y-a.y)*k,z:a.z+(b.z-a.z)*k});
+      tween(OUT,k=>g3.cameraPosition(L(p0,p1,k),L(t0,{x:n.x,y:n.y,z:n.z},k)))}
     setTimeout(()=>{build();setTimeout(()=>{FADE=null;icons.forEach(ic=>{ic.style.opacity=''});tween(IN,k=>g3.linkOpacity(k),()=>{busy=false})},30)},OUT+20);
   }else{const node=cy.$id(id);const others=cy.elements().not(node);
-    others.animate({style:{opacity:0}},{duration:OUT});if(node.length)cy.animate({center:{eles:node}},{duration:OUT});
+    others.animate({style:{opacity:0}},{duration:OUT,easing:'ease-in-out-cubic'});if(node.length)cy.animate({center:{eles:node}},{duration:OUT,easing:'ease-in-out-cubic'});
     setTimeout(()=>{if(node.length&&NODES.has(id))PENDING={id,pos:node.position()};build();PENDING=null;
       const keep=cy.$id(id),fresh=cy.elements().not(keep);
-      fresh.forEach(e=>{const t=e.numericStyle('opacity');e.style('opacity',0);e.animate({style:{opacity:t}},{duration:IN,complete:()=>e.removeStyle('opacity')})});
-      setTimeout(()=>{busy=false},IN)},OUT+20)}
+      fresh.forEach(e=>{const t=e.numericStyle('opacity');e.style('opacity',0);e.animate({style:{opacity:t}},{duration:IN,easing:'ease-in-out-cubic',complete:()=>e.removeStyle('opacity')})});
+      setTimeout(()=>{fresh.stop(true,false).removeStyle('opacity');busy=false},IN+80)},OUT+20)}
 }
 /* history: every expand, recenter, drill or question is a step you can go back and forward through */
 const hist=[];let hi=-1,restoring=false,recQ=false;
