@@ -465,7 +465,7 @@ function showSet(ids,focus,title,edgeFilter){
   if(crumbs.length<2||title)setCrumbs([{label:'Nordlicht Software',fn:showOverview},{label:title||'Result',fn:()=>showSet(ids,focus,title,edgeFilter)}]);
   hintEl.textContent='Click shows “+N more” · double-click makes a node the center';runLayout(false);if(focus)cy.$id(focus).addClass('sel');
 }
-function select(id){cy.nodes().removeClass('sel');cy.edges().removeClass('hl');const n=cy.$id(id);if(n.length){n.addClass('sel');n.connectedEdges().addClass('hl')}panel.innerHTML=detail(id)}
+function select(id){cy.nodes().removeClass('sel');cy.edges().removeClass('hl');const n=cy.$id(id);if(n.length){if(mode==='explore'||mode==='set')moreFor(id);n.addClass('sel');n.connectedEdges().addClass('hl')}panel.innerHTML=detail(id)}
 function reveal(id,from){
   if(mode!=='explore'){startExplore(id);return}
   if(!cy.$id(id).length){addNode(id,from&&cy.$id(from).length?from:null);cy.$id(id).addClass('new');connectAll();runLayout(true)}
@@ -576,7 +576,7 @@ document.getElementById('recent').onchange=e=>{F.recent=e.target.checked;rerende
 cy.on('tap','node',e=>{const id=e.target.id();
   if(ACT[id]&&(mode==='overview'||mode==='drill'))return transition(id,ACT[id]);
   if(id.startsWith('m:')){const o=e.target.data('owner');refreshCurrent();lastVia=o;expandAll(o);select(o);return}
-  if(NODES.has(id)){select(id);if(mode==='explore'||mode==='set')moreFor(id)}});
+  if(NODES.has(id))select(id)});
 cy.on('dbltap','node',e=>{const id=e.target.id();if(!NODES.has(id))return;transition(id,()=>startExplore(id))});
 cy.on('tap',e=>{if(e.target===cy){cy.nodes().removeClass('sel');cy.edges().removeClass('hl');cy.nodes('[t="m"]').remove()}});
 panel.addEventListener('click',e=>{const t=e.target.closest('[data-open],[data-tog],[data-exp],[data-hide],[data-start],[data-q]');if(!t)return;
