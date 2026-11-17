@@ -716,7 +716,7 @@ var live=null;
    that node is the center of the next view, and every frame the layer is shifted so it stays attached to where that node is now. */
 const layers=[];const MAXL=matchMedia('(max-width:760px)').matches?3:6;
 /* blur stops growing after the third layer (blur is the expensive part); deeper layers only get more transparent */
-const LD=MAXL===3?[{b:4,o:.3},{b:9,o:.16},{b:14,o:.08}]:[{b:4,o:.3},{b:8,o:.22},{b:12,o:.16},{b:14,o:.12},{b:14,o:.09},{b:14,o:.06}];
+const LD=MAXL===3?[{b:4,o:.18},{b:9,o:.1},{b:14,o:.05}]:[{b:4,o:.18},{b:8,o:.14},{b:12,o:.11},{b:14,o:.08},{b:14,o:.06},{b:14,o:.04}];
 let ghostSig='',ghostDirty=true;
 function curPos(id,k){/* where node id is right now: in the main graph (k<0) or in history layer k */
   if(k<0){if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);return n&&n.x!=null?{x:n.x,y:n.y,z:n.z||0}:null}const c=cy.$id(id);return c.length?Object.assign({z:0},c.position()):null}
