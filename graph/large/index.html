@@ -43,8 +43,11 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-
 .hd{z-index:6}
 #cy,#g3{transition:filter .25s ease}
 .app.searching #cy,.app.searching #g3,.app.searching .foot{filter:blur(10px) brightness(.55)}
-#suggest{position:absolute;inset:0;z-index:5;display:flex;align-items:center;justify-content:center;padding:110px max(16px,8vw) 60px;overflow:auto}
-#suggest .cloud{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:8px 10px;max-width:920px}
+#suggest{position:absolute;inset:0;z-index:5;display:flex;justify-content:center;align-items:flex-start;padding:calc(62px + env(safe-area-inset-top,0px)) 16px 40px;overflow:auto}
+#suggest .cloud{display:flex;flex-direction:column;align-items:stretch;gap:4px;width:min(420px,100%)}
+#suggest .tag{font-size:13px;justify-content:flex-start;width:100%}
+#suggest .tag small{margin-left:auto}
+@media (max-width:760px){#suggest{padding-top:calc(108px + env(safe-area-inset-top,0px))}}
 #suggest .none{color:var(--muted);font-size:15px}
 .tag{display:inline-flex;align-items:center;gap:.45em;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:99px;padding:.3em .8em .3em .35em;cursor:pointer;font:inherit;line-height:1.2;transition:border-color .15s,transform .15s}
 .tag:hover,.tag.first{border-color:var(--accent)}
@@ -507,16 +510,18 @@ const sug=document.getElementById('suggest'),appEl=document.querySelector('.app'
 function closeSug(){sug.hidden=true;appEl.classList.remove('searching')}
 function suggest(){const v=sIn.value.trim().toLowerCase();if(!v){closeSug();return}
   const res=[];NODES.forEach(n=>{const l=n.label.toLowerCase();if(!l.includes(v))return;const pre=l.startsWith(v)?2:l.split(/[\s·–\-/]+/).some(w=>w.startsWith(v))?1:0;res.push({n,s:pre*10+(RELV.get(n.id)||0)*6*({p:1,k:1,s:.95,j:.8,u:.9,t:.8,d:.35}[n.t]||.5)})});
-  res.sort((a,b)=>b.s-a.s);const top=res.slice(0,36);
+  res.sort((a,b)=>b.s-a.s);const top=res.slice(0,10);
   const mark=l=>{const i=l.toLowerCase().indexOf(v);return esc(l.slice(0,i))+'<b>'+esc(l.slice(i,i+v.length))+'</b>'+esc(l.slice(i+v.length))};
   sug.innerHTML=top.length?`<div class="cloud">${top.map((r,k)=>{const n=r.n,fs=Math.round(13+9*(RELV.get(n.id)||0));
-    return `<button class="tag${k===0?' first':''}" data-id="${n.id}" style="font-size:${fs}px"><i style="background:var(--c-${n.t})">${svgIcon(n.t,'#fff')}</i><span>${mark(n.label)}</span><small>${TYPES[n.t][0]}</small></button>`}).join('')}</div>`
+    return `<button class="tag${k===0?' first':''}" data-id="${n.id}"><i style="background:var(--c-${n.t})">${svgIcon(n.t,'#fff')}</i><span>${mark(n.label)}</span><small>${TYPES[n.t][0]}</small></button>`}).join('')}</div>`
     :`<p class="none">Nothing matches “${esc(sIn.value.trim())}”. Try a name, project, customer or system.</p>`;
   sug.hidden=false;appEl.classList.add('searching')}
 function pickSug(id){closeSug();sIn.value='';sIn.blur();startExplore(id)}
 sIn.addEventListener('input',suggest);
 sIn.addEventListener('focus',()=>{if(sIn.value.trim())suggest()});
-sIn.addEventListener('keydown',e=>{if(e.key==='Enter'){const t=sug.querySelector('.tag');if(t)pickSug(t.dataset.id)}if(e.key==='Escape'){sIn.value='';closeSug();sIn.blur()}});
+sIn.addEventListener('keydown',e=>{const tags=[...sug.querySelectorAll('.tag')],cur=tags.findIndex(t=>t.classList.contains('first'));
+  if((e.key==='ArrowDown'||e.key==='ArrowUp')&&tags.length){e.preventDefault();const nx=(cur+(e.key==='ArrowDown'?1:-1)+tags.length)%tags.length;tags.forEach((t,i)=>t.classList.toggle('first',i===nx));tags[nx].scrollIntoView({block:'nearest'})}
+  if(e.key==='Enter'){const t=sug.querySelector('.tag.first')||tags[0];if(t)pickSug(t.dataset.id)}if(e.key==='Escape'){sIn.value='';closeSug();sIn.blur()}});
 sug.addEventListener('click',e=>{const t=e.target.closest('.tag');if(t)pickSug(t.dataset.id);else closeSug()});
 document.getElementById('home').onclick=showOverview;
 document.getElementById('goSys').onclick=()=>{const id=findId(document.getElementById('sys').value);id&&NODES.get(id).t==='s'?experts(id):fail('Pick a system from the list, like Kafka or React.')};
