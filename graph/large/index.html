@@ -672,35 +672,42 @@ function snapLayer(){const box=is3d?box3:cyBox,w=box.clientWidth,h=box.clientHei
   return c}
 /* the newest background layer stays live: a second, frozen graph that follows the camera (3D) or viewport (2D) */
 var live=null;
-/* the newest background layer stays live: its frozen node positions are re-projected every frame with the current camera/viewport, so it moves along with every transition */
-function liveStyle(el,on){el.style.filter=on?'blur(5px)':'blur(0px)';el.style.opacity=on?.45:0}
-function makeLive(focus){const box=is3d?box3:cyBox,w=box.clientWidth,h=box.clientHeight,dpr=devicePixelRatio||1;
-  const el=document.createElement('canvas');el.className='live';el.width=w*dpr;el.height=h*dpr;liveStyle(el,false);ghostBox.appendChild(el);
-  let nodes,links;
-  if(is3d){const src=g3.graphData();nodes=src.nodes.filter(n=>n.id!==focus&&n.x!=null).map(n=>({id:n.id,t:n.t||'m',agg:n.agg,x:n.x,y:n.y,z:n.z,sz:dotSize(n)}));
-    const ix=new Map(nodes.map((n,k)=>[n.id,k]));links=src.links.filter(l=>typeof l.source==='object'&&ix.has(l.source.id)&&ix.has(l.target.id)).map(l=>[ix.get(l.source.id),ix.get(l.target.id),l.agg?aggA(l.q):qa(l.q)*.6])}
-  else{const ns=cy.nodes().filter(n=>n.id()!==focus&&n.data('t')!=='m');nodes=ns.map(n=>({id:n.id(),t:n.data('t'),agg:n.data('agg'),x:n.position('x'),y:n.position('y'),sz:dotSize(n.data())}));
-    const ix=new Map(nodes.map((n,k)=>[n.id,k]));links=cy.edges().filter(e=>ix.has(e.source().id())&&ix.has(e.target().id())).map(e=>[ix.get(e.source().id()),ix.get(e.target().id()),e.data('agg')?aggA(edgeQ(e.data())):qa(edgeQ(e.data()))*.6])}
-  live={el,nodes,links,kind:is3d?'3d':'2d',dpr};drawLive();
-  requestAnimationFrame(()=>requestAnimationFrame(()=>liveStyle(el,true)))}
-function drawLive(){if(!live)return;const {el,nodes,links,kind,dpr}=live,x=el.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,el.width,el.height);
-  let P;
-  if(kind==='3d'){if(!is3d)return;const m=g3.camera().matrixWorldInverse.elements;P=nodes.map(n=>{const zc=m[2]*n.x+m[6]*n.y+m[10]*n.z+m[14];if(zc>0)return null;return g3.graph2ScreenCoords(n.x,n.y,n.z)})}
-  else{if(is3d)return;const z=cy.zoom(),p=cy.pan();P=nodes.map(n=>({x:n.x*z+p.x,y:n.y*z+p.y}))}
-  x.lineWidth=1;const mu=css('--muted');
-  links.forEach(([a,b,al])=>{if(!P[a]||!P[b])return;x.globalAlpha=al;x.strokeStyle=mu;x.beginPath();x.moveTo(P[a].x,P[a].y);x.lineTo(P[b].x,P[b].y);x.stroke()});
-  x.globalAlpha=1;nodes.forEach((n,k)=>{const q=P[k];if(!q)return;x.beginPath();x.arc(q.x,q.y,n.sz/2,0,6.283);const c=css('--c-'+n.t);
-    if(n.agg){x.lineWidth=2;x.strokeStyle=c;x.stroke()}else{x.fillStyle=c;x.fill()}})}
+/* history layers: up to 3 previous views stay in the same space as live point clouds. Each layer hangs on the node you left it through:
+   that node is the center of the next view, and every frame the layer is shifted so it stays attached to where that node is now. */
+const layers=[];const LD=[{b:4,o:.5},{b:9,o:.28},{b:15,o:.15}];
+function curPos(id,k){/* where node id is right now: in the main graph (k<0) or in history layer k */
+  if(k<0){if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);return n&&n.x!=null?{x:n.x,y:n.y,z:n.z||0}:null}const c=cy.$id(id);return c.length?Object.assign({z:0},c.position()):null}
+  const L=layers[k];if(!L)return null;const n=L.byId.get(id);if(!n)return null;const o=L.off||{x:0,y:0,z:0};return {x:n.x+o.x,y:n.y+o.y,z:(n.z||0)+o.z}}
+function pushGhost(focus){const box=is3d?box3:cyBox,w=box.clientWidth,h=box.clientHeight,dpr=devicePixelRatio||1;
+  const el=document.createElement('canvas');el.width=w*dpr;el.height=h*dpr;el.style.filter='blur(0px)';el.style.opacity=0;ghostBox.insertBefore(el,ghostBox.firstChild?ghostBox.lastChild.nextSibling:null);
+  let all;
+  if(is3d)all=g3.graphData().nodes.filter(n=>n.x!=null).map(n=>({id:n.id,t:n.t||'m',agg:n.agg,x:n.x,y:n.y,z:n.z,sz:dotSize(n)}));
+  else all=cy.nodes().filter(n=>n.data('t')!=='m').map(n=>({id:n.id(),t:n.data('t'),agg:n.data('agg'),x:n.position('x'),y:n.position('y'),z:0,sz:dotSize(n.data())}));
+  const fp=all.find(n=>n.id===focus);const nodes=all.filter(n=>n.id!==focus);const ix=new Map(nodes.map((n,k)=>[n.id,k]));
+  const raw=is3d?g3.graphData().links.filter(l=>typeof l.source==='object').map(l=>[l.source.id,l.target.id,l.agg?aggA(l.q):qa(l.q)*.6])
+                :cy.edges().map(e=>[e.source().id(),e.target().id(),e.data('agg')?aggA(edgeQ(e.data())):qa(edgeQ(e.data()))*.6]);
+  const links=[],flinks=[];raw.forEach(([a,b,al])=>{if(ix.has(a)&&ix.has(b))links.push([ix.get(a),ix.get(b),al]);else if(a===focus&&ix.has(b))flinks.push([ix.get(b),al]);else if(b===focus&&ix.has(a))flinks.push([ix.get(a),al])});
+  layers.unshift({el,nodes,links,flinks,focus,fpos:fp?{x:fp.x,y:fp.y,z:fp.z||0}:null,byId:new Map(nodes.map(n=>[n.id,n])),kind:is3d?'3d':'2d',dpr,off:{x:0,y:0,z:0}});
+  while(layers.length>3){const L=layers.pop();L.el.style.opacity=0;setTimeout(()=>L.el.remove(),600)}
+  live=layers[0];requestAnimationFrame(()=>requestAnimationFrame(styleLayers))}
+function styleLayers(){layers.forEach((L,k)=>{L.el.style.filter=`blur(${LD[k].b}px)`;L.el.style.opacity=LD[k].o;L.el.style.zIndex=10-k})}
+function drawLive(){if(!layers.length)return;
+  const m=is3d?g3.camera().matrixWorldInverse.elements:null,z=cy.zoom(),pan=cy.pan();
+  const proj=p=>{if(is3d){const zc=m[2]*p.x+m[6]*p.y+m[10]*p.z+m[14];if(zc>0)return null;return g3.graph2ScreenCoords(p.x,p.y,p.z)}return {x:p.x*z+pan.x,y:p.y*z+pan.y}};
+  const mu=css('--muted');
+  layers.forEach((L,k)=>{const x=L.el.getContext('2d');x.setTransform(L.dpr,0,0,L.dpr,0,0);x.clearRect(0,0,L.el.width,L.el.height);
+    if(L.kind!==(is3d?'3d':'2d'))return;
+    const anchor=L.fpos?curPos(L.focus,k-1):null;L.off=anchor?{x:anchor.x-L.fpos.x,y:anchor.y-L.fpos.y,z:anchor.z-L.fpos.z}:{x:0,y:0,z:0};
+    const P=L.nodes.map(n=>proj({x:n.x+L.off.x,y:n.y+L.off.y,z:(n.z||0)+L.off.z})),A=anchor?proj(anchor):null;
+    x.lineWidth=1;x.strokeStyle=mu;
+    L.links.forEach(([a,b,al])=>{if(!P[a]||!P[b])return;x.globalAlpha=al;x.beginPath();x.moveTo(P[a].x,P[a].y);x.lineTo(P[b].x,P[b].y);x.stroke()});
+    if(A)L.flinks.forEach(([a,al])=>{if(!P[a])return;x.globalAlpha=Math.max(al,.5);x.beginPath();x.moveTo(A.x,A.y);x.lineTo(P[a].x,P[a].y);x.stroke()});
+    x.globalAlpha=1;L.nodes.forEach((n,i)=>{const q=P[i];if(!q)return;x.beginPath();x.arc(q.x,q.y,n.sz/2,0,6.283);const c=css('--c-'+n.t);
+      if(n.agg){x.lineWidth=2;x.strokeStyle=c;x.stroke();x.lineWidth=1;x.strokeStyle=mu}else{x.fillStyle=c;x.fill()}})})}
 function syncLive(){drawLive()}
-function freezeLive(){if(!live)return null;const el=live.el;el.classList.remove('live');live=null;return el}
-function layoutGhosts(){const st=[...ghostBox.querySelectorAll('canvas:not(.live)')].reverse();st.forEach((c,i)=>{const g=GD[i+1];if(!g){c.remove();return}
-  c.style.filter=`blur(${g.b}px)`;c.style.opacity=g.o;c.style.transform=`scale(${g.s})`})}
-function pushGhost(focus){const old=freezeLive();
-  if(old){old.style.filter=`blur(${GD[0].b}px)`;old.style.opacity=GD[0].o;old.style.transform='scale(1)';ghostBox.insertBefore(old,ghostBox.firstChild?ghostBox.querySelector('canvas.live'):null)}
-  makeLive(focus);requestAnimationFrame(()=>requestAnimationFrame(layoutGhosts))}
-(function liveLoop(){requestAnimationFrame(liveLoop);if(live)drawLive()})();
-function clearGhosts(){live=null;
-  [...ghostBox.querySelectorAll('canvas')].forEach(c=>{c.style.opacity=0;setTimeout(()=>c.remove(),600)})}
+(function liveLoop(){requestAnimationFrame(liveLoop);if(layers.length)drawLive()})();
+function clearGhosts(){layers.splice(0).forEach(L=>{L.el.style.opacity=0;setTimeout(()=>L.el.remove(),600)});live=null;
+  [...ghostBox.querySelectorAll('canvas')].forEach(c=>{if(!c.isConnected)return;c.style.opacity=0;setTimeout(()=>c.remove(),600)})}
 function transition(id,build){
   if(RM||busy){build();return}
   pushGhost(id);busy=true;const OUT=450,IN=550;
