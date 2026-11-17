@@ -565,7 +565,7 @@ document.getElementById('recent').onchange=e=>{F.recent=e.target.checked;rerende
 
 cy.on('tap','node',e=>{const id=e.target.id();
   if(ACT[id]&&(mode==='overview'||mode==='drill'))return transition(id,ACT[id]);
-  if(id.startsWith('m:')){const o=e.target.data('owner');expandAll(o);select(o);return}
+  if(id.startsWith('m:')){const o=e.target.data('owner');refreshCurrent();lastVia=o;expandAll(o);select(o);return}
   if(NODES.has(id)){select(id);if(mode==='explore'||mode==='set')moreFor(id)}});
 cy.on('dbltap','node',e=>{const id=e.target.id();if(!NODES.has(id))return;transition(id,()=>startExplore(id))});
 cy.on('tap',e=>{if(e.target===cy){cy.nodes().removeClass('sel');cy.edges().removeClass('hl')}});
@@ -617,13 +617,15 @@ function sync3d(){syncQ=false;if(!is3d)return;
   const old=new Map(g3.graphData().nodes.map(n=>[n.id,n]));let kept=0;
   const nodes=cy.nodes().map(c=>{const d=c.data();const o=old.get(d.id);if(o)kept++;
     const n=Object.assign(o||{},{id:d.id,t:d.t,label:d.label,size:d.size,agg:d.agg,left:d.left});
-    if(!o){const own=d.owner||cy.$id(d.id).neighborhood('node').filter(x=>old.has(x.id())).map(x=>x.id())[0];const p=own&&old.get(own);if(p&&p.x!=null){const a=Math.random()*6.283,b=Math.random()*3.1416;n.x=p.x+40*Math.sin(b)*Math.cos(a);n.y=p.y+40*Math.sin(b)*Math.sin(a);n.z=p.z+40*Math.cos(b)}}
+    if(!o&&RESTORE3&&RESTORE3.pos[d.id]){const q=RESTORE3.pos[d.id],A=RESTORE3.anchor&&RESTORE3.pos[RESTORE3.anchor],at=RESTORE3.at;const dx=A&&at?at.x-A.x:0,dy=A&&at?at.y-A.y:0,dz=A&&at?at.z-A.z:0;
+      n.x=q.x+dx;n.y=q.y+dy;n.z=q.z+dz;n.fx=n.x;n.fy=n.y;n.fz=n.z;n.__restored=1}
+    else if(!o){const own=d.owner||cy.$id(d.id).neighborhood('node').filter(x=>old.has(x.id())).map(x=>x.id())[0];const p=own&&old.get(own);if(p&&p.x!=null){const a=Math.random()*6.283,b=Math.random()*3.1416;n.x=p.x+40*Math.sin(b)*Math.cos(a);n.y=p.y+40*Math.sin(b)*Math.sin(a);n.z=p.z+40*Math.cos(b)}}
     return n});
   if(kept<nodes.length*.5)fitPending=true;
   /* selecting only swaps the "+N more" pill: freeze everything so nothing re-arranges; any real change releases the layout again */
   const nowIds=new Set(nodes.map(n=>n.id)),changed=[...nowIds].filter(i=>!old.has(i)).concat([...old.keys()].filter(i=>!nowIds.has(i)));
   const minor=old.size>0&&changed.length>0&&changed.every(i=>i.startsWith('m:'));
-  nodes.forEach(n=>{if(minor||(n.fx!=null&&!changed.length)){if(n.x!=null){n.fx=n.x;n.fy=n.y;n.fz=n.z}}else{n.fx=n.fy=n.fz=undefined}});
+  const restoredView=!!RESTORE3;nodes.forEach(n=>{if(restoredView&&n.fx!=null)return;if(minor||(n.fx!=null&&!changed.length)){if(n.x!=null){n.fx=n.x;n.fy=n.y;n.fz=n.z}}else{n.fx=n.fy=n.fz=undefined}});
   const links=cy.edges().map(e=>({id:e.id(),source:e.data('source'),target:e.data('target'),label:e.data('label'),agg:e.data('agg'),w:e.data('w')||1,q:edgeQ(e.data())}));
   g3.graphData({nodes,links});
   const ids=new Set(nodes.map(n=>n.id));
@@ -685,7 +687,7 @@ function snapLayer(){const box=is3d?box3:cyBox,w=box.clientWidth,h=box.clientHei
 var live=null;
 /* history layers: up to 3 previous views stay in the same space as live point clouds. Each layer hangs on the node you left it through:
    that node is the center of the next view, and every frame the layer is shifted so it stays attached to where that node is now. */
-const layers=[];const LD=[{b:4,o:.5},{b:9,o:.28},{b:15,o:.15}];
+const layers=[];const LD=[{b:4,o:.3},{b:9,o:.16},{b:15,o:.08}];
 function curPos(id,k){/* where node id is right now: in the main graph (k<0) or in history layer k */
   if(k<0){if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);return n&&n.x!=null?{x:n.x,y:n.y,z:n.z||0}:null}const c=cy.$id(id);return c.length?Object.assign({z:0},c.position()):null}
   const L=layers[k];if(!L)return null;const n=L.byId.get(id);if(!n)return null;const o=L.off||{x:0,y:0,z:0};return {x:n.x+o.x,y:n.y+o.y,z:(n.z||0)+o.z}}
@@ -717,18 +719,20 @@ function drawLive(){if(!layers.length)return;
       if(n.agg){x.lineWidth=2;x.strokeStyle=c;x.stroke();x.lineWidth=1;x.strokeStyle=mu}else{x.fillStyle=c;x.fill()}})})}
 function syncLive(){drawLive()}
 (function liveLoop(){requestAnimationFrame(liveLoop);if(layers.length)drawLive()})();
+function popGhost(){const L=layers.shift();if(L){L.el.style.opacity=0;setTimeout(()=>L.el.remove(),600)}live=layers[0]||null;styleLayers()}
 function clearGhosts(){layers.splice(0).forEach(L=>{L.el.style.opacity=0;setTimeout(()=>L.el.remove(),600)});live=null;
   [...ghostBox.querySelectorAll('canvas')].forEach(c=>{if(!c.isConnected)return;c.style.opacity=0;setTimeout(()=>c.remove(),600)})}
-function transition(id,build){
+function transition(id,build,back){
   if(RM||busy){build();return}
-  pushGhost(id);busy=true;const OUT=450,IN=550;
+  if(!back&&!restoring){refreshCurrent();lastVia=id}
+  if(back)popGhost();else pushGhost(id);busy=true;const OUT=450,IN=550;
   if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);
     FADE=id;icons.forEach((ic,k)=>{if(k!==id)ic.style.opacity=0});
     tween(OUT,k=>g3.linkOpacity(1-k));
     if(n&&n.x!=null){const c=g3.controls(),p=g3.camera().position,t=c.target||{x:0,y:0,z:0};
       const p0={x:p.x,y:p.y,z:p.z},t0={x:t.x,y:t.y,z:t.z},p1={x:n.x+(p.x-t.x),y:n.y+(p.y-t.y),z:n.z+(p.z-t.z)},L=(a,b,k)=>({x:a.x+(b.x-a.x)*k,y:a.y+(b.y-a.y)*k,z:a.z+(b.z-a.z)*k});
       tween(OUT,k=>g3.cameraPosition(L(p0,p1,k),L(t0,{x:n.x,y:n.y,z:n.z},k)))}
-    setTimeout(()=>{build();setTimeout(()=>{FADE=null;icons.forEach(ic=>{ic.style.opacity=''});tween(IN,k=>g3.linkOpacity(k),()=>{busy=false})},30)},OUT+20);
+    setTimeout(()=>{const an=g3.graphData().nodes.find(x=>x.id===id);PENDING=an&&an.x!=null?{id,pos:{x:0,y:0},p3:{x:an.x,y:an.y,z:an.z}}:null;build();PENDING=null;setTimeout(()=>{FADE=null;icons.forEach(ic=>{ic.style.opacity=''});tween(IN,k=>g3.linkOpacity(k),()=>{busy=false})},30)},OUT+20);
   }else{const node=cy.$id(id);const others=cy.elements().not(node);
     others.animate({style:{opacity:0}},{duration:OUT,easing:'ease-in-out-cubic'});if(node.length)cy.animate({center:{eles:node}},{duration:OUT,easing:'ease-in-out-cubic'});
     setTimeout(()=>{if(node.length)PENDING={id,pos:Object.assign({},node.position())};build();PENDING=null;
@@ -740,12 +744,24 @@ function transition(id,build){
 const hist=[];let hi=-1,restoring=false,recQ=false;
 const backB=document.getElementById('back'),fwdB=document.getElementById('fwd');
 function navButtons(){backB.disabled=hi<=0;fwdB.disabled=hi>=hist.length-1}
-function snapshot(){return {mode,crumbs:crumbs.slice(),els:cy.elements().jsons().map(j=>({group:j.group,data:j.data,position:j.position})),sel:cy.$('node.sel').id()||null,panel:panel.innerHTML,hint:hintEl.textContent}}
-function recordSoon(){if(restoring||recQ)return;recQ=true;setTimeout(()=>{recQ=false;hist.splice(hi+1);hist.push(snapshot());if(hist.length>60)hist.shift();hi=hist.length-1;navButtons()},0)}
-function restore(k){if(k<0||k>=hist.length)return;clearGhosts();hi=k;const st=hist[k];restoring=true;
-  cy.elements().remove();cy.add(st.els);mode=st.mode;setCrumbs(st.crumbs);hintEl.textContent=st.hint;runLayout(false);
+var lastVia=null;
+function pos3(){const m={};if(is3d)g3.graphData().nodes.forEach(n=>{if(n.x!=null)m[n.id]={x:n.x,y:n.y,z:n.z}});return m}
+function snapshot(){return {mode,crumbs:crumbs.slice(),els:cy.elements().jsons().map(j=>({group:j.group,data:j.data,position:Object.assign({},j.position)})),pos3:pos3(),sel:cy.$('node.sel').id()||null,panel:panel.innerHTML,hint:hintEl.textContent,via:null}}
+/* refresh the stored positions of the view we are leaving, so going back returns to exactly this picture */
+function refreshCurrent(){const h=hist[hi];if(!h)return;h.els=cy.elements().jsons().map(j=>({group:j.group,data:j.data,position:Object.assign({},j.position)}));h.pos3=pos3();h.sel=cy.$('node.sel').id()||null;h.panel=panel.innerHTML}
+function recordSoon(){if(restoring||recQ)return;recQ=true;setTimeout(()=>{recQ=false;hist.splice(hi+1);const sn=snapshot();sn.via=lastVia;lastVia=null;hist.push(sn);if(hist.length>60)hist.shift();hi=hist.length-1;navButtons()},0)}
+var RESTORE3=null;
+function restoreRaw(k){hi=k;lastVia=null;const st=hist[k];restoring=true;RESTORE3={pos:st.pos3||{},anchor:PENDING&&PENDING.id,at:PENDING&&PENDING.p3};
+  cy.elements().remove();cy.add(st.els);mode=st.mode;setCrumbs(st.crumbs);hintEl.textContent=st.hint;
+  if(PENDING&&cy.$id(PENDING.id).length){const p=cy.$id(PENDING.id).position();cy.nodes().shift({x:PENDING.pos.x-p.x,y:PENDING.pos.y-p.y});cy.animate({fit:{eles:cy.elements(),padding:40}},{duration:600,easing:'ease-in-out-cubic'})}else cy.fit(undefined,40);
+  updateCount();
   if(st.sel&&cy.$id(st.sel).length)select(st.sel);else{cy.nodes().removeClass('sel');panel.innerHTML=st.panel}
-  restoring=false;navButtons()}
+  restoring=false;navButtons();setTimeout(()=>{RESTORE3=null},50)}
+/* back and forward use the same transition as going forward, anchored on the node that connects the two views */
+function restore(k){if(k<0||k>=hist.length||k===hi)return;refreshCurrent();
+  const back=k<hi,via=back?hist[hi].via:hist[k].via;
+  if(!via||RM||busy||(back&&!cy.$id(via).length)){clearGhosts();restoreRaw(k);return}
+  transition(via,()=>restoreRaw(k),back)}
 backB.onclick=()=>restore(hi-1);fwdB.onclick=()=>restore(hi+1);
 document.addEventListener('keydown',ev=>{if(ev.altKey&&ev.key==='ArrowLeft'){ev.preventDefault();restore(hi-1)}if(ev.altKey&&ev.key==='ArrowRight'){ev.preventDefault();restore(hi+1)}});
 ['showOverview','drillDept','drillIndustry','startExplore','showSet','expandAll'].forEach(fn=>{const o=window[fn];window[fn]=function(...a){const r=o.apply(this,a);recordSoon();return r}});
