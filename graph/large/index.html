@@ -25,6 +25,7 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-
 .app{position:fixed;inset:0}
 #cy,#g3,#ghosts{position:absolute;top:0;left:0;bottom:0;right:var(--side)}
 #ghosts{pointer-events:none;overflow:hidden}
+#ghosts .live{position:absolute;inset:0;transition:filter .6s cubic-bezier(.65,0,.35,1),opacity .6s cubic-bezier(.65,0,.35,1)}
 #ghosts canvas{position:absolute;inset:0;width:100%;height:100%;transform-origin:50% 50%;transition:filter .6s cubic-bezier(.65,0,.35,1),opacity .6s cubic-bezier(.65,0,.35,1),transform .6s cubic-bezier(.65,0,.35,1)}
 #g3{overflow:hidden}
 .hide{visibility:hidden;pointer-events:none}
@@ -146,7 +147,7 @@ aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2p
   <div id="suggest" hidden></div>
   <header class="hd">
     <div class="hl">
-      <div class="hrow"><h1 id="home" title="Back to the overview" style="cursor:pointer">Nordlicht Knowledge Graph</h1>
+      <div class="hrow"><h1 id="home" title="Back to the overview" style="cursor:pointer">Knowledge Graph</h1>
         <button class="icon-btn" id="gear" aria-expanded="false" aria-controls="settings" aria-label="Settings and questions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.3c.4-1.8 3-1.8 3.4 0a1.7 1.7 0 0 0 2.6 1.1c1.5-.9 3.3.8 2.4 2.4a1.7 1.7 0 0 0 1 2.5c1.8.4 1.8 3 0 3.4a1.7 1.7 0 0 0-1 2.6c.9 1.5-.9 3.3-2.4 2.4a1.7 1.7 0 0 0-2.6 1c-.4 1.8-3 1.8-3.4 0a1.7 1.7 0 0 0-2.6-1c-1.5.9-3.3-.9-2.4-2.4a1.7 1.7 0 0 0-1-2.6c-1.8-.4-1.8-3 0-3.4a1.7 1.7 0 0 0 1-2.5c-.9-1.6.9-3.3 2.4-2.4a1.7 1.7 0 0 0 2.6-1.1z"/><circle cx="12" cy="12" r="3"/></svg></button>
       </div>
       <div class="crumbs" id="crumbs" hidden></div>
@@ -341,6 +342,7 @@ let pulsed=null;
   if(pulsed){pulsed.difference(hl).removeStyle('line-color')}pulsed=hl;if(!hl.length)return;
   const a=hex(css('--muted')),b=hex(css('--accent')),k=.35+.65*(.5+.5*Math.sin(performance.now()/450));
   hl.style('line-color','rgb('+a.map((v,i)=>Math.round(v+(b[i]-v)*k)).join(',')+')')})();
+cy.on('viewport',()=>{if(typeof live!=='undefined'&&live&&live.kind==='2d')syncLive()});
 let zq=false;cy.on('zoom',()=>{if(zq)return;zq=true;requestAnimationFrame(()=>{zq=false;Z=cy.zoom();cy.style().update()})});
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>cy.style(style()));
 new MutationObserver(()=>cy.style(style())).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
@@ -584,7 +586,9 @@ const box3=document.getElementById('g3'),cyBox=document.getElementById('cy'),btn
 var is3d=true,fitPending=true,last={},syncQ=false,refQ=false;
 const layer=document.createElement('div');layer.className='lbl3';
 const st=id=>cy.$id(id);
-const g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).backgroundColor('rgba(0,0,0,0)').showNavInfo(false).cooldownTime(2500)
+/* without WebGL the page falls back to 2D; a stub swallows every 3D call */
+const STUB=new Proxy(function(){},{get:(t,k)=>k==='nodes'||k==='links'?[]:STUB,apply:()=>STUB});
+let g3;try{g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).backgroundColor('rgba(0,0,0,0)').showNavInfo(false).cooldownTime(2500)
   .nodeRelSize(1).nodeOpacity(0).linkOpacity(1).nodeLabel(()=>'')
   .nodeVal(.05)
   .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):n.t==='m'?css('--c-m'):css('--c-'+n.t)})
@@ -597,6 +601,7 @@ const g3=ForceGraph3D()(box3).width(box3.clientWidth).height(box3.clientHeight).
   .onEngineStop(()=>{if(fitPending){fitPending=false;g3.zoomToFit(600,90)}});
 {let gn=[];const grav=a=>{gn.forEach(n=>{n.vx-=n.x*.035*a;n.vy-=n.y*.035*a;n.vz-=n.z*.035*a})};grav.initialize=ns=>{gn=ns};g3.d3Force('gravity',grav)}
 g3.d3Force('charge').strength(n=>n.agg?-260:-90);g3.d3Force('link').distance(l=>l.agg?75:45);
+}catch(err){console.warn('3D unavailable, using 2D',err);g3=STUB;is3d=false;box3.classList.add('hide');cyBox.classList.remove('hide');btnV.hidden=true}
 box3.appendChild(layer);
 layer.addEventListener('wheel',ev=>{ev.preventDefault();const c=g3.renderer().domElement;
   c.dispatchEvent(new WheelEvent('wheel',{deltaX:ev.deltaX,deltaY:ev.deltaY,deltaZ:ev.deltaZ,deltaMode:ev.deltaMode,clientX:ev.clientX,clientY:ev.clientY,ctrlKey:ev.ctrlKey,bubbles:true,cancelable:true}))},{passive:false});
@@ -628,7 +633,7 @@ function pulseLinks(){const cam=g3.camera(),m=cam.matrixWorldInverse.elements,fo
     const x=(l.source.x+l.target.x)/2,y=(l.source.y+l.target.y)/2,z=(l.source.z+l.target.z)/2,zc=-(m[2]*x+m[6]*y+m[10]*z+m[14]);
     const f=Math.max(.01,2*zc/foc);o.scale.x=o.scale.y=f;
     if(o.material.emissive)o.material.emissive.set(css('--accent'))})}
-(function tick(){requestAnimationFrame(tick);if(!is3d)return;pulseLinks();
+(function tick(){requestAnimationFrame(tick);if(!is3d)return;pulseLinks();if(live&&live.kind==='3d')syncLive();
   const cam=g3.camera(),m=cam.matrixWorldInverse.elements,items=[];
   g3.graphData().nodes.forEach(n=>{const d=tags.get(n.id),ic=icons.get(n.id);if(!d)return;
     const zc=n.x==null?1:m[2]*n.x+m[6]*n.y+m[10]*n.z+m[14];if(zc>0){d.style.display=ic.style.display='none';return}
@@ -665,14 +670,40 @@ function snapLayer(){const box=is3d?box3:cyBox,w=box.clientWidth,h=box.clientHei
       if(ic.classList.contains('gone')||cy.$id(id).data('agg')){x.strokeStyle=css('--c-'+t);x.lineWidth=2;x.stroke()}else{x.fillStyle=css('--c-'+t);x.fill()}})}
   else{const img=new Image();img.src=cy.png({full:false,bg:'transparent',scale:1});img.onload=()=>x.drawImage(img,0,0,w,h)}
   return c}
-function layoutGhosts(){[...ghostBox.children].reverse().forEach((c,i)=>{const g=GD[i];if(!g){c.remove();return}
+/* the newest background layer stays live: a second, frozen graph that follows the camera (3D) or viewport (2D) */
+var live=null;
+/* the newest background layer stays live: its frozen node positions are re-projected every frame with the current camera/viewport, so it moves along with every transition */
+function liveStyle(el,on){el.style.filter=on?'blur(5px)':'blur(0px)';el.style.opacity=on?.45:0}
+function makeLive(focus){const box=is3d?box3:cyBox,w=box.clientWidth,h=box.clientHeight,dpr=devicePixelRatio||1;
+  const el=document.createElement('canvas');el.className='live';el.width=w*dpr;el.height=h*dpr;liveStyle(el,false);ghostBox.appendChild(el);
+  let nodes,links;
+  if(is3d){const src=g3.graphData();nodes=src.nodes.filter(n=>n.id!==focus&&n.x!=null).map(n=>({id:n.id,t:n.t||'m',agg:n.agg,x:n.x,y:n.y,z:n.z,sz:dotSize(n)}));
+    const ix=new Map(nodes.map((n,k)=>[n.id,k]));links=src.links.filter(l=>typeof l.source==='object'&&ix.has(l.source.id)&&ix.has(l.target.id)).map(l=>[ix.get(l.source.id),ix.get(l.target.id),l.agg?aggA(l.q):qa(l.q)*.6])}
+  else{const ns=cy.nodes().filter(n=>n.id()!==focus&&n.data('t')!=='m');nodes=ns.map(n=>({id:n.id(),t:n.data('t'),agg:n.data('agg'),x:n.position('x'),y:n.position('y'),sz:dotSize(n.data())}));
+    const ix=new Map(nodes.map((n,k)=>[n.id,k]));links=cy.edges().filter(e=>ix.has(e.source().id())&&ix.has(e.target().id())).map(e=>[ix.get(e.source().id()),ix.get(e.target().id()),e.data('agg')?aggA(edgeQ(e.data())):qa(edgeQ(e.data()))*.6])}
+  live={el,nodes,links,kind:is3d?'3d':'2d',dpr};drawLive();
+  requestAnimationFrame(()=>requestAnimationFrame(()=>liveStyle(el,true)))}
+function drawLive(){if(!live)return;const {el,nodes,links,kind,dpr}=live,x=el.getContext('2d');x.setTransform(dpr,0,0,dpr,0,0);x.clearRect(0,0,el.width,el.height);
+  let P;
+  if(kind==='3d'){if(!is3d)return;const m=g3.camera().matrixWorldInverse.elements;P=nodes.map(n=>{const zc=m[2]*n.x+m[6]*n.y+m[10]*n.z+m[14];if(zc>0)return null;return g3.graph2ScreenCoords(n.x,n.y,n.z)})}
+  else{if(is3d)return;const z=cy.zoom(),p=cy.pan();P=nodes.map(n=>({x:n.x*z+p.x,y:n.y*z+p.y}))}
+  x.lineWidth=1;const mu=css('--muted');
+  links.forEach(([a,b,al])=>{if(!P[a]||!P[b])return;x.globalAlpha=al;x.strokeStyle=mu;x.beginPath();x.moveTo(P[a].x,P[a].y);x.lineTo(P[b].x,P[b].y);x.stroke()});
+  x.globalAlpha=1;nodes.forEach((n,k)=>{const q=P[k];if(!q)return;x.beginPath();x.arc(q.x,q.y,n.sz/2,0,6.283);const c=css('--c-'+n.t);
+    if(n.agg){x.lineWidth=2;x.strokeStyle=c;x.stroke()}else{x.fillStyle=c;x.fill()}})}
+function syncLive(){drawLive()}
+function freezeLive(){if(!live)return null;const el=live.el;el.classList.remove('live');live=null;return el}
+function layoutGhosts(){const st=[...ghostBox.querySelectorAll('canvas:not(.live)')].reverse();st.forEach((c,i)=>{const g=GD[i+1];if(!g){c.remove();return}
   c.style.filter=`blur(${g.b}px)`;c.style.opacity=g.o;c.style.transform=`scale(${g.s})`})}
-function pushGhost(){const c=snapLayer();c.style.filter='blur(0px)';c.style.opacity=1;c.style.transform='scale(1)';ghostBox.appendChild(c);
-  requestAnimationFrame(()=>requestAnimationFrame(layoutGhosts))}
-function clearGhosts(){[...ghostBox.children].forEach(c=>{c.style.opacity=0;setTimeout(()=>c.remove(),600)})}
+function pushGhost(focus){const old=freezeLive();
+  if(old){old.style.filter=`blur(${GD[0].b}px)`;old.style.opacity=GD[0].o;old.style.transform='scale(1)';ghostBox.insertBefore(old,ghostBox.firstChild?ghostBox.querySelector('canvas.live'):null)}
+  makeLive(focus);requestAnimationFrame(()=>requestAnimationFrame(layoutGhosts))}
+(function liveLoop(){requestAnimationFrame(liveLoop);if(live)drawLive()})();
+function clearGhosts(){live=null;
+  [...ghostBox.querySelectorAll('canvas')].forEach(c=>{c.style.opacity=0;setTimeout(()=>c.remove(),600)})}
 function transition(id,build){
   if(RM||busy){build();return}
-  pushGhost();busy=true;const OUT=450,IN=550;
+  pushGhost(id);busy=true;const OUT=450,IN=550;
   if(is3d){const n=g3.graphData().nodes.find(x=>x.id===id);
     FADE=id;icons.forEach((ic,k)=>{if(k!==id)ic.style.opacity=0});
     tween(OUT,k=>g3.linkOpacity(1-k));
