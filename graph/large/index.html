@@ -103,6 +103,10 @@ aside.closed{display:none}
   .foot{display:none}
 }
 aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2px;text-wrap:balance}
+.hh{display:inline-flex;align-items:center;gap:7px}
+.hic{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:none;vertical-align:-4px;margin-right:7px}
+.hh .hic{margin-right:0}
+.hic svg{width:62%;height:62%}
 .type{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .meta{color:var(--muted);margin:4px 0 10px}
 .g{margin:14px 0 0}
@@ -382,8 +386,8 @@ function drillDept(d){
     [...teamInd].filter(([k])=>k.startsWith(t+'|')).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(([k,w])=>{const ind=k.split('|')[1];const id='dr:i:'+ind;
       if(!cy.$id(id).length)addAgg(id,'i',ind,40,()=>drillIndustry(ind));addAggEdge('dr:'+t,id,w,w+' assignments',true)})});
   runLayout(false);
-  panel.innerHTML=`<div class="type">Department</div><h2>${esc(dn.label)}</h2><p class="meta">${peopleByDept[d].filter(p=>!NODES.get(p).left).length} people in ${teamsByDept[d].length} offices</p>
-  <div class="g"><h3>Strongest skills <span>experts ≥ 70%</span></h3>${topSys.map(([s,n])=>row(s,n+' experts')).join('')}</div>
+  panel.innerHTML=`<div class="type">${hIc('u')}Department</div><h2>${esc(dn.label)}</h2><p class="meta">${peopleByDept[d].filter(p=>!NODES.get(p).left).length} people in ${teamsByDept[d].length} offices</p>
+  <div class="g"><h3><span class="hh">${hIc('s')}Strongest skills</span> <span>experts ≥ 70%</span></h3>${topSys.map(([s,n])=>row(s,n+' experts')).join('')}</div>
   <div class="actions"><button class="btn" data-open="u:${d}">Open as node</button></div>`;
 }
 function drillIndustry(ind){
@@ -396,8 +400,8 @@ function drillIndustry(ind){
   cs.forEach(k=>[...dw].filter(([x])=>x.startsWith(k+'|')).sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([x,w])=>{const d=x.split('|')[1];const id='dr:u:'+d;
     if(!cy.$id(id).length)addAgg(id,'u',NODES.get('u:'+d).label,44,()=>drillDept(d));addAggEdge('dr:'+k,id,w,w+' projects')}));
   runLayout(false);
-  panel.innerHTML=`<div class="type">Industry</div><h2>${esc(ind)}</h2><p class="meta">${cs.length} customers. Click one to see projects, people and documents.</p>
-  <div class="g"><h3>Customers</h3>${cs.map(k=>row(k,ADJ.get(k).filter(i=>EDGES[i].r==='for').length+' projects')).join('')}</div>`;
+  panel.innerHTML=`<div class="type">${hIc('i')}Industry</div><h2>${esc(ind)}</h2><p class="meta">${cs.length} customers. Click one to see projects, people and documents.</p>
+  <div class="g"><h3><span class="hh">${hIc('k')}Customers</span></h3>${cs.map(k=>row(k,ADJ.get(k).filter(i=>EDGES[i].r==='for').length+' projects')).join('')}</div>`;
 }
 
 /* ---------- level 3: explore (ego network with expand) ---------- */
@@ -435,6 +439,7 @@ function reveal(id,from){
 }
 
 /* ---------- detail panel ---------- */
+const hIc=t=>`<i class="hic" style="background:var(--c-${t})">${svgIcon(t,'#fff')}</i>`;
 function row(id,m,cls){const n=NODES.get(id);return `<div class="row" data-open="${id}"><span class="n"><i ${dot(n.t)}></i><span>${esc(n.label)}</span>${n.left?'<span class="left">left</span>':''}</span><span class="m ${cls||''}">${m||''}</span></div>`}
 function edgeMeta(e,id){const o=NODES.get(other(e,id));const bits=[];if(REL[e.r][2]==='AI extraction')bits.push(`<span class="${e.conf<.7?'low':''}">${pct(e.conf)}</span>`);
   if(o.t==='j')bits.push(o.active?'active':'ended '+fmt(o.end));else if(e.r==='exp')bits.push(e.n+' proj.');return bits.join(' · ')}
@@ -443,9 +448,9 @@ function detail(id){const n=NODES.get(id);
   const meta=[];if(n.role)meta.push(n.role);if(n.team)meta.push(NODES.get(n.team).label);if(n.ind)meta.push(n.ind);
   if(n.t==='j'){meta.push((n.internal?'Internal':'Customer')+' project');meta.push(fmt(n.start)+' – '+(n.active?'today':fmt(n.end)))}
   meta.push(deg(id)+' connections in total');
-  let h=`<div class="type">${TYPES[n.t][0]}</div><h2>${esc(n.label)}${n.left?`<span class="left">left ${fmt(n.left)}</span>`:''}</h2><p class="meta">${meta.map(esc).join(' · ')}</p>`;
+  let h=`<div class="type">${hIc(n.t)}${TYPES[n.t][0]}</div><h2>${esc(n.label)}${n.left?`<span class="left">left ${fmt(n.left)}</span>`:''}</h2><p class="meta">${meta.map(esc).join(' · ')}</p>`;
   groups(id).forEach(g=>{const open=openGroups.has(id+g.key);const list=open?g.items.slice(0,200):g.items.slice(0,6);
-    h+=`<div class="g"><h3>${esc(g.label)} <span>${g.items.length}</span></h3>${list.map(e=>row(other(e,id),edgeMeta(e,id))).join('')}
+    h+=`<div class="g"><h3><span class="hh">${hIc(NODES.get(other(g.items[0],id)).t)}${esc(g.label)}</span> <span>${g.items.length}</span></h3>${list.map(e=>row(other(e,id),edgeMeta(e,id))).join('')}
     ${g.items.length>6?`<button class="more" data-tog="${id}|${g.key}">${open?'Show fewer':'Show all '+g.items.length}</button>`:''}</div>`});
   h+=`<div class="actions">${mode==='explore'&&cy.$id(id).length?`<button class="btn primary" data-exp="${id}">Expand neighbors</button><button class="btn" data-hide="${id}">Hide</button>`:''}<button class="btn" data-start="${id}">Start here</button></div>
   <p class="meta" style="margin-top:12px">Lists show everything. The canvas only gets what you expand, sorted by relevance: active projects, leads and confident AI matches first.</p>`;
