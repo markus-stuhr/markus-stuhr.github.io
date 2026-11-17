@@ -366,6 +366,9 @@ const projDepts=new Map(projects.map(j=>[j,new Set((NODES.get(j).members||[]).ma
 const projInd=j=>{const e=ADJ.get(j).map(i=>EDGES[i]).find(e=>e.r==='for');return e?NODES.get(e.t).ind:null};
 const activeProjects=()=>projects.filter(j=>nodeOk(NODES.get(j)));
 function addAgg(id,t,label,size,fn){cy.add({data:{id,t,label,agg:1,size}});ACT[id]=fn}
+/* after a drill the clicked bubble stays where it was on screen; the new level is laid out around it */
+function keepAnchor(id){const n=cy.$id(id);if(!PENDING||PENDING.id!==id||!n.length)return;const p=n.position();cy.nodes().shift({x:PENDING.pos.x-p.x,y:PENDING.pos.y-p.y});
+  cy.animate({fit:{eles:cy.elements(),padding:40}},{duration:600,easing:'ease-in-out-cubic'})}
 function addAggEdge(a,b,w,label,dash){cy.add({data:{id:a+'~'+b,source:a,target:b,agg:1,w:Math.min(1+Math.sqrt(w)*.9,9),label,dash:dash?1:0}})}
 function showOverview(){
   mode='overview';cy.elements().remove();setCrumbs([{label:'Nordlicht Software',fn:showOverview}]);hintEl.textContent='Click a bubble to drill down';
@@ -390,13 +393,15 @@ function drillDept(d){
   peopleByDept[d].forEach(p=>{const P=NODES.get(p);if(P.left)return;ADJ.get(p).forEach(i=>{const e=EDGES[i];if(!edgeOk(e))return;
     if(e.r==='exp'&&e.conf>=.7){sysCount.set(e.t,(sysCount.get(e.t)||0)+1);const k=P.team+'|'+e.t;teamSys.set(k,(teamSys.get(k)||0)+1)}
     if((e.r==='on'||e.r==='lead')&&nodeOk(NODES.get(e.t))){const ind=projInd(e.t)||'Internal';const k=P.team+'|'+ind;teamInd.set(k,(teamInd.get(k)||0)+1)}})});
-  teamsByDept[d].forEach(t=>{const n=ADJ.get(t).filter(i=>EDGES[i].r==='in'&&!NODES.get(EDGES[i].s).left).length;addAgg('dr:'+t,'t',`${NODES.get(t).label.split(' · ')[1]}\n${n} people`,30+Math.sqrt(n)*7,()=>startExplore(t))});
+  teamsByDept[d].forEach(t=>{const n=ADJ.get(t).filter(i=>EDGES[i].r==='in'&&!NODES.get(EDGES[i].s).left).length;addAgg(t,'t',`${NODES.get(t).label.split(' · ')[1]}\n${n} people`,30+Math.sqrt(n)*7,()=>startExplore(t))});
+  const C='ov:u:'+d,np=peopleByDept[d].filter(p=>!NODES.get(p).left).length;addAgg(C,'u',`${dn.label}\n${np} people`,34+Math.sqrt(np)*7,showOverview);
+  teamsByDept[d].forEach(t=>{const n=ADJ.get(t).filter(i=>EDGES[i].r==='in'&&!NODES.get(EDGES[i].s).left).length;addAggEdge(C,t,n,n+' people')});
   const topSys=[...sysCount].sort((a,b)=>b[1]-a[1]).slice(0,8);
-  topSys.forEach(([s,n])=>{cy.add({data:{id:'dr:'+s,t:'s',label:`${NODES.get(s).label}\n${n} experts`,agg:1,size:30+Math.sqrt(n)*5}});ACT['dr:'+s]=()=>startExplore(s)});
-  teamsByDept[d].forEach(t=>{topSys.forEach(([s])=>{const w=teamSys.get(t+'|'+s);if(w)addAggEdge('dr:'+t,'dr:'+s,w,w+' experts')});
-    [...teamInd].filter(([k])=>k.startsWith(t+'|')).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(([k,w])=>{const ind=k.split('|')[1];const id='dr:i:'+ind;
-      if(!cy.$id(id).length)addAgg(id,'i',ind,40,()=>drillIndustry(ind));addAggEdge('dr:'+t,id,w,w+' assignments',true)})});
-  runLayout(false);
+  topSys.forEach(([s,n])=>{cy.add({data:{id:s,t:'s',label:`${NODES.get(s).label}\n${n} experts`,agg:1,size:30+Math.sqrt(n)*5}});ACT[s]=()=>startExplore(s)});
+  teamsByDept[d].forEach(t=>{topSys.forEach(([s])=>{const w=teamSys.get(t+'|'+s);if(w)addAggEdge(t,s,w,w+' experts')});
+    [...teamInd].filter(([k])=>k.startsWith(t+'|')).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(([k,w])=>{const ind=k.split('|')[1];const id='ov:i:'+ind;
+      if(!cy.$id(id).length)addAgg(id,'i',ind,40,()=>drillIndustry(ind));addAggEdge(t,id,w,w+' assignments',true)})});
+  runLayout(false);keepAnchor(C);
   panel.innerHTML=`<div class="type">${hIc('u')}Department</div><h2>${esc(dn.label)}</h2><p class="meta">${peopleByDept[d].filter(p=>!NODES.get(p).left).length} people in ${teamsByDept[d].length} offices</p>
   <div class="g"><h3><span class="hh">${hIc('s')}Strongest skills</span> <span>experts ≥ 70%</span></h3>${topSys.map(([s,n])=>row(s,n+' experts')).join('')}</div>
   <div class="actions"><button class="btn" data-open="u:${d}">Open as node</button></div>`;
@@ -406,11 +411,13 @@ function drillIndustry(ind){
   const cs=ind==='Internal'?[]:custs.filter(k=>NODES.get(k).ind===ind);const dw=new Map();
   if(ind==='Internal'){const ip=activeProjects().filter(j=>NODES.get(j).internal);setCrumbs([{label:'Nordlicht Software',fn:showOverview},{label:'Internal projects',fn:()=>drillIndustry(ind)}]);return showSet(ip,null,'Internal projects')}
   cs.forEach(k=>{const pj=ADJ.get(k).map(i=>EDGES[i]).filter(e=>e.r==='for'&&nodeOk(NODES.get(e.s))).map(e=>e.s);
-    addAgg('dr:'+k,'k',`${NODES.get(k).label}\n${pj.length} projects`,26+Math.sqrt(pj.length)*8,()=>startExplore(k));
+    addAgg(k,'k',`${NODES.get(k).label}\n${pj.length} projects`,26+Math.sqrt(pj.length)*8,()=>startExplore(k));
     pj.forEach(j=>projDepts.get(j).forEach(d=>{const key=k+'|'+d;dw.set(key,(dw.get(key)||0)+1)}))});
-  cs.forEach(k=>[...dw].filter(([x])=>x.startsWith(k+'|')).sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([x,w])=>{const d=x.split('|')[1];const id='dr:u:'+d;
-    if(!cy.$id(id).length)addAgg(id,'u',NODES.get('u:'+d).label,44,()=>drillDept(d));addAggEdge('dr:'+k,id,w,w+' projects')}));
-  runLayout(false);
+  cs.forEach(k=>[...dw].filter(([x])=>x.startsWith(k+'|')).sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([x,w])=>{const d=x.split('|')[1];const id='ov:u:'+d;
+    if(!cy.$id(id).length)addAgg(id,'u',NODES.get('u:'+d).label,44,()=>drillDept(d));addAggEdge(k,id,w,w+' projects')}));
+  const C='ov:i:'+ind,tot=cs.reduce((a,k)=>a+ADJ.get(k).filter(i=>EDGES[i].r==='for').length,0);addAgg(C,'i',`${ind}\n${tot} projects`,30+Math.sqrt(tot)*5,showOverview);
+  cs.forEach(k=>{const n=ADJ.get(k).filter(i=>EDGES[i].r==='for').length;addAggEdge(C,k,n,n+' projects')});
+  runLayout(false);keepAnchor(C);
   panel.innerHTML=`<div class="type">${hIc('i')}Industry</div><h2>${esc(ind)}</h2><p class="meta">${cs.length} customers. Click one to see projects, people and documents.</p>
   <div class="g"><h3><span class="hh">${hIc('k')}Customers</span></h3>${cs.map(k=>row(k,ADJ.get(k).filter(i=>EDGES[i].r==='for').length+' projects')).join('')}</div>`;
 }
@@ -720,7 +727,7 @@ function transition(id,build){
     setTimeout(()=>{build();setTimeout(()=>{FADE=null;icons.forEach(ic=>{ic.style.opacity=''});tween(IN,k=>g3.linkOpacity(k),()=>{busy=false})},30)},OUT+20);
   }else{const node=cy.$id(id);const others=cy.elements().not(node);
     others.animate({style:{opacity:0}},{duration:OUT,easing:'ease-in-out-cubic'});if(node.length)cy.animate({center:{eles:node}},{duration:OUT,easing:'ease-in-out-cubic'});
-    setTimeout(()=>{if(node.length&&NODES.has(id))PENDING={id,pos:node.position()};build();PENDING=null;
+    setTimeout(()=>{if(node.length)PENDING={id,pos:Object.assign({},node.position())};build();PENDING=null;
       const keep=cy.$id(id),fresh=cy.elements().not(keep);
       fresh.forEach(e=>{const t=e.numericStyle('opacity');e.style('opacity',0);e.animate({style:{opacity:t}},{duration:IN,easing:'ease-in-out-cubic',complete:()=>e.removeStyle('opacity')})});
       setTimeout(()=>{fresh.stop(true,false).removeStyle('opacity');busy=false},IN+80)},OUT+20)}
