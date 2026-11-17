@@ -275,7 +275,7 @@ function style(){return [
   {selector:'node[?agg]',style:{'font-weight':600,'font-size':()=>12/Z}},
   {selector:'node[t="m"]',style:{'background-color':css('--c-m')}},
   {selector:'node[?left]',style:{'background-opacity':.55,'background-image-opacity':.55,'border-width':()=>1.5/Z,'border-color':css('--warn'),'border-style':'dashed'}},
-  {selector:'edge',style:{'width':()=>1/Z,'line-color':css('--muted'),'curve-style':'straight','opacity':e=>qa(edgeQ(e.data()))*.8}},
+  {selector:'edge',style:{'width':()=>1/Z,'line-color':css('--muted'),'curve-style':'straight','opacity':e=>qa(edgeQ(e.data()))*.55}},
   {selector:'node.sel',style:{'border-width':()=>2.5/Z,'border-color':css('--accent'),'border-style':'solid','font-weight':600,'font-size':()=>12/Z,'z-index':10}},
   {selector:'edge.hl',style:{'line-color':css('--accent'),'opacity':e=>qa(edgeQ(e.data())),'z-index':9}},
   {selector:'node.nolabel',style:{'text-opacity':.25}}
@@ -514,7 +514,7 @@ const g3=ForceGraph3D()(box3).width(innerWidth).height(innerHeight).backgroundCo
   .nodeRelSize(1).nodeOpacity(0).linkOpacity(1).nodeLabel(()=>'')
   .nodeVal(.05)
   .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):n.t==='m'?css('--c-m'):css('--c-'+n.t)})
-  .linkColor(l=>mixCol(st(l.id).hasClass('hl')?hex(css('--accent')):hex(css('--muted')),qa(l.q)*(st(l.id).hasClass('hl')?1:.8)))
+  .linkColor(l=>mixCol(st(l.id).hasClass('hl')?hex(css('--accent')):hex(css('--muted')),qa(l.q)*(st(l.id).hasClass('hl')?1:.55)))
   .linkWidth(0)
   .linkLabel(l=>esc(l.label||''))
   
