@@ -291,9 +291,9 @@ function style(){return [
 ]}
 const cy=cytoscape({container:document.getElementById('cy'),style:style(),wheelSensitivity:.25,minZoom:.15,maxZoom:6});
 function cull2d(){if(typeof is3d!=='undefined'&&is3d)return;const items=[];
-  cy.nodes().forEach(n=>{const d=n.data();if(d.t==='m')return;const p=n.renderedPosition(),strong=n.hasClass('sel')||d.agg;const m=measure(d.label,strong?11:10,strong);
+  cy.nodes().forEach(n=>{const d=n.data();const p=n.renderedPosition(),strong=n.hasClass('sel')||d.agg;const m=measure(d.label,strong?11:10,strong);
     items.push({id:d.id,x:p.x,y:p.y,w:m.w,h:m.h,dot:dotSize(d),force:n.hasClass('sel'),pri:(n.hasClass('sel')?1e6:0)+(n.connectedEdges('.hl').length?1e5:0)+(d.agg?1e4:0)+n.degree()})});
-  const show=placeLabels(items);cy.batch(()=>cy.nodes().forEach(n=>{if(n.data('t')==='m')return;const off=!show.has(n.id());if(off!==n.hasClass('nolabel'))n.toggleClass('nolabel',off)}))}
+  const show=placeLabels(items);cy.batch(()=>cy.nodes().forEach(n=>{const off=!show.has(n.id());if(off!==n.hasClass('nolabel'))n.toggleClass('nolabel',off)}))}
 let cq=false;cy.on('render',()=>{if(cq)return;cq=true;setTimeout(()=>{cq=false;cull2d()},60)});
 let pulsed=null;
 (function pulse2d(){return;if(typeof is3d==='undefined'||is3d)return;const hl=cy.edges('.hl');
@@ -384,7 +384,7 @@ function expand(id,key){
   gs.forEach(g=>{const sk=id+'|'+g.key;let start=shown.get(sk)||0;const slice=g.items.slice(start,start+F.k);
     slice.forEach(e=>{const o=other(e,id);if(addNode(o,id))cy.$id(o).addClass('new');addEdge(e)});start+=slice.length;shown.set(sk,start);
     const mid='m:'+sk;cy.$id(mid).remove();const rest=g.items.length-start;
-    if(rest>0){cy.add({data:{id:mid,t:'m',label:`+${rest} · ${g.label.toLowerCase()}`,owner:id,key:g.key},position:cy.$id(id).position()});cy.add({data:{id:mid+'~',source:id,target:mid}})}});
+    if(rest>0){cy.add({data:{id:mid,t:'m',label:`+${rest} · ${g.label.toLowerCase()}`,owner:id,key:g.key},position:(()=>{const p=cy.$id(id).position(),a=R()*6.283;return {x:p.x+70*Math.cos(a),y:p.y+70*Math.sin(a)}})()});cy.add({data:{id:mid+'~',source:id,target:mid}})}});
   connectAll();runLayout(true);
 }
 function startExplore(id){
@@ -540,7 +540,7 @@ function sync3d(){syncQ=false;if(!is3d)return;
   const old=new Map(g3.graphData().nodes.map(n=>[n.id,n]));let kept=0;
   const nodes=cy.nodes().map(c=>{const d=c.data();const o=old.get(d.id);if(o)kept++;
     const n=Object.assign(o||{},{id:d.id,t:d.t,label:d.label,size:d.size,agg:d.agg,left:d.left});
-    if(!o){const own=d.owner||cy.$id(d.id).neighborhood('node').filter(x=>old.has(x.id())).map(x=>x.id())[0];const p=own&&old.get(own);if(p&&p.x!=null){n.x=p.x+(Math.random()-.5)*30;n.y=p.y+(Math.random()-.5)*30;n.z=p.z+(Math.random()-.5)*30}}
+    if(!o){const own=d.owner||cy.$id(d.id).neighborhood('node').filter(x=>old.has(x.id())).map(x=>x.id())[0];const p=own&&old.get(own);if(p&&p.x!=null){const a=Math.random()*6.283,b=Math.random()*3.1416;n.x=p.x+40*Math.sin(b)*Math.cos(a);n.y=p.y+40*Math.sin(b)*Math.sin(a);n.z=p.z+40*Math.cos(b)}}
     return n});
   if(kept<nodes.length*.5)fitPending=true;
   const links=cy.edges().map(e=>({id:e.id(),source:e.data('source'),target:e.data('target'),label:e.data('label'),agg:e.data('agg'),w:e.data('w')||1,q:edgeQ(e.data())}));
