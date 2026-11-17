@@ -281,7 +281,7 @@ function style(){return [
   {selector:'.faded',style:{'opacity':.12}},
   {selector:'node.sel',style:{'border-width':()=>2.5/Z,'border-color':css('--accent'),'border-style':'solid','font-weight':600,'z-index':10}},
   {selector:'edge.hl',style:{'line-color':css('--accent'),'opacity':1,'label':'data(label)','z-index':9}},
-  {selector:'node.nolabel',style:{'text-opacity':.75}},
+  {selector:'node.nolabel',style:{'text-opacity':.25}},
   {selector:'node.new',style:{'border-width':()=>1.5/Z,'border-color':css('--accent')}}
 ]}
 const cy=cytoscape({container:document.getElementById('cy'),style:style(),wheelSensitivity:.25,minZoom:.15,maxZoom:6});
@@ -554,7 +554,7 @@ function pulseLinks(){const ls=g3.graphData().links.filter(l=>l.__lineObj&&st(l.
     const mm=measure(n.label,strong?12:11,strong);
     items.push({id:n.id,x:s.x,y:s.y,w:mm.w,h:mm.h,dot:is,pri:(sel?1e12:0)+1e6/(-zc)+e.degree()*1e-3})});
   const show=placeLabels(items);
-  items.forEach(it=>{const d=tags.get(it.id);d.style.display='';d.style.opacity=show.has(it.id)?1:.75});
+  items.forEach(it=>{const d=tags.get(it.id);d.style.display='';d.style.opacity=show.has(it.id)?1:.25});
 })();
 addEventListener('resize',()=>g3.width(innerWidth).height(innerHeight));
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{g3.backgroundColor(css('--bg'));refresh3d()});
