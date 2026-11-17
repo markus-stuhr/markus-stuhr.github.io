@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script defer src="/analytics.js"></script>
+<title>Nordlicht Knowledge Graph at Scale</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: header, toolbar with search and questions, canvas left with breadcrumb, detail column right; stacked on phones */
+:root{
+  --bg:#f4f6f8;--panel:#ffffff;--fg:#17202a;--muted:#5b6673;--line:#dde2e8;--accent:#1f6f8b;--accent-bg:#e3f0f5;--warn:#b5571c;--warn-bg:#fbeee3;
+  --c-u:#3d5a80;--c-i:#a35d86;--c-p:#4766d1;--c-t:#7d8794;--c-j:#16906c;--c-s:#d07a22;--c-k:#c0436f;--c-d:#8a7650;--c-m:#9aa4b0;--edge:#b9c2cc;
+  --display:"Space Grotesk",system-ui,sans-serif;--body:"Inter",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11161c;--panel:#18202a;--fg:#e6ebf0;--muted:#98a4b1;--line:#2a3440;--accent:#5fb3cf;--accent-bg:#17303a;--warn:#f0a06a;--warn-bg:#3a2518;
+  --c-u:#7ea3d4;--c-i:#d692bb;--c-p:#7d95ec;--c-t:#9aa4b0;--c-j:#3fc496;--c-s:#eda05a;--c-k:#e47aa0;--c-d:#c2ad84;--c-m:#56616d;--edge:#3b4754;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11161c;--panel:#18202a;--fg:#e6ebf0;--muted:#98a4b1;--line:#2a3440;--accent:#5fb3cf;--accent-bg:#17303a;--warn:#f0a06a;--warn-bg:#3a2518;
+  --c-u:#7ea3d4;--c-i:#d692bb;--c-p:#7d95ec;--c-t:#9aa4b0;--c-j:#3fc496;--c-s:#eda05a;--c-k:#e47aa0;--c-d:#c2ad84;--c-m:#56616d;--edge:#3b4754;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-size:14px;line-height:1.5;padding-block:20px 32px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1320px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
+h1{font-family:var(--display);font-weight:600;font-size:26px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;max-width:70ch}
+.sub a,.back{color:var(--accent)}
+.badge{font-size:12px;padding:3px 10px;border-radius:99px;background:var(--warn-bg);color:var(--warn);font-weight:500;white-space:nowrap}
+.bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+input[type=search],input[type=text]{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg);width:210px;max-width:100%}
+.btn{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:8px;padding:7px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.grp-in{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.lab{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+label.tg{display:inline-flex;gap:6px;align-items:center;font-size:13px;color:var(--muted);cursor:pointer}
+input[type=range]{width:110px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:16px}
+@media (max-width:900px){.main{grid-template-columns:minmax(0,1fr)}}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:12px;position:relative;min-width:0;display:flex;flex-direction:column}
+.crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px}
+.crumbs span.c{color:var(--accent);cursor:pointer}
+.crumbs span.c:last-child{color:var(--fg);cursor:default;font-weight:500}
+.crumbs .sep{color:var(--muted)}
+#cy{height:min(70vh,700px);min-height:420px}
+.foot{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.foot .warn{color:var(--warn);font-weight:500}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0;max-height:calc(min(70vh,700px) + 90px);overflow:auto}
+@media (max-width:900px){aside{max-height:none}}
+aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2px;text-wrap:balance}
+.type{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.meta{color:var(--muted);margin:4px 0 10px}
+.g{margin:14px 0 0}
+.g h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:500;margin:0 0 4px;display:flex;justify-content:space-between}
+.row{display:flex;justify-content:space-between;gap:8px;align-items:baseline;padding:5px 8px;border-radius:8px;cursor:pointer}
+.row:hover{background:var(--bg)}
+.row .n{display:flex;gap:8px;align-items:center;min-width:0}
+.row .n i{width:8px;height:8px;border-radius:50%;flex:none;background:var(--c)}
+.row .n span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .m{font-size:12px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.low{color:var(--warn)}
+.more{font:inherit;font-size:12px;background:none;border:none;color:var(--accent);cursor:pointer;padding:4px 8px}
+.answer{background:var(--accent-bg);border-radius:10px;padding:12px;margin:0 0 12px}
+.answer p{margin:0 0 6px}
+.answer .row:hover{background:var(--panel)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.left{display:inline-block;font-size:11px;background:var(--warn-bg);color:var(--warn);border-radius:99px;padding:1px 8px;margin-left:6px;vertical-align:2px;font-family:var(--body);font-weight:500}
+.tips{margin:8px 0 0;padding-left:18px;color:var(--muted)}
+.tips li{margin:3px 0}
+.err{color:var(--warn);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Nordlicht Knowledge Graph at Scale</h1>
+      <p class="sub">The same idea for a company with 420 employees and 380 projects. Nobody sees the whole graph at once: you start from an overview or a search, drill down and expand only what you need. <a href="../">Back to the small demo</a></p>
+    </div>
+    <span class="badge">Generated sample data</span>
+  </header>
+
+  <div class="bar">
+    <div class="grp-in"><input type="search" id="search" list="all" placeholder="Search people, projects, customers …" aria-label="Search the graph"><button class="btn" id="go">Open</button></div>
+    <div class="grp-in"><span class="lab">Experts for</span><input type="text" id="sys" list="systems" placeholder="Kafka" aria-label="System or skill"><button class="btn" id="goSys">Rank</button></div>
+    <div class="grp-in"><span class="lab">Path</span><input type="text" id="pa" list="all" placeholder="From" aria-label="Path start"><input type="text" id="pb" list="all" placeholder="To" aria-label="Path end"><button class="btn" id="goPath">Find</button></div>
+    <button class="btn" id="silos">Knowledge silos</button>
+    <span class="err" id="err" aria-live="polite"></span>
+  </div>
+  <div class="bar">
+    <label class="tg"><input type="checkbox" id="recent"> Only the last 12 months</label>
+    <label class="tg" for="conf">Min. AI confidence <input type="range" id="conf" min="0" max="90" step="10" value="50"> <b id="confOut">50%</b></label>
+    <label class="tg" for="k">Neighbors per expand <input type="range" id="k" min="3" max="20" step="1" value="8"> <b id="kOut">8</b></label>
+  </div>
+  <datalist id="all"></datalist><datalist id="systems"></datalist>
+
+  <div class="main">
+    <div class="stage">
+      <div class="crumbs" id="crumbs"></div>
+      <div id="cy"></div>
+      <div class="foot"><span id="count"></span><span id="hint">Click a bubble to drill down</span></div>
+    </div>
+    <aside id="panel" aria-live="polite"></aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<script>
+/* ---------- seeded data generator ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=mulberry32(20261117),pick=a=>a[Math.floor(R()*a.length)],int=(a,b)=>a+Math.floor(R()*(b-a+1));
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(R()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a};
+const NOW=new Date(2026,10,17),YEAR_AGO=new Date(2025,10,17);
+const fmt=d=>d.toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+
+const TYPES={u:['Department','Departments'],t:['Team','Teams'],p:['Person','People'],j:['Project','Projects'],k:['Customer','Customers'],s:['System','Systems'],d:['Document','Documents'],i:['Industry','Industries'],m:['More','More']};
+const REL={in:['works in','Members','HR system'],part:['part of','Teams','HR system'],on:['works on','Contributors','Jira'],lead:['leads','Led by','Jira'],for:['for customer','Projects','CRM'],acct:['manages account','Account manager','CRM'],use:['uses','Used in','Git repos'],exp:['expert in','Experts','AI extraction'],by:['wrote','Author','Confluence'],about:['describes','Documented in','AI extraction']};
+
+const AREAS={
+  cloud:['Kubernetes','AWS','Azure','GCP','Terraform','Docker','Helm','ArgoCD'],
+  data:['Python','Spark','Kafka','Airflow','dbt','Snowflake','Databricks','Power BI','Tableau','PostgreSQL','MongoDB','Elasticsearch'],
+  ai:['LLM Platform','PyTorch','MLflow','LangChain','Vector DB','Neo4j'],
+  web:['React','Vue','Angular','TypeScript','Node.js','Next.js','GraphQL'],
+  mobile:['Flutter','Swift','Kotlin','React Native'],
+  sap:['SAP S/4HANA','SAP BTP','ABAP','SAP Fiori'],
+  crm:['Salesforce','HubSpot','Dynamics 365'],
+  sec:['Keycloak','Okta','HashiCorp Vault','SIEM'],
+  java:['Java','Spring Boot','.NET','Go'],
+  qa:['Selenium','Playwright','Cypress','JMeter'],
+  design:['Figma','Design Tokens'],
+  legacy:['COBOL','IBM MQ','Oracle Forms','Delphi','SAP PI/PO']};
+const DEPTS=[
+  ['plat','Platform Engineering',52,['cloud','java']],['data','Data & AI',58,['data','ai']],['web','Web & Mobile',60,['web','mobile','java']],
+  ['sapc','SAP Consulting',38,['sap']],['mgmt','Management Consulting',34,['crm','data']],['sec','Security',22,['sec','cloud']],
+  ['ux','UX & Design',26,['design','web']],['qa','Quality Assurance',28,['qa','web']],['sales','Sales',30,['crm']],
+  ['cs','Customer Success',24,['crm']],['fin','Finance & Admin',14,[]],['ppl','People & Compliance',14,[]]];
+const OFFICES=['Hamburg','Berlin','Munich','Cologne','Leipzig'];
+const FIRST=['Anna','Ben','Clara','Deniz','Elif','Felix','Greta','Hannes','Ines','Jonas','Kim','Lars','Mara','Nils','Olga','Paul','Rosa','Sven','Tara','Uwe','Vera','Yusuf','Zoe','Max','Lea','Tim','Mia','Jan','Lina','Tom','Sara','Erik','Nora','Finn','Emma','Luca','Ida','Noah','Pia','Ole','Jana','Moritz','Hanna','Leon','Marie','David','Laura','Malte','Sophie','Aylin','Mehmet','Katarina','Piotr','Ana','Ravi','Mei','Omar','Lucia','Tobias','Frieda'];
+const LAST=['Keller','Schulz','Wendt','Aydın','Şahin','Brandt','Hoffmann','Vogel','Lorenz','Peters','Nguyen','Becker','Fischer','Hartmann','Petrova','Richter','Klein','Möller','Jansen','Krause','Engel','Demir','Wagner','Neumann','Schmidt','Meyer','Weber','Wolf','Schröder','Koch','Bauer','Lange','Schmitt','Werner','Krüger','Lehmann','Köhler','Kaiser','Fuchs','Scholz','Berger','Kowalski','Novak','Rossi','Garcia','Kumar','Chen','Haddad','Svensson','Jensen'];
+const IND=[['Logistics','Logistics'],['Bank','Finance'],['Energy','Energy'],['Insurance','Insurance'],['Health','Healthcare'],['Retail','Retail'],['Motors','Automotive'],['Aerospace','Aerospace'],['Telecom','Telecom'],['Foods','Food'],['Pharma','Healthcare'],['Utilities','Energy'],['Freight','Logistics'],['Capital','Finance']];
+const PREF=['Hafen','Nord','Alpen','Rhein','Elb','Spree','Isar','Main','Weser','Ostsee','Hanse','Berg','Sonnen','Stern','Falken','Linden','Eichen','Kristall','Blau','Grün','Wald','Fels','Mühlen','Ufer','Brücken','Turm','Kranich','Möwen','Leucht','Anker'];
+const KINDS=[['Cloud Migration','cloud'],['Data Platform','data'],['AI Assistant','ai'],['Customer Portal','web'],['Mobile App','mobile'],['S/4HANA Rollout','sap'],['CRM Rollout','crm'],['IAM Modernization','sec'],['Test Automation','qa'],['Design System','design'],['Analytics Dashboard','data'],['API Platform','java'],['Predictive Maintenance','ai'],['E-Commerce Relaunch','web'],['Data Mesh','data'],['Platform Rebuild','cloud'],['Self-Service Portal','web'],['Document AI','ai'],['Legacy Maintenance','legacy']];
+const DOCKINDS=['Architecture','Lessons Learned','Runbook','Proposal','Concept','Test Plan','Handover'];
+
+const NODES=new Map(),EDGES=[],ADJ=new Map(),BYLABEL=new Map();
+function N(id,t,label,x={}){const n=Object.assign({id,t,label},x);NODES.set(id,n);ADJ.set(id,[]);BYLABEL.set(label.toLowerCase(),id);return n}
+function E(s,t,r,x={}){const i=EDGES.length;EDGES.push(Object.assign({i,s,t,r,conf:1},x));ADJ.get(s).push(i);ADJ.get(t).push(i)}
+
+const systemsByArea={};Object.entries(AREAS).forEach(([a,l])=>{systemsByArea[a]=l.map(name=>{const id='s:'+name.toLowerCase().replace(/[^a-z0-9]+/g,'-');N(id,'s',name,{area:a});return id})});
+const teamsByDept={},peopleByDept={},peopleByArea={};
+DEPTS.forEach(([did,name,size,areas])=>{
+  N('u:'+did,'u',name,{areas});peopleByDept[did]=[];
+  const nT=Math.max(2,Math.round(size/13));teamsByDept[did]=shuffle(OFFICES).slice(0,nT).map(o=>{const id=`t:${did}-${o.toLowerCase()}`;N(id,'t',`${name} · ${o}`,{dept:did});E(id,'u:'+did,'part');return id});
+});
+const usedNames=new Set();
+DEPTS.forEach(([did,name,size,areas])=>{for(let i=0;i<size;i++){let nm;do{nm=pick(FIRST)+' '+pick(LAST)}while(usedNames.has(nm));usedNames.add(nm);
+  const id='p:'+usedNames.size,team=pick(teamsByDept[did]);
+  const left=R()<.06?new Date(2025,int(0,20),int(1,28)):null;
+  const senior=R();const role=did==='sales'||did==='cs'?(senior>.8?'Head of '+name:'Account Manager'):senior>.85?'Principal':senior>.6?'Senior':senior>.25?'Consultant':'Junior';
+  N(id,'p',nm,{dept:did,team,role,left});E(id,team,'in',{date:new Date(2020+int(0,6),int(0,11),1)});peopleByDept[did].push(id);
+  areas.forEach(a=>(peopleByArea[a]=peopleByArea[a]||[]).push(id))}});
+peopleByArea.legacy=shuffle(peopleByDept.plat.concat(peopleByDept.sapc)).slice(0,8);
+const custs=[];const usedC=new Set();
+while(custs.length<70){const [suf,ind]=pick(IND);const nm=pick(PREF)+(R()<.5?'':pick(['werk','haus','feld','tal','land']))+' '+suf;if(usedC.has(nm))continue;usedC.add(nm);const id='k:'+custs.length;N(id,'k',nm,{ind});custs.push(id)}
+const IND_LIST=[...new Set(custs.map(c=>NODES.get(c).ind))];
+const am=peopleByDept.sales.concat(peopleByDept.cs);custs.forEach(c=>E(pick(am),c,'acct'));
+const usedP=new Set();const projects=[];
+for(let i=0;i<380;i++){
+  const internal=R()<.1,cust=internal?null:pick(custs),[kind,area]=pick(KINDS);
+  let label=(internal?'Internal':NODES.get(cust).label.split(' ')[0])+' '+kind;let n=2;while(usedP.has(label))label=label.replace(/ \d+$/,'')+' '+n++;usedP.add(label);
+  const start=new Date(2021+int(0,5),int(0,11),1),end=new Date(start.getTime()+int(3,24)*30*864e5);
+  const id='j:'+i;N(id,'j',label,{area,start,end,active:end>NOW,internal});projects.push(id);
+  if(cust)E(id,cust,'for',{date:start});
+  const legacy=area==='legacy';
+  const sys=[],want=legacy?1:Math.min(int(2,4),AREAS[area].length);
+  while(sys.length<want){const s=systemsByArea[area][Math.floor(AREAS[area].length*R()**2.4)];if(!sys.includes(s))sys.push(s)}
+  const extra=pick(['cloud','java','data','web','qa','sec']);if(!legacy&&extra!==area)sys.push(pick(systemsByArea[extra]));
+  sys.forEach(s=>E(id,s,'use',{date:start}));
+  const pool=(peopleByArea[area]||[]).filter(p=>{const L=NODES.get(p).left;return !L||L>start});
+  const team=shuffle(pool).slice(0,legacy?int(1,2):int(3,8));
+  if(!legacy&&R()<.5&&peopleByArea.qa)team.push(pick(peopleByArea.qa));if(!legacy&&R()<.35)team.push(pick(peopleByDept.ux));if(!legacy&&R()<.3)team.push(pick(peopleByArea[extra]||pool));
+  const uniq=[...new Set(team)];if(!uniq.length)continue;
+  uniq.forEach((p,k)=>E(p,id,k===0?'lead':'on',{date:end>NOW?NOW:end}));
+  NODES.get(id).members=uniq;NODES.get(id).systems=sys;
+  if(R()<.65){const nd=int(1,2);for(let d=0;d<nd;d++){const dk=pick(DOCKINDS);const did='d:'+i+'-'+d;const dl=label+' – '+dk;if(BYLABEL.has(dl.toLowerCase()))continue;
+    N(did,'d',dl);E(pick(uniq),did,'by',{date:end>NOW?NOW:end});E(did,id,'about',{conf:+(.7+R()*.29).toFixed(2),date:end>NOW?NOW:end});if(R()<.4)E(did,pick(sys),'about',{conf:+(.45+R()*.5).toFixed(2),date:end>NOW?NOW:end})}}
+}
+/* expertise derived from project history, as an LLM would extract it from Jira, Confluence and Git */
+const pSys=new Map();projects.forEach(j=>{const P=NODES.get(j);(P.members||[]).forEach(p=>{const m=pSys.get(p)||new Map();P.systems.forEach(s=>{const o=m.get(s)||{n:0,last:new Date(0)};o.n++;if(P.end>o.last)o.last=P.end>NOW?NOW:P.end;m.set(s,o)});pSys.set(p,m)})});
+pSys.forEach((m,p)=>m.forEach((o,s)=>{const conf=Math.min(.97,.38+.16*o.n+R()*.12);if(conf<.5&&R()>.35)return;E(p,s,'exp',{conf:+conf.toFixed(2),date:o.last,n:o.n})}));
+EDGES.forEach(e=>{if(!e.date)e.date=new Date(2024,0,1)});
+const deg=id=>ADJ.get(id).length;
+const TOTAL_N=[...NODES.values()].length,TOTAL_E=EDGES.length;
+
+/* ---------- filters ---------- */
+const F={recent:false,minConf:.5,k:8};
+const nodeOk=n=>!(F.recent&&n.t==='j'&&n.end<YEAR_AGO);
+function edgeOk(e){if(REL[e.r][2]==='AI extraction'&&e.conf<F.minConf)return false;
+  if(F.recent){if(e.date<YEAR_AGO&&(e.r==='on'||e.r==='lead'||e.r==='exp'))return false;if(!nodeOk(NODES.get(e.s))||!nodeOk(NODES.get(e.t)))return false}return true}
+const other=(e,id)=>e.s===id?e.t:e.s;
+function score(e,id){const o=NODES.get(other(e,id));let s=e.conf;if(o.t==='j')s*=o.active?2:Math.max(.2,1-(NOW-o.end)/(4*365*864e5));if(e.r==='lead')s+=.6;if(e.n)s+=e.n*.15;if(o.left)s*=.4;return s+deg(o.id)*.001}
+function groups(id){const g=new Map();ADJ.get(id).forEach(i=>{const e=EDGES[i];if(!edgeOk(e))return;const out=e.s===id;const key=e.r+(out?'>':'<');
+  if(!g.has(key))g.set(key,{key,label:REL[e.r][out?0:1],items:[]});g.get(key).items.push(e)});
+  g.forEach(v=>v.items.sort((a,b)=>score(b,id)-score(a,id)));return [...g.values()].sort((a,b)=>a.items.length-b.items.length)}
+
+/* ---------- rendering ---------- */
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const SIZE={u:44,i:40,t:30,p:20,j:24,s:22,k:26,d:14,m:18};
+const SHAPE={u:'round-rectangle',i:'round-octagon',t:'round-rectangle',p:'ellipse',j:'hexagon',s:'diamond',k:'round-octagon',d:'rectangle',m:'round-rectangle'};
+function style(){return [
+  {selector:'node',style:{'background-color':e=>css('--c-'+e.data('t')),'shape':e=>SHAPE[e.data('t')],'label':'data(label)','font-family':'Inter, system-ui, sans-serif','font-size':10,'color':css('--fg'),
+    'text-valign':'bottom','text-margin-y':4,'text-outline-color':css('--panel'),'text-outline-width':2,'text-wrap':'wrap','text-max-width':140,'min-zoomed-font-size':6,
+    'width':e=>e.data('size')||SIZE[e.data('t')],'height':e=>e.data('size')||SIZE[e.data('t')]}},
+  {selector:'node[?agg]',style:{'text-valign':'center','text-margin-y':0,'font-weight':600,'font-size':11,'color':css('--panel'),'text-outline-width':0,'text-max-width':e=>(e.data('size')||40)*0.95}},
+  {selector:'node[t="m"]',style:{'label':'data(label)','shape':'round-rectangle','width':'label','height':20,'padding':6,'text-valign':'center','text-margin-y':0,'color':css('--fg'),'background-color':css('--line'),'text-outline-width':0,'font-size':10}},
+  {selector:'node[?left]',style:{'border-width':3,'border-color':css('--warn'),'border-style':'dashed','background-opacity':.5}},
+  {selector:'edge',style:{'width':e=>e.data('w')||1.2,'line-color':css('--edge'),'curve-style':'bezier','opacity':.85,'font-size':9,'color':css('--muted'),'text-rotation':'autorotate','text-outline-color':css('--panel'),'text-outline-width':2}},
+  {selector:'edge[?agg]',style:{'label':'data(label)','opacity':.7}},
+  {selector:'edge[?dash]',style:{'line-style':'dashed'}},
+  {selector:'edge[conf < 0.7]',style:{'line-style':'dashed'}},
+  {selector:'.faded',style:{'opacity':.12}},
+  {selector:'node.sel',style:{'border-width':4,'border-color':css('--accent'),'border-style':'solid','font-weight':600,'z-index':10}},
+  {selector:'edge.hl',style:{'line-color':css('--accent'),'width':2.4,'opacity':1,'label':'data(label)','z-index':9}},
+  {selector:'node.new',style:{'border-width':2,'border-color':css('--accent')}}
+]}
+const cy=cytoscape({container:document.getElementById('cy'),style:style(),wheelSensitivity:.25,minZoom:.15,maxZoom:3});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>cy.style(style()));
+new MutationObserver(()=>cy.style(style())).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+const panel=document.getElementById('panel'),crumbsEl=document.getElementById('crumbs'),countEl=document.getElementById('count'),hintEl=document.getElementById('hint');
+const ACT={};let mode='overview',crumbs=[];
+const dot=t=>`style="--c:var(--c-${t})"`;
+const pct=c=>Math.round(c*100)+'%';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function setCrumbs(list){crumbs=list;crumbsEl.innerHTML=list.map((c,i)=>`<span class="c" data-c="${i}">${esc(c.label)}</span>`).join('<span class="sep">›</span>')}
+crumbsEl.addEventListener('click',e=>{const c=e.target.closest('[data-c]');if(!c)return;const i=+c.dataset.c;if(i<crumbs.length-1)crumbs[i].fn()});
+function updateCount(){const v=cy.nodes().filter(n=>n.data('t')!=='m'&&!n.data('agg')).length;
+  if(mode==='explore'||mode==='set')countEl.innerHTML=`Showing ${v} of ${TOTAL_N.toLocaleString('en')} nodes`+(v>120?' · <span class="warn">getting crowded: hide nodes or raise the filters</span>':'');
+  else countEl.textContent=`Overview of ${TOTAL_N.toLocaleString('en')} nodes and ${TOTAL_E.toLocaleString('en')} connections`}
+function runLayout(incremental){
+  const opts={name:'cose',animate:incremental,animationDuration:450,randomize:!incremental,fit:true,padding:30,nodeRepulsion:()=>incremental?9000:14000,idealEdgeLength:e=>e.data('agg')?140:80,edgeElasticity:()=>80,gravity:.4,numIter:incremental?700:1500,nodeDimensionsIncludeLabels:true};
+  cy.layout(opts).run();updateCount()}
+
+/* ---------- level 1: company overview ---------- */
+const projDepts=new Map(projects.map(j=>[j,new Set((NODES.get(j).members||[]).map(p=>NODES.get(p).dept))]));
+const projInd=j=>{const e=ADJ.get(j).map(i=>EDGES[i]).find(e=>e.r==='for');return e?NODES.get(e.t).ind:null};
+const activeProjects=()=>projects.filter(j=>nodeOk(NODES.get(j)));
+function addAgg(id,t,label,size,fn){cy.add({data:{id,t,label,agg:1,size}});ACT[id]=fn}
+function addAggEdge(a,b,w,label,dash){cy.add({data:{id:a+'~'+b,source:a,target:b,agg:1,w:Math.min(1+Math.sqrt(w)*.9,9),label,dash:dash?1:0}})}
+function showOverview(){
+  mode='overview';cy.elements().remove();setCrumbs([{label:'Nordlicht Software',fn:showOverview}]);hintEl.textContent='Click a bubble to drill down';
+  const di=new Map(),dd=new Map();
+  activeProjects().forEach(j=>{const ind=projInd(j)||'Internal';const ds=[...projDepts.get(j)];ds.forEach(d=>{const k=d+'|'+ind;di.set(k,(di.get(k)||0)+1)});
+    ds.forEach(a=>ds.forEach(b=>{if(a<b){const k=a+'|'+b;dd.set(k,(dd.get(k)||0)+1)}}))});
+  DEPTS.forEach(([d,name])=>{const n=peopleByDept[d].filter(p=>!NODES.get(p).left).length;addAgg('ov:u:'+d,'u',`${name}\n${n} people`,34+Math.sqrt(n)*7,()=>drillDept(d))});
+  [...IND_LIST,'Internal'].forEach(ind=>{const c=ind==='Internal'?0:custs.filter(k=>NODES.get(k).ind===ind).length;const pj=activeProjects().filter(j=>(projInd(j)||'Internal')===ind).length;
+    addAgg('ov:i:'+ind,'i',`${ind}\n${pj} projects`,30+Math.sqrt(pj)*5,()=>drillIndustry(ind))});
+  DEPTS.forEach(([d])=>{[...di].filter(([k])=>k.startsWith(d+'|')).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(([k,w])=>addAggEdge('ov:u:'+d,'ov:i:'+k.split('|')[1],w,w+' projects'));
+    [...dd].filter(([k])=>k.split('|').includes(d)).sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([k,w])=>{const [a,b]=k.split('|');if(!cy.$id('ov:u:'+a+'~ov:u:'+b).length)addAggEdge('ov:u:'+a,'ov:u:'+b,w,w+' shared',true)})});
+  runLayout(false);home();
+}
+/* ---------- level 2: department or industry ---------- */
+function drillDept(d){
+  mode='drill';cy.elements().remove();const dn=NODES.get('u:'+d);setCrumbs([{label:'Nordlicht Software',fn:showOverview},{label:dn.label,fn:()=>drillDept(d)}]);hintEl.textContent='Click a team, system or industry to open it';
+  const sysCount=new Map(),teamSys=new Map(),teamInd=new Map();
+  peopleByDept[d].forEach(p=>{const P=NODES.get(p);if(P.left)return;ADJ.get(p).forEach(i=>{const e=EDGES[i];if(!edgeOk(e))return;
+    if(e.r==='exp'&&e.conf>=.7){sysCount.set(e.t,(sysCount.get(e.t)||0)+1);const k=P.team+'|'+e.t;teamSys.set(k,(teamSys.get(k)||0)+1)}
+    if((e.r==='on'||e.r==='lead')&&nodeOk(NODES.get(e.t))){const ind=projInd(e.t)||'Internal';const k=P.team+'|'+ind;teamInd.set(k,(teamInd.get(k)||0)+1)}})});
+  teamsByDept[d].forEach(t=>{const n=ADJ.get(t).filter(i=>EDGES[i].r==='in'&&!NODES.get(EDGES[i].s).left).length;addAgg('dr:'+t,'t',`${NODES.get(t).label.split(' · ')[1]}\n${n} people`,30+Math.sqrt(n)*7,()=>startExplore(t))});
+  const topSys=[...sysCount].sort((a,b)=>b[1]-a[1]).slice(0,8);
+  topSys.forEach(([s,n])=>{cy.add({data:{id:'dr:'+s,t:'s',label:`${NODES.get(s).label} · ${n}`}});ACT['dr:'+s]=()=>startExplore(s)});
+  teamsByDept[d].forEach(t=>{topSys.forEach(([s])=>{const w=teamSys.get(t+'|'+s);if(w)addAggEdge('dr:'+t,'dr:'+s,w,w+' experts')});
+    [...teamInd].filter(([k])=>k.startsWith(t+'|')).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(([k,w])=>{const ind=k.split('|')[1];const id='dr:i:'+ind;
+      if(!cy.$id(id).length)addAgg(id,'i',ind,40,()=>drillIndustry(ind));addAggEdge('dr:'+t,id,w,w+' assignments',true)})});
+  runLayout(false);
+  panel.innerHTML=`<div class="type">Department</div><h2>${esc(dn.label)}</h2><p class="meta">${peopleByDept[d].filter(p=>!NODES.get(p).left).length} people in ${teamsByDept[d].length} offices</p>
+  <div class="g"><h3>Strongest skills <span>experts ≥ 70%</span></h3>${topSys.map(([s,n])=>row(s,n+' experts')).join('')}</div>
+  <div class="actions"><button class="btn" data-open="u:${d}">Open as node</button></div>`;
+}
+function drillIndustry(ind){
+  mode='drill';cy.elements().remove();setCrumbs([{label:'Nordlicht Software',fn:showOverview},{label:ind,fn:()=>drillIndustry(ind)}]);hintEl.textContent='Click a customer to open it';
+  const cs=ind==='Internal'?[]:custs.filter(k=>NODES.get(k).ind===ind);const dw=new Map();
+  if(ind==='Internal'){const ip=activeProjects().filter(j=>NODES.get(j).internal);setCrumbs([{label:'Nordlicht Software',fn:showOverview},{label:'Internal projects',fn:()=>drillIndustry(ind)}]);return showSet(ip,null,'Internal projects')}
+  cs.forEach(k=>{const pj=ADJ.get(k).map(i=>EDGES[i]).filter(e=>e.r==='for'&&nodeOk(NODES.get(e.s))).map(e=>e.s);
+    addAgg('dr:'+k,'k',`${NODES.get(k).label}\n${pj.length} projects`,26+Math.sqrt(pj.length)*8,()=>startExplore(k));
+    pj.forEach(j=>projDepts.get(j).forEach(d=>{const key=k+'|'+d;dw.set(key,(dw.get(key)||0)+1)}))});
+  cs.forEach(k=>[...dw].filter(([x])=>x.startsWith(k+'|')).sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([x,w])=>{const d=x.split('|')[1];const id='dr:u:'+d;
+    if(!cy.$id(id).length)addAgg(id,'u',NODES.get('u:'+d).label,44,()=>drillDept(d));addAggEdge('dr:'+k,id,w,w+' projects')}));
+  runLayout(false);
+  panel.innerHTML=`<div class="type">Industry</div><h2>${esc(ind)}</h2><p class="meta">${cs.length} customers. Click one to see projects, people and documents.</p>
+  <div class="g"><h3>Customers</h3>${cs.map(k=>row(k,ADJ.get(k).filter(i=>EDGES[i].r==='for').length+' projects')).join('')}</div>`;
+}
+
+/* ---------- level 3: explore (ego network with expand) ---------- */
+const shown=new Map();
+function addNode(id,near){if(cy.$id(id).length)return false;const n=NODES.get(id);
+  const p=near&&cy.$id(near).length?cy.$id(near).position():{x:0,y:0};
+  cy.add({data:{id,t:n.t,label:n.label,left:n.left?1:0},position:{x:p.x+(R()-.5)*160,y:p.y+(R()-.5)*160}});return true}
+function addEdge(e){if(cy.$id('e'+e.i).length||!cy.$id(e.s).length||!cy.$id(e.t).length)return;cy.add({data:{id:'e'+e.i,source:e.s,target:e.t,label:REL[e.r][0],conf:e.conf}})}
+function connectAll(){cy.nodes().forEach(n=>{if(!NODES.has(n.id()))return;ADJ.get(n.id()).forEach(i=>{const e=EDGES[i];if(edgeOk(e))addEdge(e)})})}
+function expand(id,key){
+  const gs=groups(id).filter(g=>!key||g.key===key);cy.nodes('.new').removeClass('new');
+  gs.forEach(g=>{const sk=id+'|'+g.key;let start=shown.get(sk)||0;const slice=g.items.slice(start,start+F.k);
+    slice.forEach(e=>{const o=other(e,id);if(addNode(o,id))cy.$id(o).addClass('new');addEdge(e)});start+=slice.length;shown.set(sk,start);
+    const mid='m:'+sk;cy.$id(mid).remove();const rest=g.items.length-start;
+    if(rest>0){cy.add({data:{id:mid,t:'m',label:`+${rest} · ${g.label.toLowerCase()}`,owner:id,key:g.key},position:cy.$id(id).position()});cy.add({data:{id:mid+'~',source:id,target:mid}})}});
+  connectAll();runLayout(true);
+}
+function startExplore(id){
+  mode='explore';cy.elements().remove();shown.clear();const n=NODES.get(id);
+  setCrumbs([{label:'Nordlicht Software',fn:showOverview},...(n.dept&&n.t!=='u'?[{label:NODES.get('u:'+n.dept).label,fn:()=>drillDept(n.dept)}]:[]),{label:n.label,fn:()=>startExplore(id)}]);
+  hintEl.textContent='Click selects · double-click or “+” bubble expands';
+  addNode(id);expand(id);select(id);
+}
+function showSet(ids,focus,title,edgeFilter){
+  mode='set';cy.elements().remove();shown.clear();ids.forEach(i=>addNode(i));
+  cy.nodes().forEach(n=>ADJ.get(n.id()).forEach(i=>{const e=EDGES[i];if(edgeOk(e)&&(!edgeFilter||edgeFilter(e)))addEdge(e)}));
+  if(crumbs.length<2||title)setCrumbs([{label:'Nordlicht Software',fn:showOverview},{label:title||'Result',fn:()=>showSet(ids,focus,title,edgeFilter)}]);
+  hintEl.textContent='Click selects · double-click expands';runLayout(false);if(focus)cy.$id(focus).addClass('sel');
+}
+function select(id){cy.nodes().removeClass('sel');cy.edges().removeClass('hl');const n=cy.$id(id);if(n.length){n.addClass('sel');n.connectedEdges().addClass('hl')}panel.innerHTML=detail(id)}
+function reveal(id,from){
+  if(mode!=='explore'){startExplore(id);return}
+  if(!cy.$id(id).length){addNode(id,from&&cy.$id(from).length?from:null);cy.$id(id).addClass('new');connectAll();runLayout(true)}
+  select(id);cy.animate({center:{eles:cy.$id(id)},duration:300});
+}
+
+/* ---------- detail panel ---------- */
+function row(id,m,cls){const n=NODES.get(id);return `<div class="row" data-open="${id}"><span class="n"><i ${dot(n.t)}></i><span>${esc(n.label)}</span>${n.left?'<span class="left">left</span>':''}</span><span class="m ${cls||''}">${m||''}</span></div>`}
+function edgeMeta(e,id){const o=NODES.get(other(e,id));const bits=[];if(REL[e.r][2]==='AI extraction')bits.push(`<span class="${e.conf<.7?'low':''}">${pct(e.conf)}</span>`);
+  if(o.t==='j')bits.push(o.active?'active':'ended '+fmt(o.end));else if(e.r==='exp')bits.push(e.n+' proj.');return bits.join(' · ')}
+const openGroups=new Set();
+function detail(id){const n=NODES.get(id);
+  const meta=[];if(n.role)meta.push(n.role);if(n.team)meta.push(NODES.get(n.team).label);if(n.ind)meta.push(n.ind);
+  if(n.t==='j'){meta.push((n.internal?'Internal':'Customer')+' project');meta.push(fmt(n.start)+' – '+(n.active?'today':fmt(n.end)))}
+  meta.push(deg(id)+' connections in total');
+  let h=`<div class="type">${TYPES[n.t][0]}</div><h2>${esc(n.label)}${n.left?`<span class="left">left ${fmt(n.left)}</span>`:''}</h2><p class="meta">${meta.map(esc).join(' · ')}</p>`;
+  groups(id).forEach(g=>{const open=openGroups.has(id+g.key);const list=open?g.items.slice(0,200):g.items.slice(0,6);
+    h+=`<div class="g"><h3>${esc(g.label)} <span>${g.items.length}</span></h3>${list.map(e=>row(other(e,id),edgeMeta(e,id))).join('')}
+    ${g.items.length>6?`<button class="more" data-tog="${id}|${g.key}">${open?'Show fewer':'Show all '+g.items.length}</button>`:''}</div>`});
+  h+=`<div class="actions">${mode==='explore'&&cy.$id(id).length?`<button class="btn primary" data-exp="${id}">Expand neighbors</button><button class="btn" data-hide="${id}">Hide</button>`:''}<button class="btn" data-start="${id}">Start here</button></div>
+  <p class="meta" style="margin-top:12px">Lists show everything. The canvas only gets what you expand, sorted by relevance: active projects, leads and confident AI matches first.</p>`;
+  return h}
+function home(){
+  panel.innerHTML=`<div class="type">Start</div><h2>Where do you want to begin?</h2>
+  <p class="meta">${TOTAL_N.toLocaleString('en')} nodes and ${TOTAL_E.toLocaleString('en')} connections would be an unreadable hairball. This page never draws them all at once.</p>
+  <div class="answer"><p><b>Try this</b></p>
+  <div class="row" data-q="sys">Who are our Kafka experts?</div><div class="row" data-q="silo">Which knowledge sits with one person only?</div>
+  <div class="row" data-q="cust">Who knows our biggest customer?</div><div class="row" data-q="path">How does a junior reach the SAP experts?</div></div>
+  <ul class="tips"><li><b>Overview:</b> departments and industries as bubbles. Line width shows how many active projects connect them.</li>
+  <li><b>Drill down:</b> click a department to see its offices, top skills and industries.</li>
+  <li><b>Expand:</b> in a team or person view, double-click a node or a “+” bubble to load the next ${F.k} neighbors.</li>
+  <li><b>Filter:</b> “last 12 months” and AI confidence shrink the graph before it gets drawn.</li></ul>`;
+}
+
+/* ---------- questions ---------- */
+function experts(sid){
+  const s=NODES.get(sid);const ex=ADJ.get(sid).map(i=>EDGES[i]).filter(e=>e.r==='exp'&&edgeOk(e)).sort((a,b)=>score(b,sid)-score(a,sid));
+  const active=ex.filter(e=>!NODES.get(e.s).left),gone=ex.filter(e=>NODES.get(e.s).left&&e.conf>=.7);
+  const top=active.slice(0,12);
+  showSet([sid,...top.map(e=>e.s),...new Set(top.map(e=>NODES.get(e.s).team))],sid,'Experts: '+s.label,e=>e.r==='exp'||e.r==='in');
+  panel.innerHTML=`<div class="answer"><p><b>${active.length} people know ${esc(s.label)}</b>, ranked by confidence, number of projects and recency.</p>
+  ${top.map((e,i)=>row(e.s,`${pct(e.conf)} · ${e.n} proj.`)).join('')}
+  ${gone.length?`<p style="margin-top:8px" class="low">${gone.length} confident expert${gone.length>1?'s have':' has'} left the company.</p>`:''}</div>`+detail(sid);
+}
+function silos(){
+  const res=[];NODES.forEach(n=>{if(n.t!=='s')return;const ex=ADJ.get(n.id).map(i=>EDGES[i]).filter(e=>e.r==='exp'&&e.conf>=.7&&edgeOk(e));
+    const act=ex.filter(e=>!NODES.get(e.s).left),gone=ex.filter(e=>NODES.get(e.s).left);if(act.length<=2)res.push({s:n.id,act,gone})});
+  res.sort((a,b)=>a.act.length-b.act.length||b.gone.length-a.gone.length);
+  showSet([...res.map(r=>r.s),...res.flatMap(r=>r.act.map(e=>e.s)),...res.flatMap(r=>r.gone.map(e=>e.s))],null,'Knowledge silos',e=>e.r==='exp'&&e.conf>=.7);
+  panel.innerHTML=`<div class="type">Answer</div><h2>Knowledge silos</h2><p class="meta">Systems with at most two confident experts (70% or more) still at the company.</p>
+  <div class="answer">${res.map(r=>`${row(r.s,r.act.length?r.act.length+' left in house':'nobody','low')}<p class="meta" style="margin:0 0 6px 24px">${r.act.map(e=>esc(NODES.get(e.s).label)).join(', ')||'–'}${r.gone.length?` · <span class="low">gone: ${r.gone.map(e=>esc(NODES.get(e.s).label)).join(', ')}</span>`:''}</p>`).join('')||'<p>No silos with the current filters.</p>'}</div>`;
+}
+function customer(kid){
+  const k=NODES.get(kid);const pj=ADJ.get(kid).map(i=>EDGES[i]).filter(e=>e.r==='for'&&edgeOk(e)).map(e=>e.s).sort((a,b)=>NODES.get(b).end-NODES.get(a).end);
+  const ppl=new Map();pj.forEach(j=>ADJ.get(j).map(i=>EDGES[i]).filter(e=>(e.r==='on'||e.r==='lead')&&edgeOk(e)).forEach(e=>{ppl.set(e.s,(ppl.get(e.s)||0)+(e.r==='lead'?2:1))}));
+  const top=[...ppl].filter(([p])=>!NODES.get(p).left).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const accm=ADJ.get(kid).map(i=>EDGES[i]).filter(e=>e.r==='acct').map(e=>e.s);
+  showSet([kid,...pj.slice(0,8),...top.map(t=>t[0]),...accm],kid,k.label,e=>['for','on','lead','acct'].includes(e.r));
+  panel.innerHTML=`<div class="answer"><p><b>${top.length} people know ${esc(k.label)} best</b> (leads count double).</p>${top.map(([p,s])=>row(p,s+' pts')).join('')}</div>`+detail(kid);
+}
+function bfs(a,b){const prev=new Map([[a,null]]);const q=[a];while(q.length){const x=q.shift();if(x===b)break;
+  for(const i of ADJ.get(x)){const e=EDGES[i];if(!edgeOk(e))continue;const o=other(e,x);if(prev.has(o)||!nodeOk(NODES.get(o))||NODES.get(o).left)continue;prev.set(o,{x,e});q.push(o)}}
+  if(!prev.has(b))return null;const path=[];let c=b;while(prev.get(c)){path.unshift(prev.get(c).e);c=prev.get(c).x}return path}
+function path(a,b){const p=bfs(a,b);if(!p){panel.innerHTML='<div class="answer">No path with the current filters.</div>';return}
+  const nodes=new Set([a]);let cur=a;p.forEach(e=>{cur=other(e,cur);nodes.add(cur)});
+  showSet([...nodes],a,`${NODES.get(a).label} → ${NODES.get(b).label}`,e=>p.includes(e));
+  cur=a;const steps=p.map(e=>{const from=cur;cur=other(e,cur);return `<p style="margin:0 0 4px">${esc(NODES.get(from).label)} <i>${e.s===from?REL[e.r][0]:'← '+REL[e.r][0]}</i> ${esc(NODES.get(cur).label)}</p>`}).join('');
+  panel.innerHTML=`<div class="answer"><p><b>${p.length} steps</b> via the shortest chain of current connections (people who left are skipped).</p>${steps}</div>`+detail(b);
+}
+
+/* ---------- wiring ---------- */
+const err=document.getElementById('err');const findId=v=>{v=(v||'').trim().toLowerCase();if(!v)return null;if(BYLABEL.has(v))return BYLABEL.get(v);for(const [l,id] of BYLABEL)if(l.includes(v))return id;return null};
+const fail=m=>{err.textContent=m;setTimeout(()=>err.textContent='',4000)};
+document.getElementById('all').innerHTML=[...NODES.values()].map(n=>`<option value="${esc(n.label)}">`).join('');
+document.getElementById('systems').innerHTML=[...NODES.values()].filter(n=>n.t==='s').map(n=>`<option value="${esc(n.label)}">`).join('');
+const sIn=document.getElementById('search');
+const openSearch=()=>{const id=findId(sIn.value);id?startExplore(id):fail('Nothing found. Try a name, project or customer.')};
+document.getElementById('go').onclick=openSearch;sIn.addEventListener('keydown',e=>{if(e.key==='Enter')openSearch()});sIn.addEventListener('change',()=>{if(BYLABEL.has(sIn.value.toLowerCase()))openSearch()});
+document.getElementById('goSys').onclick=()=>{const id=findId(document.getElementById('sys').value);id&&NODES.get(id).t==='s'?experts(id):fail('Pick a system from the list, like Kafka or React.')};
+document.getElementById('sys').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('goSys').click()});
+document.getElementById('goPath').onclick=()=>{const a=findId(document.getElementById('pa').value),b=findId(document.getElementById('pb').value);a&&b?path(a,b):fail('Enter a start and an end from the list.')};
+document.getElementById('silos').onclick=silos;
+const conf=document.getElementById('conf'),kIn=document.getElementById('k');
+const rerender=()=>{if(mode==='overview')showOverview();else if(crumbs.length)crumbs[crumbs.length-1].fn()};
+conf.oninput=()=>{document.getElementById('confOut').textContent=conf.value+'%'};conf.onchange=()=>{F.minConf=conf.value/100;rerender()};
+kIn.oninput=()=>{document.getElementById('kOut').textContent=kIn.value;F.k=+kIn.value};
+document.getElementById('recent').onchange=e=>{F.recent=e.target.checked;rerender()};
+
+cy.on('tap','node',e=>{const id=e.target.id();
+  if(ACT[id]&&(mode==='overview'||mode==='drill'))return ACT[id]();
+  if(id.startsWith('m:')){const d=e.target.data();expand(d.owner,d.key);select(d.owner);return}
+  if(NODES.has(id))select(id)});
+cy.on('dbltap','node',e=>{const id=e.target.id();if(!NODES.has(id))return;if(mode!=='explore'){startExplore(id);return}expand(id);select(id)});
+cy.on('tap',e=>{if(e.target===cy){cy.nodes().removeClass('sel');cy.edges().removeClass('hl')}});
+panel.addEventListener('click',e=>{const t=e.target.closest('[data-open],[data-tog],[data-exp],[data-hide],[data-start],[data-q]');if(!t)return;
+  if(t.dataset.q){const q=t.dataset.q;
+    if(q==='sys')experts(BYLABEL.get('kafka'));
+    if(q==='silo')silos();
+    if(q==='cust'){const big=custs.slice().sort((a,b)=>deg(b)-deg(a))[0];customer(big)}
+    if(q==='path'){const jr=[...NODES.values()].find(n=>n.t==='p'&&n.role==='Junior'&&n.dept==='web'&&!n.left);const sap=[...NODES.values()].find(n=>n.t==='p'&&n.dept==='sapc'&&n.role==='Principal'&&!n.left)||NODES.get(peopleByDept.sapc[0]);
+      document.getElementById('pa').value=jr.label;document.getElementById('pb').value=sap.label;path(jr.id,sap.id)}
+    return}
+  if(t.dataset.tog){const [id,key]=t.dataset.tog.split('|');openGroups.has(id+key)?openGroups.delete(id+key):openGroups.add(id+key);panel.innerHTML=detail(id);return}
+  if(t.dataset.exp){expand(t.dataset.exp);select(t.dataset.exp);return}
+  if(t.dataset.hide){cy.$id(t.dataset.hide).remove();cy.nodes().filter(n=>n.id().startsWith('m:'+t.dataset.hide+'|')).remove();updateCount();home();return}
+  if(t.dataset.start){startExplore(t.dataset.start);return}
+  if(t.dataset.open){const id=t.dataset.open;const n=NODES.get(id);
+    if(n.t==='k'&&mode!=='explore'&&!cy.$id(id).length)return customer(id);
+    const sel=cy.$('node.sel');reveal(id,sel.length?sel.id():null)}
+});
+showOverview();
+</script>
+</body>
+</html>
