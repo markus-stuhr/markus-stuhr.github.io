@@ -35,47 +35,56 @@ body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--body);font-
 .lbl3 i.sel{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--accent)}
 .lbl3 i.gone{opacity:.55;outline:1.5px dashed var(--warn);outline-offset:1px}
 .scene-tooltip{font-family:var(--body)!important;font-size:12px!important;background:var(--panel)!important;color:var(--fg)!important;border:1px solid var(--line);border-radius:6px;padding:3px 8px!important}
+.scene-tooltip:empty{display:none!important}
+[hidden]{display:none!important}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px}
-.top{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:max(12px,env(safe-area-inset-left,0px));right:calc(404px + env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:8px;padding:12px 14px;pointer-events:auto}
-.head{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
-h1{font-family:var(--display);font-weight:600;font-size:19px;margin:0;letter-spacing:-.01em}
+.hd{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));right:max(16px,env(safe-area-inset-right,0px));display:grid;grid-template-columns:1fr minmax(0,auto) 1fr;gap:10px 16px;align-items:start;pointer-events:none}
+.hd>*{pointer-events:auto}
+.hl{display:flex;flex-direction:column;gap:4px;min-width:0}
+.hrow{display:flex;align-items:center;gap:8px}
+h1{font-family:var(--display);font-weight:600;font-size:20px;margin:0;letter-spacing:-.01em;line-height:1.2}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer;flex:none}
+.icon-btn:hover,.icon-btn[aria-expanded=true]{border-color:var(--accent);color:var(--accent)}
+.icon-btn svg{width:18px;height:18px}
+.srch{display:flex;flex-direction:column;align-items:center;gap:4px}
+.srch input[type=search]{width:min(360px,60vw);padding:9px 14px;border-radius:99px;background:var(--panel);font-size:14px}
+.go-r{justify-self:end}
+.btn.cta{background:var(--pill);border-color:var(--pill);color:#fff;font-weight:600;border-radius:99px;padding:8px 16px}
+.btn.cta:hover{color:#fff;filter:brightness(1.12)}
+.btn.cta[aria-expanded=true]{background:var(--panel);color:var(--fg);border-color:var(--line)}
 .sub{color:var(--muted);margin:0;font-size:13px}
 .sub a{color:var(--accent)}
 .badge{font-size:11px;padding:2px 9px;border-radius:99px;background:var(--warn-bg);color:var(--warn);font-weight:500;white-space:nowrap}
-.spacer{flex:1}
+#settings{position:absolute;top:calc(60px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));width:min(600px,calc(100% - 32px));padding:14px 16px;display:flex;flex-direction:column;gap:12px;z-index:5}
+#settings h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:500;margin:0 0 6px}
 .bar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
 input[type=search],input[type=text]{font:inherit;font-size:13px;padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg);width:190px;max-width:100%}
 .btn{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:8px;padding:6px 11px;cursor:pointer}
 .btn:hover{border-color:var(--accent);color:var(--accent)}
-.btn.primary,.btn[aria-pressed=true]{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
+.btn.primary,#view[aria-pressed=true]{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
 .grp-in{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
 label.tg{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);cursor:pointer}
 input[type=range]{width:96px}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:13px;padding-top:8px;border-top:1px solid var(--line)}
+.crumbs{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:13px}
 .crumbs span.c{color:var(--accent);cursor:pointer}
 .crumbs span.c:last-child{color:var(--fg);cursor:default;font-weight:500}
 .crumbs .sep{color:var(--muted)}
-.foot{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));right:calc(404px + env(safe-area-inset-right,0px));display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;pointer-events:none;text-shadow:0 0 3px var(--bg)}
+.foot{position:absolute;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;pointer-events:none}
 .foot .warn{color:var(--warn);font-weight:500}
-aside{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));width:380px;padding:16px;overflow:auto}
-aside.collapsed{bottom:auto;height:auto;overflow:hidden}
-aside.collapsed #panel{display:none}
-.ptog{position:sticky;top:-16px;float:right;margin:-6px -6px 0 8px;font-size:12px}
-@media (max-width:900px){
-  .top{right:max(12px,env(safe-area-inset-right,0px));padding:10px 12px}
-  .sub{display:none}
-  aside{top:auto;left:max(8px,env(safe-area-inset-left,0px));right:max(8px,env(safe-area-inset-right,0px));bottom:calc(8px + env(safe-area-inset-bottom,0px));width:auto;max-height:42dvh}
-  .foot{display:none}
-  .bar.filters,.adv{display:none!important}
-  .top.open .bar.filters,.top.open .adv{display:flex!important}
+aside{position:absolute;top:calc(60px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));bottom:calc(40px + env(safe-area-inset-bottom,0px));width:380px;padding:16px;overflow:auto;z-index:4}
+aside.closed{display:none}
+.pclose{position:sticky;top:-16px;float:right;margin:-8px -8px 0 8px;width:28px;height:28px}
+@media (max-width:760px){
+  .hd{grid-template-columns:1fr auto}
+  .srch{grid-column:1 / -1;grid-row:2}
+  .srch input[type=search]{width:100%}
   h1{font-size:16px}
-  aside.collapsed{top:auto;bottom:calc(8px + env(safe-area-inset-bottom,0px));left:auto;padding:8px}
-  aside.collapsed .ptog{margin:0;position:static}
-  .badge{display:none}
+  #settings{top:calc(108px + env(safe-area-inset-top,0px))}
+  aside{top:auto;left:max(8px,env(safe-area-inset-left,0px));right:max(8px,env(safe-area-inset-right,0px));bottom:calc(8px + env(safe-area-inset-bottom,0px));width:auto;max-height:50dvh}
+  .foot{display:none}
 }
-@media (min-width:901px){#ftog{display:none}}
 aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2px;text-wrap:balance}
 .type{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .meta{color:var(--muted);margin:4px 0 10px}
@@ -105,32 +114,33 @@ aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2p
   <div id="cy" class="hide"></div>
   <div id="g3"></div>
 
-  <div class="top card" id="top">
-    <div class="head">
-      <h1>Nordlicht Knowledge Graph at Scale</h1>
-      <span class="badge">Generated sample data</span>
-      <p class="sub">420 people, 380 projects. <a href="../">Small demo</a></p>
-      <span class="spacer"></span>
-      <button class="btn" id="ftog" aria-expanded="false">More</button>
-      <button class="btn" id="view" aria-pressed="false">2D view</button>
+  <header class="hd">
+    <div class="hl">
+      <div class="hrow"><h1>Nordlicht Knowledge Graph</h1>
+        <button class="icon-btn" id="gear" aria-expanded="false" aria-controls="settings" aria-label="Settings and questions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.3c.4-1.8 3-1.8 3.4 0a1.7 1.7 0 0 0 2.6 1.1c1.5-.9 3.3.8 2.4 2.4a1.7 1.7 0 0 0 1 2.5c1.8.4 1.8 3 0 3.4a1.7 1.7 0 0 0-1 2.6c.9 1.5-.9 3.3-2.4 2.4a1.7 1.7 0 0 0-2.6 1c-.4 1.8-3 1.8-3.4 0a1.7 1.7 0 0 0-2.6-1c-1.5.9-3.3-.9-2.4-2.4a1.7 1.7 0 0 0-1-2.6c-1.8-.4-1.8-3 0-3.4a1.7 1.7 0 0 0 1-2.5c-.9-1.6.9-3.3 2.4-2.4a1.7 1.7 0 0 0 2.6-1.1z"/><circle cx="12" cy="12" r="3"/></svg></button>
+      </div>
+      <div class="crumbs" id="crumbs"></div>
     </div>
-    <div class="bar">
-      <div class="grp-in"><input type="search" id="search" list="all" placeholder="Search people, projects …" aria-label="Search the graph"><button class="btn" id="go">Open</button></div>
-      <div class="grp-in adv"><span class="lab">Experts for</span><input type="text" id="sys" list="systems" placeholder="Kafka" aria-label="System or skill"><button class="btn" id="goSys">Rank</button></div>
-      <div class="grp-in adv"><span class="lab">Path</span><input type="text" id="pa" list="all" placeholder="From" aria-label="Path start"><input type="text" id="pb" list="all" placeholder="To" aria-label="Path end"><button class="btn" id="goPath">Find</button></div>
-      <button class="btn adv" id="silos">Knowledge silos</button>
-      <span class="err" id="err" aria-live="polite"></span>
-    </div>
-    <div class="bar filters">
+    <div class="srch"><input type="search" id="search" list="all" placeholder="Search people, projects, customers …" aria-label="Search the graph"><span class="err" id="err" aria-live="polite"></span></div>
+    <button class="btn cta go-r" id="start" aria-expanded="false" aria-controls="side">Get started</button>
+  </header>
+
+  <div class="card" id="settings" hidden>
+    <div class="bar"><span class="badge">Generated sample data</span><p class="sub">420 people, 380 projects. <a href="../">Small demo</a></p><span style="flex:1"></span><button class="btn" id="view" aria-pressed="false">2D view</button></div>
+    <div><h3>Questions</h3><div class="bar">
+      <div class="grp-in"><span class="lab">Experts for</span><input type="text" id="sys" list="systems" placeholder="Kafka" aria-label="System or skill"><button class="btn" id="goSys">Rank</button></div>
+      <div class="grp-in"><span class="lab">Path</span><input type="text" id="pa" list="all" placeholder="From" aria-label="Path start"><input type="text" id="pb" list="all" placeholder="To" aria-label="Path end"><button class="btn" id="goPath">Find</button></div>
+      <button class="btn" id="silos">Knowledge silos</button>
+    </div></div>
+    <div><h3>Filters</h3><div class="bar">
       <label class="tg"><input type="checkbox" id="recent"> Only the last 12 months</label>
       <label class="tg" for="conf">Min. AI confidence <input type="range" id="conf" min="0" max="90" step="10" value="50"> <b id="confOut">50%</b></label>
       <label class="tg" for="k" title="How many neighbors of each kind appear when you expand a node. The rest wait in a “+N” bubble.">Load per click <input type="range" id="k" min="3" max="20" step="1" value="8"> <b id="kOut">8</b></label>
-    </div>
-    <div class="crumbs" id="crumbs"></div>
+    </div></div>
   </div>
   <datalist id="all"></datalist><datalist id="systems"></datalist>
 
-  <aside class="card" id="side"><button class="btn ptog" id="ptog" aria-expanded="true">Hide</button><div id="panel" aria-live="polite"></div></aside>
+  <aside class="card closed" id="side"><button class="icon-btn pclose" id="pclose" aria-label="Close panel">×</button><div id="panel" aria-live="polite"></div></aside>
   <div class="foot"><span id="count"></span><span id="hint"></span></div>
 </div>
 
@@ -478,7 +488,7 @@ document.getElementById('all').innerHTML=[...NODES.values()].map(n=>`<option val
 document.getElementById('systems').innerHTML=[...NODES.values()].filter(n=>n.t==='s').map(n=>`<option value="${esc(n.label)}">`).join('');
 const sIn=document.getElementById('search');
 const openSearch=()=>{const id=findId(sIn.value);id?startExplore(id):fail('Nothing found. Try a name, project or customer.')};
-document.getElementById('go').onclick=openSearch;sIn.addEventListener('keydown',e=>{if(e.key==='Enter')openSearch()});sIn.addEventListener('change',()=>{if(BYLABEL.has(sIn.value.toLowerCase()))openSearch()});
+sIn.addEventListener('keydown',e=>{if(e.key==='Enter')openSearch()});sIn.addEventListener('change',()=>{if(BYLABEL.has(sIn.value.toLowerCase()))openSearch()});
 document.getElementById('goSys').onclick=()=>{const id=findId(document.getElementById('sys').value);id&&NODES.get(id).t==='s'?experts(id):fail('Pick a system from the list, like Kafka or React.')};
 document.getElementById('sys').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('goSys').click()});
 document.getElementById('goPath').onclick=()=>{const a=findId(document.getElementById('pa').value),b=findId(document.getElementById('pb').value);a&&b?path(a,b):fail('Enter a start and an end from the list.')};
@@ -581,12 +591,14 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{g3.bac
 btnV.onclick=()=>{is3d=!is3d;btnV.textContent=is3d?'2D view':'3D view';btnV.setAttribute('aria-pressed',!is3d);
   box3.classList.toggle('hide',!is3d);cyBox.classList.toggle('hide',is3d);
   if(is3d){fitPending=true;sync3d();refresh3d()}else{cy.resize();cy.fit(undefined,40)}};
-const side=document.getElementById('side'),ptog=document.getElementById('ptog');
-ptog.onclick=()=>{const c=side.classList.toggle('collapsed');ptog.textContent=c?'Show panel':'Hide';ptog.setAttribute('aria-expanded',!c)};
-const topBar=document.getElementById("top"),ftog=document.getElementById('ftog');
-ftog.onclick=()=>{const o=topBar.classList.toggle('open');ftog.setAttribute('aria-expanded',o)};
-panel.addEventListener('click',()=>{if(side.classList.contains('collapsed'))ptog.click()},true);
-if(innerWidth<=900)ptog.click();
+const side=document.getElementById('side'),startBtn=document.getElementById('start'),gear=document.getElementById('gear'),settings=document.getElementById('settings');
+function setPanel(o){side.classList.toggle('closed',!o);startBtn.setAttribute('aria-expanded',o);startBtn.textContent=o?'Hide panel':'Get started'}
+startBtn.onclick=()=>setPanel(side.classList.contains('closed'));
+document.getElementById('pclose').onclick=()=>setPanel(false);
+gear.onclick=ev=>{ev.stopPropagation();const o=settings.hidden;settings.hidden=!o;gear.setAttribute('aria-expanded',o)};
+document.addEventListener('pointerdown',ev=>{if(!settings.hidden&&!settings.contains(ev.target)&&!gear.contains(ev.target)){settings.hidden=true;gear.setAttribute('aria-expanded',false)}});
+document.addEventListener('keydown',ev=>{if(ev.key==='Escape'){settings.hidden=true;gear.setAttribute('aria-expanded',false)}});
+new MutationObserver(()=>{if(!panel.querySelector('[data-q]'))setPanel(true)}).observe(panel,{childList:true});
 computeRel();showOverview();
 </script>
 </body>
