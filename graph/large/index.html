@@ -320,11 +320,15 @@ function showOverview(){
   const di=new Map(),dd=new Map();
   activeProjects().forEach(j=>{const ind=projInd(j)||'Internal';const ds=[...projDepts.get(j)];ds.forEach(d=>{const k=d+'|'+ind;di.set(k,(di.get(k)||0)+1)});
     ds.forEach(a=>ds.forEach(b=>{if(a<b){const k=a+'|'+b;dd.set(k,(dd.get(k)||0)+1)}}))});
-  DEPTS.forEach(([d,name])=>{const n=peopleByDept[d].filter(p=>!NODES.get(p).left).length;addAgg('ov:u:'+d,'u',`${name}\n${n} people`,34+Math.sqrt(n)*7,()=>drillDept(d))});
-  [...IND_LIST,'Internal'].forEach(ind=>{const c=ind==='Internal'?0:custs.filter(k=>NODES.get(k).ind===ind).length;const pj=activeProjects().filter(j=>(projInd(j)||'Internal')===ind).length;
+  const delivery=new Set([...di.keys()].map(k=>k.split('|')[0]));
+  DEPTS.filter(([d])=>delivery.has(d)).forEach(([d,name])=>{const n=peopleByDept[d].filter(p=>!NODES.get(p).left).length;addAgg('ov:u:'+d,'u',`${name}\n${n} people`,34+Math.sqrt(n)*7,()=>drillDept(d))});
+  [...IND_LIST,'Internal'].filter(ind=>[...di.keys()].some(k=>k.endsWith('|'+ind))).forEach(ind=>{const c=ind==='Internal'?0:custs.filter(k=>NODES.get(k).ind===ind).length;const pj=activeProjects().filter(j=>(projInd(j)||'Internal')===ind).length;
     addAgg('ov:i:'+ind,'i',`${ind}\n${pj} projects`,30+Math.sqrt(pj)*5,()=>drillIndustry(ind))});
-  DEPTS.forEach(([d])=>{[...di].filter(([k])=>k.startsWith(d+'|')).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(([k,w])=>addAggEdge('ov:u:'+d,'ov:i:'+k.split('|')[1],w,w+' projects'));
+  DEPTS.filter(([d])=>delivery.has(d)).forEach(([d])=>{[...di].filter(([k])=>k.startsWith(d+'|')).sort((a,b)=>b[1]-a[1]).slice(0,3).forEach(([k,w])=>addAggEdge('ov:u:'+d,'ov:i:'+k.split('|')[1],w,w+' projects'));
     [...dd].filter(([k])=>k.split('|').includes(d)).sort((a,b)=>b[1]-a[1]).slice(0,2).forEach(([k,w])=>{const [a,b]=k.split('|');if(!cy.$id('ov:u:'+a+'~ov:u:'+b).length)addAggEdge('ov:u:'+a,'ov:u:'+b,w,w+' shared',true)})});
+  /* every industry keeps at least its strongest department, so nothing floats unconnected */
+  cy.nodes('[t="i"]').forEach(n=>{if(n.degree()>0)return;const ind=n.id().slice(5);const best=[...di].filter(([k])=>k.endsWith('|'+ind)).sort((a,b)=>b[1]-a[1])[0];
+    if(best)addAggEdge('ov:u:'+best[0].split('|')[0],n.id(),best[1],best[1]+' projects')});
   runLayout(false);home();
 }
 /* ---------- level 2: department or industry ---------- */
@@ -412,6 +416,7 @@ function detail(id){const n=NODES.get(id);
 function home(){
   panel.innerHTML=`<div class="type">Start</div><h2>Where do you want to begin?</h2>
   <p class="meta">${TOTAL_N.toLocaleString('en')} nodes and ${TOTAL_E.toLocaleString('en')} connections would be an unreadable hairball. This page never draws them all at once.</p>
+  <p class="meta">The overview shows delivery work only. ${DEPTS.filter(([d])=>!projects.some(j=>projDepts.get(j).has(d))).map(x=>x[1]).join(' and ')} don't work on projects, so their people are reachable through search.</p>
   <div class="answer"><p><b>Try this</b></p>
   <div class="row" data-q="sys">Who are our Kafka experts?</div><div class="row" data-q="silo">Which knowledge sits with one person only?</div>
   <div class="row" data-q="cust">Who knows our biggest customer?</div><div class="row" data-q="path">How does a junior reach the SAP experts?</div></div>
@@ -511,11 +516,12 @@ const g3=ForceGraph3D()(box3).width(innerWidth).height(innerHeight).backgroundCo
   .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):n.t==='m'?css('--c-m'):css('--c-'+n.t)})
   .linkColor(l=>mixCol(st(l.id).hasClass('hl')?hex(css('--accent')):hex(css('--muted')),qa(l.q)*(st(l.id).hasClass('hl')?1:.8)))
   .linkWidth(0)
-  .linkVisibility(l=>!l.anchor).linkLabel(l=>esc(l.label||''))
+  .linkLabel(l=>esc(l.label||''))
   
   .onNodeClick(n=>clickNode(n.id))
   .onBackgroundClick(()=>cy.emit('tap'))
   .onEngineStop(()=>{if(fitPending){fitPending=false;g3.zoomToFit(600,90)}});
+{let gn=[];const grav=a=>{gn.forEach(n=>{n.vx-=n.x*.035*a;n.vy-=n.y*.035*a;n.vz-=n.z*.035*a})};grav.initialize=ns=>{gn=ns};g3.d3Force('gravity',grav)}
 g3.d3Force('charge').strength(n=>n.agg?-260:-90);g3.d3Force('link').distance(l=>l.agg?75:45);
 box3.appendChild(layer);
 layer.addEventListener('wheel',ev=>{ev.preventDefault();const c=g3.renderer().domElement;
@@ -529,8 +535,6 @@ function sync3d(){syncQ=false;if(!is3d)return;
     return n});
   if(kept<nodes.length*.5)fitPending=true;
   const links=cy.edges().map(e=>({id:e.id(),source:e.data('source'),target:e.data('target'),label:e.data('label'),agg:e.data('agg'),w:e.data('w')||1,q:edgeQ(e.data())}));
-  const hub=cy.nodes().max(n=>n.degree()).ele;
-  if(hub)cy.nodes().filter(n=>n.degree()===0&&n.id()!==hub.id()).forEach(n=>links.push({id:'anc:'+n.id(),source:n.id(),target:hub.id(),anchor:1}));
   g3.graphData({nodes,links});
   const ids=new Set(nodes.map(n=>n.id));
   tags.forEach((d,id)=>{if(!ids.has(id)){d.remove();tags.delete(id);icons.get(id).remove();icons.delete(id)}});
