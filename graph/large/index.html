@@ -123,7 +123,7 @@ aside h2{font-family:var(--display);font-weight:600;font-size:19px;margin:0 0 2p
     <div class="bar filters">
       <label class="tg"><input type="checkbox" id="recent"> Only the last 12 months</label>
       <label class="tg" for="conf">Min. AI confidence <input type="range" id="conf" min="0" max="90" step="10" value="50"> <b id="confOut">50%</b></label>
-      <label class="tg" for="k">Neighbors per expand <input type="range" id="k" min="3" max="20" step="1" value="8"> <b id="kOut">8</b></label>
+      <label class="tg" for="k" title="How many neighbors of each kind appear when you expand a node. The rest wait in a “+N” bubble.">Load per click <input type="range" id="k" min="3" max="20" step="1" value="8"> <b id="kOut">8</b></label>
     </div>
     <div class="crumbs" id="crumbs"></div>
   </div>
@@ -251,6 +251,8 @@ const iconURI=(t,c)=>'data:image/svg+xml;utf8,'+encodeURIComponent(svgIcon(t,c))
 const DOT={u:30,i:28,t:24,k:22,j:20,s:20,p:18,d:14,m:16};
 const dotSize=n=>n.agg?Math.round(Math.min(40,Math.max(24,(n.size||40)*.42))):DOT[n.t];
 let Z=1;
+const qa=q=>Math.max(.12,Math.min(1,.12+.88*Math.pow(Math.max(0,(q-.4)/.6),1.3)));
+const edgeQ=d=>d.agg?.45+.55*Math.min(1,((d.w||1)-1)/6):(d.conf==null?1:d.conf);
 const mctx=document.createElement('canvas').getContext('2d'),mcache=new Map();
 function measure(text,px,bold){const k=text+'|'+px+'|'+bold;if(mcache.has(k))return mcache.get(k);mctx.font=`${bold?600:400} ${px}px Inter, system-ui, sans-serif`;
   const lines=String(text).split('\n');const r={w:Math.max(...lines.map(l=>mctx.measureText(l).width))+4,h:lines.length*px*1.25};mcache.set(k,r);return r}
@@ -272,8 +274,8 @@ function style(){return [
   {selector:'node[?agg]',style:{'font-weight':600,'font-size':()=>11/Z}},
   {selector:'node[t="m"]',style:{'background-image':'none','label':'data(label)','shape':'round-rectangle','width':'label','height':()=>18/Z,'padding':()=>5/Z,'text-valign':'center','text-margin-y':0,'color':css('--fg'),'background-color':css('--line'),'text-outline-width':0,'font-size':()=>10/Z}},
   {selector:'node[?left]',style:{'border-width':()=>1.5/Z,'border-color':css('--warn'),'border-style':'dashed','background-opacity':.5}},
-  {selector:'edge',style:{'width':()=>1/Z,'line-color':css('--edge'),'curve-style':'bezier','opacity':.85,'font-size':()=>9/Z,'color':css('--muted'),'text-rotation':'autorotate','text-outline-color':css('--bg'),'text-outline-width':()=>2/Z}},
-  {selector:'edge[?agg]',style:{'label':'data(label)','opacity':.7}},
+  {selector:'edge',style:{'width':()=>1/Z,'line-color':css('--edge'),'curve-style':'bezier','opacity':e=>qa(edgeQ(e.data())),'font-size':()=>9/Z,'color':css('--muted'),'text-rotation':'autorotate','text-outline-color':css('--bg'),'text-outline-width':()=>2/Z}},
+  {selector:'edge[?agg]',style:{'label':'data(label)'}},
   {selector:'edge[?dash]',style:{'line-style':'dashed'}},
   {selector:'edge[conf < 0.7]',style:{'line-style':'dashed'}},
   {selector:'.faded',style:{'opacity':.12}},
@@ -503,10 +505,10 @@ let is3d=true,fitPending=true,last={},syncQ=false,refQ=false;
 const layer=document.createElement('div');layer.className='lbl3';
 const st=id=>cy.$id(id);
 const g3=ForceGraph3D()(box3).width(innerWidth).height(innerHeight).backgroundColor(css('--bg')).showNavInfo(false).cooldownTime(2500)
-  .nodeRelSize(1).nodeOpacity(0).linkOpacity(.55).nodeLabel(()=>'')
+  .nodeRelSize(1).nodeOpacity(0).linkOpacity(1).nodeLabel(()=>'')
   .nodeVal(.05)
   .nodeColor(n=>{const e=st(n.id);return e.hasClass('sel')?css('--accent'):n.t==='m'?css('--c-m'):css('--c-'+n.t)})
-  .linkColor(l=>st(l.id).hasClass('hl')?css('--accent'):css('--muted'))
+  .linkColor(l=>mixCol(st(l.id).hasClass('hl')?hex(css('--accent')):hex(css('--muted')),qa(l.q)*(st(l.id).hasClass('hl')?1:.8)))
   .linkWidth(0)
   .linkVisibility(l=>!l.anchor).linkLabel(l=>esc(l.label||''))
   
@@ -523,7 +525,7 @@ function sync3d(){syncQ=false;if(!is3d)return;
     if(!o){const own=d.owner||cy.$id(d.id).neighborhood('node').filter(x=>old.has(x.id())).map(x=>x.id())[0];const p=own&&old.get(own);if(p&&p.x!=null){n.x=p.x+(Math.random()-.5)*30;n.y=p.y+(Math.random()-.5)*30;n.z=p.z+(Math.random()-.5)*30}}
     return n});
   if(kept<nodes.length*.5)fitPending=true;
-  const links=cy.edges().map(e=>({id:e.id(),source:e.data('source'),target:e.data('target'),label:e.data('label'),agg:e.data('agg'),w:e.data('w')||1}));
+  const links=cy.edges().map(e=>({id:e.id(),source:e.data('source'),target:e.data('target'),label:e.data('label'),agg:e.data('agg'),w:e.data('w')||1,q:edgeQ(e.data())}));
   const hub=cy.nodes().max(n=>n.degree()).ele;
   if(hub)cy.nodes().filter(n=>n.degree()===0&&n.id()!==hub.id()).forEach(n=>links.push({id:'anc:'+n.id(),source:n.id(),target:hub.id(),anchor:1}));
   g3.graphData({nodes,links});
@@ -537,9 +539,10 @@ cy.on('add remove',()=>{if(!syncQ){syncQ=true;setTimeout(sync3d,0)}});
 const proto=Object.getPrototypeOf(cy.collection());
 ['addClass','removeClass','toggleClass'].forEach(fn=>{const o=proto[fn];proto[fn]=function(...a){const r=o.apply(this,a);if(!refQ){refQ=true;setTimeout(refresh3d,0)}return r}});
 const hex=c=>{c=c.replace('#','');if(c.length===3)c=[...c].map(x=>x+x).join('');return [0,2,4].map(i=>parseInt(c.substr(i,2),16))};
-function pulseLinks(){const hl=g3.graphData().links.find(l=>st(l.id).hasClass('hl')&&l.__lineObj);if(!hl)return;
-  const a=hex(css('--muted')),b=hex(css('--accent')),k=.35+.65*(.5+.5*Math.sin(performance.now()/450));
-  hl.__lineObj.material.color.setRGB(...a.map((v,i)=>(v+(b[i]-v)*k)/255))}
+function mixCol(c,alpha){const bg=hex(css('--bg'));return 'rgb('+c.map((v,i)=>Math.round(bg[i]+(v-bg[i])*alpha)).join(',')+')'}
+function pulseLinks(){const ls=g3.graphData().links.filter(l=>l.__lineObj&&st(l.id).hasClass('hl'));if(!ls.length)return;
+  const a=hex(css('--muted')),b=hex(css('--accent')),bg=hex(css('--bg')),k=.35+.65*(.5+.5*Math.sin(performance.now()/450));
+  ls.forEach(l=>{const al=qa(l.q);l.__lineObj.material.color.setRGB(...a.map((v,i)=>{const c=v+(b[i]-v)*k;return (bg[i]+(c-bg[i])*al)/255}))})}
 (function tick(){requestAnimationFrame(tick);if(!is3d)return;pulseLinks();
   const cam=g3.camera(),m=cam.matrixWorldInverse.elements,items=[];
   g3.graphData().nodes.forEach(n=>{const d=tags.get(n.id),ic=icons.get(n.id);if(!d)return;
