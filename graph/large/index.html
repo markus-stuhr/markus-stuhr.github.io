@@ -246,7 +246,7 @@ const ICON={
   d:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
   i:'<path d="M3 21V11l5 3v-3l5 3V7l8 4v10zM3 21h18"/>',
   m:'<path d="M12 5v14M5 12h14"/>'};
-const svgIcon=(t,c)=>`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICON[t]}</svg>`;
+const svgIcon=(t,c)=>`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${ICON[t]}</svg>`;
 const iconURI=(t,c)=>'data:image/svg+xml;utf8,'+encodeURIComponent(svgIcon(t,c));
 const DOT={u:30,i:28,t:24,k:22,j:20,s:20,p:18,d:14,m:16};
 const dotSize=n=>n.agg?Math.round(Math.min(40,Math.max(24,(n.size||40)*.42))):DOT[n.t];
