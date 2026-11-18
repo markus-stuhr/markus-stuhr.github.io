@@ -733,7 +733,10 @@ function pushGhost(focus){const box=is3d?box3:cyBox,w=box.clientWidth,h=box.clie
   layers.unshift({el,nodes,links,flinks,focus,fpos:fp?{x:fp.x,y:fp.y,z:fp.z||0}:null,byId:new Map(nodes.map(n=>[n.id,n])),kind:is3d?'3d':'2d',dpr,off:{x:0,y:0,z:0}});
   ghostDirty=true;while(layers.length>MAXL){const L=layers.pop();L.el.style.opacity=0;setTimeout(()=>L.el.remove(),600)}
   live=layers[0];requestAnimationFrame(()=>requestAnimationFrame(styleLayers))}
-function styleLayers(){ghostDirty=true;layers.forEach((L,k)=>{L.el.style.filter=`blur(${LD[k].b}px)`;L.el.style.opacity=LD[k].o;L.el.style.zIndex=10-k})}
+/* on a light background blurred colours wash out much more, so history is drawn stronger there */
+const isDark=()=>{const t=document.documentElement.dataset.theme;return t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>styleLayers());
+function styleLayers(){ghostDirty=true;const f=isDark()?1:2;layers.forEach((L,k)=>{L.el.style.filter=`blur(${LD[k].b}px)`;L.el.style.opacity=Math.min(.6,LD[k].o*f);L.el.style.zIndex=10-k})}
 function drawLive(){if(!layers.length)return;
   const m=is3d?g3.camera().matrixWorldInverse.elements:null,z=cy.zoom(),pan=cy.pan();
   /* only redraw when the camera/viewport or the anchor moved */
