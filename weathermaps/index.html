@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<link rel="icon" type="image/png" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Weather Maps">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather Maps — Markus Stuhr</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+  #panel {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 5;
+    background: rgba(255,255,255,0.95);
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    padding: 12px 14px;
+    font-size: 13px;
+    color: #222;
+    max-width: 260px;
+  }
+  #panel h1 {
+    font-size: 14px;
+    margin: 0 0 8px;
+  }
+  #panel label {
+    display: block;
+    margin: 8px 0 3px;
+    font-weight: 600;
+    font-size: 12px;
+    color: #555;
+  }
+  #panel select, #panel input[type=date] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 6px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 13px;
+  }
+  .layer-toggle {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .layer-toggle button {
+    flex: 1 1 calc(33% - 4px);
+    padding: 6px 4px;
+    border: 1px solid #ccc;
+    background: #f2f2f2;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .layer-toggle button.active {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+  #hint {
+    margin-top: 10px;
+    font-size: 11px;
+    color: #777;
+    line-height: 1.4;
+  }
+  #status {
+    margin-top: 8px;
+    font-size: 12px;
+    min-height: 16px;
+    color: #2563eb;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .weather-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    color: #fff;
+    font-weight: 700;
+    font-size: 12px;
+    border: 2px solid rgba(255,255,255,0.85);
+    box-shadow: 0 1px 6px rgba(0,0,0,0.4);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+  }
+
+  .symbol-marker {
+    font-size: 34px;
+    line-height: 1;
+    filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
+  }
+
+  #radarWrap {
+    margin-top: 10px;
+  }
+  #radarWrap input[type=range] {
+    width: 100%;
+  }
+  #radarTimeLabel {
+    display: block;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #2563eb;
+    margin-top: 2px;
+  }
+
+  #legend {
+    position: absolute;
+    bottom: 24px;
+    left: 12px;
+    z-index: 5;
+    background: rgba(255,255,255,0.95);
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+    padding: 8px 10px;
+    font-size: 11px;
+    color: #333;
+  }
+  #legend .bar {
+    width: 200px;
+    height: 10px;
+    border-radius: 5px;
+    margin-bottom: 4px;
+  }
+  #legend .ticks {
+    display: flex;
+    justify-content: space-between;
+  }
+</style>
+  <script defer src="/analytics.js"></script>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="panel">
+  <h1>🌤️ Weather</h1>
+
+  <label for="timeSelect">Zeitpunkt</label>
+  <select id="timeSelect">
+    <option value="live">Live (jetzt)</option>
+    <optgroup label="Vorhersage">
+      <!-- +1 .. +16 werden per JS ergänzt -->
+    </optgroup>
+    <option value="past">Datum in der Vergangenheit …</option>
+  </select>
+
+  <div id="dateWrap" style="display:none;">
+    <label for="pastDate">Datum</label>
+    <input type="date" id="pastDate">
+  </div>
+
+  <label>Datenlayer</label>
+  <div class="layer-toggle">
+    <button id="btnTemp" class="active">Temperatur</button>
+    <button id="btnPrecip">Niederschlag</button>
+    <button id="btnClouds">Wolken</button>
+    <button id="btnElevation">Höhe</button>
+    <button id="btnFlood">Hochwasser</button>
+    <button id="btnRadar">Regenradar</button>
+    <button id="btnSymbols">Symbole</button>
+  </div>
+
+  <div id="radarWrap" style="display:none;">
+    <label for="radarSlider">Radar-Zeitpunkt</label>
+    <input type="range" id="radarSlider" min="0" max="0" value="0" step="1">
+    <span id="radarTimeLabel">–</span>
+  </div>
+
+  <div id="status"></div>
+  <div id="hint">Die Fläche zeigt die Werte für den gewählten Zeitpunkt. Klick auf die Karte für einen exakten Messpunkt.</div>
+</div>
+
+<div id="legend">
+  <div class="bar" id="legendBar"></div>
+  <div class="ticks" id="legendTicks"></div>
+</div>
+
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+const MAPTILER_KEY = 'nKyAvBkGUvss9FTqT7f6'; // shared with Globe/Simulator project
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(err => console.error('SW-Registrierung fehlgeschlagen:', err));
+}
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: `https://api.maptiler.com/maps/topo-v2/style.json?key=${MAPTILER_KEY}`,
+  center: [10, 51], // Deutschland-Mitte
+  zoom: 5
+});
+
+map.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+// --- UI: Zeit-Auswahl aufbauen (+1 bis +16 Tage) ---
+const timeSelect = document.getElementById('timeSelect');
+const forecastGroup = timeSelect.querySelector('optgroup');
+for (let i = 1; i <= 16; i++) {
+  const opt = document.createElement('option');
+  opt.value = `+${i}`;
+  opt.textContent = `+${i} Tag${i > 1 ? 'e' : ''}`;
+  forecastGroup.appendChild(opt);
+}
+
+const dateWrap = document.getElementById('dateWrap');
+const pastDate = document.getElementById('pastDate');
+const today = new Date();
+pastDate.max = today.toISOString().slice(0, 10);
+const defaultPast = new Date(today);
+defaultPast.setDate(defaultPast.getDate() - 7);
+pastDate.value = defaultPast.toISOString().slice(0, 10);
+
+timeSelect.addEventListener('change', () => {
+  dateWrap.style.display = timeSelect.value === 'past' ? 'block' : 'none';
+  loadGrid();
+});
+pastDate.addEventListener('change', loadGrid);
+
+// --- Layer-Umschalter ---
+let activeLayer = 'temp'; // 'temp' | 'precip' | 'elevation' | 'flood' | 'radar' | 'symbols'
+const btnTemp = document.getElementById('btnTemp');
+const btnPrecip = document.getElementById('btnPrecip');
+const btnClouds = document.getElementById('btnClouds');
+const btnElevation = document.getElementById('btnElevation');
+const btnFlood = document.getElementById('btnFlood');
+const btnRadar = document.getElementById('btnRadar');
+const btnSymbols = document.getElementById('btnSymbols');
+const layerButtons = { temp: btnTemp, precip: btnPrecip, clouds: btnClouds, elevation: btnElevation, flood: btnFlood, radar: btnRadar, symbols: btnSymbols };
+const radarWrap = document.getElementById('radarWrap');
+const legendEl = document.getElementById('legend');
+
+Object.entries(layerButtons).forEach(([layer, btn]) => btn.addEventListener('click', () => setLayer(layer)));
+
+// Zeitpunkt ist für Temperatur/Niederschlag/Wolken/Hochwasser/Symbole relevant (Höhe ist statisch, Radar hat eigene Zeitachse)
+const TIME_DEPENDENT_LAYERS = ['temp', 'precip', 'clouds', 'flood', 'symbols'];
+// Layer ohne Farbfläche (nutzen einen eigenen Layer statt GRID_LAYER_ID)
+const NO_FILL_LAYERS = ['radar', 'symbols'];
+
+function setLayer(layer) {
+  activeLayer = layer;
+  Object.entries(layerButtons).forEach(([l, btn]) => btn.classList.toggle('active', l === layer));
+
+  const isRadar = layer === 'radar';
+  const hasFill = !NO_FILL_LAYERS.includes(layer);
+  radarWrap.style.display = isRadar ? 'block' : 'none';
+  legendEl.style.display = hasFill ? 'block' : 'none';
+  timeSelect.disabled = !TIME_DEPENDENT_LAYERS.includes(layer);
+  pastDate.disabled = timeSelect.disabled;
+
+  if (map.getLayer(GRID_LAYER_ID)) {
+    map.setLayoutProperty(GRID_LAYER_ID, 'visibility', hasFill ? 'visible' : 'none');
+  }
+  if (map.getLayer(RADAR_LAYER_ID)) {
+    map.setLayoutProperty(RADAR_LAYER_ID, 'visibility', isRadar ? 'visible' : 'none');
+  }
+  setSymbolMarkersVisible(layer === 'symbols');
+
+  if (layer !== 'radar') {
+    updateLegend();
+    loadGrid();
+  }
+}
+
+const statusEl = document.getElementById('status');
+function setStatus(text, isError) {
+  statusEl.textContent = text;
+  statusEl.style.color = isError ? '#dc2626' : '#2563eb';
+}
+
+// Liest HTTP-Status + Fehlertext (Open-Meteo liefert meist {"reason": "..."}) aus einer fehlgeschlagenen Antwort
+async function describeFetchError(res) {
+  let detail = '';
+  try {
+    const body = await res.clone().text();
+    try {
+      const json = JSON.parse(body);
+      detail = json.reason || body.slice(0, 200);
+    } catch {
+      detail = body.slice(0, 200);
+    }
+  } catch { /* Body nicht lesbar */ }
+  return `HTTP ${res.status}${res.statusText ? ' ' + res.statusText : ''}${detail ? ' — ' + detail : ''}`;
+}
+
+// --- Farbskalen (Stützstellen, gemeinsam für Marker, Fläche & Legende) ---
+const TEMP_STOPS = [
+  [-10, '#3730a3'], [0, '#2563eb'], [10, '#0ea5e9'],
+  [18, '#22c55e'], [25, '#eab308'], [32, '#f97316'], [40, '#dc2626']
+];
+const PRECIP_STOPS = [
+  [0, '#9ca3af'], [0.5, '#93c5fd'], [2, '#3b82f6'],
+  [5, '#1d4ed8'], [10, '#1e3a8a'], [20, '#4c1d95']
+];
+const ELEV_STOPS = [
+  [0, '#2563eb'], [200, '#22c55e'], [600, '#eab308'],
+  [1200, '#f97316'], [2000, '#92400e'], [3500, '#f5f5f4']
+];
+// Verhältnis aktueller Abfluss / langjähriges Mittel — >1 heißt überdurchschnittlich viel Wasser im Fluss
+const FLOOD_STOPS = [
+  [0.7, '#9ca3af'], [1.2, '#60a5fa'], [1.8, '#fbbf24'],
+  [2.5, '#f97316'], [4, '#dc2626']
+];
+
+// Layer-Konfiguration: welches GeoJSON-Feld, welche Farbskala, welche Einheit
+const LAYER_META = {
+  temp:      { field: 'temp',       stops: TEMP_STOPS,   unit: '°C' },
+  precip:    { field: 'precip',     stops: PRECIP_STOPS, unit: 'mm' },
+  elevation: { field: 'elevation',  stops: ELEV_STOPS,   unit: 'm' },
+  flood:     { field: 'floodRatio', stops: FLOOD_STOPS,  unit: '×' }
+};
+
+function colorFromStops(stops, value) {
+  if (value <= stops[0][0]) return stops[0][1];
+  for (let i = 1; i < stops.length; i++) {
+    if (value <= stops[i][0]) return stops[i][1];
+  }
+  return stops[stops.length - 1][1];
+}
+function tempColor(t) { return colorFromStops(TEMP_STOPS, t); }
+function precipColor(mm) { return colorFromStops(PRECIP_STOPS, mm); }
+function elevationColor(m) { return colorFromStops(ELEV_STOPS, m); }
+function floodColor(ratio) { return colorFromStops(FLOOD_STOPS, ratio); }
+
+// --- WMO-Wettercode → Symbol & Beschreibung ---
+const WMO_TABLE = {
+  0:  { desc: 'Klarer Himmel',              icon: '☀️', night: '🌙' },
+  1:  { desc: 'Überwiegend klar',           icon: '🌤️', night: '🌙' },
+  2:  { desc: 'Teilweise bewölkt',          icon: '⛅' },
+  3:  { desc: 'Bedeckt',                    icon: '☁️' },
+  45: { desc: 'Nebel',                      icon: '🌫️' },
+  48: { desc: 'Reifnebel',                  icon: '🌫️' },
+  51: { desc: 'Leichter Nieselregen',       icon: '🌦️' },
+  53: { desc: 'Nieselregen',                icon: '🌦️' },
+  55: { desc: 'Starker Nieselregen',        icon: '🌦️' },
+  56: { desc: 'Leichter gefrierender Niesel', icon: '🌦️' },
+  57: { desc: 'Gefrierender Nieselregen',   icon: '🌦️' },
+  61: { desc: 'Leichter Regen',             icon: '🌧️' },
+  63: { desc: 'Regen',                      icon: '🌧️' },
+  65: { desc: 'Starker Regen',              icon: '🌧️' },
+  66: { desc: 'Leichter gefrierender Regen', icon: '🌧️' },
+  67: { desc: 'Gefrierender Regen',         icon: '🌧️' },
+  71: { desc: 'Leichter Schneefall',        icon: '🌨️' },
+  73: { desc: 'Schneefall',                 icon: '🌨️' },
+  75: { desc: 'Starker Schneefall',         icon: '🌨️' },
+  77: { desc: 'Schneegriesel',              icon: '🌨️' },
+  80: { desc: 'Leichte Regenschauer',       icon: '🌦️' },
+  81: { desc: 'Regenschauer',               icon: '🌦️' },
+  82: { desc: 'Heftige Regenschauer',       icon: '🌦️' },
+  85: { desc: 'Leichte Schneeschauer',      icon: '🌨️' },
+  86: { desc: 'Schneeschauer',              icon: '🌨️' },
+  95: { desc: 'Gewitter',                   icon: '⛈️' },
+  96: { desc: 'Gewitter mit leichtem Hagel', icon: '⛈️' },
+  99: { desc: 'Gewitter mit starkem Hagel', icon: '⛈️' }
+};
+function weatherCodeInfo(code, isDay) {
+  const entry = WMO_TABLE[code] || { desc: 'Unbekannt', icon: '❓' };
+  const icon = (isDay === 0 && entry.night) ? entry.night : entry.icon;
+  return { desc: entry.desc, icon };
+}
+
+function interpolateExpr(field, stops) {
+  const expr = ['interpolate', ['linear'], ['get', field]];
+  stops.forEach(([val, color]) => { expr.push(val, color); });
+  return expr;
+}
+
+function updateLegend() {
+  const ticks = document.getElementById('legendTicks');
+  const bar = document.getElementById('legendBar');
+
+  if (activeLayer === 'clouds') {
+    // Weiß = 100% Bewölkung, transparent = 0% — Verlauf über einem blauen Hintergrund sichtbar gemacht
+    bar.style.background = 'linear-gradient(to right, #2563eb, rgba(255,255,255,1))';
+    ticks.innerHTML = '';
+    [0, 50, 100].forEach(v => {
+      const span = document.createElement('span');
+      span.textContent = `${v}%`;
+      ticks.appendChild(span);
+    });
+    return;
+  }
+
+  const meta = LAYER_META[activeLayer];
+  if (!meta) return;
+  const { stops, unit } = meta;
+  const colors = stops.map(s => s[1]).join(',');
+  bar.style.background = `linear-gradient(to right, ${colors})`;
+  ticks.innerHTML = '';
+  [stops[0][0], stops[Math.floor(stops.length / 2)][0], stops[stops.length - 1][0]].forEach(v => {
+    const span = document.createElement('span');
+    span.textContent = `${v}${unit}`;
+    ticks.appendChild(span);
+  });
+}
+
+// --- Zielzeitpunkt aus der Auswahl ableiten (UTC, fürs Grid) ---
+function resolveTarget() {
+  const now = new Date();
+  const sel = timeSelect.value;
+
+  if (sel === 'live') {
+    return { date: now.toISOString().slice(0, 10), hour: now.getUTCHours(), mode: 'forecast' };
+  }
+  if (sel === 'past') {
+    return { date: pastDate.value, hour: 12, mode: 'archive' };
+  }
+  const days = parseInt(sel.replace('+', ''), 10);
+  const target = new Date(now);
+  target.setUTCDate(target.getUTCDate() + days);
+  return { date: target.toISOString().slice(0, 10), hour: 12, mode: 'forecast' };
+}
+
+// --- Grid-Fläche: fein gerastert + weichgezeichnet, als Bild-Overlay statt einzelner Kästen ---
+// Open-Meteo erlaubt max. 100 Orte pro Abfrage (Elevation-API testweise ermittelt: 100 ok, 120 -> 400)
+const GRID_COLS = 10;
+const GRID_ROWS = 10;
+const GRID_SOURCE_ID = 'weather-grid';
+const GRID_LAYER_ID = 'weather-grid-fill';
+const CELL_PX = 28;   // Canvas-Pixel pro Zelle vor dem Blur
+const BLUR_PX = 9;    // Weichzeichnungsradius — glättet Zellgrenzen, ohne lokale Extreme zu verwischen
+const TRANSPARENT_PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+
+map.on('load', () => {
+  // Ohne beforeId: Layer landen ganz oben im Stack, über allen Basiskarten-Flächen.
+  const b = map.getBounds();
+  map.addSource(GRID_SOURCE_ID, {
+    type: 'image',
+    url: TRANSPARENT_PIXEL,
+    coordinates: boundsToCoords({ west: b.getWest(), east: b.getEast(), south: b.getSouth(), north: b.getNorth() })
+  });
+  map.addLayer({
+    id: GRID_LAYER_ID,
+    type: 'raster',
+    source: GRID_SOURCE_ID,
+    paint: { 'raster-opacity': 1, 'raster-fade-duration': 0 }
+  });
+  updateLegend();
+  loadGrid();
+  loadRadarFrames();
+});
+
+// bounds: einfaches Objekt {west, east, south, north} (kein maplibregl.LngLatBounds)
+function boundsToCoords(bounds) {
+  const { west: w, east: e, south: s, north: n } = bounds;
+  return [[w, n], [e, n], [e, s], [w, s]];
+}
+
+// Kartenausschnitt auf ein grobes Raster "einrasten" — kleine Schwenks/Zooms erzeugen dann
+// dieselbe Anfrage-URL wie zuvor, sodass der Service Worker aus dem Cache bedienen kann,
+// statt bei jeder Mausbewegung eine neue Open-Meteo-Anfrage zu feuern.
+const BOUNDS_SNAP = 0.5; // Grad
+
+function snap(value, step) { return Math.round(value / step) * step; }
+
+function buildGridPoints() {
+  const raw = map.getBounds();
+  const west = snap(raw.getWest(), BOUNDS_SNAP);
+  const east = snap(raw.getEast(), BOUNDS_SNAP);
+  const south = snap(raw.getSouth(), BOUNDS_SNAP);
+  const north = snap(raw.getNorth(), BOUNDS_SNAP);
+  const dx = (east - west) / GRID_COLS;
+  const dy = (north - south) / GRID_ROWS;
+
+  const points = [];
+  for (let r = 0; r < GRID_ROWS; r++) {
+    for (let c = 0; c < GRID_COLS; c++) {
+      const lng = west + (c + 0.5) * dx;
+      const lat = south + (r + 0.5) * dy;
+      points.push({ lng, lat });
+    }
+  }
+  return { points, bounds: { west, east, south, north } };
+}
+
+// Bestimmt Farbe + Deckkraft einer Zelle für den aktuellen Layer; null = Zelle bleibt transparent
+function cellStyle(layer, props) {
+  if (layer === 'clouds') {
+    if (props.cloudCover == null) return null;
+    return { color: '#ffffff', alpha: props.cloudCover / 100 };
+  }
+  const meta = LAYER_META[layer];
+  if (!meta) return null;
+  const value = props[meta.field];
+  if (value == null) return null;
+  return { color: colorFromStops(meta.stops, value), alpha: 0.65 };
+}
+
+// Rendert die Zellwerte auf eine Canvas, weichzeichnet sie und legt sie als Bild-Overlay auf die Karte
+function renderGridImage(layer, propsList, bounds) {
+  const w = GRID_COLS * CELL_PX, h = GRID_ROWS * CELL_PX;
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+
+  propsList.forEach((props, i) => {
+    const style = cellStyle(layer, props);
+    if (!style) return;
+    const col = i % GRID_COLS;
+    const row = Math.floor(i / GRID_COLS);
+    const x = col * CELL_PX;
+    const y = (GRID_ROWS - 1 - row) * CELL_PX; // row 0 = Süden = unten in Lat, aber oben im Canvas ist Norden
+    ctx.globalAlpha = style.alpha;
+    ctx.fillStyle = style.color;
+    ctx.fillRect(x, y, CELL_PX, CELL_PX);
+  });
+
+  const blurCanvas = document.createElement('canvas');
+  blurCanvas.width = w; blurCanvas.height = h;
+  const bctx = blurCanvas.getContext('2d');
+  bctx.filter = `blur(${BLUR_PX}px)`;
+  bctx.drawImage(canvas, 0, 0);
+
+  const src = map.getSource(GRID_SOURCE_ID);
+  if (src) {
+    src.updateImage({ url: blurCanvas.toDataURL(), coordinates: boundsToCoords(bounds) });
+    map.triggerRepaint();
+  }
+}
+
+let gridRequestId = 0;
+let gridDebounce = null;
+let lastGridFetchAt = 0;
+const GRID_DEBOUNCE_MS = 900;
+const GRID_MIN_INTERVAL_MS = 2500; // harte Mindestpause zwischen zwei Grid-Abfragen, gegen Rate-Limits
+
+function loadGrid() {
+  if (activeLayer === 'radar') return;
+  clearTimeout(gridDebounce);
+
+  const sinceLast = Date.now() - lastGridFetchAt;
+  const delay = Math.max(GRID_DEBOUNCE_MS, GRID_MIN_INTERVAL_MS - sinceLast);
+
+  gridDebounce = setTimeout(() => {
+    lastGridFetchAt = Date.now();
+    if (activeLayer === 'elevation') fetchElevationGrid();
+    else if (activeLayer === 'flood') fetchFloodGrid();
+    else if (activeLayer === 'symbols') fetchSymbolsGrid();
+    else fetchWeatherGrid();
+  }, delay);
+}
+
+async function fetchWeatherGrid() {
+  const requestId = ++gridRequestId;
+  const { points, bounds } = buildGridPoints();
+  const target = resolveTarget();
+  const base = target.mode === 'archive'
+    ? 'https://archive-api.open-meteo.com/v1/archive'
+    : 'https://api.open-meteo.com/v1/forecast';
+
+  const params = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(3)).join(','),
+    longitude: points.map(p => p.lng.toFixed(3)).join(','),
+    hourly: 'temperature_2m,precipitation,weathercode,cloud_cover,is_day',
+    start_date: target.date,
+    end_date: target.date,
+    timezone: 'UTC'
+  });
+
+  setStatus('Lade Wetterfläche …');
+  try {
+    const res = await fetch(`${base}?${params.toString()}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
+    let data = await res.json();
+    if (!Array.isArray(data)) data = [data]; // einzelner Punkt liefert ein Objekt statt Array
+
+    if (requestId !== gridRequestId) return; // veraltete Antwort verwerfen
+
+    const propsList = data.map(loc => {
+      const hours = loc.hourly.time;
+      let idx = hours.findIndex(t => new Date(t).getUTCHours() === target.hour);
+      if (idx === -1) idx = Math.floor(hours.length / 2);
+      return {
+        temp: loc.hourly.temperature_2m[idx],
+        precip: loc.hourly.precipitation[idx],
+        weathercode: loc.hourly.weathercode ? loc.hourly.weathercode[idx] : null,
+        cloudCover: loc.hourly.cloud_cover ? loc.hourly.cloud_cover[idx] : null
+      };
+    });
+
+    renderGridImage(activeLayer, propsList, bounds);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    if (requestId === gridRequestId) setStatus(`Fehler beim Laden der Wetterfläche:\n${err.message}`, true);
+  }
+}
+
+// --- Symbol-Layer: Wettericons als DOM-Marker auf dem Grid ---
+let symbolMarkers = [];
+
+function clearSymbolMarkers() {
+  symbolMarkers.forEach(m => m.remove());
+  symbolMarkers = [];
+}
+
+function setSymbolMarkersVisible(visible) {
+  symbolMarkers.forEach(m => { m.getElement().style.display = visible ? 'block' : 'none'; });
+}
+
+async function fetchSymbolsGrid() {
+  const requestId = ++gridRequestId;
+  const { points } = buildGridPoints();
+  const target = resolveTarget();
+  const base = target.mode === 'archive'
+    ? 'https://archive-api.open-meteo.com/v1/archive'
+    : 'https://api.open-meteo.com/v1/forecast';
+
+  const params = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(3)).join(','),
+    longitude: points.map(p => p.lng.toFixed(3)).join(','),
+    hourly: 'temperature_2m,weathercode,cloud_cover,is_day',
+    start_date: target.date,
+    end_date: target.date,
+    timezone: 'UTC'
+  });
+
+  setStatus('Lade Wettersymbole …');
+  try {
+    const res = await fetch(`${base}?${params.toString()}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
+    let data = await res.json();
+    if (!Array.isArray(data)) data = [data];
+
+    if (requestId !== gridRequestId) return;
+
+    clearSymbolMarkers();
+    data.forEach((loc, i) => {
+      const hours = loc.hourly.time;
+      let idx = hours.findIndex(t => new Date(t).getUTCHours() === target.hour);
+      if (idx === -1) idx = Math.floor(hours.length / 2);
+      const code = loc.hourly.weathercode[idx];
+      const isDay = loc.hourly.is_day[idx];
+      const { icon } = weatherCodeInfo(code, isDay);
+
+      const el = document.createElement('div');
+      el.className = 'symbol-marker';
+      el.textContent = icon;
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([points[i].lng, points[i].lat])
+        .addTo(map);
+      symbolMarkers.push(marker);
+    });
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    if (requestId === gridRequestId) setStatus(`Fehler beim Laden der Wettersymbole:\n${err.message}`, true);
+  }
+}
+
+async function fetchElevationGrid() {
+  const requestId = ++gridRequestId;
+  const { points, bounds } = buildGridPoints();
+
+  const params = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(3)).join(','),
+    longitude: points.map(p => p.lng.toFixed(3)).join(',')
+  });
+
+  setStatus('Lade Höhendaten …');
+  try {
+    const res = await fetch(`https://api.open-meteo.com/v1/elevation?${params.toString()}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
+    const data = await res.json();
+
+    if (requestId !== gridRequestId) return;
+
+    const propsList = data.elevation.map(elevation => ({ elevation }));
+    renderGridImage('elevation', propsList, bounds);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    if (requestId === gridRequestId) setStatus(`Fehler beim Laden der Höhendaten:\n${err.message}`, true);
+  }
+}
+
+async function fetchFloodGrid() {
+  const requestId = ++gridRequestId;
+  const { points, bounds } = buildGridPoints();
+  const target = resolveTarget();
+
+  const params = new URLSearchParams({
+    latitude: points.map(p => p.lat.toFixed(3)).join(','),
+    longitude: points.map(p => p.lng.toFixed(3)).join(','),
+    daily: 'river_discharge,river_discharge_mean',
+    start_date: target.date,
+    end_date: target.date
+  });
+
+  setStatus('Lade Hochwasserdaten …');
+  try {
+    const res = await fetch(`https://flood-api.open-meteo.com/v1/flood?${params.toString()}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
+    let data = await res.json();
+    if (!Array.isArray(data)) data = [data];
+
+    if (requestId !== gridRequestId) return;
+
+    const propsList = data.map(loc => {
+      const discharge = loc.daily.river_discharge[0];
+      const mean = loc.daily.river_discharge_mean[0];
+      if (discharge == null || mean == null || mean === 0) return { floodRatio: null };
+      return { floodRatio: discharge / mean };
+    });
+
+    renderGridImage('flood', propsList, bounds);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    if (requestId === gridRequestId) setStatus(`Fehler beim Laden der Hochwasserdaten:\n${err.message}`, true);
+  }
+}
+
+map.on('moveend', loadGrid);
+
+// --- Einzelpunkt-Abfrage per Klick (exakter Wert, lokale Zeitzone) ---
+let currentMarker = null;
+
+function placeMarker(lngLat, label, color, popupHtml, darkText) {
+  if (currentMarker) currentMarker.remove();
+
+  const el = document.createElement('div');
+  el.className = 'weather-marker';
+  el.style.background = color;
+  el.textContent = label;
+  if (darkText) {
+    el.style.color = '#1e3a8a';
+    el.style.textShadow = 'none';
+    el.style.border = '2px solid rgba(30,58,138,0.6)';
+  }
+
+  currentMarker = new maplibregl.Marker({ element: el })
+    .setLngLat(lngLat)
+    .setPopup(new maplibregl.Popup({ offset: 25 }).setHTML(popupHtml))
+    .addTo(map)
+    .togglePopup();
+}
+
+async function queryPoint(lngLat) {
+  if (activeLayer === 'radar') return; // Radar hat keinen sinnvollen Einzelpunkt-Wert
+  if (activeLayer === 'elevation') return queryElevation(lngLat);
+  if (activeLayer === 'flood') return queryFlood(lngLat);
+  return queryWeather(lngLat);
+}
+
+// Icon-Kachel als Marker-Inhalt (statt Zahl in einem Farbkreis) für den Symbole-Layer
+function placeSymbolMarker(lngLat, icon, popupHtml) {
+  if (currentMarker) currentMarker.remove();
+
+  const el = document.createElement('div');
+  el.className = 'symbol-marker';
+  el.textContent = icon;
+
+  currentMarker = new maplibregl.Marker({ element: el })
+    .setLngLat(lngLat)
+    .setPopup(new maplibregl.Popup({ offset: 20 }).setHTML(popupHtml))
+    .addTo(map)
+    .togglePopup();
+}
+
+async function queryWeather(lngLat) {
+  const { lng, lat } = lngLat;
+  const now = new Date();
+  const sel = timeSelect.value;
+  let date, hourLocal, mode;
+  if (sel === 'live') {
+    date = now.toISOString().slice(0, 10); hourLocal = now.getHours(); mode = 'forecast';
+  } else if (sel === 'past') {
+    date = pastDate.value; hourLocal = 12; mode = 'archive';
+  } else {
+    const days = parseInt(sel.replace('+', ''), 10);
+    const target = new Date(now);
+    target.setDate(target.getDate() + days);
+    date = target.toISOString().slice(0, 10); hourLocal = 12; mode = 'forecast';
+  }
+
+  const base = mode === 'archive'
+    ? 'https://archive-api.open-meteo.com/v1/archive'
+    : 'https://api.open-meteo.com/v1/forecast';
+
+  const params = new URLSearchParams({
+    latitude: lat.toFixed(4),
+    longitude: lng.toFixed(4),
+    hourly: 'temperature_2m,precipitation,weathercode,cloud_cover,is_day',
+    start_date: date,
+    end_date: date,
+    timezone: 'auto'
+  });
+
+  setStatus('Lade Messpunkt …');
+  try {
+    const res = await fetch(`${base}?${params.toString()}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
+    const data = await res.json();
+
+    const hours = data.hourly.time;
+    let idx = hours.findIndex(t => new Date(t).getHours() === hourLocal);
+    if (idx === -1) idx = Math.floor(hours.length / 2);
+
+    const temp = data.hourly.temperature_2m[idx];
+    const precip = data.hourly.precipitation[idx];
+    const code = data.hourly.weathercode[idx];
+    const cloudCover = data.hourly.cloud_cover[idx];
+    const isDay = data.hourly.is_day[idx];
+    const { icon, desc } = weatherCodeInfo(code, isDay);
+    const timeLabel = hours[idx].replace('T', ' ');
+
+    const popupHtml = `
+      <strong>${timeLabel}</strong><br>
+      ${icon} ${desc}<br>
+      🌡️ ${temp.toFixed(1)} °C &nbsp; 🌧️ ${precip.toFixed(1)} mm<br>
+      ☁️ Bewölkung: ${cloudCover}%
+    `;
+
+    if (activeLayer === 'symbols') {
+      placeSymbolMarker(lngLat, icon, popupHtml);
+    } else if (activeLayer === 'clouds') {
+      placeMarker(lngLat, `${cloudCover}%`, `rgba(255,255,255,${(cloudCover / 100).toFixed(2)})`, popupHtml, true);
+    } else {
+      const label = activeLayer === 'temp' ? `${Math.round(temp)}°` : `${precip.toFixed(1)}`;
+      const color = activeLayer === 'temp' ? tempColor(temp) : precipColor(precip);
+      placeMarker(lngLat, label, color, popupHtml);
+    }
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus(`Fehler beim Laden des Messpunkts:\n${err.message}`, true);
+  }
+}
+
+async function queryElevation(lngLat) {
+  const { lng, lat } = lngLat;
+  setStatus('Lade Höhe …');
+  try {
+    const res = await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat.toFixed(4)}&longitude=${lng.toFixed(4)}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
+    const data = await res.json();
+    const elevation = data.elevation[0];
+
+    placeMarker(lngLat, `${Math.round(elevation)}`, elevationColor(elevation), `⛰️ ${elevation.toFixed(0)} m ü. NN`);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus(`Fehler beim Laden der Höhe:\n${err.message}`, true);
+  }
+}
+
+async function queryFlood(lngLat) {
+  const { lng, lat } = lngLat;
+  const target = resolveTarget();
+  const params = new URLSearchParams({
+    latitude: lat.toFixed(4),
+    longitude: lng.toFixed(4),
+    daily: 'river_discharge,river_discharge_mean',
+    start_date: target.date,
+    end_date: target.date
+  });
+
+  setStatus('Lade Hochwasserdaten …');
+  try {
+    const res = await fetch(`https://flood-api.open-meteo.com/v1/flood?${params.toString()}`);
+    if (!res.ok) throw new Error(await describeFetchError(res));
+    const data = await res.json();
+    const discharge = data.daily.river_discharge[0];
+    const mean = data.daily.river_discharge_mean[0];
+
+    if (discharge == null || mean == null || mean === 0) {
+      setStatus('Kein Fluss-Modell an diesem Punkt verfügbar.', true);
+      return;
+    }
+    const ratio = discharge / mean;
+    const popupHtml = `
+      📅 ${target.date}<br>
+      🌊 Abfluss: ${discharge.toFixed(1)} m³/s<br>
+      📊 Mittel: ${mean.toFixed(1)} m³/s (${ratio.toFixed(2)}×)
+    `;
+    placeMarker(lngLat, `${ratio.toFixed(1)}×`, floodColor(ratio), popupHtml);
+    setStatus('');
+  } catch (err) {
+    console.error(err);
+    setStatus(`Fehler beim Laden der Hochwasserdaten:\n${err.message}`, true);
+  }
+}
+
+map.on('click', (e) => queryPoint(e.lngLat));
+
+// --- RainViewer Regenradar ---
+const RADAR_SOURCE_ID = 'radar-tiles';
+const RADAR_LAYER_ID = 'radar-tiles-layer';
+let radarFrames = [];   // { time, path } je Zeitschritt, past + nowcast
+let radarNowIndex = 0;  // Index des letzten "echten" (past) Frames
+
+const radarSlider = document.getElementById('radarSlider');
+const radarTimeLabel = document.getElementById('radarTimeLabel');
+
+async function loadRadarFrames() {
+  try {
+    const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+    if (!res.ok) throw new Error(`RainViewer-Fehler ${res.status}`);
+    const data = await res.json();
+    const host = data.host;
+    const past = data.radar.past || [];
+    const nowcast = data.radar.nowcast || [];
+    radarFrames = [...past, ...nowcast].map(f => ({ time: f.time, path: `${host}${f.path}` }));
+    radarNowIndex = past.length - 1;
+
+    radarSlider.min = 0;
+    radarSlider.max = radarFrames.length - 1;
+    radarSlider.value = radarNowIndex;
+    setRadarFrame(radarNowIndex);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+function setRadarFrame(index) {
+  const frame = radarFrames[index];
+  if (!frame) return;
+
+  const tileUrl = `${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+
+  if (map.getLayer(RADAR_LAYER_ID)) map.removeLayer(RADAR_LAYER_ID);
+  if (map.getSource(RADAR_SOURCE_ID)) map.removeSource(RADAR_SOURCE_ID);
+
+  map.addSource(RADAR_SOURCE_ID, {
+    type: 'raster',
+    tiles: [tileUrl],
+    tileSize: 256,
+    attribution: 'Radar © RainViewer'
+  });
+  map.addLayer({
+    id: RADAR_LAYER_ID,
+    type: 'raster',
+    source: RADAR_SOURCE_ID,
+    paint: { 'raster-opacity': 0.7 },
+    layout: { visibility: activeLayer === 'radar' ? 'visible' : 'none' }
+  });
+
+  const date = new Date(frame.time * 1000);
+  const timeStr = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const offsetMin = Math.round((frame.time - radarFrames[radarNowIndex].time) / 60);
+  let rel;
+  if (offsetMin === 0) rel = 'jetzt';
+  else if (offsetMin > 0) rel = `+${offsetMin} min (Vorhersage)`;
+  else rel = `${offsetMin} min`;
+  radarTimeLabel.textContent = `${timeStr} Uhr (${rel})`;
+}
+
+radarSlider.addEventListener('input', () => setRadarFrame(parseInt(radarSlider.value, 10)));
+</script>
+</body>
+</html>
