@@ -39,7 +39,7 @@
   /* ---------- Hero ---------- */
   .hero { position: relative; border-radius: 34px; overflow: hidden; box-shadow: var(--shadow); background: var(--card); }
   .scene { position: relative; height: 470px; }
-  .scene svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .scene > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   .grain { position: absolute; inset: 0; pointer-events: none; opacity: .18; mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
   .top { position: absolute; left: 0; right: 0; top: 0; padding: 26px 26px 0; color: #fff; display: flex; justify-content: space-between; align-items: flex-start; z-index: 2; text-shadow: 0 1px 12px rgba(20,20,60,.18); }
@@ -52,8 +52,9 @@
   .units button.on { opacity: 1; }
   .units i { width: 1px; height: 22px; background: currentColor; opacity: .4; }
   .feels { font-size: 14px; opacity: .85; margin-top: 8px; }
-  .cond { text-align: right; font-size: 14px; font-weight: 500; min-width: 64px; }
-  .cond svg { width: 36px; height: 36px; display: block; margin: 0 0 4px auto; }
+  .homechip { background: rgba(255,255,255,.2); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: #fff; border-radius: 20px; padding: 6px 12px; font-size: 13px; font-weight: 500; margin-bottom: 12px; }
+  .cond { display: flex; flex-direction: column; align-items: flex-end; font-size: 15px; font-weight: 500; }
+  .cond svg { width: 58px; height: 58px; display: block; margin: -4px -4px 2px 0; stroke-width: 1.3; }
   .curve-label { font-size: 13px; font-weight: 600; fill: #fff; text-anchor: middle; paint-order: stroke; stroke: rgba(20,20,70,.18); stroke-width: 3px; }
   .curve-hour { font-size: 10px; font-weight: 500; text-anchor: middle; fill: var(--ink-3); }
 
@@ -138,7 +139,7 @@
             </div>
             <div class="feels" id="feels"></div>
           </div>
-          <div class="cond"><span id="condIcon"></span><span id="condText"></span></div>
+          <div style="text-align:right"><button class="homechip" id="homeBtn" style="display:none">⌂ <span data-i="myplace"></span></button><div class="cond"><span id="condIcon"></span><span id="condText"></span></div></div>
         </div>
         <div class="search" id="search">
           <div class="search-box">
@@ -205,14 +206,14 @@ const LANG = (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' 
 const T = {
   de: { hourly: 'Nächste 24 Stunden', humidity: 'Luftfeuchte', pressure: 'Luftdruck', uv: 'UV-Index', wind: 'Wind', sun: 'Sonnenauf- & -untergang',
         sunrise: 'Aufgang', sunset: 'Untergang', data: 'Daten:', maps: 'Wetterkarten', feels: 'Gefühlt', dew: 'Taupunkt', now: 'Jetzt', today: 'Heute',
-        search: 'Stadt suchen…', rising: 'steigend', falling: 'fallend', steady: 'stabil', daylight: 'Tageslicht', gusts: 'Böen', from: 'aus',
+        search: 'Stadt suchen…', home: 'Mein Standort', myplace: 'Mein Ort', rising: 'steigend', falling: 'fallend', steady: 'stabil', daylight: 'Tageslicht', gusts: 'Böen', from: 'aus',
         uvT: ['Niedrig', 'Mäßig', 'Hoch', 'Sehr hoch', 'Extrem'], err: 'Wetterdaten konnten nicht geladen werden.',
         dirs: ['N','NO','O','SO','S','SW','W','NW'], beaufort: ['Windstill','Leiser Zug','Leichte Brise','Schwache Brise','Mäßige Brise','Frische Brise','Starker Wind','Steifer Wind','Stürmisch','Sturm','Schwerer Sturm','Orkanartig','Orkan'],
         hum: h => h < 30 ? 'Trocken' : h < 60 ? 'Angenehm' : h < 80 ? 'Feucht' : 'Sehr feucht',
         codes: { clear: 'Klar', mostly: 'Überwiegend klar', partly: 'Teils bewölkt', cloudy: 'Bewölkt', fog: 'Nebel', drizzle: 'Niesel', rain: 'Regen', heavy: 'Starkregen', snow: 'Schnee', sleet: 'Schneeregen', storm: 'Gewitter', sunny: 'Sonnig' } },
   en: { hourly: 'Next 24 hours', humidity: 'Humidity', pressure: 'Pressure', uv: 'UV index', wind: 'Wind', sun: 'Sunrise & sunset',
         sunrise: 'Sunrise', sunset: 'Sunset', data: 'Data:', maps: 'Weather maps', feels: 'Feels like', dew: 'Dew point', now: 'Now', today: 'Today',
-        search: 'Search city…', rising: 'rising', falling: 'falling', steady: 'steady', daylight: 'Daylight', gusts: 'gusts', from: 'from',
+        search: 'Search city…', home: 'My location', myplace: 'My place', rising: 'rising', falling: 'falling', steady: 'steady', daylight: 'Daylight', gusts: 'gusts', from: 'from',
         uvT: ['Low', 'Moderate', 'High', 'Very high', 'Extreme'], err: 'Could not load weather data.',
         dirs: ['N','NE','E','SE','S','SW','W','NW'], beaufort: ['Calm','Light air','Light breeze','Gentle breeze','Moderate breeze','Fresh breeze','Strong breeze','Near gale','Gale','Strong gale','Storm','Violent storm','Hurricane'],
         hum: h => h < 30 ? 'Dry' : h < 60 ? 'Comfortable' : h < 80 ? 'Humid' : 'Very humid',
@@ -228,7 +229,9 @@ const store = {
   set(k, v) { try { localStorage.setItem('wx.' + k, JSON.stringify(v)); } catch {} }
 };
 let unit = store.get('unit', 'C');
-let loc = store.get('loc', null);
+let home = store.get('home', null);
+let loc = null;
+let recent = store.get('recent', []);
 let data = null;
 const $ = id => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
@@ -358,44 +361,42 @@ function drawScene() {
     if (!isDay) el('circle', { cx: sx + 6, cy: sy - 4, r: 12, fill: P.sky[0] }, svg);
   }
 
-  // mountains (seeded by place)
   const seed = Math.round(loc.lat * 1000) * 31 + Math.round(loc.lon * 1000);
   const r = rng(seed);
-  const layers = [
-    { pts: ridge(r, HOR - 20, 120, 5, W), fill: P.far, op: .8 },
-    { pts: ridge(r, HOR - 8, 150, 4, W), fill: P.mid, op: .92 },
-    { pts: ridge(r, HOR + 2, 95, 5, W), fill: P.near, op: 1 }
-  ];
-  const mountains = el('g', {}, svg);
-  layers.forEach(L => el('path', { d: pathOf(L.pts, HOR + 1), fill: L.fill, opacity: L.op }, mountains));
-  // tree line: bumpy blobs
-  const tpts = [];
-  for (let x = -10; x <= W + 10; x += 5) tpts.push([x, HOR - 12 - Math.abs(Math.sin(x * .09 + r() * .8)) * 14 - (Math.sin(x * .021 + seed) + 1) * 12]);
-  el('path', { d: pathOf(tpts, HOR + 1), fill: P.trees }, mountains);
 
-  // clouds
+  // clouds (behind the foreground)
   if (['mostly', 'partly', 'cloudy', 'drizzle', 'rain', 'heavy', 'sleet', 'snow', 'storm'].includes(k)) {
     const n = k === 'mostly' ? 2 : k === 'partly' ? 4 : 7;
     const cg = el('g', { opacity: isDay ? .75 : .35 }, svg);
     for (let i = 0; i < n; i++) {
-      const cx = r() * W, cy = 110 + r() * 90, s = .7 + r() * .9;
+      const cx = r() * W, cy = 100 + r() * 80, s = .7 + r() * .9;
       const cl = el('g', { transform: `translate(${cx} ${cy}) scale(${s})` }, cg);
       [[0, 0, 26], [24, -10, 22], [46, 2, 20], [-22, 6, 16], [20, 10, 22]].forEach(([x, y, rr]) => el('ellipse', { cx: x, cy: y, rx: rr * 1.4, ry: rr * .8, fill: '#fff' }, cl));
-      const a = el('animateTransform', { attributeName: 'transform', type: 'translate', additive: 'sum', values: `0 0; ${20 + r() * 30} 0; 0 0`, dur: `${30 + r() * 30}s`, repeatCount: 'indefinite' }, cl);
+      el('animateTransform', { attributeName: 'transform', type: 'translate', additive: 'sum', values: `0 0; ${20 + r() * 30} 0; 0 0`, dur: `${30 + r() * 30}s`, repeatCount: 'indefinite' }, cl);
     }
   }
+
+  const scene = SCENE_OVERRIDE || loc.scene || 'mountains';
+  const fg = el('g', {}, svg);
+  const ctx = { W, H, HOR, P, r, isDay, seed };
+  if (scene === 'city') drawCity(fg, ctx, LANDMARKS.find(l => l.id === loc.landmark));
+  else if (scene === 'sea') drawSea(fg, ctx);
+  else if (scene === 'land') drawLand(fg, ctx);
+  else drawMountains(fg, ctx);
+
   if (k === 'fog') el('rect', { x: 0, y: HOR - 90, width: W, height: 110, fill: '#fff', opacity: .35 }, svg);
 
-  // water + reflection
-  el('rect', { x: 0, y: HOR, width: W, height: H - HOR, fill: 'url(#waterG)' }, svg);
-  const refl = mountains.cloneNode(true);
-  refl.setAttribute('transform', `translate(0 ${HOR * 2}) scale(1 -1)`);
-  refl.setAttribute('opacity', '.45');
-  const rw = el('g', { mask: 'url(#reflM)' }, svg); rw.appendChild(refl);
-  if (!overcast) el('rect', { x: sx - 7, y: HOR + (HOR - sy) - 26, width: 14, height: 54, rx: 7, fill: isDay ? '#ff6f91' : '#fff', opacity: .55 }, svg);
-  for (let i = 0; i < 6; i++) el('rect', { x: r() * W, y: HOR + 6 + r() * 60, width: 30 + r() * 80, height: 1.2, fill: '#fff', opacity: .15 }, svg);
-  el('rect', { x: 0, y: HOR, width: W, height: 2, fill: '#fff', opacity: .25 }, svg);
-
+  // water + reflection (mountains + city stand at a lake/river)
+  if (scene === 'mountains' || scene === 'city') {
+    el('rect', { x: 0, y: HOR, width: W, height: H - HOR, fill: 'url(#waterG)' }, svg);
+    const refl = fg.cloneNode(true);
+    refl.setAttribute('transform', `translate(0 ${HOR * 2}) scale(1 -1)`);
+    refl.setAttribute('opacity', '.45');
+    const rw = el('g', { mask: 'url(#reflM)' }, svg); rw.appendChild(refl);
+    for (let i = 0; i < 6; i++) el('rect', { x: r() * W, y: HOR + 6 + r() * 60, width: 30 + r() * 80, height: 1.2, fill: '#fff', opacity: .15 }, svg);
+    el('rect', { x: 0, y: HOR, width: W, height: 2, fill: '#fff', opacity: .25 }, svg);
+  }
+  if (!overcast && scene !== 'land') el('rect', { x: sx - 7, y: HOR + (HOR - sy) - 26, width: 14, height: 54, rx: 7, fill: isDay ? '#ff6f91' : '#fff', opacity: .55 }, svg);
   // precipitation
   if (['drizzle', 'rain', 'heavy', 'sleet', 'storm', 'snow'].includes(k)) {
     const pg = el('g', { opacity: .6 }, svg);
@@ -426,6 +427,168 @@ function drawScene() {
     const hh = new Date(data.hourly.time[hs + i]).getHours();
     el('text', { x, y: Math.min(H - 6, y + 20), class: 'curve-hour' }, svg).textContent = i === 1 ? T.now : String(hh).padStart(2, '0');
   }
+}
+
+// ---------- scenes: mountains / land / sea / city (+ landmarks) ----------
+const SCENE_OVERRIDE = new URLSearchParams(location.search).get('scene');
+
+function drawMountains(g, { W, HOR, P, r, seed }) {
+  [[HOR - 20, 120, 5, P.far, .8], [HOR - 8, 150, 4, P.mid, .92], [HOR + 2, 95, 5, P.near, 1]]
+    .forEach(([y, a, n, f, o]) => el('path', { d: pathOf(ridge(r, y, a, n, W), HOR + 1), fill: f, opacity: o }, g));
+  const t = [];
+  for (let x = -10; x <= W + 10; x += 5) t.push([x, HOR - 12 - Math.abs(Math.sin(x * .09 + r() * .8)) * 14 - (Math.sin(x * .021 + seed) + 1) * 12]);
+  el('path', { d: pathOf(t, HOR + 1), fill: P.trees }, g);
+}
+
+function hills(r, y0, amp, W) {
+  const a = r() * 6, b = r() * 6, pts = [];
+  for (let x = -10; x <= W + 10; x += 6) pts.push([x, y0 - amp * (.55 + .3 * Math.sin(x * .012 + a) + .15 * Math.sin(x * .031 + b))]);
+  return pts;
+}
+function drawLand(g, { W, H, HOR, P, r }) {
+  el('path', { d: pathOf(hills(r, HOR - 10, 70, W), H), fill: P.far, opacity: .85 }, g);
+  el('path', { d: pathOf(hills(r, HOR + 30, 70, W), H), fill: P.mid }, g);
+  const near = hills(r, HOR + 85, 80, W);
+  el('path', { d: pathOf(near, H), fill: P.near }, g);
+  // field furrows on the near hill
+  for (let i = 0; i < 7; i++) el('path', { d: smooth(near.map(([x, y]) => [x, y + 14 + i * 13])), stroke: P.mid, 'stroke-width': 1.2, fill: 'none', opacity: .35 }, g);
+  // round trees + a farmhouse on the middle hill
+  for (let i = 0; i < 9; i++) {
+    const x = r() * W, y = HOR + 30 - 40 - r() * 30 + 30, s = 6 + r() * 9;
+    el('rect', { x: x - 1, y: y - 2, width: 2, height: s * .8, fill: P.trees }, g);
+    el('circle', { cx: x, cy: y - s * .5, r: s * .75, fill: P.trees }, g);
+  }
+  const hx = 60 + r() * (W - 160), hy = HOR + 8;
+  el('path', { d: `M${hx} ${hy}v-18l14-12 14 12v18z`, fill: P.trees }, g);
+  el('rect', { x: hx + 11, y: hy - 12, width: 6, height: 6, fill: '#ffd98a', opacity: .9 }, g);
+}
+
+function drawSea(g, { W, H, HOR, P, r, isDay }) {
+  // distant coast + lighthouse, open water, waves, a sailboat
+  const coast = []; for (let x = -10; x <= 170; x += 6) coast.push([x, HOR - 6 - Math.max(0, 22 * Math.sin((x + 10) / 180 * Math.PI)) - r() * 2]);
+  el('path', { d: pathOf(coast, HOR + 1), fill: P.mid, opacity: .9 }, g);
+  const lx = 120, ly = HOR - 14;
+  el('path', { d: `M${lx - 5} ${ly}l2-34h6l2 34z`, fill: P.near }, g);
+  for (let i = 0; i < 3; i++) el('rect', { x: lx - 4.5 + i * .3, y: ly - 26 + i * 9, width: 9 - i * .6, height: 3, fill: '#fff', opacity: .6 }, g);
+  el('rect', { x: lx - 3, y: ly - 40, width: 6, height: 6, fill: isDay ? P.near : '#ffe58a' }, g);
+  if (!isDay) { const beam = el('path', { d: `M${lx} ${ly - 37}L${lx + 140} ${ly - 60}L${lx + 140} ${ly - 20}Z`, fill: '#ffe58a', opacity: .18 }, g);
+    el('animateTransform', { attributeName: 'transform', type: 'rotate', values: `-25 ${lx} ${ly - 37}; 25 ${lx} ${ly - 37}; -25 ${lx} ${ly - 37}`, dur: '6s', repeatCount: 'indefinite' }, beam); }
+  el('rect', { x: 0, y: HOR, width: W, height: H - HOR, fill: 'url(#waterG)' }, g);
+  for (let i = 0; i < 16; i++) {
+    const y = HOR + 6 + Math.pow(i / 16, 1.6) * (H - HOR - 10), w = 18 + i * 4, x = r() * W;
+    const wv = el('path', { d: `M${x} ${y}q${w / 4} -3 ${w / 2} 0t${w / 2} 0`, stroke: '#fff', 'stroke-width': 1 + i / 12, fill: 'none', opacity: .18 + i / 60 }, g);
+    el('animateTransform', { attributeName: 'transform', type: 'translate', values: `0 0; ${8 + r() * 10} 0; 0 0`, dur: `${5 + r() * 4}s`, repeatCount: 'indefinite' }, wv);
+  }
+  const bx = 250 + r() * 80, by = HOR + 22;
+  const boat = el('g', {}, g);
+  el('path', { d: `M${bx - 16} ${by}h32l-5 6h-22z`, fill: P.trees }, boat);
+  el('path', { d: `M${bx} ${by - 2}v-34l18 32z`, fill: '#fff', opacity: .9 }, boat);
+  el('path', { d: `M${bx - 2} ${by - 2}v-28l-12 26z`, fill: '#fff', opacity: .7 }, boat);
+  el('animateTransform', { attributeName: 'transform', type: 'rotate', values: `-2 ${bx} ${by}; 2 ${bx} ${by}; -2 ${bx} ${by}`, dur: '4s', repeatCount: 'indefinite' }, boat);
+}
+
+// landmark silhouettes: drawn upward from (0,0); w = footprint for the skyline gap
+const LANDMARKS = [
+  { id: 'berlin', lat: 52.52, lon: 13.405, w: 50, draw(g, c, n) {
+      el('path', { d: 'M-7 0L-4 -150h8L7 0z', fill: c }, g);
+      el('rect', { x: -9, y: -154, width: 18, height: 4, rx: 2, fill: c }, g);
+      el('circle', { cx: 0, cy: -170, r: 17, fill: c }, g);
+      el('rect', { x: -6, y: -190, width: 12, height: 6, rx: 2, fill: c }, g);
+      el('rect', { x: -2.5, y: -222, width: 5, height: 34, fill: c }, g);
+      el('rect', { x: -1, y: -248, width: 2, height: 28, fill: c }, g);
+      for (let i = 0; i < 5; i++) el('rect', { x: -2.5, y: -220 + i * 7, width: 5, height: 3, fill: n ? '#ff4d5e' : '#fff', opacity: n ? .5 : .35 }, g);
+      el('circle', { cx: 0, cy: -248, r: 2.2, fill: '#ff4d5e' }, g);
+      if (n) { el('circle', { cx: 0, cy: -248, r: 6, fill: '#ff4d5e', opacity: .3 }, g); for (let i = -4; i <= 4; i++) el('rect', { x: i * 3.4 - 1, y: -174, width: 2, height: 3, fill: '#ffe08a', opacity: .9 }, g); }
+      else el('path', { d: 'M-12 -180a17 17 0 0 1 14 -6', stroke: '#fff', 'stroke-width': 2, fill: 'none', opacity: .4 }, g);
+  } },
+  { id: 'koeln', lat: 50.941, lon: 6.958, w: 90, draw(g, c, n) {
+      el('path', { d: 'M-16 0v-62l16 -14 16 14v62z', fill: c }, g);
+      [-30, 30].forEach(x => {
+        el('rect', { x: x - 12, y: -120, width: 24, height: 120, fill: c }, g);
+        el('path', { d: `M${x - 12} -120L${x} -190L${x + 12} -120z`, fill: c }, g);
+        el('path', { d: `M${x - 1} -190v-8h2v8z`, fill: c }, g);
+        [-14, 14].forEach(dx => el('path', { d: `M${x + dx - 2} -120l2 -16 2 16z`, fill: c }, g));
+        for (let i = 0; i < 4; i++) el('rect', { x: x - 3, y: -110 + i * 26, width: 6, height: 14, rx: 3, fill: n ? '#ffd27a' : '#fff', opacity: n ? .55 : .15 }, g);
+      });
+  } },
+  { id: 'hamburg', lat: 53.551, lon: 9.993, w: 120, draw(g, c, n) {
+      el('rect', { x: -60, y: -40, width: 120, height: 40, fill: c }, g);
+      el('path', { d: 'M-60 -40v-28q10 -14 22 -4q12 -22 26 -6q14 -18 28 0q14 -14 24 6v32z', fill: c, opacity: .9 }, g);
+      for (let i = 0; i < 9; i++) el('rect', { x: -54 + i * 12.5, y: -60, width: 7, height: 14, fill: n ? '#ffd27a' : '#fff', opacity: n ? .5 : .18 }, g);
+  } },
+  { id: 'muenchen', lat: 48.138, lon: 11.575, w: 70, draw(g, c) {
+      el('path', { d: 'M-34 0v-50l34 -22 34 22v50z', fill: c }, g);
+      [-18, 18].forEach(x => { el('rect', { x: x - 10, y: -118, width: 20, height: 118, fill: c }, g); el('path', { d: `M${x - 10} -118a10 13 0 0 1 20 0z`, fill: c }, g); el('rect', { x: x - 1, y: -140, width: 2, height: 12, fill: c }, g); });
+  } },
+  { id: 'dresden', lat: 51.052, lon: 13.741, w: 70, draw(g, c) {
+      el('rect', { x: -30, y: -60, width: 60, height: 60, fill: c }, g);
+      el('path', { d: 'M-24 -60q0 -55 24 -66q24 11 24 66z', fill: c }, g);
+      el('rect', { x: -5, y: -146, width: 10, height: 22, fill: c }, g);
+      el('path', { d: 'M-4 -146l4 -14 4 14z', fill: c }, g);
+  } },
+  { id: 'paris', lat: 48.857, lon: 2.352, w: 90, draw(g, c) {
+      el('path', { d: 'M-42 0Q-18 -60 -8 -150L-3 -220h6L8 -150Q18 -60 42 0h-14Q12 -40 0 -42Q-12 -40 -28 0z', fill: c }, g);
+      el('rect', { x: -26, y: -64, width: 52, height: 5, fill: c }, g);
+      el('rect', { x: -12, y: -146, width: 24, height: 4, fill: c }, g);
+      el('rect', { x: -1, y: -240, width: 2, height: 22, fill: c }, g);
+  } },
+  { id: 'london', lat: 51.507, lon: -0.128, w: 40, draw(g, c, n) {
+      el('rect', { x: -13, y: -150, width: 26, height: 150, fill: c }, g);
+      el('rect', { x: -15, y: -176, width: 30, height: 28, fill: c }, g);
+      el('circle', { cx: 0, cy: -162, r: 9, fill: n ? '#ffe7a3' : '#fff', opacity: n ? .9 : .5 }, g);
+      el('path', { d: 'M-15 -176l15 -50 15 50z', fill: c }, g);
+  } },
+  { id: 'newyork', lat: 40.713, lon: -74.006, w: 50, draw(g, c) {
+      el('path', { d: 'M-24 0v-130h8v-20h6v-40h6v-14h8v14h6v40h6v20h8v130z', fill: c }, g);
+      el('rect', { x: -1, y: -250, width: 2, height: 46, fill: c }, g);
+  } },
+  { id: 'rom', lat: 41.893, lon: 12.483, w: 100, draw(g, c) {
+      el('path', { d: 'M-50 0v-60q50 -14 100 0v60z', fill: c }, g);
+      for (let row = 0; row < 3; row++) for (let i = 0; i < 7; i++) el('rect', { x: -44 + i * 13, y: -52 + row * 17, width: 7, height: 10, rx: 3.5, fill: '#fff', opacity: .14 }, g);
+  } }
+];
+const distKm = (a, b, c, d) => { const R = 6371, dLa = (c - a) * Math.PI / 180, dLo = (d - b) * Math.PI / 180; const x = Math.sin(dLa / 2) ** 2 + Math.cos(a * Math.PI / 180) * Math.cos(c * Math.PI / 180) * Math.sin(dLo / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
+
+function drawCity(g, { W, HOR, P, r, isDay }, lm) {
+  const lmX = W * .62, gap = lm ? lm.w / 2 + 6 : -1;
+  const row = (color, minH, maxH, wMin, wMax, lights, op) => {
+    let x = -10;
+    while (x < W + 10) {
+      const w = wMin + r() * (wMax - wMin), h = minH + Math.pow(r(), 1.8) * (maxH - minH);
+      if (lm && x + w > lmX - gap && x < lmX + gap) { x = lmX + gap; continue; }
+      const top = HOR - h;
+      el('rect', { x, y: top, width: w - 1, height: h + 1, fill: color, opacity: op }, g);
+      if (r() < .2) el('rect', { x: x + w / 2 - 1, y: top - 10, width: 2, height: 10, fill: color, opacity: op }, g);
+      if (lights) for (let yy = top + 6; yy < HOR - 6; yy += 9) for (let xx = x + 4; xx < x + w - 6; xx += 7) {
+        const on = r() < (isDay ? .12 : .35);
+        if (on) el('rect', { x: xx, y: yy, width: 3, height: 4, fill: isDay ? '#fff' : '#ffd98a', opacity: isDay ? .18 : .75 }, g);
+      }
+      x += w;
+    }
+  };
+  row(P.far, 40, 120, 18, 40, false, .8);
+  if (lm) { const lg = el('g', { transform: `translate(${lmX} ${HOR})` }, g); lm.draw(lg, P.mid, !isDay); }
+  row(P.near, 18, 70, 14, 34, true, 1);
+  // river promenade trees
+  for (let x = -5; x < W + 5; x += 9 + r() * 10) el('circle', { cx: x, cy: HOR - 3, r: 4 + r() * 4, fill: P.trees }, g);
+}
+
+async function classify(l, elevation) {
+  // landmark → city; big city → city; coast → sea; city → city; high → mountains; else land
+  const lm = LANDMARKS.find(m => distKm(l.lat, l.lon, m.lat, m.lon) < 30);
+  if (lm) return { scene: 'city', landmark: lm.id };
+  let pop = l.pop;
+  if (pop == null) {
+    try { const j = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(l.name)}&count=5`)).json();
+      const hit = (j.results || []).sort((a, b) => distKm(l.lat, l.lon, a.latitude, a.longitude) - distKm(l.lat, l.lon, b.latitude, b.longitude))[0];
+      pop = hit && distKm(l.lat, l.lon, hit.latitude, hit.longitude) < 25 ? hit.population || 0 : 0; } catch { pop = 0; }
+  }
+  if (pop >= 500000) return { scene: 'city' };
+  try { const j = await (await fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${l.lat}&longitude=${l.lon}&current=wave_height`)).json();
+    if (j.current && j.current.wave_height != null) return { scene: 'sea' }; } catch {}
+  if (pop >= 100000) return { scene: 'city' };
+  if (elevation > 650) return { scene: 'mountains' };
+  return { scene: 'land' };
 }
 
 // ---------- rendering ----------
@@ -548,9 +711,13 @@ async function load() {
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max'
   });
   try {
+    const want = loc;
     const res = await fetch('https://api.open-meteo.com/v1/forecast?' + p);
     if (!res.ok) throw new Error(res.status);
-    data = await res.json();
+    const j = await res.json();
+    if (!want.scene) Object.assign(want, await classify(want, j.elevation)), saveMeta(want);
+    if (want !== loc) return;
+    data = j;
     // times come in the location's local time; shift "now" into that zone for indexing
     const offset = data.utc_offset_seconds * 1000;
     const localNow = new Date(Date.now() + offset).toISOString().slice(0, 13);
@@ -568,7 +735,32 @@ async function load() {
 const nowMs = () => Date.now() + (window.__shift || 0);
 
 // ---------- location ----------
-function setLoc(l) { loc = l; store.set('loc', l); $('search').classList.remove('open'); load(); }
+const same = (a, b) => a && b && distKm(a.lat, a.lon, b.lat, b.lon) < 2;
+function saveMeta(l) { if (same(l, home)) store.set('home', home); else store.set('recent', recent); }
+function view(l) {
+  // looking at another place is temporary; home stays the main page
+  if (same(l, home)) l = home;
+  else { recent = [l, ...recent.filter(x => !same(x, l))].slice(0, 6); store.set('recent', recent); }
+  loc = l; $('search').classList.remove('open');
+  $('homeBtn').style.display = same(l, home) ? 'none' : '';
+  load();
+}
+function setHome(l) {
+  const wasHome = same(loc, home);
+  if (same(l, home)) { home.name = l.name; store.set('home', home); if (wasHome) $('place').textContent = home.name; return; }
+  home = l; store.set('home', home);
+  if (wasHome) view(home); else $('homeBtn').style.display = '';
+}
+function showRecent() {
+  $('results').innerHTML = '';
+  const list = [home && { ...home, isHome: true }, ...recent.filter(x => !same(x, home))].filter(Boolean);
+  list.forEach(x => {
+    const b = document.createElement('button');
+    b.innerHTML = `${x.isHome ? '⌂ ' : ''}${x.name}<small>${x.isHome ? T.home : x.sub || ''}</small>`;
+    b.onclick = () => view(x.isHome ? home : x);
+    $('results').appendChild(b);
+  });
+}
 async function reverse(lat, lon) {
   try {
     const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=${LANG}`);
@@ -577,18 +769,19 @@ async function reverse(lat, lon) {
   } catch { return '📍'; }
 }
 function locate(fallback) {
-  if (!navigator.geolocation) return fallback && setLoc(fallback);
+  if (!navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(async pos => {
     const { latitude: lat, longitude: lon } = pos.coords;
-    setLoc({ lat: +lat.toFixed(3), lon: +lon.toFixed(3), name: await reverse(lat, lon) });
-  }, () => fallback && setLoc(fallback), { timeout: 8000, maximumAge: 6e5 });
+    setHome({ lat: +lat.toFixed(3), lon: +lon.toFixed(3), name: await reverse(lat, lon) });
+    if (fallback === 'go') view(home);
+  }, () => {}, { timeout: 8000, maximumAge: 6e5 });
 }
 
 let qTimer;
 $('q').addEventListener('input', e => {
   clearTimeout(qTimer);
   const q = e.target.value.trim();
-  if (q.length < 2) { $('results').innerHTML = ''; return; }
+  if (q.length < 2) { showRecent(); return; }
   qTimer = setTimeout(async () => {
     try {
       const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=6&language=${LANG}`);
@@ -597,15 +790,16 @@ $('q').addEventListener('input', e => {
       (j.results || []).forEach(x => {
         const b = document.createElement('button');
         b.innerHTML = `${x.name}<small>${[x.admin1, x.country].filter(Boolean).join(', ')}</small>`;
-        b.onclick = () => setLoc({ lat: x.latitude, lon: x.longitude, name: x.name });
+        b.onclick = () => view({ lat: x.latitude, lon: x.longitude, name: x.name, pop: x.population || 0, sub: [x.admin1, x.country].filter(Boolean).join(', '), viewed: true });
         $('results').appendChild(b);
       });
     } catch {}
   }, 250);
 });
-$('placeBtn').onclick = () => { $('search').classList.add('open'); $('q').value = ''; $('results').innerHTML = ''; setTimeout(() => $('q').focus(), 50); };
+$('placeBtn').onclick = () => { $('search').classList.add('open'); $('q').value = ''; showRecent(); setTimeout(() => $('q').focus(), 50); };
 $('closeSearch').onclick = () => $('search').classList.remove('open');
-$('locBtn').onclick = () => locate(null);
+$('locBtn').onclick = () => locate('go');
+$('homeBtn').onclick = () => view(home);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('search').classList.remove('open'); });
 $('uC').onclick = () => { unit = 'C'; store.set('unit', unit); data && render(); };
 $('uF').onclick = () => { unit = 'F'; store.set('unit', unit); data && render(); };
@@ -616,7 +810,9 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && da
 // retire the old map page's caching service worker (it served stale forecasts)
 if ('serviceWorker' in navigator) navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.scope.endsWith('/weather/') && r.unregister())).catch(() => {});
 const BERLIN = { lat: 52.52, lon: 13.405, name: 'Berlin' };
-if (loc) load(); else { loc = BERLIN; load(); locate(null); }
+home = home || { ...BERLIN };
+view(home);
+locate(null); // refresh own position quietly; switches the page only if it moved
 </script>
 </body>
 </html>
