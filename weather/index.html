@@ -821,10 +821,12 @@ async function findSnowCover() {
   el('text', { y: -50, 'text-anchor': 'middle', 'font-size': 8, 'font-weight': 600, fill: 'var(--ink-3)' }, rv).textContent = 'N';
   el('circle', { r: 3.5, fill: 'var(--accent)' }, rv);
   if (!hit.found) { $('snowDist').textContent = T.snowFar; $('snowWhere').textContent = ''; return; }
-  if (hit.km === 0) { $('snowDist').textContent = T.snowHere; $('snowWhere').textContent = `${Math.round(hit.depth * 100)} cm`; }
+  if (hit.km === 0) { $('snowDist').textContent = T.snowHere; $('snowWhere').textContent = `${Math.round(hit.depth * 100)}\u00a0cm`; }
   else {
     $('snowDist').innerHTML = `${hit.km}<small>km</small> ${T.dirs[Math.round(hit.brg / 45) % 8]}`;
-    $('snowWhere').textContent = [hit.name, `${Math.round(hit.depth * 100)} cm`, hit.elev != null ? `${Math.round(hit.elev)} m` : ''].filter(Boolean).join(' · ');
+    // place on its own line; number + unit never split
+    const facts = [`${Math.round(hit.depth * 100)}\u00a0cm`, hit.elev != null ? `${Math.round(hit.elev)}\u00a0m` : ''].filter(Boolean).join(' · ');
+    $('snowWhere').innerHTML = (hit.name ? `<span style="display:block">${hit.name.replace(/[<>&]/g, '')}</span>` : '') + `<span style="white-space:nowrap">${facts}</span>`;
   }
   const a = hit.brg * Math.PI / 180, r = rad(hit.km), x = Math.sin(a) * r, y = -Math.cos(a) * r;
   el('line', { x1: 0, y1: 0, x2: x, y2: y, stroke: '#6fb6ff', 'stroke-width': 1.5, 'stroke-dasharray': '2 3' }, rv);
