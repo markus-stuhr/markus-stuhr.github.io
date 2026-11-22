@@ -491,7 +491,7 @@ function drawScene() {
   el('path', { d: land, fill: card }, svg);
   for (let i = 1; i < 24; i += 3) {
     const [x, y] = curve[i];
-    el('text', { x, y: y - 12, class: 'curve-label' }, svg).textContent = fmtT(temps[i]);
+    el('text', { x, y: y - 12, class: 'curve-label' }, svg).textContent = fmtT(temps[i]) + '°';
     const hh = new Date(data.hourly.time[hs + i]).getHours();
     el('text', { x, y: Math.min(H - 6, y + 20), class: 'curve-hour' }, svg).textContent = i === 1 ? T.now : hh + ':00';
   }
