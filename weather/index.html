@@ -118,8 +118,17 @@
   .pl { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-3); }
   .pl i { width: 10px; height: 10px; border-radius: 50%; display: block; }
   .pl.up { color: var(--ink); font-weight: 500; }
-  .pl small { font-size: 11px; color: var(--ink-3); font-weight: 400; }
+  .pl { grid-template-columns: 14px 1fr; row-gap: 0; margin-bottom: 4px; }
+  .pl small { grid-column: 2; font-size: 11px; color: var(--ink-3); font-weight: 400; }
   .orbit-label { font-size: 9px; fill: var(--ink-3); letter-spacing: .5px; }
+  .tidewrap { position: relative; margin-top: 30px; }
+  .tdot { position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%; border: 2.5px solid #2f8cff; background: var(--card); }
+  .tdot.hi { background: #2f8cff; }
+  .tval.lo { transform: translate(-50%, 60%); color: #9cc4ff; }
+  .tval { position: absolute; transform: translate(-50%, -150%); font-size: 11px; font-weight: 600; color: #2f8cff; white-space: nowrap; }
+  .tidelabels { position: relative; height: 40px; margin-top: 8px; font-size: 12px; color: var(--ink-2); }
+  .tidelabels div { position: absolute; transform: translateX(-50%); text-align: center; white-space: nowrap; }
+  .tidelabels b { display: block; color: var(--ink); font-size: 16px; font-weight: 600; }
   .footer { grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
   .footer a { color: inherit; }
   .ic { stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -204,9 +213,10 @@
     </div>
 
     <div class="card wide" id="tideCard" style="display:none">
-      <h3><svg viewBox="0 0 24 24" class="ic" style="color:#2f8cff"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0M2 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0M12 3v5M9.5 5.5L12 8l2.5-2.5"/></svg><span data-i="tides"></span></h3>
-      <svg id="tideViz" width="100%" height="130" viewBox="0 0 400 130" preserveAspectRatio="none" style="margin-top:10px;overflow:visible"></svg>
-      <div class="sunrow" id="tideRow"></div>
+      <h3><svg viewBox="0 0 24 24" class="ic" style="color:#2f8cff"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0M2 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0M12 3v5M9.5 5.5L12 8l2.5-2.5"/></svg><span data-i="tides"></span><span id="tideNow" style="margin-left:auto;font-weight:500;color:var(--ink-2);font-size:14px"></span></h3>
+      <div class="tidewrap"><svg id="tideViz" width="100%" height="130" viewBox="0 0 400 130" preserveAspectRatio="none" style="display:block;overflow:visible"></svg><div id="tideMarks"></div></div>
+      <div class="tidelabels" id="tideRow"></div>
+      <div class="sub" style="font-size:12px;margin-top:4px">▲ <span data-i="high"></span> · ▼ <span data-i="low"></span></div>
     </div>
 
     <div class="card moon">
@@ -713,16 +723,17 @@ function renderTides(m) {
     if (vals[i] >= vals[i - 1] && vals[i] > vals[i + 1]) ext.push({ i, hi: true });
     if (vals[i] <= vals[i - 1] && vals[i] < vals[i + 1]) ext.push({ i, hi: false });
   }
-  ext.forEach(e => {
-    const [x, y] = pts[e.i];
-    el('circle', { cx: x, cy: y, r: 3.5, fill: e.hi ? '#2f8cff' : 'var(--card)', stroke: '#2f8cff', 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke' }, tv);
-  });
-  // "now" marker
-  el('line', { x1: 0, y1: 10, x2: 0, y2: 130, stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke' }, tv);
-  const trend = vals[1] > vals[0] ? '↗' : '↘';
+  // dots + labels as HTML at the curve's x/y so they stay round and line up with the points
+  const pct = (x, max) => (x / max * 100).toFixed(2) + '%';
   const hhmm = t => +t.slice(11, 13) + ':' + t.slice(14, 16);
-  $('tideRow').innerHTML = `<div>${T.now}<b>${vals[0] >= 0 ? '+' : ''}${vals[0].toFixed(2)} m ${trend}</b></div>` +
-    ext.slice(0, 3).map(e => `<div style="text-align:center">${e.hi ? T.high : T.low}<b>${hhmm(times[e.i])}</b></div>`).join('');
+  const fmtM = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(2).replace('.', LANG === 'de' ? ',' : '.') + ' m';
+  const marks = ext.map(e => { const [x, y] = pts[e.i]; return `<div class="tdot${e.hi ? ' hi' : ''}" style="left:${pct(x, 400)};top:${pct(y, 130)}"></div><div class="tval${e.hi ? '' : ' lo'}" style="left:${pct(x, 400)};top:${pct(y, 130)}">${fmtM(vals[e.i])}</div>`; });
+  marks.push(`<div class="tdot" style="left:0;top:${pct(pts[0][1], 130)};border-color:var(--accent)"></div>`);
+  $('tideMarks').innerHTML = marks.join('');
+  el('line', { x1: 0, y1: 0, x2: 0, y2: 130, stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke' }, tv);
+  const trend = vals[1] > vals[0] ? '↗' : '↘';
+  $('tideNow').textContent = `${T.now} ${fmtM(vals[0])} ${trend}`;
+  $('tideRow').innerHTML = ext.map(e => `<div style="left:${pct(Math.min(380, Math.max(16, pts[e.i][0])), 400)}">${e.hi ? '▲' : '▼'}<b>${hhmm(times[e.i])}</b></div>`).join('');
 }
 
 // ---------- rendering ----------
