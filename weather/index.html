@@ -426,7 +426,13 @@ function drawScene() {
   if (!overcast || k === 'fog') {
     const body = el('circle', { cx: sx, cy: sy, r: isDay ? 17 : 13, fill: isDay && !nearEdge ? '#ff7aa2' : P.sun, opacity: k === 'fog' ? .5 : 1 }, svg);
     if (isDay && !nearEdge) body.setAttribute('fill', k === 'snow' ? '#fff' : '#ff6f91');
-    if (!isDay) el('circle', { cx: sx + 6, cy: sy - 4, r: 12, fill: P.sky[0] }, svg);
+    if (!isDay) {
+      // real moon phase: unlit part only faintly visible, lit part as half-disc + terminator ellipse
+      body.setAttribute('opacity', .14);
+      const ph = window.Astronomy ? Astronomy.MoonPhase(new Date()) : 90, k = (1 - Math.cos(ph * Math.PI / 180)) / 2, R = 13;
+      const lit = el('path', { d: `M0 ${-R}A${R} ${R} 0 0 1 0 ${R}A${Math.abs(1 - 2 * k) * R} ${R} 0 0 ${k > .5 ? 1 : 0} 0 ${-R}Z`, fill: P.sun, transform: `translate(${sx} ${sy})${(ph < 180) === (loc.lat < 0) ? ' scale(-1 1)' : ''}` }, svg);
+      if (k < .03) lit.remove();
+    }
   }
 
   const seed = Math.round(loc.lat * 1000) * 31 + Math.round(loc.lon * 1000);
