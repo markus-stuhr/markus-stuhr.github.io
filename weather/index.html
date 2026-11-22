@@ -114,6 +114,12 @@
   .sunrow { display: flex; justify-content: space-between; font-size: 14px; color: var(--ink-2); margin-top: 4px; }
   .sunrow b { color: var(--ink); font-weight: 600; font-size: 18px; display: block; }
 
+  .plist { display: grid; gap: 2px; margin-top: 10px; }
+  .pl { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; font-size: 13px; color: var(--ink-3); }
+  .pl i { width: 10px; height: 10px; border-radius: 50%; display: block; }
+  .pl.up { color: var(--ink); font-weight: 500; }
+  .pl small { font-size: 11px; color: var(--ink-3); font-weight: 400; }
+  .orbit-label { font-size: 9px; fill: var(--ink-3); letter-spacing: .5px; }
   .footer { grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
   .footer a { color: inherit; }
   .ic { stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -121,6 +127,7 @@
   .err { padding: 14px 26px; color: #d0465b; font-size: 14px; display: none; }
 </style>
 <script defer src="/analytics.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.browser.min.js"></script>
 </head>
 <body>
 <div class="wrap loading" id="app">
@@ -196,6 +203,29 @@
       <div class="sunrow"><div>↑ <span data-i="sunrise"></span><b id="sunrise">--</b></div><div id="daylen" style="align-self:flex-end"></div><div style="text-align:right"><span data-i="sunset"></span> ↓<b id="sunset">--</b></div></div>
     </div>
 
+    <div class="card wide" id="tideCard" style="display:none">
+      <h3><svg viewBox="0 0 24 24" class="ic" style="color:#2f8cff"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0M2 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0M12 3v5M9.5 5.5L12 8l2.5-2.5"/></svg><span data-i="tides"></span></h3>
+      <svg id="tideViz" width="100%" height="130" viewBox="0 0 400 130" preserveAspectRatio="none" style="margin-top:10px;overflow:visible"></svg>
+      <div class="sunrow" id="tideRow"></div>
+    </div>
+
+    <div class="card moon">
+      <h3><svg viewBox="0 0 24 24" class="ic" style="color:#8a93c9"><path d="M19 14.5A7.5 7.5 0 0 1 9.5 5a7.5 7.5 0 1 0 9.5 9.5z"/></svg><span data-i="moon"></span></h3>
+      <div class="viz"><svg id="moonViz" width="96" height="96" viewBox="-50 -50 100 100"></svg></div>
+      <div class="foot"><div class="big" id="moonIll" style="font-size:26px">--</div><div class="sub" id="moonName"></div><div class="sub" id="moonTimes" style="font-size:13px"></div></div>
+    </div>
+
+    <div class="card">
+      <h3><svg viewBox="0 0 24 24" class="ic" style="color:#e6b84c"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-20 12 12)"/></svg><span data-i="skyNow"></span></h3>
+      <div id="planetList" class="plist"></div>
+    </div>
+
+    <div class="card wide">
+      <h3><svg viewBox="0 0 24 24" class="ic" style="color:#e6b84c"><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg><span data-i="solar"></span></h3>
+      <svg id="solarViz" viewBox="-200 -200 400 400" style="width:100%;max-width:380px;margin:8px auto 0;display:block;overflow:visible"></svg>
+      <div class="sub" id="solarNote" style="text-align:center;font-size:12px"></div>
+    </div>
+
     <div class="footer"><span data-i="data"></span> <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a> · <a href="/weathermaps/" data-i="maps"></a></div>
   </div>
 </div>
@@ -206,14 +236,14 @@ const LANG = (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' 
 const T = {
   de: { hourly: 'Nächste 24 Stunden', humidity: 'Luftfeuchte', pressure: 'Luftdruck', uv: 'UV-Index', wind: 'Wind', sun: 'Sonnenauf- & -untergang',
         sunrise: 'Aufgang', sunset: 'Untergang', data: 'Daten:', maps: 'Wetterkarten', feels: 'Gefühlt', dew: 'Taupunkt', now: 'Jetzt', today: 'Heute',
-        search: 'Stadt suchen…', home: 'Mein Standort', myplace: 'Mein Ort', rising: 'steigend', falling: 'fallend', steady: 'stabil', daylight: 'Tageslicht', gusts: 'Böen', from: 'aus',
+        search: 'Stadt suchen…', tides: 'Ebbe & Flut', high: 'Hochwasser', low: 'Niedrigwasser', moon: 'Mond', skyNow: 'Planeten heute Nacht', solar: 'Sonnensystem heute', visible: 'jetzt sichtbar', rises: 'Aufgang', sets: 'Untergang', below: 'unter Horizont', full: 'Vollmond', newm: 'Neumond', solarNote: 'Planetenpositionen um die Sonne · Abstände nicht maßstäblich', phases: ['Neumond','Zunehmende Sichel','Erstes Viertel','Zunehmender Mond','Vollmond','Abnehmender Mond','Letztes Viertel','Abnehmende Sichel'], pn: { Mercury: 'Merkur', Venus: 'Venus', Earth: 'Erde', Mars: 'Mars', Jupiter: 'Jupiter', Saturn: 'Saturn', Uranus: 'Uranus', Neptune: 'Neptun' }, home: 'Mein Standort', myplace: 'Mein Ort', rising: 'steigend', falling: 'fallend', steady: 'stabil', daylight: 'Tageslicht', gusts: 'Böen', from: 'aus',
         uvT: ['Niedrig', 'Mäßig', 'Hoch', 'Sehr hoch', 'Extrem'], err: 'Wetterdaten konnten nicht geladen werden.',
         dirs: ['N','NO','O','SO','S','SW','W','NW'], beaufort: ['Windstill','Leiser Zug','Leichte Brise','Schwache Brise','Mäßige Brise','Frische Brise','Starker Wind','Steifer Wind','Stürmisch','Sturm','Schwerer Sturm','Orkanartig','Orkan'],
         hum: h => h < 30 ? 'Trocken' : h < 60 ? 'Angenehm' : h < 80 ? 'Feucht' : 'Sehr feucht',
         codes: { clear: 'Klar', mostly: 'Überwiegend klar', partly: 'Teils bewölkt', cloudy: 'Bewölkt', fog: 'Nebel', drizzle: 'Niesel', rain: 'Regen', heavy: 'Starkregen', snow: 'Schnee', sleet: 'Schneeregen', storm: 'Gewitter', sunny: 'Sonnig' } },
   en: { hourly: 'Next 24 hours', humidity: 'Humidity', pressure: 'Pressure', uv: 'UV index', wind: 'Wind', sun: 'Sunrise & sunset',
         sunrise: 'Sunrise', sunset: 'Sunset', data: 'Data:', maps: 'Weather maps', feels: 'Feels like', dew: 'Dew point', now: 'Now', today: 'Today',
-        search: 'Search city…', home: 'My location', myplace: 'My place', rising: 'rising', falling: 'falling', steady: 'steady', daylight: 'Daylight', gusts: 'gusts', from: 'from',
+        search: 'Search city…', tides: 'Tides', high: 'High tide', low: 'Low tide', moon: 'Moon', skyNow: 'Planets tonight', solar: 'Solar system today', visible: 'visible now', rises: 'rises', sets: 'sets', below: 'below horizon', full: 'Full moon', newm: 'New moon', solarNote: 'Planet positions around the Sun · distances not to scale', phases: ['New moon','Waxing crescent','First quarter','Waxing gibbous','Full moon','Waning gibbous','Last quarter','Waning crescent'], pn: { Mercury: 'Mercury', Venus: 'Venus', Earth: 'Earth', Mars: 'Mars', Jupiter: 'Jupiter', Saturn: 'Saturn', Uranus: 'Uranus', Neptune: 'Neptune' }, home: 'My location', myplace: 'My place', rising: 'rising', falling: 'falling', steady: 'steady', daylight: 'Daylight', gusts: 'gusts', from: 'from',
         uvT: ['Low', 'Moderate', 'High', 'Very high', 'Extreme'], err: 'Could not load weather data.',
         dirs: ['N','NE','E','SE','S','SW','W','NW'], beaufort: ['Calm','Light air','Light breeze','Gentle breeze','Moderate breeze','Fresh breeze','Strong breeze','Near gale','Gale','Strong gale','Storm','Violent storm','Hurricane'],
         hum: h => h < 30 ? 'Dry' : h < 60 ? 'Comfortable' : h < 80 ? 'Humid' : 'Very humid',
@@ -425,7 +455,7 @@ function drawScene() {
     const [x, y] = curve[i];
     el('text', { x, y: y - 12, class: 'curve-label' }, svg).textContent = fmtT(temps[i]);
     const hh = new Date(data.hourly.time[hs + i]).getHours();
-    el('text', { x, y: Math.min(H - 6, y + 20), class: 'curve-hour' }, svg).textContent = i === 1 ? T.now : String(hh).padStart(2, '0');
+    el('text', { x, y: Math.min(H - 6, y + 20), class: 'curve-hour' }, svg).textContent = i === 1 ? T.now : hh + ':00';
   }
 }
 
@@ -591,6 +621,110 @@ async function classify(l, elevation) {
   return { scene: 'land' };
 }
 
+// ---------- moon, planets, solar system (astronomy-engine) ----------
+const PLANETS = [
+  ['Mercury', '#a9a9b3', 3.5], ['Venus', '#e8c38a', 5.5], ['Earth', '#4b8fe0', 6], ['Mars', '#d4613e', 4.5],
+  ['Jupiter', '#d9a873', 10], ['Saturn', '#e3c27a', 8.5], ['Uranus', '#8fd3d8', 6.5], ['Neptune', '#4f74d9', 6.5]
+];
+const tz = () => data && data.timezone;
+const clock = d => d ? d.toLocaleTimeString(LANG, { hour: '2-digit', minute: '2-digit', timeZone: tz() }) : '–';
+const dayShort = d => d.toLocaleDateString(LANG, { day: 'numeric', month: 'short', timeZone: tz() });
+const compass = az => T.dirs[Math.round(az / 45) % 8];
+
+function renderSky() {
+  if (!window.Astronomy) return;
+  const A = Astronomy, now = new Date(), obs = new A.Observer(loc.lat, loc.lon, data.elevation || 0);
+
+  // moon
+  const ph = A.MoonPhase(now), ill = A.Illumination('Moon', now).phase_fraction;
+  $('moonIll').innerHTML = `${Math.round(ill * 100)}<small>%</small>`;
+  $('moonName').textContent = T.phases[Math.round(ph / 45) % 8];
+  const mr = A.SearchRiseSet('Moon', obs, +1, now, 1.2), ms = A.SearchRiseSet('Moon', obs, -1, now, 1.2);
+  const nf = A.SearchMoonPhase(180, now, 40), nn = A.SearchMoonPhase(0, now, 40);
+  $('moonTimes').innerHTML = `↑ ${clock(mr && mr.date)} · ↓ ${clock(ms && ms.date)}<br>${T.full} ${dayShort(nf.date)} · ${T.newm} ${dayShort(nn.date)}`;
+  const mv = $('moonViz'); mv.innerHTML = '';
+  const R = 44, waxing = ph < 180, k = ill, rx = Math.abs(1 - 2 * k) * R;
+  el('circle', { r: R, fill: '#3b4160' }, mv);
+  const lit = el('path', { d: `M0 ${-R}A${R} ${R} 0 0 1 0 ${R}A${rx} ${R} 0 0 ${k > .5 ? 1 : 0} 0 ${-R}Z`, fill: '#e9ecf7' }, mv);
+  // waxing = lit on the right (northern sky); mirror for waning and for the southern hemisphere
+  if (waxing === (loc.lat < 0)) lit.setAttribute('transform', 'scale(-1 1)');
+  [[-14, -12, 7], [10, 14, 9], [16, -18, 5], [-8, 22, 4]].forEach(([x, y, r]) => el('circle', { cx: x, cy: y, r, fill: '#000', opacity: .07 }, mv));
+
+  // planets tonight: sample altitude from now until next sunrise
+  const sunset = A.SearchRiseSet('Sun', obs, -1, new Date(now - 864e5 / 2), 1.5);
+  const start = sunset && sunset.date > now ? sunset.date : now;
+  const sr = A.SearchRiseSet('Sun', obs, +1, start, 1.5);
+  const end = sr ? sr.date : new Date(+start + 12 * 36e5);
+  const sunUp = A.Horizon(now, obs, ...(e => [e.ra, e.dec])(A.Equator('Sun', now, obs, true, true)), 'normal').altitude > -6;
+  const altAz = (b, t) => { const e = A.Equator(b, t, obs, true, true); return A.Horizon(t, obs, e.ra, e.dec, 'normal'); };
+  $('planetList').innerHTML = PLANETS.filter(p => p[0] !== 'Earth').slice(0, 5).concat([['Moon', '#e9ecf7']]).map(([b, col]) => {
+    const h = altAz(b, now);
+    let best = null;
+    for (let t = +start; t <= +end; t += 30 * 6e4) { const a = altAz(b, new Date(t)); if (a.altitude > 10 && (!best || a.altitude > best.a.altitude)) best = { t: new Date(t), a }; }
+    let txt, up = false;
+    if (!sunUp && h.altitude > 8) { up = true; txt = `${T.visible} · ${compass(h.azimuth)} ${Math.round(h.altitude)}°`; }
+    else if (best) txt = `${clock(best.t)} · ${compass(best.a.azimuth)} ${Math.round(best.a.altitude)}°`;
+    else txt = T.below;
+    const name = b === 'Moon' ? T.moon : T.pn[b];
+    return `<div class="pl${up || best ? ' up' : ''}"><i style="background:${col}"></i><span>${name}</span><small>${txt}</small></div>`;
+  }).join('');
+
+  // solar system: real heliocentric longitudes, orbits evenly spaced
+  const sv = $('solarViz'); sv.innerHTML = '';
+  const sd = el('defs', {}, sv), sg = el('radialGradient', { id: 'sunG' }, sd);
+  el('stop', { offset: 0, 'stop-color': '#ffe08a' }, sg); el('stop', { offset: .55, 'stop-color': '#f5b740' }, sg); el('stop', { offset: 1, 'stop-color': '#f5b740', 'stop-opacity': 0 }, sg);
+  el('circle', { r: 26, fill: 'url(#sunG)' }, sv);
+  el('circle', { r: 13, fill: '#f5b740' }, sv);
+  PLANETS.forEach(([b, col, size], i) => {
+    const r = 38 + i * 20.5;
+    const lon = A.EclipticLongitude(b, now) * Math.PI / 180;
+    const x = Math.cos(lon) * r, y = -Math.sin(lon) * r;
+    el('circle', { r, fill: 'none', stroke: 'var(--ink-3)', 'stroke-width': .8, opacity: .55 }, sv);
+    // label on the far side of the orbit, along the ring
+    const la = lon + Math.PI * .5, lx = Math.cos(la) * r, ly = -Math.sin(la) * r;
+    const t = el('text', { x: lx, y: ly + 3, class: 'orbit-label', 'text-anchor': 'middle', transform: `rotate(${-(la * 180 / Math.PI) + 90 + (Math.sin(la) < 0 ? 180 : 0)} ${lx} ${ly})`, 'paint-order': 'stroke', stroke: 'var(--card)', 'stroke-width': 4 }, sv);
+    t.textContent = T.pn[b];
+    if (b === 'Saturn') el('ellipse', { cx: x, cy: y, rx: size * 1.7, ry: size * .55, fill: 'none', stroke: col, 'stroke-width': 1.6, transform: `rotate(-20 ${x} ${y})` }, sv);
+    el('circle', { cx: x, cy: y, r: size, fill: col, stroke: b === 'Earth' ? 'var(--accent)' : 'none', 'stroke-width': 1.5 }, sv);
+    if (b === 'Earth') el('circle', { cx: x + Math.cos(lon + ph * Math.PI / 180) * 10, cy: y - Math.sin(lon + ph * Math.PI / 180) * 10, r: 2, fill: '#cfd3e6' }, sv);
+  });
+  $('solarNote').textContent = T.solarNote;
+}
+
+// ---------- tides (Open-Meteo marine: sea level incl. tide) ----------
+function renderTides(m) {
+  const card = $('tideCard');
+  const v = m && m.hourly && m.hourly.sea_level_height_msl;
+  if (!v || v.filter(x => x != null).length < 20) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  const off = m.utc_offset_seconds * 1000, nowKey = new Date(Date.now() + off).toISOString().slice(0, 13);
+  const i0 = Math.max(0, m.hourly.time.findIndex(t => t.slice(0, 13) === nowKey));
+  const N = 25, vals = v.slice(i0, i0 + N), times = m.hourly.time.slice(i0, i0 + N);
+  const lo = Math.min(...vals), hi = Math.max(...vals), span = Math.max(.2, hi - lo);
+  const X = i => i / (N - 1) * 400, Y = val => 110 - (val - lo) / span * 85;
+  const pts = vals.map((val, i) => [X(i), Y(val)]);
+  const tv = $('tideViz'); tv.innerHTML = '';
+  const d = el('defs', {}, tv), g = el('linearGradient', { id: 'tg', x1: 0, y1: 0, x2: 0, y2: 1 }, d);
+  el('stop', { offset: 0, 'stop-color': '#2f8cff', 'stop-opacity': .45 }, g); el('stop', { offset: 1, 'stop-color': '#2f8cff', 'stop-opacity': .05 }, g);
+  el('path', { d: smooth(pts) + 'L400 130L0 130Z', fill: 'url(#tg)' }, tv);
+  el('path', { d: smooth(pts), stroke: '#2f8cff', 'stroke-width': 2.5, fill: 'none', 'vector-effect': 'non-scaling-stroke' }, tv);
+  const ext = [];
+  for (let i = 1; i < N - 1; i++) {
+    if (vals[i] >= vals[i - 1] && vals[i] > vals[i + 1]) ext.push({ i, hi: true });
+    if (vals[i] <= vals[i - 1] && vals[i] < vals[i + 1]) ext.push({ i, hi: false });
+  }
+  ext.forEach(e => {
+    const [x, y] = pts[e.i];
+    el('circle', { cx: x, cy: y, r: 3.5, fill: e.hi ? '#2f8cff' : 'var(--card)', stroke: '#2f8cff', 'stroke-width': 2, 'vector-effect': 'non-scaling-stroke' }, tv);
+  });
+  // "now" marker
+  el('line', { x1: 0, y1: 10, x2: 0, y2: 130, stroke: 'var(--accent)', 'stroke-width': 2, 'stroke-dasharray': '3 3', 'vector-effect': 'non-scaling-stroke' }, tv);
+  const trend = vals[1] > vals[0] ? '↗' : '↘';
+  const hhmm = t => +t.slice(11, 13) + ':' + t.slice(14, 16);
+  $('tideRow').innerHTML = `<div>${T.now}<b>${vals[0] >= 0 ? '+' : ''}${vals[0].toFixed(2)} m ${trend}</b></div>` +
+    ext.slice(0, 3).map(e => `<div style="text-align:center">${e.hi ? T.high : T.low}<b>${hhmm(times[e.i])}</b></div>`).join('');
+}
+
 // ---------- rendering ----------
 function render() {
   const c = data.current, d = data.daily, h = data.hourly;
@@ -619,7 +753,7 @@ function render() {
   for (let i = hs; i < hs + 25; i++) {
     const hr = new Date(h.time[i]).getHours();
     const sunUp = h.is_day[i] === 1;
-    html += `<div class="hr${i === hs ? ' now' : ''}"><div class="t">${i === hs ? T.now : String(hr).padStart(2, '0')}</div>${icon(kind(h.weather_code[i]), sunUp)}<div class="v">${fmtT(h.temperature_2m[i])}°</div><div class="p">${h.precipitation_probability[i] >= 20 ? h.precipitation_probability[i] + '%' : ''}</div></div>`;
+    html += `<div class="hr${i === hs ? ' now' : ''}"><div class="t">${i === hs ? T.now : hr + ':00'}</div>${icon(kind(h.weather_code[i]), sunUp)}<div class="v">${fmtT(h.temperature_2m[i])}°</div><div class="p">${h.precipitation_probability[i] >= 20 ? h.precipitation_probability[i] + '%' : ''}</div></div>`;
   }
   $('hourly').innerHTML = html;
 
@@ -698,6 +832,8 @@ function render() {
   const yn = yAt(xn);
   el('ellipse', { cx: xn, cy: yn, rx: 9, ry: 9 * 120 / 120, fill: yn < base ? '#ffc93c' : 'var(--ink-3)', stroke: '#fff', 'stroke-width': 3, 'vector-effect': 'non-scaling-stroke', style: 'filter:drop-shadow(0 1px 4px rgba(255,150,0,.5))' }, sv);
 
+  try { renderSky(); } catch (e) { console.error(e); }
+  renderTides(data.marine);
   $('app').classList.remove('loading');
 }
 
@@ -712,12 +848,13 @@ async function load() {
   });
   try {
     const want = loc;
+    const marineP = fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${loc.lat}&longitude=${loc.lon}&hourly=sea_level_height_msl&forecast_days=2&timezone=auto`).then(r => r.ok ? r.json() : null).catch(() => null);
     const res = await fetch('https://api.open-meteo.com/v1/forecast?' + p);
     if (!res.ok) throw new Error(res.status);
     const j = await res.json();
     if (!want.scene) Object.assign(want, await classify(want, j.elevation)), saveMeta(want);
     if (want !== loc) return;
-    data = j;
+    data = j; data.marine = await marineP;
     // times come in the location's local time; shift "now" into that zone for indexing
     const offset = data.utc_offset_seconds * 1000;
     const localNow = new Date(Date.now() + offset).toISOString().slice(0, 13);
