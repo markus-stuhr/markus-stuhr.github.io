@@ -78,6 +78,10 @@
   .bar { height: 5px; border-radius: 3px; background: var(--line); position: relative; }
   .bar b { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #7b8cff, #f5a25d); }
   .day:not(:first-child) .bar b { opacity: .55; }
+  .more { display: block; width: 100%; margin-top: 8px; padding: 11px; border-radius: 14px; background: color-mix(in srgb, var(--accent) 9%, transparent); color: var(--accent); font-size: 15px; font-weight: 600; }
+  .later { font-size: 12px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .8px; margin: 12px 0 2px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .day.far { height: 44px; font-size: 15px; }
+  .day.far svg { width: 26px; height: 26px; }
   .rainp { font-size: 11px; color: #5d8eff; display: block; margin-top: -2px; font-weight: 500; }
 
   /* ---------- Cards ---------- */
@@ -246,14 +250,14 @@ const LANG = (navigator.language || 'de').toLowerCase().startsWith('de') ? 'de' 
 const T = {
   de: { hourly: 'Nächste 24 Stunden', humidity: 'Luftfeuchte', pressure: 'Luftdruck', uv: 'UV-Index', wind: 'Wind', sun: 'Sonnenauf- & -untergang',
         sunrise: 'Aufgang', sunset: 'Untergang', data: 'Daten:', maps: 'Wetterkarten', feels: 'Gefühlt', dew: 'Taupunkt', now: 'Jetzt', today: 'Heute',
-        search: 'Stadt suchen…', tides: 'Ebbe & Flut', high: 'Hochwasser', low: 'Niedrigwasser', moon: 'Mond', skyNow: 'Planeten heute Nacht', solar: 'Sonnensystem heute', visible: 'jetzt sichtbar', rises: 'Aufgang', sets: 'Untergang', below: 'unter Horizont', full: 'Vollmond', newm: 'Neumond', solarNote: 'Planetenpositionen um die Sonne · Abstände nicht maßstäblich', phases: ['Neumond','Zunehmende Sichel','Erstes Viertel','Zunehmender Mond','Vollmond','Abnehmender Mond','Letztes Viertel','Abnehmende Sichel'], pn: { Mercury: 'Merkur', Venus: 'Venus', Earth: 'Erde', Mars: 'Mars', Jupiter: 'Jupiter', Saturn: 'Saturn', Uranus: 'Uranus', Neptune: 'Neptun' }, home: 'Mein Standort', myplace: 'Mein Ort', rising: 'steigend', falling: 'fallend', steady: 'stabil', daylight: 'Tageslicht', gusts: 'Böen', from: 'aus',
+        search: 'Stadt suchen…', more: n => `Alle ${n} Tage`, less: 'Weniger', later: 'Trend – unsicherer', tides: 'Ebbe & Flut', high: 'Hochwasser', low: 'Niedrigwasser', moon: 'Mond', skyNow: 'Planeten heute Nacht', solar: 'Sonnensystem heute', visible: 'jetzt sichtbar', rises: 'Aufgang', sets: 'Untergang', below: 'unter Horizont', full: 'Vollmond', newm: 'Neumond', solarNote: 'Planetenpositionen um die Sonne · Abstände nicht maßstäblich', phases: ['Neumond','Zunehmende Sichel','Erstes Viertel','Zunehmender Mond','Vollmond','Abnehmender Mond','Letztes Viertel','Abnehmende Sichel'], pn: { Mercury: 'Merkur', Venus: 'Venus', Earth: 'Erde', Mars: 'Mars', Jupiter: 'Jupiter', Saturn: 'Saturn', Uranus: 'Uranus', Neptune: 'Neptun' }, home: 'Mein Standort', myplace: 'Mein Ort', rising: 'steigend', falling: 'fallend', steady: 'stabil', daylight: 'Tageslicht', gusts: 'Böen', from: 'aus',
         uvT: ['Niedrig', 'Mäßig', 'Hoch', 'Sehr hoch', 'Extrem'], err: 'Wetterdaten konnten nicht geladen werden.',
         dirs: ['N','NO','O','SO','S','SW','W','NW'], beaufort: ['Windstill','Leiser Zug','Leichte Brise','Schwache Brise','Mäßige Brise','Frische Brise','Starker Wind','Steifer Wind','Stürmisch','Sturm','Schwerer Sturm','Orkanartig','Orkan'],
         hum: h => h < 30 ? 'Trocken' : h < 60 ? 'Angenehm' : h < 80 ? 'Feucht' : 'Sehr feucht',
         codes: { clear: 'Klar', mostly: 'Überwiegend klar', partly: 'Teils bewölkt', cloudy: 'Bewölkt', fog: 'Nebel', drizzle: 'Niesel', rain: 'Regen', heavy: 'Starkregen', snow: 'Schnee', sleet: 'Schneeregen', storm: 'Gewitter', sunny: 'Sonnig' } },
   en: { hourly: 'Next 24 hours', humidity: 'Humidity', pressure: 'Pressure', uv: 'UV index', wind: 'Wind', sun: 'Sunrise & sunset',
         sunrise: 'Sunrise', sunset: 'Sunset', data: 'Data:', maps: 'Weather maps', feels: 'Feels like', dew: 'Dew point', now: 'Now', today: 'Today',
-        search: 'Search city…', tides: 'Tides', high: 'High tide', low: 'Low tide', moon: 'Moon', skyNow: 'Planets tonight', solar: 'Solar system today', visible: 'visible now', rises: 'rises', sets: 'sets', below: 'below horizon', full: 'Full moon', newm: 'New moon', solarNote: 'Planet positions around the Sun · distances not to scale', phases: ['New moon','Waxing crescent','First quarter','Waxing gibbous','Full moon','Waning gibbous','Last quarter','Waning crescent'], pn: { Mercury: 'Mercury', Venus: 'Venus', Earth: 'Earth', Mars: 'Mars', Jupiter: 'Jupiter', Saturn: 'Saturn', Uranus: 'Uranus', Neptune: 'Neptune' }, home: 'My location', myplace: 'My place', rising: 'rising', falling: 'falling', steady: 'steady', daylight: 'Daylight', gusts: 'gusts', from: 'from',
+        search: 'Search city…', more: n => `All ${n} days`, less: 'Less', later: 'Outlook – less certain', tides: 'Tides', high: 'High tide', low: 'Low tide', moon: 'Moon', skyNow: 'Planets tonight', solar: 'Solar system today', visible: 'visible now', rises: 'rises', sets: 'sets', below: 'below horizon', full: 'Full moon', newm: 'New moon', solarNote: 'Planet positions around the Sun · distances not to scale', phases: ['New moon','Waxing crescent','First quarter','Waxing gibbous','Full moon','Waning gibbous','Last quarter','Waning crescent'], pn: { Mercury: 'Mercury', Venus: 'Venus', Earth: 'Earth', Mars: 'Mars', Jupiter: 'Jupiter', Saturn: 'Saturn', Uranus: 'Uranus', Neptune: 'Neptune' }, home: 'My location', myplace: 'My place', rising: 'rising', falling: 'falling', steady: 'steady', daylight: 'Daylight', gusts: 'gusts', from: 'from',
         uvT: ['Low', 'Moderate', 'High', 'Very high', 'Extreme'], err: 'Could not load weather data.',
         dirs: ['N','NE','E','SE','S','SW','W','NW'], beaufort: ['Calm','Light air','Light breeze','Gentle breeze','Moderate breeze','Fresh breeze','Strong breeze','Near gale','Gale','Strong gale','Storm','Violent storm','Hurricane'],
         hum: h => h < 30 ? 'Dry' : h < 60 ? 'Comfortable' : h < 80 ? 'Humid' : 'Very humid',
@@ -273,6 +277,7 @@ let home = store.get('home', null);
 let loc = null;
 let recent = store.get('recent', []);
 let data = null;
+let showAllDays = false;
 const $ = id => document.getElementById(id);
 const NS = 'http://www.w3.org/2000/svg';
 const deg = c => unit === 'F' ? c * 9 / 5 + 32 : c;
@@ -751,12 +756,16 @@ function render() {
   // daily
   const lo = Math.min(...d.temperature_2m_min), hi = Math.max(...d.temperature_2m_max), sp = Math.max(1, hi - lo);
   $('days').innerHTML = d.time.map((t, i) => {
-    const dn = i === 0 ? T.today : new Date(t + 'T12:00').toLocaleDateString(LANG, { weekday: 'long' });
+    const dt = new Date(t + 'T12:00');
+    const dn = i === 0 ? T.today : i < 7 ? dt.toLocaleDateString(LANG, { weekday: 'long' }) : dt.toLocaleDateString(LANG, { weekday: 'short', day: 'numeric', month: 'numeric' });
     const p = d.precipitation_probability_max[i];
     const l = (d.temperature_2m_min[i] - lo) / sp * 100, w = (d.temperature_2m_max[i] - d.temperature_2m_min[i]) / sp * 100;
-    return `<div class="day"><span>${dn}</span><span title="${label(kind(d.weather_code[i]), true)}">${icon(kind(d.weather_code[i]))}${p >= 30 ? `<span class="rainp">${p}%</span>` : ''}</span>
+    if (i >= 7 && !showAllDays) return '';
+    return `${i === 7 ? '<div class="later" data-i-later></div>' : ''}<div class="day${i >= 7 ? ' far' : ''}"><span>${dn}</span><span title="${label(kind(d.weather_code[i]), true)}">${icon(kind(d.weather_code[i]))}${p >= 30 ? `<span class="rainp">${p}%</span>` : ''}</span>
       <span class="range"><span>${fmtT(d.temperature_2m_min[i])}°</span><span class="bar"><b style="left:${l}%;width:${Math.max(w, 4)}%"></b></span><span>${fmtT(d.temperature_2m_max[i])}°</span></span></div>`;
-  }).join('');
+  }).join('') + (d.time.length > 7 ? `<button class="more" id="moreDays">${showAllDays ? T.less : T.more(d.time.length)}</button>` : '');
+  if ($('moreDays')) $('moreDays').onclick = () => { showAllDays = !showAllDays; render(); if (!showAllDays) $('days').scrollIntoView({ block: 'nearest' }); };
+  document.querySelectorAll('[data-i-later]').forEach(e => e.textContent = T.later);
 
   // hourly strip
   const hs = data.hourIdx;
@@ -852,7 +861,7 @@ function render() {
 async function load() {
   $('app').classList.add('loading'); $('err').style.display = 'none';
   const p = new URLSearchParams({
-    latitude: loc.lat, longitude: loc.lon, timezone: 'auto', forecast_days: 7,
+    latitude: loc.lat, longitude: loc.lon, timezone: 'auto', forecast_days: 16,
     current: 'temperature_2m,apparent_temperature,relative_humidity_2m,dew_point_2m,is_day,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m,wind_gusts_10m,uv_index',
     hourly: 'temperature_2m,weather_code,precipitation_probability,uv_index,pressure_msl,is_day',
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_probability_max'
