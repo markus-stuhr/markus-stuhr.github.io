@@ -140,6 +140,7 @@
   .snowbars i.s { background: linear-gradient(#bfe0ff, #6fb6ff); }
   .snowbars i.first { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px #6fb6ff; }
   .snowfar { display: flex; gap: 14px; align-items: center; }
+  .sundot { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 6px rgba(255,150,0,.5); }
   .footer { grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
   .footer a { color: inherit; }
   .ic { stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -219,7 +220,7 @@
 
     <div class="card wide">
       <h3><svg viewBox="0 0 24 24" class="ic" style="color:#f08a24"><path d="M17 18a5 5 0 0 0-10 0M12 3v7M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4-4 4 4"/></svg><span data-i="sun"></span></h3>
-      <svg id="sunViz" width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none" style="margin-top:10px;overflow:visible"></svg>
+      <div style="position:relative;margin-top:10px"><svg id="sunViz" width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none" style="display:block;overflow:visible"></svg><div id="sunDot" class="sundot"></div></div>
       <div class="sunrow"><div>↑ <span data-i="sunrise"></span><b id="sunrise">--</b></div><div id="daylen" style="align-self:flex-end"></div><div style="text-align:right"><span data-i="sunset"></span> ↓<b id="sunset">--</b></div></div>
     </div>
 
@@ -928,9 +929,19 @@ function render() {
   const day0 = new Date(rise); day0.setHours(0, 0, 0, 0);
   const fx = dt => (dt - day0) / 864e5 * 400;
   const xr = fx(rise), xs = fx(set), mid = (xr + xs) / 2, amp = 80, base = 92;
-  const h0 = Math.cos(Math.PI * (xs - xr) / 400), K = 78 / (1 - h0);
-  const Kn = 22 / (1 + h0);
-  const yAt = x => { const v = Math.cos(2 * Math.PI * (x - mid) / 400) - h0; return base - v * (v > 0 ? K : Kn); };
+  // real solar altitude over the local day; below the horizon softly compressed (same slope at 0°, so no kink)
+  let altAt;
+  if (window.Astronomy) {
+    const obs = new Astronomy.Observer(loc.lat, loc.lon, 0);
+    altAt = x => { const t = new Date(+day0 + x / 400 * 864e5 - (window.__shift || 0)); const e = Astronomy.Equator('Sun', t, obs, true, true); return Astronomy.Horizon(t, obs, e.ra, e.dec, 'normal').altitude; };
+  } else {
+    const h0 = Math.cos(Math.PI * (xs - xr) / 400);
+    altAt = x => (Math.cos(2 * Math.PI * (x - mid) / 400) - h0) * 60;
+  }
+  const alts = []; for (let x = 0; x <= 400; x += 4) alts.push(altAt(x));
+  const K = 78 / Math.max(5, ...alts), soft = 24 / K;
+  const f = a => a >= 0 ? K * a : K * a / (1 - a / soft);
+  const yAt = x => base - f(altAt(x));
   const pts = []; for (let x = 0; x <= 400; x += 4) pts.push([x, yAt(x)]);
   const sd = el('defs', {}, sv), sgr = el('linearGradient', { id: 'sg', x1: 0, x2: 1 }, sd);
   el('stop', { offset: 0, 'stop-color': '#ffb21e' }, sgr); el('stop', { offset: 1, 'stop-color': '#ff7a1a' }, sgr);
@@ -943,7 +954,8 @@ function render() {
     el('path', { d: 'M' + above.map(p => p.join(' ')).join('L'), stroke: 'url(#sg)', 'stroke-width': 5, fill: 'none', 'stroke-linecap': 'round', 'vector-effect': 'non-scaling-stroke' }, sv);
   }
   const yn = yAt(xn);
-  el('ellipse', { cx: xn, cy: yn, rx: 9, ry: 9 * 120 / 120, fill: yn < base ? '#ffc93c' : 'var(--ink-3)', stroke: '#fff', 'stroke-width': 3, 'vector-effect': 'non-scaling-stroke', style: 'filter:drop-shadow(0 1px 4px rgba(255,150,0,.5))' }, sv);
+  // sun dot as HTML so it stays round in the stretched SVG
+  $('sunDot').style.cssText = `left:${xn / 4}%;top:${yn / 120 * 100}%;background:${yn < base ? '#ffc93c' : 'var(--ink-3)'}`;
 
   try { renderSky(); } catch (e) { console.error(e); }
   renderTides(data.marine);
