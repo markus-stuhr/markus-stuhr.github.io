@@ -145,8 +145,8 @@
   .sundot { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 6px rgba(255,150,0,.5); }
   @media (min-width: 1100px) {
     body { padding: 14px 18px; }
-    .wrap { max-width: none; grid-template-columns: minmax(360px, 27vw) 1fr; align-items: start; }
-    .hero-col { position: sticky; top: 16px; height: calc(100vh - 32px); }
+    .wrap { max-width: none; grid-template-columns: minmax(360px, calc(var(--vw, 1vw) * 27)) 1fr; align-items: start; }
+    .hero-col { position: sticky; top: 16px; height: calc(var(--vh, 1vh) * 100 - 32px); }
     .hero { height: 100%; display: flex; flex-direction: column; }
     .scene { flex: 1 1 auto; min-height: 330px; height: auto; }
     .days { flex: 0 1 auto; overflow-y: auto; padding-bottom: 14px; }
@@ -155,11 +155,11 @@
     .card { min-height: 0; padding: 14px 16px 12px; border-radius: 22px; }
     .card.wide { grid-column: span 2; }
     .c-hourly { grid-column: 1 / -1 !important; }
-    .c-solar .solarsvg { max-width: min(380px, 25vh) !important; margin-top: 0 !important; }
+    .c-solar .solarsvg { max-width: min(380px, calc(var(--vh, 1vh) * 25)) !important; margin-top: 0 !important; }
     .c-solar .sub { display: none; }
     .hourly .hr { padding: 4px 0; }
     .hourly .hr svg { margin: 3px 0 2px; }
-    .viz svg { max-height: 10vh; }
+    .viz svg { max-height: calc(var(--vh, 1vh) * 10); }
     .pl { margin-bottom: 1px; }
     .plist { margin-top: 6px; }
     .uvbar { position: relative; height: 6px; border-radius: 3px; margin: 18px 9px 8px; background: linear-gradient(90deg, #4cd964, #ffd60a 30%, #ff9f0a 55%, #ff375f 80%, #bf5af2); }
@@ -168,7 +168,7 @@
     .big { font-size: 28px; }
     #sunViz { height: 90px; }
   }
-  @media (min-width: 1700px) and (max-height: 900px), (min-width: 2300px) {
+  @media (min-width: 1700px) and (max-height: 900px) {
     .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   }
   .footer { grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
@@ -414,7 +414,10 @@ function smooth(pts) {
 
 function drawScene() {
   const svg = $('sky'); svg.innerHTML = '';
-  const W = 420, H = 470, HOR = 300;
+  // draw at the scene box's real aspect ratio, so nothing gets cropped at the sides
+  const box = $('scene'), H = 470, HOR = 300;
+  const W = Math.round(H * (box.clientWidth || 420) / (box.clientHeight || 470));
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   const c = data.current, d = data.daily;
   const k = kind(c.weather_code);
   const now = nowMs();
@@ -522,7 +525,7 @@ function drawScene() {
   const card = getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || '#fff';
   el('path', { d: land, fill: card }, svg);
   for (let i = 1; i < 24; i += 3) {
-    const [x, y] = curve[i];
+    const [cx, y] = curve[i], x = Math.min(W - 18, Math.max(18, cx));
     el('text', { x, y: y - 12, class: 'curve-label' }, svg).textContent = fmtT(temps[i]) + '°';
     const hh = new Date(data.hourly.time[hs + i]).getHours();
     el('text', { x, y: Math.min(H - 6, y + 20), class: 'curve-hour' }, svg).textContent = i === 1 ? T.now : hh + ':00';
@@ -1099,6 +1102,21 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') $('search').
 $('uC').onclick = () => { unit = 'C'; store.set('unit', unit); data && render(); };
 $('uF').onclick = () => { unit = 'F'; store.set('unit', unit); data && render(); };
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => data && render());
+
+// big screens: scale the whole layout (incl. type) relative to a 1440×900 design; vh/vw are corrected for the zoom
+function fit() {
+  const z = innerWidth >= 1100 ? Math.min(2, Math.max(1, Math.min(innerWidth / 1440, innerHeight / 900))) : 1;
+  const r = document.documentElement;
+  r.style.zoom = z === 1 ? '' : z;
+  r.style.setProperty('--vh', innerHeight / z / 100 + 'px');
+  r.style.setProperty('--vw', innerWidth / z / 100 + 'px');
+}
+let fitT;
+addEventListener('resize', () => { fit(); clearTimeout(fitT); fitT = setTimeout(() => data && render(), 150); });
+fit();
+// redraw the landscape whenever its box changes shape
+let lastSz = '';
+new ResizeObserver(() => { const b = $('scene'), sz = b.clientWidth + 'x' + b.clientHeight; if (sz !== lastSz && data) { lastSz = sz; drawScene(); } }).observe($('scene'));
 setInterval(() => loc && load(), 15 * 60e3);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && data && Date.now() - (window.__loaded || 0) > 10 * 60e3) load(); });
 
