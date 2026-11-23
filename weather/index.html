@@ -108,7 +108,7 @@
   .hum.wet .big, .hum.wet .big small, .hum.wet .sub { color: #fff; }
   @keyframes wave { to { transform: translateX(-50%); } }
 
-  .hourly { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 8px -18px -4px; padding: 0 18px 4px; scroll-snap-type: x proximity; }
+  .hourly { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 8px -4px -4px; padding: 0 0 4px; scroll-padding-inline: 0; scroll-snap-type: x proximity; }
   .hourly::-webkit-scrollbar { display: none; }
   .hr { flex: 0 0 52px; text-align: center; scroll-snap-align: start; padding: 8px 0; border-radius: 16px; }
   .hr.now { background: color-mix(in srgb, var(--accent) 10%, transparent); }
