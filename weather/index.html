@@ -143,6 +143,32 @@
   .snowbars i.first { box-shadow: 0 0 0 2px var(--card), 0 0 0 3.5px #6fb6ff; }
   .snowfar { display: flex; gap: 14px; align-items: center; }
   .sundot { position: absolute; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 1px 6px rgba(255,150,0,.5); }
+  @media (min-width: 1100px) {
+    body { padding: 14px 18px; }
+    .wrap { max-width: none; grid-template-columns: minmax(360px, 27vw) 1fr; align-items: start; }
+    .hero-col { position: sticky; top: 16px; height: calc(100vh - 32px); }
+    .hero { height: 100%; display: flex; flex-direction: column; }
+    .scene { flex: 1 1 auto; min-height: 330px; height: auto; }
+    .days { flex: 0 1 auto; overflow-y: auto; padding-bottom: 14px; }
+    .day { height: 42px; }
+    .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 12px; }
+    .card { min-height: 0; padding: 14px 16px 12px; border-radius: 22px; }
+    .card.wide { grid-column: span 2; }
+    .c-hourly { grid-column: 1 / -1 !important; }
+    .c-solar .solarsvg { max-width: min(380px, 25vh) !important; margin-top: 0 !important; }
+    .c-solar .sub { display: none; }
+    .hourly .hr { padding: 4px 0; }
+    .hourly .hr svg { margin: 3px 0 2px; }
+    .viz svg { max-height: 10vh; }
+    .pl { margin-bottom: 1px; }
+    .plist { margin-top: 6px; }
+    .footer { position: fixed; right: 24px; bottom: 6px; font-size: 11px; }
+    .big { font-size: 28px; }
+    #sunViz { height: 90px; }
+  }
+  @media (min-width: 1700px) and (max-height: 900px), (min-width: 2300px) {
+    .grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  }
   .footer { grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--ink-3); margin-top: 6px; }
   .footer a { color: inherit; }
   .ic { stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
@@ -186,7 +212,7 @@
   </div>
 
   <div class="grid" id="cards">
-    <div class="card wide">
+    <div class="card c-hourly wide">
       <h3><svg viewBox="0 0 24 24" class="ic" style="color:#f08a24"><path d="M12 3v11.5M9 14.5a3 3 0 1 0 6 0V5a3 3 0 0 0-6 0z"/></svg><span data-i="hourly"></span></h3>
       <div class="hourly" id="hourly"></div>
     </div>
@@ -220,13 +246,13 @@
       <div class="foot"><div class="big" id="wind">--</div><div class="sub" id="windText"></div></div>
     </div>
 
-    <div class="card wide">
+    <div class="card c-sun wide">
       <h3><svg viewBox="0 0 24 24" class="ic" style="color:#f08a24"><path d="M17 18a5 5 0 0 0-10 0M12 3v7M4.2 10.2l1.4 1.4M1 18h2M21 18h2M18.4 11.6l1.4-1.4M23 22H1M8 6l4-4 4 4"/></svg><span data-i="sun"></span></h3>
       <div style="position:relative;margin-top:10px"><svg id="sunViz" width="100%" height="120" viewBox="0 0 400 120" preserveAspectRatio="none" style="display:block;overflow:visible"></svg><div id="sunDot" class="sundot"></div></div>
       <div class="sunrow"><div>↑ <span data-i="sunrise"></span><b id="sunrise">--</b></div><div id="daylen" style="align-self:flex-end"></div><div style="text-align:right"><span data-i="sunset"></span> ↓<b id="sunset">--</b></div></div>
     </div>
 
-    <div class="card wide snow">
+    <div class="card c-snow wide snow">
       <h3><svg viewBox="0 0 24 24" class="ic" style="color:#6fb6ff"><path d="M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7M9 4l3 2 3-2M9 20l3-2 3 2M4 10.5l3.5-.5L6 7M20 13.5l-3.5.5L18 17M4 13.5l3.5.5L6 17M20 10.5l-3.5-.5L18 7"/></svg><span data-i="snow"></span></h3>
       <div class="snowgrid">
         <div>
@@ -241,7 +267,7 @@
       </div>
     </div>
 
-    <div class="card wide" id="tideCard" style="display:none">
+    <div class="card c-tide wide" id="tideCard" style="display:none">
       <h3><svg viewBox="0 0 24 24" class="ic" style="color:#2f8cff"><path d="M2 12c2-2 4-2 6 0s4 2 6 0 4-2 6 0M2 17c2-2 4-2 6 0s4 2 6 0 4-2 6 0M12 3v5M9.5 5.5L12 8l2.5-2.5"/></svg><span data-i="tides"></span><span id="tideNow" style="margin-left:auto;font-weight:500;color:var(--ink-2);font-size:14px"></span></h3>
       <div class="tidewrap"><svg id="tideViz" width="100%" height="130" viewBox="0 0 400 130" preserveAspectRatio="none" style="display:block;overflow:visible"></svg><div id="tideMarks"></div></div>
       <div class="tidelabels" id="tideRow"></div>
@@ -254,14 +280,14 @@
       <div class="foot"><div class="big" id="moonIll" style="font-size:26px">--</div><div class="sub" id="moonName"></div><div class="sub" id="moonTimes" style="font-size:13px"></div></div>
     </div>
 
-    <div class="card">
+    <div class="card c-planets">
       <h3><svg viewBox="0 0 24 24" class="ic" style="color:#e6b84c"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(-20 12 12)"/></svg><span data-i="skyNow"></span></h3>
       <div id="planetList" class="plist"></div>
     </div>
 
-    <div class="card wide">
+    <div class="card c-solar wide">
       <h3><svg viewBox="0 0 24 24" class="ic" style="color:#e6b84c"><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="10"/></svg><span data-i="solar"></span></h3>
-      <svg id="solarViz" viewBox="-200 -200 400 400" style="width:100%;max-width:380px;margin:8px auto 0;display:block;overflow:visible"></svg>
+      <svg id="solarViz" viewBox="-200 -200 400 400" class="solarsvg" style="width:100%;max-width:380px;margin:8px auto 0;display:block;overflow:visible"></svg>
       <div class="sub" id="solarNote" style="text-align:center;font-size:12px"></div>
     </div>
 
