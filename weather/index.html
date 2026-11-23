@@ -524,11 +524,14 @@ function drawScene() {
   const land = smooth(curve) + `L${W + 10} ${H + 5}L-10 ${H + 5}Z`;
   const card = getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || '#fff';
   el('path', { d: land, fill: card }, svg);
-  for (let i = 1; i < 24; i += 3) {
-    const [cx, y] = curve[i], x = Math.min(W - 18, Math.max(18, cx));
-    el('text', { x, y: y - 12, class: 'curve-label' }, svg).textContent = fmtT(temps[i]) + '°';
+  // "now" sits left-aligned with the day list below ("Heute"); then every 3 hours
+  const pad = 26 * W / ($('scene').clientWidth || W);
+  for (const i of [0, 5, 8, 11, 14, 17, 20, 23]) {
+    const [cx, y] = curve[i], first = i === 0;
+    const x = first ? pad : Math.min(W - 18, Math.max(18, cx)), anchor = first ? { 'text-anchor': 'start' } : {};
+    el('text', { x, y: y - 12, class: 'curve-label', ...anchor }, svg).textContent = fmtT(temps[i]) + '°';
     const hh = new Date(data.hourly.time[hs + i]).getHours();
-    el('text', { x, y: Math.min(H - 6, y + 20), class: 'curve-hour' }, svg).textContent = i === 1 ? T.now : hh + ':00';
+    el('text', { x, y: Math.min(H - 6, y + 20), class: 'curve-hour', ...anchor }, svg).textContent = first ? T.now : hh + ':00';
   }
 }
 
